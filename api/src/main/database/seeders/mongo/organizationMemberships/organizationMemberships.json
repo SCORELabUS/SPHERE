@@ -31,7 +31,7 @@
     "_id": { "$oid": "63f74bf8eeed64058364b702" },
     "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
     "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
-    "role": "OWNER",
+    "role": "MEMBER",
     "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
   },
   {

@@ -24,7 +24,6 @@ class PricingController {
   async index(req: any, res: any) {
     try {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
-      queryParams.includePricingsInCollection = true;
 
       const pricings = await this.pricingService.index(queryParams, req.user);
       res.json(pricings);
@@ -37,9 +36,8 @@ class PricingController {
   async indexByOrganization(req: any, res: any) {
     try {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
-      queryParams.selectedOrganizations = [req.params.organizationId];
 
-      const pricings = await this.pricingService.index(queryParams, req.user);
+      const pricings = await this.pricingService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
       res.json(pricings);
     } catch (err: any) {
       const {status, message} = handleError(err);
@@ -201,7 +199,6 @@ class PricingController {
         ? (indexQueryParams.selectedOrganizations as string).split(',')
         : undefined,
       collection: indexQueryParams.collection as string,
-      includePricingsInCollection: indexQueryParams.includePricingsInCollection === 'true',
       limit: parseInt(indexQueryParams.limit) || 10,
       offset: parseInt(indexQueryParams.offset) || 0,
     };

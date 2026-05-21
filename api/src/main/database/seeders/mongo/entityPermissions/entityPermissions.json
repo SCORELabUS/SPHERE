@@ -1,0 +1,167 @@
+[
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b800" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "collection",
+    "entityId": null,
+    "permissions": { "GET": true, "PUT": true, "DELETE": true, "CREATE": true },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b801" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "collection",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc12a" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b802" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": null,
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": true },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b803" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc01c" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b804" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc01d" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b805" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc01e" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b806" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc022" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": true, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b807" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc023" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": true, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b808" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc028" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b809" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc029" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b80a" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc02e" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": false, "CREATE": true },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b80b" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc02f" },
+    "permissions": { "GET": true, "PUT": true, "DELETE": false, "CREATE": true },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b80c" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc034" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b80d" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc035" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b80e" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "entityType": "pricing",
+    "entityId": { "$oid": "6787d0facaeb2b25748bc036" },
+    "permissions": { "GET": true, "PUT": false, "DELETE": false, "CREATE": false },
+    "grantedBy": { "$oid": "63f74bf8eeed64058364b52e" },
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  }
+]

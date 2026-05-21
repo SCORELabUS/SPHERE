@@ -1,4 +1,4 @@
-import { Policy } from '../types';
+import { Policy } from '../../types/policies';
 import { organizationPolicies } from './organizationPolicies';
 import { entityPolicies } from './entityPolicies';
 

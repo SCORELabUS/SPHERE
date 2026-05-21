@@ -300,7 +300,38 @@ describe('Pricings API integration', () => {
       expect(response.body.pricings[0].id).toBe(pricing.id);
     });
 
-    it('Return 200 and public/private pricing list with ADMIN user requesting another username.', async () => {
+    it('Return 200 and list with exactly 5 pricings with MEMBER with scoped permissions requesting.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      for (let i = 0; i < 3; i++) {
+        await createPricingForOrganization({
+          organizationId,
+          isPrivate: true,
+        });
+      }
+
+      for (let i = 0; i < 5; i++) {
+        await createPricingForOrganization({
+          organizationId,
+          isPrivate: false,
+        });
+      }
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?limit=5&offset=0`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toBeDefined();
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(5);
+      expect(response.body.pricings.every((p: any) => !p.isPrivate)).toBe(true);
+    });
+
+    it('Return 200 and public/private pricing list with ADMIN user requesting random organization.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { user: requester } = await createAndLoginUser('ADMIN');
 
@@ -324,7 +355,7 @@ describe('Pricings API integration', () => {
       expect(response.body.pricings.length).toBe(2);
     });
 
-    it('Return 200 but not pricings in collection.', async () => {
+    it('Return 200 with pricings in collection.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { user: requester } = await createAndLoginUser('ADMIN');
 
@@ -348,7 +379,7 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body).toBeDefined();
       expect(Array.isArray(response.body.pricings)).toBe(true);
-      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings.length).toBe(2);
     });
 
     it('Return 200 with pricings in collections.', async () => {

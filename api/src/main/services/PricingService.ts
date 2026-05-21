@@ -12,16 +12,16 @@ import PricingCollectionService from './PricingCollectionService';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
 import CacheService from './CacheService';
 import { LeanUser } from '../types/models/User';
-import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { generateSlug, generateTextFromSlug } from '../utils/slug-manager';
+import { BatchEvaluationContext } from '../policies';
+import { OrgRole } from '../types/models/Organization';
 
 class PricingService {
   private pricingRepository: PricingRepository;
   private pricingCollectionService: PricingCollectionService;
   private cacheService: CacheService;
-  private organizationMembershipRepository: OrganizationMembershipRepository;
   private permissionEngine: PermissionEngine;
   private permissionQueries: PermissionQueries;
 
@@ -29,75 +29,64 @@ class PricingService {
     this.pricingRepository = container.resolve('pricingRepository');
     this.pricingCollectionService = container.resolve('pricingCollectionService');
     this.cacheService = container.resolve('cacheService');
-    this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
     this.permissionEngine = new PermissionEngine();
     this.permissionQueries = new PermissionQueries();
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
-    if (!reqUser) {
-      const pricings = await this.pricingRepository.findAll(queryParams, false);
+    const isAdmin = reqUser && reqUser.role === 'ADMIN';
+
+    const pricings = await this.pricingRepository.findAll(queryParams, isAdmin);
+    return pricings;
+  }
+
+  async indexByOrganizationId(
+    organizationId: string,
+    reqUser?: LeanUser,
+    queryParams?: PricingIndexQueryParams
+  ) {
+    const orgRole: OrgRole | null = await this.permissionQueries.resolveOrgRole(
+      reqUser?.id ?? '',
+      organizationId
+    );
+
+    if (!reqUser || (reqUser.role !== "ADMIN" && !orgRole)) {
+      const pricings = await this.pricingRepository.findByOrganizationId(
+        organizationId,
+        { orgRole: null, pricings: [], collections: [] },
+        queryParams ?? { limit: 10, offset: 0 }
+      );
       return pricings;
     }
 
-    if (reqUser.role === 'ADMIN') {
-      const pricings = await this.pricingRepository.findAll(queryParams, true);
-      return pricings;
-    }
+    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
+      reqUser.id,
+      organizationId,
+      orgRole,
+      reqUser.role === 'ADMIN'
+    );
 
-    const orgId = queryParams.selectedOrganizations?.[0];
-    if (orgId) {
-      const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, orgId);
-      const isOwnerOrAdmin = orgRole === 'OWNER' || orgRole === 'ADMIN';
+    const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
+      .filter(([_, permissions]) => permissions.GET === true)
+      .map(([key]) => key);
 
-      if (isOwnerOrAdmin) {
-        const pricings = await this.pricingRepository.findAll(queryParams, true);
-        return pricings;
-      }
+    const pricingsWithGetPermissions = entriesWithGetPermissions
+      .filter(key => key.startsWith('pricing:'))
+      .map(key => key.split(':')[1]);
+    const collectionsWithGetPermissions = entriesWithGetPermissions
+      .filter(key => key.startsWith('collection:'))
+      .map(key => key.split(':')[1]);
 
-      const result = await this.pricingRepository.findAll(queryParams, true);
+    const pricings = await this.pricingRepository.findByOrganizationId(
+      organizationId,
+      {
+        orgRole: orgPermissions.isGlobalAdmin ? "OWNER" : orgRole,
+        pricings: pricingsWithGetPermissions,
+        collections: collectionsWithGetPermissions,
+      },
+      queryParams ?? { limit: 10, offset: 0 }
+    );
 
-      if (result && result.pricings) {
-        const batchCtx = await this.permissionQueries.buildBatchContext(
-          reqUser.id,
-          orgId,
-          orgRole,
-          false
-        );
-
-        const contexts = result.pricings
-          .filter(p => p.private)
-          .map(p => ({
-            key: p._id?.toString() ?? p.id,
-            context: {
-              userId: reqUser.id,
-              organizationId: orgId,
-              entityType: 'pricing' as const,
-              entityId: p._id?.toString() ?? p.id,
-              action: 'GET' as const,
-              isPrivate: true,
-              userOrgRole: orgRole,
-              isGlobalAdmin: false,
-            },
-          }));
-
-        const results = this.permissionEngine.evaluateBatch(contexts, { batchContext: batchCtx });
-
-        const filteredPricings = result.pricings.filter(p => {
-          if (!p.private) return true;
-          const entityId = p._id?.toString() ?? p.id;
-          const evalResult = results.get(entityId);
-          return evalResult?.allowed ?? false;
-        });
-
-        result.pricings = filteredPricings;
-        result.total = filteredPricings.length;
-      }
-
-      return result;
-    }
-
-    const pricings = await this.pricingRepository.findAll(queryParams, false);
     return pricings;
   }
 
@@ -348,7 +337,9 @@ class PricingService {
     );
 
     const entityId = pricing.versions[0]?.id;
-    const entityPerms = entityId ? batchCtx.entityPermissions.get(`pricing:${entityId}`) : undefined;
+    const entityPerms = entityId
+      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
+      : undefined;
 
     const updateResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
@@ -404,7 +395,7 @@ class PricingService {
           .includes(generateTextFromSlug(collectionSlug).toLocaleLowerCase())
       ) {
         pricing.yaml = pricing.yaml.replace(
-          new RegExp(generateTextFromSlug(collectionSlug), "i"),
+          new RegExp(generateTextFromSlug(collectionSlug), 'i'),
           newCollectionName
         );
         pricingsToUpdate.push(pricing);
@@ -439,7 +430,9 @@ class PricingService {
     );
 
     const entityId = pricing?.versions[0]?.id;
-    const entityPerms = entityId ? batchCtx.entityPermissions.get(`pricing:${entityId}`) : undefined;
+    const entityPerms = entityId
+      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
+      : undefined;
 
     const deleteResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
@@ -502,7 +495,9 @@ class PricingService {
     );
 
     const entityId = pricing?.versions[0]?.id;
-    const entityPerms = entityId ? batchCtx.entityPermissions.get(`pricing:${entityId}`) : undefined;
+    const entityPerms = entityId
+      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
+      : undefined;
 
     const deleteResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
