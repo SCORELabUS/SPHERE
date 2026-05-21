@@ -12,141 +12,7 @@ import { getPricingsByOrganizationAggregator } from './aggregators/get-pricings-
 
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, includePrivate: boolean = false) {
-    const filteringPipeline = [];
-    const sortPipeline = [];
-
-    if (Object.keys(queryParams).length > 0) {
-      const {
-        name,
-        subscriptions,
-        minPrice,
-        maxPrice,
-        selectedOrganizations,
-        collection,
-        sortBy,
-        sort,
-      } = queryParams;
-
-      if (collection) {
-        filteringPipeline.push({
-          $match: {
-            'collection.slug': collection,
-          },
-        });
-      }
-
-      if (name) {
-        filteringPipeline.push({
-          $match: {
-            name: {
-              $regex: name,
-              $options: 'i', // case-insensitive
-            },
-          },
-        });
-      }
-
-      if (subscriptions) {
-        const subscriptionsFilter = subscriptions as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.configurationSpaceSize': {
-              $gte: !Number.isNaN(subscriptionsFilter.min) ? subscriptionsFilter.min : 0,
-              $lte: !Number.isNaN(subscriptionsFilter.max)
-                ? subscriptionsFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (minPrice) {
-        const minPriceFilter = minPrice as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.minSubscriptionPrice': {
-              $gte: !Number.isNaN(minPriceFilter.min) ? minPriceFilter.min : 0,
-              $lte: !Number.isNaN(minPriceFilter.max)
-                ? minPriceFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (maxPrice) {
-        const maxPriceFilter = maxPrice as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.maxSubscriptionPrice': {
-              $gte: !Number.isNaN(maxPriceFilter.min) ? maxPriceFilter.min : 0,
-              $lte: !Number.isNaN(maxPriceFilter.max)
-                ? maxPriceFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (selectedOrganizations) {
-        const selectedOrganizationsFilter = selectedOrganizations as string[];
-
-        filteringPipeline.push({
-          $match: {
-            _organizationId: {
-              $in: selectedOrganizationsFilter.map(id => new mongoose.Types.ObjectId(id)),
-            },
-          },
-        });
-      }
-
-      if (sortBy && sort) {
-        let sortParameter = '';
-        const sortOrder = sort === 'asc' ? 1 : -1;
-
-        switch (sortBy) {
-          case 'name':
-            sortParameter = 'name';
-            break;
-          case 'configurationSpaceSize':
-            sortParameter = 'analytics.configurationSpaceSize';
-            break;
-          case 'featuresCount':
-            sortParameter = 'analytics.numberOfFeatures';
-            break;
-          case 'usageLimitsCount':
-            sortParameter = 'analytics.numberOfUsageLimits';
-            break;
-          case 'plansCount':
-            sortParameter = 'analytics.numberOfPlans';
-            break;
-          case 'addonsCount':
-            sortParameter = 'analytics.numberOfAddons';
-            break;
-          case 'minPrice':
-            sortParameter = 'analytics.minSubscriptionPrice';
-            break;
-          case 'maxPrice':
-            sortParameter = 'analytics.maxSubscriptionPrice';
-            break;
-        }
-        sortPipeline.push({
-          $addFields: {
-            pricings: {
-              $sortArray: {
-                input: '$pricings',
-                sortBy: {
-                  [sortParameter]: sortOrder,
-                },
-              },
-            },
-          },
-        });
-      }
-    }
+    const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
     try {
       const aggregator = getAllPricingsAggregator(filteringPipeline, sortPipeline);
@@ -159,56 +25,21 @@ class PricingRepository extends RepositoryBase {
         ...aggregator,
       ];
 
-      const offset = queryParams.offset;
-      const limit = queryParams.limit;
+      const paginationPipeline = this._processPricingPagination(queryParams);
 
-      // If pagination params present, compute total and slice pricings inside the aggregation for efficiency
-      if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
-        const paginationStages = [
-          {
-            $addFields: {
-              total: { $size: '$pricings' },
-            },
-          },
-          {
-            $project: {
-              pricings: {
-                $slice: ['$pricings', offset, limit],
-              },
-              minPrice: 1,
-              maxPrice: 1,
-              configurationSpaceSize: 1,
-              total: 1,
-            },
-          },
-        ];
-
-        const pricings = await PricingMongoose.aggregate([...basePipeline, ...paginationStages]);
-        return (
-          pricings[0] || {
-            pricings: [],
-            minPrice: [],
-            maxPrice: [],
-            configurationSpaceSize: [],
-            total: 0,
-          }
-        );
-      }
-
-      // No pagination: return full result (and include total)
-      const pricings = await PricingMongoose.aggregate(basePipeline);
-      const result = pricings[0] || {
-        pricings: [],
-        minPrice: [],
-        maxPrice: [],
-        configurationSpaceSize: [],
-        total: 0,
-      };
-      // ensure total is set
-      if (typeof result.total === 'undefined') {
-        result.total = Array.isArray(result.pricings) ? result.pricings.length : 0;
-      }
-      return result;
+      const pricings: any = await PricingMongoose.aggregate([
+        ...basePipeline,
+        ...paginationPipeline,
+      ]);
+      return (
+        pricings[0] || {
+          pricings: [],
+          minPrice: [],
+          maxPrice: [],
+          configurationSpaceSize: [],
+          total: 0,
+        }
+      );
     } catch (err) {
       return { pricings: [] };
     }
@@ -219,169 +50,16 @@ class PricingRepository extends RepositoryBase {
     permissions: { orgRole: OrgRole | null; pricings: string[]; collections: string[] },
     queryParams: PricingIndexQueryParams
   ) {
-    const filteringPipeline: PipelineStage[] = [];
-    const sortPipeline: PipelineStage[] = [];
-    let paginationPipeline: PipelineStage[] = [];
+    const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
-    if (Object.keys(queryParams).length > 0) {
-      const {
-        name,
-        subscriptions,
-        minPrice,
-        maxPrice,
-        selectedOrganizations,
-        collection,
-        sortBy,
-        sort,
-      } = queryParams;
+    const aggregator = getPricingsByOrganizationAggregator(
+      organizationId,
+      permissions,
+      filteringPipeline,
+      sortPipeline
+    );
 
-      if (collection) {
-        filteringPipeline.push({
-          $match: {
-            'collection.slug': collection,
-          },
-        });
-      }
-
-      if (name) {
-        filteringPipeline.push({
-          $match: {
-            name: {
-              $regex: name,
-              $options: 'i', // case-insensitive
-            },
-          },
-        });
-      }
-
-      if (subscriptions) {
-        const subscriptionsFilter = subscriptions as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.configurationSpaceSize': {
-              $gte: !Number.isNaN(subscriptionsFilter.min) ? subscriptionsFilter.min : 0,
-              $lte: !Number.isNaN(subscriptionsFilter.max)
-                ? subscriptionsFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (minPrice) {
-        const minPriceFilter = minPrice as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.minSubscriptionPrice': {
-              $gte: !Number.isNaN(minPriceFilter.min) ? minPriceFilter.min : 0,
-              $lte: !Number.isNaN(minPriceFilter.max)
-                ? minPriceFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (maxPrice) {
-        const maxPriceFilter = maxPrice as { min: number; max: number };
-
-        filteringPipeline.push({
-          $match: {
-            'analytics.maxSubscriptionPrice': {
-              $gte: !Number.isNaN(maxPriceFilter.min) ? maxPriceFilter.min : 0,
-              $lte: !Number.isNaN(maxPriceFilter.max)
-                ? maxPriceFilter.max
-                : Number.MAX_SAFE_INTEGER,
-            },
-          },
-        });
-      }
-
-      if (selectedOrganizations) {
-        const selectedOrganizationsFilter = selectedOrganizations as string[];
-
-        filteringPipeline.push({
-          $match: {
-            _organizationId: {
-              $in: selectedOrganizationsFilter.map(id => new mongoose.Types.ObjectId(id)),
-            },
-          },
-        });
-      }
-
-      if (sortBy && sort) {
-        let sortParameter = '';
-        const sortOrder = sort === 'asc' ? 1 : -1;
-
-        switch (sortBy) {
-          case 'name':
-            sortParameter = 'name';
-            break;
-          case 'configurationSpaceSize':
-            sortParameter = 'analytics.configurationSpaceSize';
-            break;
-          case 'featuresCount':
-            sortParameter = 'analytics.numberOfFeatures';
-            break;
-          case 'usageLimitsCount':
-            sortParameter = 'analytics.numberOfUsageLimits';
-            break;
-          case 'plansCount':
-            sortParameter = 'analytics.numberOfPlans';
-            break;
-          case 'addonsCount':
-            sortParameter = 'analytics.numberOfAddons';
-            break;
-          case 'minPrice':
-            sortParameter = 'analytics.minSubscriptionPrice';
-            break;
-          case 'maxPrice':
-            sortParameter = 'analytics.maxSubscriptionPrice';
-            break;
-        }
-        sortPipeline.push({
-          $addFields: {
-            pricings: {
-              $sortArray: {
-                input: '$pricings',
-                sortBy: {
-                  [sortParameter]: sortOrder,
-                },
-              },
-            },
-          },
-        });
-      }
-    }
-
-    const aggregator = getPricingsByOrganizationAggregator(organizationId, permissions, filteringPipeline, sortPipeline);
-
-    const offset = queryParams.offset;
-    const limit = queryParams.limit;
-
-    // If pagination params present, compute total and slice pricings inside the aggregation for efficiency
-    if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
-      paginationPipeline = [
-        {
-          $addFields: {
-            total: { $size: '$pricings' },
-          },
-        },
-        {
-          $project: {
-            pricings: {
-              $slice: ['$pricings', offset, limit],
-            },
-            minPrice: 1,
-            maxPrice: 1,
-            configurationSpaceSize: 1,
-            total: 1,
-          },
-        },
-      ];
-    }
+    const paginationPipeline = this._processPricingPagination(queryParams);
 
     const pricings = await PricingMongoose.aggregate([...aggregator, ...paginationPipeline]);
     return (
@@ -660,6 +338,180 @@ class PricingRepository extends RepositoryBase {
   async destroy(id: string, ...args: any) {
     const result = await PricingMongoose.deleteOne({ _id: id });
     return result?.deletedCount === 1;
+  }
+
+  _processPricingQueryParams(queryParams: PricingIndexQueryParams): {
+    filteringPipeline: PipelineStage[];
+    sortPipeline: PipelineStage[];
+  } {
+    const filteringPipeline: PipelineStage[] = [];
+    const sortPipeline: PipelineStage[] = [];
+
+    if (Object.keys(queryParams).length > 0) {
+      const {
+        name,
+        subscriptions,
+        minPrice,
+        maxPrice,
+        selectedOrganizations,
+        collection,
+        sortBy,
+        sort,
+      } = queryParams;
+
+      if (collection) {
+        filteringPipeline.push({
+          $match: {
+            'collection.slug': collection,
+          },
+        });
+      }
+
+      if (name) {
+        filteringPipeline.push({
+          $match: {
+            name: {
+              $regex: name,
+              $options: 'i', // case-insensitive
+            },
+          },
+        });
+      }
+
+      if (subscriptions) {
+        const subscriptionsFilter = subscriptions as { min: number; max: number };
+
+        filteringPipeline.push({
+          $match: {
+            'analytics.configurationSpaceSize': {
+              $gte: !Number.isNaN(subscriptionsFilter.min) ? subscriptionsFilter.min : 0,
+              $lte: !Number.isNaN(subscriptionsFilter.max)
+                ? subscriptionsFilter.max
+                : Number.MAX_SAFE_INTEGER,
+            },
+          },
+        });
+      }
+
+      if (minPrice) {
+        const minPriceFilter = minPrice as { min: number; max: number };
+
+        filteringPipeline.push({
+          $match: {
+            'analytics.minSubscriptionPrice': {
+              $gte: !Number.isNaN(minPriceFilter.min) ? minPriceFilter.min : 0,
+              $lte: !Number.isNaN(minPriceFilter.max)
+                ? minPriceFilter.max
+                : Number.MAX_SAFE_INTEGER,
+            },
+          },
+        });
+      }
+
+      if (maxPrice) {
+        const maxPriceFilter = maxPrice as { min: number; max: number };
+
+        filteringPipeline.push({
+          $match: {
+            'analytics.maxSubscriptionPrice': {
+              $gte: !Number.isNaN(maxPriceFilter.min) ? maxPriceFilter.min : 0,
+              $lte: !Number.isNaN(maxPriceFilter.max)
+                ? maxPriceFilter.max
+                : Number.MAX_SAFE_INTEGER,
+            },
+          },
+        });
+      }
+
+      if (selectedOrganizations) {
+        const selectedOrganizationsFilter = selectedOrganizations as string[];
+
+        filteringPipeline.push({
+          $match: {
+            _organizationId: {
+              $in: selectedOrganizationsFilter.map(id => new mongoose.Types.ObjectId(id)),
+            },
+          },
+        });
+      }
+
+      if (sortBy && sort) {
+        let sortParameter = '';
+        const sortOrder = sort === 'asc' ? 1 : -1;
+
+        switch (sortBy) {
+          case 'name':
+            sortParameter = 'name';
+            break;
+          case 'configurationSpaceSize':
+            sortParameter = 'analytics.configurationSpaceSize';
+            break;
+          case 'featuresCount':
+            sortParameter = 'analytics.numberOfFeatures';
+            break;
+          case 'usageLimitsCount':
+            sortParameter = 'analytics.numberOfUsageLimits';
+            break;
+          case 'plansCount':
+            sortParameter = 'analytics.numberOfPlans';
+            break;
+          case 'addonsCount':
+            sortParameter = 'analytics.numberOfAddons';
+            break;
+          case 'minPrice':
+            sortParameter = 'analytics.minSubscriptionPrice';
+            break;
+          case 'maxPrice':
+            sortParameter = 'analytics.maxSubscriptionPrice';
+            break;
+        }
+        sortPipeline.push({
+          $addFields: {
+            pricings: {
+              $sortArray: {
+                input: '$pricings',
+                sortBy: {
+                  [sortParameter]: sortOrder,
+                },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    return { filteringPipeline, sortPipeline };
+  }
+
+  _processPricingPagination(queryParams: PricingIndexQueryParams): PipelineStage[] {
+    let paginationPipeline: PipelineStage[] = [];
+
+    const offset = queryParams.offset;
+    const limit = queryParams.limit;
+
+    // If pagination params present, compute total and slice pricings inside the aggregation for efficiency
+    if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
+      paginationPipeline = [
+        {
+          $addFields: {
+            total: { $size: '$pricings' },
+          },
+        },
+        {
+          $project: {
+            pricings: {
+              $slice: ['$pricings', offset, limit],
+            },
+            minPrice: 1,
+            maxPrice: 1,
+            configurationSpaceSize: 1,
+            total: 1,
+          },
+        },
+      ];
+    }
+
+    return paginationPipeline;
   }
 }
 

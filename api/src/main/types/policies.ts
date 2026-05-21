@@ -82,3 +82,9 @@ export interface BatchEvaluationOptions {
   /** Pre-fetched batch context (avoids individual DB queries) */
   batchContext?: BatchEvaluationContext;
 }
+
+export interface OrgUserPermissionsContext {
+  orgRole: OrgRole | null;
+  pricings: string[];
+  collections: string[];
+}
