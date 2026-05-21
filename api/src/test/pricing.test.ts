@@ -382,6 +382,96 @@ describe('Pricings API integration', () => {
       expect(response.body.pricings.length).toBe(2);
     });
 
+    it('Return 200 and list of private pricings when only having access to the collection.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const pricingsInCollection = [];
+
+      for (let i = 0; i < 3; i++) {
+        const pricingInCollection = await createPricingForOrganization({
+          organizationId,
+          isPrivate: true,
+        });
+
+        pricingsInCollection.push(pricingInCollection.serviceName);
+      }
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        pricingsInCollection
+      );
+
+      await createEntityScopedPermission(member.id, organizationId, collection.id, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toBeDefined();
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(3);
+    });
+
+    it('Return 200 and a single private pricing due to not having access to whole collection.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const privatePricingWithAccess = await createPricingForOrganization({
+        organizationId,
+        isPrivate: true,
+      });
+
+      const privatePricingWithoutAccess = await createPricingForOrganization({
+        organizationId,
+        isPrivate: true,
+      });
+
+      const publicPricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        [privatePricingWithAccess, privatePricingWithoutAccess, publicPricing].map(
+          p => p.serviceName
+        )
+      );
+
+      await createEntityScopedPermission(
+        member.id,
+        organizationId,
+        privatePricingWithAccess.id,
+        'pricing',
+        {
+          GET: true,
+          PUT: false,
+          DELETE: false,
+          CREATE: false,
+        }
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toBeDefined();
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(2);
+    });
+
     it('Return 200 with pricings in collections.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { user: requester } = await createAndLoginUser('ADMIN');
