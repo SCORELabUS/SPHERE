@@ -12,6 +12,13 @@ export function addOrganizationToCollectionAggregator() {
       $unwind: {
         path: '$organization',
       },
+    },
+    {
+      $set: {
+        organization: {
+          id: { $toString: '$organization._id' },
+        }
+      }
     }
   ];
 }

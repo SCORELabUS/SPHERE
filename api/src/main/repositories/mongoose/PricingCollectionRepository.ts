@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose, { PipelineStage } from 'mongoose';
 import {
   PricingCollectionAnalyticsToAdd,
   RetrievedCollection,
@@ -12,93 +12,20 @@ import { addNumberOfPricingsAggregator } from './aggregators/pricingCollections/
 import { addOrganizationToCollectionAggregator } from './aggregators/pricingCollections/add-organization-to-collection';
 import { addLastPricingUpdateAggregator } from './aggregators/pricingCollections/add-last-pricing-update';
 import { CollectionIndexQueryParams } from '../../types/services/PricingCollection';
+import { OrgUserPermissionsContext } from '../../types/policies';
+import { refactorCollectionOutput } from './aggregators/pricingCollections/refactor-output';
+import { considerUserCollectionPermissionsAggregator } from './aggregators/pricingCollections/apply-user-permissions';
 
 class PricingCollectionRepository extends RepositoryBase {
   async findAll(
     queryParams: CollectionIndexQueryParams,
     includePrivate: boolean = false
   ): Promise<{ collections: RetrievedCollection[]; total: number }> {
-    const filteringAggregators = [];
-    const sortAggregator = [];
-
-    if (Object.keys(queryParams).length > 0) {
-      const { name, organizationIds, sortBy, sort } = queryParams;
-
-      if (name) {
-        filteringAggregators.push({
-          $match: {
-            name: {
-              $regex: name,
-              $options: 'i', // case-insensitive
-            },
-          },
-        });
-      }
-
-      if (organizationIds) {
-        const organizationIdsFilter = (organizationIds as string[])
-          .filter(id => mongoose.Types.ObjectId.isValid(id))
-          .map(id => new mongoose.Types.ObjectId(id));
-
-        filteringAggregators.push({
-          $match: {
-            _organizationId: {
-              $in: organizationIdsFilter,
-            },
-          },
-        });
-      }
-      if (sortBy && sort) {
-        let sortParameter = '';
-        const sortOrder: 1 | -1 = sort === 'asc' ? 1 : -1;
-
-        switch (sortBy) {
-          case 'name':
-            sortParameter = 'name';
-            break;
-          case 'numberOfPricings':
-            sortParameter = 'numberOfPricings';
-            break;
-          case 'configurationSpaceSize':
-            sortParameter = 'analytics.evolutionOfConfigurationSpaceSize.values';
-            break;
-          case 'numberOfFeatures':
-            sortParameter = 'analytics.evolutionOfFeatures.values';
-            break;
-          case 'numberOfPlans':
-            sortParameter = 'analytics.evolutionOfPlans.values';
-            break;
-          case 'numberOfAddons':
-            sortParameter = 'analytics.evolutionOfAddOns.values';
-            break;
-        }
-        sortAggregator.push({
-          $sort: {
-            [sortParameter]: sortOrder,
-          },
-        });
-      }
-    }
+    const { filteringPipeline, sortPipeline } = this._processCollectionQueryParams(queryParams);
+    const paginationPipeline = this._processCollectionPagination(queryParams);
 
     try {
-      // parse pagination params
-      const limitRaw = queryParams?.limit;
-      const offsetRaw = queryParams?.offset;
-
-      let limit: number | undefined;
-      let offset: number | undefined;
-
-      if (limitRaw !== undefined) {
-        limit = typeof limitRaw === 'string' ? parseInt(limitRaw, 10) : Number(limitRaw);
-        if (Number.isNaN(limit) || limit! < 0) limit = undefined;
-      }
-
-      if (offsetRaw !== undefined) {
-        offset = typeof offsetRaw === 'string' ? parseInt(offsetRaw, 10) : Number(offsetRaw);
-        if (Number.isNaN(offset) || offset! < 0) offset = undefined;
-      }
-
-      const basePipeline: any[] = [
+      const pipeline: any[] = [
         {
           $match: {
             ...(includePrivate ? {} : { private: { $ne: true } }),
@@ -106,56 +33,19 @@ class PricingCollectionRepository extends RepositoryBase {
         },
         ...addNumberOfPricingsAggregator(),
         ...addOrganizationToCollectionAggregator(),
-        ...filteringAggregators,
-        // ensure deterministic alphabetical order by name unless an explicit sortAggregator overrides it
+        ...filteringPipeline,
         { $sort: { name: 1 } },
-        ...sortAggregator,
-        {
-          $project: {
-            organization: {
-              name: 1,
-              displayName: 1,
-              avatar: 1,
-              id: { $toString: '$organization._id' },
-            },
-            name: 1,
-            slug: 1,
-            numberOfPricings: 1,
-            private: 1,
-          },
-        },
+        ...sortPipeline,
+        refactorCollectionOutput,
+        ...paginationPipeline,
       ];
 
-      if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
-        const start = offset || 0;
-        const take = typeof limit !== 'undefined' ? limit : Number.MAX_SAFE_INTEGER;
+      const aggResult = await PricingCollectionMongoose.aggregate(pipeline);
+      const first = aggResult[0] || { collections: [], total: [] };
+      const collections = first.collections || [];
+      const total = (first.total && first.total[0] && first.total[0].count) || 0;
 
-        // Use a $facet to get paginated result and total count in a single aggregation
-        const facetPipeline = [
-          {
-            $facet: {
-              collections: [{ $skip: start }, { $limit: take }],
-              total: [{ $count: 'count' }],
-            },
-          },
-        ];
-
-        const aggResult = await PricingCollectionMongoose.aggregate([
-          ...basePipeline,
-          ...facetPipeline,
-        ]);
-        const first = aggResult[0] || { collections: [], total: [] };
-        const collections = first.collections || [];
-        const total = (first.total && first.total[0] && first.total[0].count) || 0;
-
-        collections.forEach((c: any) => processFileUris(c.organization, ['avatar']));
-        return { collections, total };
-      }
-
-      // No pagination: return full result and total
-      const collections = await PricingCollectionMongoose.aggregate(basePipeline);
       collections.forEach((c: any) => processFileUris(c.organization, ['avatar']));
-      const total = collections.length;
       return { collections, total };
     } catch (err) {
       return { collections: [], total: 0 };
@@ -183,39 +73,38 @@ class PricingCollectionRepository extends RepositoryBase {
     }
   }
 
-  async findByOrganizationId(organizationId: string, includePrivate: boolean = false) {
+  async findByOrganizationId(
+    organizationId: string,
+    permissions: OrgUserPermissionsContext,
+    queryParams: CollectionIndexQueryParams
+  ) {
+
+    const { filteringPipeline, sortPipeline } = this._processCollectionQueryParams(queryParams);
+    const paginationPipeline = this._processCollectionPagination(queryParams);
+
     try {
-      const collections = await PricingCollectionMongoose.aggregate([
+      const aggResult = await PricingCollectionMongoose.aggregate([
         {
           $match: {
             _organizationId: new mongoose.Types.ObjectId(organizationId),
-            ...(includePrivate ? {} : { private: { $ne: true } }),
           },
         },
         ...addNumberOfPricingsAggregator(),
         ...addOrganizationToCollectionAggregator(),
-        {
-          $addFields: {
-            id: { $toString: '$_id' },
-          },
-        },
-        {
-          $project: {
-            id: 1,
-            _id: 0,
-            organization: {
-              name: 1,
-              displayName: 1,
-              avatar: 1,
-            },
-            name: 1,
-            slug: 1,
-            numberOfPricings: 1,
-          },
-        },
+        ...filteringPipeline,
+        considerUserCollectionPermissionsAggregator(permissions),
+        { $sort: { name: 1 } },
+        ...sortPipeline,
+        refactorCollectionOutput,
+        ...paginationPipeline,
       ]);
 
-      return collections;
+      const first = aggResult[0] || { collections: [], total: [] };
+      const collections = first.collections || [];
+      const total = (first.total && first.total[0] && first.total[0].count) || 0;
+
+      collections.forEach((c: any) => processFileUris(c.organization, ['avatar']));
+      return { collections, total };
     } catch (err) {
       return null;
     }
@@ -263,52 +152,6 @@ class PricingCollectionRepository extends RepositoryBase {
       return collections[0];
     } catch (err) {
       console.log('[ERROR] An error occurred during the retrieval of the pricing collection');
-      return null;
-    }
-  }
-
-  async findByOrganizationAndName(organizationId: string, name: string) {
-    try {
-      const collections = await PricingCollectionMongoose.aggregate([
-        {
-          $match: {
-            name: {
-              $regex: `^${name}$`,
-              $options: 'i',
-            },
-            _organizationId: new mongoose.Types.ObjectId(organizationId),
-          },
-        },
-        ...getAllPricingsFromCollection(),
-        ...addOrganizationToCollectionAggregator(),
-        ...addLastPricingUpdateAggregator(),
-        {
-          $addFields: {
-            id: { $toString: '$_id' },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            id: 1,
-            organization: {
-              name: 1,
-              displayName: 1,
-              avatar: 1,
-            },
-            name: 1,
-            slug: 1,
-            description: 1,
-            private: 1,
-            analytics: 1,
-            data: 1,
-            lastUpdate: 1,
-          },
-        },
-      ]);
-
-      return collections[0];
-    } catch (err) {
       return null;
     }
   }
@@ -423,6 +266,92 @@ class PricingCollectionRepository extends RepositoryBase {
       _id: new mongoose.Types.ObjectId(id),
     });
     return resultCollections?.deletedCount === 1 && resultPricings?.deletedCount > 0;
+  }
+
+  _processCollectionQueryParams(queryParams: CollectionIndexQueryParams): {
+    filteringPipeline: PipelineStage[];
+    sortPipeline: PipelineStage[];
+  } {
+    const filteringPipeline: PipelineStage[] = [];
+    const sortPipeline: PipelineStage[] = [];
+
+    if (Object.keys(queryParams).length > 0) {
+      const { name, organizationIds, sortBy, sort } = queryParams;
+
+      if (name) {
+        filteringPipeline.push({
+          $match: {
+            name: {
+              $regex: name,
+              $options: 'i', // case-insensitive
+            },
+          },
+        });
+      }
+
+      if (organizationIds) {
+        filteringPipeline.push({
+          $match: {
+            "organization.id": {
+              $in: organizationIds,
+            },
+          },
+        });
+      }
+      if (sortBy && sort) {
+        let sortParameter = '';
+        const sortOrder: 1 | -1 = sort === 'asc' ? 1 : -1;
+
+        switch (sortBy) {
+          case 'name':
+            sortParameter = 'name';
+            break;
+          case 'numberOfPricings':
+            sortParameter = 'numberOfPricings';
+            break;
+          case 'configurationSpaceSize':
+            sortParameter = 'analytics.evolutionOfConfigurationSpaceSize.values';
+            break;
+          case 'numberOfFeatures':
+            sortParameter = 'analytics.evolutionOfFeatures.values';
+            break;
+          case 'numberOfPlans':
+            sortParameter = 'analytics.evolutionOfPlans.values';
+            break;
+          case 'numberOfAddons':
+            sortParameter = 'analytics.evolutionOfAddOns.values';
+            break;
+        }
+        sortPipeline.push({
+          $sort: {
+            [sortParameter]: sortOrder,
+          },
+        });
+      }
+    }
+
+    return { filteringPipeline, sortPipeline };
+  }
+
+  _processCollectionPagination(queryParams: CollectionIndexQueryParams): PipelineStage[] {
+    let paginationPipeline: PipelineStage[] = [];
+
+    const offset = queryParams.offset;
+    const limit = queryParams.limit;
+
+    // Use a $facet to get paginated result and total count in a single aggregation
+    if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
+      paginationPipeline = [
+        {
+          $facet: {
+            collections: [{ $skip: offset }, { $limit: limit }],
+            total: [{ $count: 'count' }],
+          },
+        },
+      ];
+    }
+
+    return paginationPipeline;
   }
 }
 

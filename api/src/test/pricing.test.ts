@@ -340,7 +340,7 @@ describe('Pricings API integration', () => {
         isPrivate: false,
       });
 
-      await createPricingForOrganization({
+      const privatePricing = await createPricingForOrganization({
         organizationId,
         isPrivate: true,
       });
@@ -353,6 +353,7 @@ describe('Pricings API integration', () => {
       expect(response.body).toBeDefined();
       expect(Array.isArray(response.body.pricings)).toBe(true);
       expect(response.body.pricings.length).toBe(2);
+      expect(response.body.pricings.some((p: any) => p.id === privatePricing.id)).toBe(true);
     });
 
     it('Return 200 with pricings in collection.', async () => {

@@ -228,7 +228,7 @@ describe('Pricing Collections API integration', () => {
       expect(names).not.toContain(privateCollection.name);
     });
 
-    it('returns 200 and all collections when ADMIN requests another username', async () => {
+    it('returns 200 and all collections when ADMIN requests another organization', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 
       const publicCollection = await createTestCollection({ _organizationId: organizationId });

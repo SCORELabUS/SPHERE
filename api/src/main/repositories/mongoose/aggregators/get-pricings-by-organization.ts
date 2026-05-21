@@ -25,12 +25,13 @@ export function getPricingsByOrganizationAggregator(
       },
     },
   ];
-
+  
+  pipeline.push(...filteringAggregator);
+  
   if (!permissions.orgRole || (permissions.orgRole !== 'OWNER' && permissions.orgRole !== 'ADMIN')) {
     pipeline.push(considerUserPermissionsAggregator(permissions));
   }
 
-  pipeline.push(...filteringAggregator);
   pipeline.push(...sortAggregator);
 
   pipeline.push(filtersDataGenerator);

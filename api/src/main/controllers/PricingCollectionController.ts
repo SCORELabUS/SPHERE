@@ -56,7 +56,8 @@ class PricingCollectionController {
 
   async indexByOrganizationId(req: any, res: any) {
     try {
-      const collections = await this.pricingCollectionService.index({ organizationIds: [req.params.organizationId]}, req.user);
+      const queryParams: CollectionIndexQueryParams = this._transformIndexQueryParams(req.query);
+      const collections = await this.pricingCollectionService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
       res.json(collections);
     } catch (err: any) {
       const {status, message} = handleError(err);
@@ -241,11 +242,11 @@ class PricingCollectionController {
       sortBy: indexQueryParams.sortBy,
       sort: indexQueryParams.sort ?? 'asc',
       organizationIds: indexQueryParams.organizationIds ? indexQueryParams.organizationIds.split(',') : undefined,
-      limit: indexQueryParams.limit,
-      offset: indexQueryParams.offset,
+      limit: parseInt(indexQueryParams.limit) || 10,
+      offset: parseInt(indexQueryParams.offset) || 0,
     };
 
-    const optionalFields = ['name', 'sortBy', 'sort', 'organizationIds', 'limit', 'offset'];
+    const optionalFields = ['name', 'sortBy', 'sort', 'organizationIds'] as const;
 
     optionalFields.forEach(field => {
       if (!transformedData[field]) {

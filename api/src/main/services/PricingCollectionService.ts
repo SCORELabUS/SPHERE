@@ -12,6 +12,8 @@ import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { generateSlug } from '../repositories/mongoose/models/PricingCollectionMongoose';
+import { OrgRole } from '../types/models/Organization';
+import { BatchEvaluationContext } from '../policies';
 
 class PricingCollectionService {
   private readonly pricingCollectionRepository: PricingCollectionRepository;
@@ -27,82 +29,50 @@ class PricingCollectionService {
   }
 
   async index(queryParams: CollectionIndexQueryParams, reqUser?: LeanUser) {
-    if (!reqUser) {
-      const result = await this.pricingCollectionRepository.findAll(queryParams, false);
-      return result;
-    }
+    const isAdmin = reqUser && reqUser.role === 'ADMIN';
 
-    if (reqUser.role === 'ADMIN') {
-      const result = await this.pricingCollectionRepository.findAll(queryParams, true);
-      return result;
-    }
-
-    const orgId = queryParams.organizationIds?.[0];
-    if (orgId) {
-      const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, orgId);
-      const isOwnerOrAdmin = orgRole === 'OWNER' || orgRole === 'ADMIN';
-
-      if (isOwnerOrAdmin) {
-        const result = await this.pricingCollectionRepository.findAll(queryParams, true);
-        return result;
-      }
-
-      const result = await this.pricingCollectionRepository.findAll(queryParams, true);
-
-      if (result && result.collections) {
-        const batchCtx = await this.permissionQueries.buildBatchContext(
-          reqUser.id,
-          orgId,
-          orgRole,
-          false
-        );
-
-        const contexts = result.collections
-          .filter(c => (c as any).private)
-          .map(c => ({
-            key: (c as any)._id?.toString() ?? (c as any).id,
-            context: {
-              userId: reqUser.id,
-              organizationId: orgId,
-              entityType: 'collection' as const,
-              entityId: (c as any)._id?.toString() ?? (c as any).id,
-              action: 'GET' as const,
-              isPrivate: true,
-              userOrgRole: orgRole,
-              isGlobalAdmin: false,
-            },
-          }));
-
-        const results = this.permissionEngine.evaluateBatch(contexts, { batchContext: batchCtx });
-
-        const filteredCollections = result.collections.filter(c => {
-          if (!(c as any).private) return true;
-          const entityId = (c as any)._id?.toString() ?? (c as any).id;
-          const evalResult = results.get(entityId);
-          return evalResult?.allowed ?? false;
-        });
-
-        result.collections = filteredCollections;
-        result.total = filteredCollections.length;
-      }
-
-      return result;
-    }
-
-    const result = await this.pricingCollectionRepository.findAll(queryParams, false);
-    return result;
+    const pricings = await this.pricingCollectionRepository.findAll(queryParams, isAdmin);
+    return pricings;
   }
 
-  async indexByOrganizationId(organizationId: string, reqUser?: LeanUser) {
-    let includePrivate = false;
-    if (reqUser) {
-      const role = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-      includePrivate = reqUser.role === 'ADMIN' || role !== null;
+  async indexByOrganizationId(
+    organizationId: string,
+    reqUser?: LeanUser,
+    queryParams?: CollectionIndexQueryParams
+  ) {
+    const orgRole: OrgRole | null = await this.permissionQueries.resolveOrgRole(
+      reqUser?.id ?? '',
+      organizationId
+    );
+
+    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
+      const collections = await this.pricingCollectionRepository.findByOrganizationId(
+        organizationId,
+        { orgRole: null, pricings: [], collections: [] },
+        queryParams ?? { limit: 10, offset: 0 }
+      );
+      return collections;
     }
+
+    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
+      reqUser.id,
+      organizationId,
+      orgRole,
+      reqUser.role === 'ADMIN'
+    );
+
+    const collectionsWithGetPermissions = Array.from(orgPermissions.collectionPermissions.entries())
+      .filter(([_, permissions]) => permissions.GET === true)
+      .map(([key]) => key);
 
     const collections = await this.pricingCollectionRepository.findByOrganizationId(
       organizationId,
-      includePrivate
+      {
+        orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
+        pricings: [],
+        collections: collectionsWithGetPermissions,
+      },
+      queryParams ?? { limit: 10, offset: 0 }
     );
 
     return collections;
@@ -208,14 +178,19 @@ class PricingCollectionService {
         await this.updateCollectionAnalytics(collection.id);
       }
 
-      collection = await this.pricingCollectionRepository.findByOrganizationAndName(
+      collection = await this.pricingCollectionRepository.findByOrganizationAndSlug(
         organizationId,
-        newCollection.name
+        newCollection.slug
       );
 
       return collection;
     } catch (err) {
-      await this._handleCollectionCreationError(err as Error, collection, newCollection, organizationId);
+      await this._handleCollectionCreationError(
+        err as Error,
+        collection,
+        newCollection,
+        organizationId
+      );
     }
   }
 
@@ -313,10 +288,11 @@ class PricingCollectionService {
 
   async generateCollectionAnalytics(collectionName: string, organizationId: string) {
     try {
-      const collectionPricings = await this.pricingCollectionRepository.findCollectionPricingsByOrganization(
-        collectionName,
-        organizationId
-      );
+      const collectionPricings =
+        await this.pricingCollectionRepository.findCollectionPricingsByOrganization(
+          collectionName,
+          organizationId
+        );
       if (!collectionPricings) {
         throw new Error('NOT FOUND: Collection not found');
       }
@@ -339,7 +315,9 @@ class PricingCollectionService {
       collectionSlug
     );
     if (!collection) {
-      throw new Error('NOT FOUND: Either the collection does not exist or you are not a member of its organization');
+      throw new Error(
+        'NOT FOUND: Either the collection does not exist or you are not a member of its organization'
+      );
     }
 
     const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
@@ -405,10 +383,11 @@ class PricingCollectionService {
     }
 
     // findById doesn't $lookup pricings, so we need to fetch them separately
-    const collectionWithPricings = await this.pricingCollectionRepository.findCollectionPricingsByOrganization(
-      collection.slug,
-      collection.organization.id
-    );
+    const collectionWithPricings =
+      await this.pricingCollectionRepository.findCollectionPricingsByOrganization(
+        collection.slug,
+        collection.organization.id
+      );
 
     const analyticsData = collectionWithPricings ?? collection;
     const newAnalyticsEntry = this._computeCollectionAnalytics(analyticsData);
@@ -434,7 +413,9 @@ class PricingCollectionService {
       collectionSlug
     );
     if (!collection) {
-      throw new Error('NOT FOUND: Either the collection does not exist or you are not a member of its organization');
+      throw new Error(
+        'NOT FOUND: Either the collection does not exist or you are not a member of its organization'
+      );
     }
 
     if (reqUser && !ignoreResult) {
@@ -485,9 +466,13 @@ class PricingCollectionService {
     return true;
   }
 
-  async removePricingFromCollection(pricingName: string, organizationId: string, collectionSlug: string, reqUser?: LeanUser) {
+  async removePricingFromCollection(
+    pricingName: string,
+    organizationId: string,
+    collectionSlug: string,
+    reqUser?: LeanUser
+  ) {
     try {
-
       if (reqUser) {
         const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
         const evalResult = this.permissionEngine.evaluate({
@@ -503,17 +488,19 @@ class PricingCollectionService {
         }
       }
 
-      const pricing = await this.pricingRepository.findOne(pricingName, organizationId, { collectionSlug });
+      const pricing = await this.pricingRepository.findOne(pricingName, organizationId, {
+        collectionSlug,
+      });
 
       if (!pricing) {
-        throw new Error('NOT FOUND: Either the pricing does not exist or you are not a member of its organization');
+        throw new Error(
+          'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
+        );
       }
 
       await this.pricingRepository.removePricingFromCollection(pricingName, organizationId);
       if (pricing.versions[0]._collectionId) {
-        await this.updateCollectionAnalytics(
-          pricing.versions[0]._collectionId
-        );
+        await this.updateCollectionAnalytics(pricing.versions[0]._collectionId);
       } else {
         throw new Error('NOT FOUND: Pricing is not in a collection');
       }
@@ -581,7 +568,12 @@ class PricingCollectionService {
     // If a collection was created before the error, remove it (cleanup of partial state)
     try {
       if (collection?._id) {
-        await this.destroy(organizationId, newCollectionData.slug || generateSlug(newCollectionData.name), true, true);
+        await this.destroy(
+          organizationId,
+          newCollectionData.slug || generateSlug(newCollectionData.name),
+          true,
+          true
+        );
       }
     } catch (cleanupErr) {
       // If cleanup fails, log it but continue to throw the original error

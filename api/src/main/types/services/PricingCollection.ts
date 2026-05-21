@@ -3,8 +3,6 @@ export type CollectionIndexQueryParams = {
   sortBy?: string;
   sort?: string;
   organizationIds?: string[];
-  limit?: string;
-  offset?: string;
-  _organizationId?: string;
-  [key: string]: any;
+  limit: number;
+  offset: number;
 }
