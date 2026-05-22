@@ -13,6 +13,8 @@ import testContainer from './utils/config/testContainer';
 import { BASE_PATH } from './utils/config/variables';
 import { randomSuffix } from './utils/helpers';
 import { LeanUser } from '../main/types/models/User';
+import { createMembership } from './utils/organizations';
+import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 
 dotenv.config();
 
@@ -268,6 +270,188 @@ describe('Pricing Collections API integration', () => {
       expect(names).not.toContain(privateCollection.name);
       // the public collection should have the correct number of pricings
       expect(response.body.collections[0].numberOfPricings).toBeGreaterThan(1);
+    });
+  });
+
+  describe('GET /api/v1/users/me/collections', () => {
+    it('returns 401 with missing Authorization header', async () => {
+      const response = await request(app).get(`${BASE_PATH}/users/me/collections`);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('returns 200 with empty list when user has no collections', async () => {
+      const { user } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(response.body.collections.length).toBe(0);
+      expect(response.body.total).toBe(0);
+    });
+
+    it('returns 200 and paginated collections list from user organizations', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      for (let i = 0; i < 5; i++) {
+        await createTestCollection({ _organizationId: organizationId });
+      }
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?limit=3&offset=0`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(typeof response.body.total).toBe('number');
+      expect(response.body.collections.length).toBe(3);
+    });
+
+    it('returns 200 and collections from multiple organizations the user belongs to', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      await createTestCollection({ _organizationId: org1, name: `Org1_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `Org2_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(response.body.collections.length).toBeGreaterThanOrEqual(2);
+      const orgIds = response.body.collections.map((c: any) => c.organization?.id);
+      expect(orgIds).toContain(org1);
+      expect(orgIds).toContain(org2);
+    });
+
+    it('returns 200 and only PUBLIC collections for regular USER in another organization', async () => {
+      const { organizationId: otherOrg } = await createTestUser('USER');
+      const { user } = await createAndLoginUser('USER');
+
+      await createMembership(user.id, otherOrg, 'MEMBER');
+
+      const publicCollection = await createTestCollection({ _organizationId: otherOrg, private: false });
+      await createTestCollection({ _organizationId: otherOrg, private: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].name).toBe(publicCollection.name);
+    });
+
+    it('returns 200 and all collections (public + private) when user is OWNER of the organization', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      await createTestCollection({ _organizationId: organizationId, private: false });
+      await createTestCollection({ _organizationId: organizationId, private: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+    });
+
+    it('returns 200 and all collections for ADMIN user across any organization', async () => {
+      const { organizationId } = await createTestUser('USER');
+
+      const publicCollection = await createTestCollection({ _organizationId: organizationId, private: false });
+      const privateCollection = await createTestCollection({ _organizationId: organizationId, private: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(response.body.collections.length).toBeGreaterThanOrEqual(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(publicCollection.name);
+      expect(names).toContain(privateCollection.name);
+    });
+
+    it('returns 200 and private collection visible via entity-scoped GET permission', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const privateCollection = await createTestCollection({
+        _organizationId: organizationId,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, privateCollection.id, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].id).toBe(privateCollection.id);
+    });
+
+    it('returns 200 and filtered collection list when name query parameter is provided', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      const targetCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `MyTarget_${randomSuffix()}`,
+      });
+
+      await createTestCollection({
+        _organizationId: organizationId,
+        name: `Other_${randomSuffix()}`,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?name=${encodeURIComponent(targetCollection.name)}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.collections)).toBe(true);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].name).toBe(targetCollection.name);
+    });
+
+    it('returns 200 with correct collection response structure', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      await createTestCollection({ _organizationId: organizationId, private: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?limit=1&offset=0`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(typeof response.body.total).toBe('number');
+      expect(response.body.collections.length).toBe(1);
+
+      const collection = response.body.collections[0];
+      expect(collection.id).toBeDefined();
+      expect(collection.name).toBeDefined();
+      expect(collection.organization).toBeDefined();
+      expect(collection.organization.id).toBeDefined();
+      expect(typeof collection.numberOfPricings).toBe('number');
     });
   });
 

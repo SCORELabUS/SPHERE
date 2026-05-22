@@ -20,10 +20,18 @@ export function getCollectionsAggregator(
   if (organizationId) {
     pipeline.push({
       $match: {
-        organizationId: organizationId,
+        $expr: {
+          $eq: ['$_organizationId', { $toObjectId: organizationId }],
+        }
       },
     });
   }
+
+  pipeline.push({
+    $set: {
+      id: { $toString: '$_id' },
+    },
+  });
 
   pipeline.push(...addNumberOfPricingsAggregator());
   pipeline.push(...addOrganizationToCollectionAggregator());

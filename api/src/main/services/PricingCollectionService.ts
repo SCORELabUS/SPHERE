@@ -59,7 +59,7 @@ class PricingCollectionService {
     if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
       const collections = await this.pricingCollectionRepository.findByOrganizationId(
         organizationId,
-        { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
+        undefined,
         queryParams ?? { limit: 10, offset: 0 }
       );
       return collections;

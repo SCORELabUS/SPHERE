@@ -61,8 +61,8 @@ class PricingCollectionRepository extends RepositoryBase {
 
   async findByOrganizationId(
     organizationId: string,
-    permissions: OrgUserPermissionsContext,
-    queryParams: CollectionIndexQueryParams
+    permissions?: OrgUserPermissionsContext,
+    queryParams: CollectionIndexQueryParams = { limit: 10, offset: 0 }
   ) {
 
     const { filteringPipeline, sortPipeline } = this._processCollectionQueryParams(queryParams);
