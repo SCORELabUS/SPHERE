@@ -87,4 +87,7 @@ export interface OrgUserPermissionsContext {
   orgRole: OrgRole | null;
   pricings: string[];
   collections: string[];
+  isGlobalAdmin: boolean;
+  /** Org IDs where user has OWNER or ADMIN role (full access to all entities) */
+  adminOrgIds: string[];
 }

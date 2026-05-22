@@ -20,6 +20,7 @@ import { OrgRole } from '../types/models/Organization';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
 import { OrgUserPermissionsContext } from '../types/policies';
+import UserService from './UserService';
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -28,6 +29,7 @@ class PricingService {
   private permissionEngine: PermissionEngine;
   private permissionQueries: PermissionQueries;
   private organizationService: OrganizationService;
+  private userService: UserService;
 
   constructor() {
     this.pricingRepository = container.resolve('pricingRepository');
@@ -36,6 +38,7 @@ class PricingService {
     this.permissionEngine = new PermissionEngine();
     this.permissionQueries = new PermissionQueries();
     this.organizationService = container.resolve('organizationService');
+    this.userService = container.resolve('userService');
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
@@ -46,6 +49,7 @@ class PricingService {
       pricings: [],
       collections: [],
       isGlobalAdmin: isAdmin ?? false,
+      adminOrgIds: [],
     });
     return pricings;
   }
@@ -63,7 +67,7 @@ class PricingService {
     if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
       const pricings = await this.pricingRepository.findByOrganizationId(
         organizationId,
-        { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false },
+        { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
         queryParams ?? { limit: 10, offset: 0 }
       );
       return pricings;
@@ -80,14 +84,31 @@ class PricingService {
     return pricings;
   }
 
-  async indexByUser(user: LeanUser, queryParams?: PricingIndexQueryParams) {
+  async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
+    
+    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+      throw new Error('PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.');
+    }
+
+    const user = await this.userService.show(username);
+
+    if (!user) {
+      throw new Error('NOT FOUND: User not found');
+    }
+    
     const userOrganizations = await this.organizationService.indexByUser(user.id, {
       treeFormat: false,
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
-    const userOrganizationsId = userOrganizations.map((org: Organization) => org.id);
-
-    const pricings = await this.index(queryParams ?? { limit: 10, offset: 0 }, user);
+    const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
+    const permissions = await this._buildUserPermissionsContext(user);
+    const enhancedQueryParams = {
+      ...queryParams,
+      limit: queryParams?.limit ?? 10,
+      offset: queryParams?.offset ?? 0,
+      ...(permissions.isGlobalAdmin ? {} : { selectedOrganizations: userOrganizationsIds }),
+    };
+    const pricings = await this.pricingRepository.findAll(enhancedQueryParams, permissions);
     return pricings;
   }
 
@@ -568,6 +589,45 @@ class PricingService {
       pricings: pricingsWithGetPermissions,
       collections: collectionsWithGetPermissions,
       isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
+      adminOrgIds: (orgRole === 'OWNER' || orgRole === 'ADMIN' || orgPermissions.isGlobalAdmin) ? [organizationId] : [],
+    };
+  }
+
+  private async _buildUserPermissionsContext(reqUser: LeanUser): Promise<OrgUserPermissionsContext> {
+    const permissions: Map<string, BatchEvaluationContext> = await this.permissionQueries.buildAllOrgsBatchContext(
+      reqUser.id,
+      reqUser.role === 'ADMIN'
+    );
+
+    const pricingsWithGetPermissions: string[] = [];
+    const collectionsWithGetPermissions: string[] = [];
+    const adminOrgIds: string[] = [];
+
+    for (const [orgId, orgPermissions] of permissions) {
+      if (orgPermissions.userOrgRole === 'OWNER' || orgPermissions.userOrgRole === 'ADMIN') {
+        adminOrgIds.push(orgId);
+        continue;
+      }
+
+      const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
+      .filter(([_, permissions]) => permissions.GET === true)
+      .map(([key]) => key);
+
+      pricingsWithGetPermissions.push(...entriesWithGetPermissions
+        .filter(key => key.startsWith('pricing:'))
+        .map(key => key.split(':')[1]));
+
+      collectionsWithGetPermissions.push(...entriesWithGetPermissions
+        .filter(key => key.startsWith('collection:'))
+        .map(key => key.split(':')[1]));
+    }
+
+    return {
+      orgRole: null,
+      pricings: pricingsWithGetPermissions,
+      collections: collectionsWithGetPermissions,
+      isGlobalAdmin: reqUser.role === 'ADMIN',
+      adminOrgIds,
     };
   }
 }

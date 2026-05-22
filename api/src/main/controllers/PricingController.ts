@@ -12,6 +12,7 @@ class PricingController {
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
     this.indexByOrganization = this.indexByOrganization.bind(this);
+    this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
     this.show = this.show.bind(this);
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
@@ -38,6 +39,19 @@ class PricingController {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
 
       const pricings = await this.pricingService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
+      res.json(pricings);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async indexByAuthenticatedUser(req: any, res: any) {
+    try {
+      const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
+      const targetUserUsername = req.params.username === 'me' ? req.user.username : req.params.username;
+
+      const pricings = await this.pricingService.indexByUser(targetUserUsername, req.user, queryParams);
       res.json(pricings);
     } catch (err: any) {
       const {status, message} = handleError(err);

@@ -5,9 +5,13 @@ import { addFilenameToBody, handleFileUpload } from '../middlewares/FileHandlerM
 import { handleValidation } from '../middlewares/ValidationHandlingMiddleware';
 import * as UserValidation from '../controllers/validation/UserValidation';
 import { checkEntityExists } from '../middlewares/EntityMiddleware';
+import PricingCollectionController from '../controllers/PricingCollectionController';
+import PricingController from '../controllers/PricingController';
 
 const loadFileRoutes = function (app: express.Application) {
   const userController = new UserController();
+  const pricingController = new PricingController();
+  const collectionController = new PricingCollectionController();
   const userService = container.resolve('userService');
   const upload = handleFileUpload(['avatar'], process.env.AVATARS_FOLDER!);
   const baseUrl = (process.env.BASE_URL_PATH ?? "") + '/api/v1';
@@ -89,6 +93,14 @@ const loadFileRoutes = function (app: express.Application) {
     )
     .delete(checkEntityExists(userService, 'username'), userController.destroy);
 
+  app
+    .route(baseUrl + '/users/:username/pricings')
+    .get(pricingController.indexByAuthenticatedUser);
+  
+  app
+    .route(baseUrl + '/users/:username/collections')
+    .get(collectionController.indexByAuthenticatedUser);
+  
   app.route(baseUrl + '/users/:username/refresh-token').put(userController.updateToken);
 };
 

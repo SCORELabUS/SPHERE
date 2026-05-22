@@ -198,6 +198,19 @@ class OrganizationMembershipRepository extends RepositoryBase {
     }
   }
 
+  async findRolesByUserId(userId: string): Promise<Map<string, OrgRole>> {
+    const memberships = await OrganizationMembershipMongoose.find({
+      _userId: new mongoose.Types.ObjectId(userId),
+    }).select('_organizationId role').lean();
+
+    const roles = new Map<string, OrgRole>();
+    for (const m of memberships) {
+      const orgId = (m._organizationId as unknown as mongoose.Types.ObjectId).toHexString();
+      roles.set(orgId, m.role as OrgRole);
+    }
+    return roles;
+  }
+
   async create(data: any) {
     const membership = new OrganizationMembershipMongoose(data);
     await membership.save();

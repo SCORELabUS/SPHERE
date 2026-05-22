@@ -300,6 +300,41 @@ class EntityPermissionRepository extends RepositoryBase {
     return result.toObject({ getters: true, virtuals: true, versionKey: false }) as unknown as LeanEntityPermission;
   }
 
+  async findByUser(userId: string): Promise<LeanEntityPermission[]> {
+    const results = await EntityPermissionMongoose.aggregate([
+      { $match: { _userId: new mongoose.Types.ObjectId(userId) } },
+      {
+        $addFields: {
+          id: { $toString: '$_id' },
+          _userId: { $toString: '$_userId' },
+          _organizationId: { $toString: '$_organizationId' },
+          entityId: {
+            $cond: [{ $ifNull: ['$entityId', null] }, { $toString: '$entityId' }, null],
+          },
+          grantedBy: {
+            $cond: [{ $ifNull: ['$grantedBy', null] }, { $toString: '$grantedBy' }, null],
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          id: 1,
+          _userId: 1,
+          _organizationId: 1,
+          entityType: 1,
+          entityId: 1,
+          permissions: 1,
+          grantedBy: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+    ]);
+
+    return results as LeanEntityPermission[];
+  }
+
   async destroy(permissionId: string): Promise<boolean> {
     const result = await EntityPermissionMongoose.deleteOne({
       _id: new mongoose.Types.ObjectId(permissionId),

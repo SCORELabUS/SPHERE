@@ -264,7 +264,8 @@ async function checkEntityPermissions(
     if (entityType === 'pricing') {
       entity = await entityRepo.findOne(entityName, organizationId, { includePrivate: true });
     } else {
-      entity = await entityRepo.findByOrganizationAndName(organizationId, entityName);
+      console.log('Checking collection permissions for', entityName, organizationId);
+      entity = await entityRepo.findByOrganizationAndSlug(organizationId, entityName);
     }
 
     if (!entity) return null;
@@ -303,7 +304,7 @@ async function checkEntityPermissions(
     }
   } else {
     const collectionRepo = container.resolve('pricingCollectionRepository');
-    const collection = await collectionRepo.findByOrganizationAndName(organizationId, entityName);
+    const collection = await collectionRepo.findByOrganizationAndSlug(organizationId, entityName);
     if (collection) {
       entityId = collection._id?.toString() ?? (collection as any).id;
       isPrivate = collection.private === true;

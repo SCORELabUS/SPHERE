@@ -1,22 +1,14 @@
 import container from '../../config/container';
 import EntityPermissionRepository from '../../repositories/mongoose/EntityPermissionRepository';
 import OrganizationMembershipRepository from '../../repositories/mongoose/OrganizationMembershipRepository';
-import { EntityPermissions } from '../../types/models/EntityPermission';
+import { EntityPermissions, LeanEntityPermission } from '../../types/models/EntityPermission';
 import { OrgRole } from '../../types/models/Organization';
 import { BatchEvaluationContext } from '../../types/policies';
 
-const FULL_PERMISSIONS: EntityPermissions = {
-  GET: true,
-  PUT: true,
-  DELETE: true,
-  CREATE: true,
-};
-
-const NO_PERMISSIONS: EntityPermissions = {
-  GET: false,
-  PUT: false,
-  DELETE: false,
-  CREATE: false,
+type PermissionMaps = {
+  orgPermissions: Map<string, EntityPermissions>;
+  entityPermissions: Map<string, EntityPermissions>;
+  collectionPermissions: Map<string, EntityPermissions>;
 };
 
 /**
@@ -51,14 +43,9 @@ export class PermissionQueries {
     userOrgRole?: OrgRole | null,
     isGlobalAdmin?: boolean
   ): Promise<BatchEvaluationContext> {
-    // Fetch org-scoped permissions (for CREATE checks)
     const orgScopedPermissions = await this.fetchOrgScopedPermissions(userId, organizationId);
-
-    // Fetch all entity-level permissions for this user in this org
     const entityPermissions = await this.fetchEntityPermissions(userId, organizationId);
-
-    // Fetch collection permissions (for pricing inheritance)
-    const collectionPermissions = await this.fetchCollectionPermissions(entityPermissions);
+    const collectionPermissions = this.extractCollectionPermissions(entityPermissions);
 
     return {
       userId,
@@ -69,6 +56,87 @@ export class PermissionQueries {
       entityPermissions,
       collectionPermissions,
     };
+  }
+
+  /**
+   * Build batch evaluation contexts for a user across ALL their organizations.
+   * Fetches all data in just 2 DB queries regardless of org count.
+   *
+   * @returns Map of organizationId → BatchEvaluationContext
+   */
+  async buildAllOrgsBatchContext(
+    userId: string,
+    isGlobalAdmin?: boolean
+  ): Promise<Map<string, BatchEvaluationContext>> {
+    const orgRoles = await this.organizationMembershipRepository.findRolesByUserId(userId);
+    const allEntityPerms = await this.entityPermissionRepository.findByUser(userId);
+
+    const orgPermsMap = new Map<string, LeanEntityPermission[]>();
+    for (const perm of allEntityPerms) {
+      const orgId = perm._organizationId;
+      if (!orgPermsMap.has(orgId)) {
+        orgPermsMap.set(orgId, []);
+      }
+      orgPermsMap.get(orgId)!.push(perm);
+    }
+
+    const contexts = new Map<string, BatchEvaluationContext>();
+
+    for (const [orgId, orgRole] of orgRoles) {
+      const orgPerms = orgPermsMap.get(orgId) ?? [];
+      const maps = this.buildPermissionMapsFromRecords(orgPerms);
+
+      contexts.set(orgId, {
+        userId,
+        organizationId: orgId,
+        userOrgRole: orgRole,
+        isGlobalAdmin,
+        orgPermissions: maps.orgPermissions,
+        entityPermissions: maps.entityPermissions,
+        collectionPermissions: maps.collectionPermissions,
+      });
+    }
+
+    return contexts;
+  }
+
+  /**
+   * Build permission maps from an array of raw permission records.
+   * Shared helper used by both buildBatchContext and buildAllOrgsBatchContext.
+   */
+  private buildPermissionMapsFromRecords(records: LeanEntityPermission[]): PermissionMaps {
+    const orgPermissions = new Map<string, EntityPermissions>();
+    const entityPermissions = new Map<string, EntityPermissions>();
+
+    for (const perm of records) {
+      if (!perm.entityId) {
+        orgPermissions.set(perm.entityType, perm.permissions);
+      } else {
+        entityPermissions.set(`${perm.entityType}:${perm.entityId}`, perm.permissions);
+      }
+    }
+
+    const collectionPermissions = this.extractCollectionPermissions(entityPermissions);
+
+    return { orgPermissions, entityPermissions, collectionPermissions };
+  }
+
+  /**
+   * Extract collection permissions from entity permissions map.
+   * Used for pricing inheritance (pricing inside collection).
+   */
+  private extractCollectionPermissions(
+    entityPermissions: Map<string, EntityPermissions>
+  ): Map<string, EntityPermissions> {
+    const collectionPermissions = new Map<string, EntityPermissions>();
+
+    for (const [key, perms] of entityPermissions) {
+      if (key.startsWith('collection:')) {
+        collectionPermissions.set(key.replace('collection:', ''), perms);
+      }
+    }
+
+    return collectionPermissions;
   }
 
   /**
@@ -124,25 +192,6 @@ export class PermissionQueries {
     }
 
     return permissions;
-  }
-
-  /**
-   * Extract collection permissions from entity permissions.
-   * Used for pricing inheritance (pricing inside collection).
-   */
-  private async fetchCollectionPermissions(
-    entityPermissions: Map<string, EntityPermissions>
-  ): Promise<Map<string, EntityPermissions>> {
-    const collectionPermissions = new Map<string, EntityPermissions>();
-
-    for (const [key, perms] of entityPermissions) {
-      if (key.startsWith('collection:')) {
-        const collectionId = key.replace('collection:', '');
-        collectionPermissions.set(collectionId, perms);
-      }
-    }
-
-    return collectionPermissions;
   }
 
   /**

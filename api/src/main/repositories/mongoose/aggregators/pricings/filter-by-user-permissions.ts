@@ -4,15 +4,18 @@ export const considerUserPermissionsAggregator = (permissions: OrgUserPermission
   return {
       $match: {
         $or: [
-          // Condición 1: El ID de la colección está en las colecciones permitidas.
-          // Ojo: en tu pipeline haces { $toString: '$collection._id' }, por lo que
-          // 'collection.id' es un string. Asumimos que permissions.collections son strings.
+          // El usuario es OWNER/ADMIN de la organización del pricing
+          ...(permissions.adminOrgIds.length > 0
+            ? [{ $expr: { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] } }]
+            : []),
+
+          // El ID de la colección está en las colecciones permitidas
           { 'collection.id': { $in: permissions.collections } },
 
-          // Condición 2: El pricing es público
+          // El pricing es público
           { private: false },
 
-          // Condición 3: Está explícitamente en el array de pricings permitidos
+          // Está explícitamente en el array de pricings permitidos
           { id: { $in: permissions.pricings } },
         ],
       },

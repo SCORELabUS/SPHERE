@@ -988,6 +988,247 @@ describe('Pricings API integration', () => {
     });
   });
 
+  describe('GET /api/v1/users/me/pricings', () => {
+    it('Return 401 with missing Authorization header.', async () => {
+      const response = await request(app).get(`${BASE_PATH}/users/me/pricings`);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 200 with empty list when user has no pricings.', async () => {
+      const { user } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toBeDefined();
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(0);
+      expect(response.body.total).toBe(0);
+    });
+
+    it('Return 200 and paginated pricing list from user organizations.', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      for (let i = 0; i < 5; i++) {
+        await createPricingForOrganization({
+          organizationId,
+          isPrivate: false,
+        });
+      }
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings?limit=3&offset=0`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toBeDefined();
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(typeof response.body.total).toBe('number');
+      expect(response.body.pricings.length).toBe(3);
+    });
+
+    it('Return 200 and pricings from multiple organizations the user belongs to.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      await createPricingForOrganization({ organizationId: org1, isPrivate: false });
+      await createPricingForOrganization({ organizationId: org2, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBeGreaterThanOrEqual(2);
+      const orgIds = response.body.pricings.map((p: any) => p.organization?.id);
+      expect(orgIds).toContain(org1);
+      expect(orgIds).toContain(org2);
+    });
+
+    it('Return 200 and only PUBLIC pricings for regular USER in another organization.', async () => {
+      const { organizationId: otherOrg } = await createTestUser('USER');
+      const { user } = await createAndLoginUser('USER');
+
+      await createMembership(user.id, otherOrg, 'MEMBER');
+
+      await createPricingForOrganization({ organizationId: otherOrg, isPrivate: false });
+      await createPricingForOrganization({ organizationId: otherOrg, isPrivate: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].private).toBe(false);
+    });
+
+    it('Return 200 and all pricings (public + private) when user is OWNER of the org.', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+      await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(2);
+    });
+
+    it('Return 200 and all pricings for ADMIN user across any organization.', async () => {
+      const { organizationId } = await createTestUser('USER');
+
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+      await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBeGreaterThanOrEqual(2);
+      const pricingNames = response.body.pricings.map((p: any) => p.name);
+      expect(pricingNames).toContain(
+        response.body.pricings.find((p: any) => p.private === false)?.name
+      );
+      expect(pricingNames).toContain(
+        response.body.pricings.find((p: any) => p.private === true)?.name
+      );
+    });
+
+    it('Return 200 and private pricing visible via entity-scoped GET permission.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const privatePricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, privatePricing.id, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].id).toBe(privatePricing.id);
+    });
+
+    it('Return 200 and filtered pricing list when name query parameter is provided.', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      const testPricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings?name=${testPricing.serviceName}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].name).toBe(testPricing.serviceName);
+    });
+
+    it('Return 200 with correct pricing response structure.', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings?limit=1&offset=0`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(typeof response.body.total).toBe('number');
+      expect(response.body.pricings.length).toBe(1);
+
+      const pricing = response.body.pricings[0];
+      expect(pricing.id).toBeDefined();
+      expect(pricing.name).toBeDefined();
+      expect(pricing.version).toBeDefined();
+      expect(pricing.organization).toBeDefined();
+      expect(pricing.organization.id).toBeDefined();
+      expect(typeof pricing.private).toBe('boolean');
+    });
+
+    it('Return 200 with pricings in collection when collection filter is used.', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      const pricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        [pricingInCollection.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings?collection=${encodeURIComponent(collection.slug || '')}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].name).toBe(pricingInCollection.serviceName);
+    });
+
+    it('Return 200 with pricings from org where user is MEMBER with scoped permissions only.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const accessiblePricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: true,
+      });
+
+      await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      await createEntityScopedPermission(member.id, organizationId, accessiblePricing.id, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].id).toBe(accessiblePricing.id);
+    });
+  });
+
   describe('DELETE /api/v1/pricings/:organizationId/:pricingName/:pricingVersion', () => {
     it('Return 200 and success message when owner deletes a specific pricing version.', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');

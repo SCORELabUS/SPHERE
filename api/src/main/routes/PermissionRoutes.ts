@@ -25,15 +25,6 @@ const loadPermissionRoutes = function (app: express.Application) {
       permissionController.removePermission
     );
 
-  // User pricing/collection access queries
-  app
-    .route(baseUrl + '/users/:userId/pricings')
-    .get(permissionController.getUserPricings);
-
-  app
-    .route(baseUrl + '/users/:userId/collections')
-    .get(permissionController.getUserCollections);
-
   // Current user's permissions on a specific pricing/collection
   app
     .route(baseUrl + '/pricings/:organizationId/:pricingName/permissions')
