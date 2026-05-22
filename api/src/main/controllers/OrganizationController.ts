@@ -47,7 +47,10 @@ class OrganizationController {
             offset: offset !== undefined ? parseInt(offset as string, 10) : undefined,
           }
         : undefined;
-      const result = await this.organizationService.indexByUser(req.user.id, pagination);
+      const result = await this.organizationService.indexByUser(req.user.id, {
+        treeFormat: true,
+        pagination,
+      });
       res.json(result);
     } catch (err: any) {
       const { status, message } = handleError(err);

@@ -8,6 +8,7 @@ import NotificationService from './NotificationService';
 import { OrgRole } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
 import { processFileUris } from './FileService';
+import { OrganizationIndexByUserOptions } from '../types/services/Organization';
 
 class OrganizationService {
   private organizationRepository: OrganizationRepository;
@@ -30,8 +31,8 @@ class OrganizationService {
     return organizations;
   }
 
-  async indexByUser(userId: string, pagination?: { limit?: number; offset?: number }) {
-    const result = await this.organizationMembershipRepository.findOrganizationsByUserId(userId, pagination);
+  async indexByUser(userId: string, options: OrganizationIndexByUserOptions) {
+    const result = await this.organizationMembershipRepository.findOrganizationsByUserId(userId, options);
 
     const organizations = result.items;
 
@@ -45,7 +46,7 @@ class OrganizationService {
     };
     processOrgs(organizations);
 
-    if (pagination && (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')) {
+    if (options.pagination && (typeof options.pagination.limit !== 'undefined' || typeof options.pagination.offset !== 'undefined')) {
       return {
         items: organizations,
         total: result.total,

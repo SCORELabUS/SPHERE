@@ -3,6 +3,7 @@ import RepositoryBase from '../RepositoryBase';
 import OrganizationMembershipMongoose from './models/OrganizationMembershipMongoose';
 import { OrgRole, ROLE_WEIGHT } from '../../types/models/Organization';
 import { getUserOrganizationsByUserAggregator } from './aggregators/organizations/getUserOrganizationsByUser';
+import { OrganizationIndexByUserOptions } from '../../types/services/Organization';
 
 class OrganizationMembershipRepository extends RepositoryBase {
   async findByUserId(userId: string, includeSubOrgs = false) {
@@ -58,12 +59,12 @@ class OrganizationMembershipRepository extends RepositoryBase {
     }
   }
 
-  async findOrganizationsByUserId(userId: string, pagination?: { limit?: number; offset?: number }) {
+  async findOrganizationsByUserId(userId: string, options: OrganizationIndexByUserOptions) {
     try {
-      const pipeline = getUserOrganizationsByUserAggregator(userId, pagination);
+      const pipeline = getUserOrganizationsByUserAggregator(userId, options);
       const result = await OrganizationMembershipMongoose.aggregate(pipeline);
 
-      if (pagination && (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')) {
+      if (options.pagination && (typeof options.pagination.limit !== 'undefined' || typeof options.pagination.offset !== 'undefined')) {
         const facet = result[0] || { items: [], total: [] };
         return {
           items: facet.items,
