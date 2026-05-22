@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { EntityPermissions, LeanEntityPermission } from '../../main/types/models/EntityPermission';
+import { LeanEntityPermission } from '../../main/types/models/EntityPermission';
 
 const { mockEntityPermRepo, mockOrgMemberRepo } = vi.hoisted(() => ({
   mockEntityPermRepo: {
