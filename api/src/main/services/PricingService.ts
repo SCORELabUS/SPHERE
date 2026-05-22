@@ -13,21 +13,19 @@ import PricingRepository from '../repositories/mongoose/PricingRepository';
 import CacheService from './CacheService';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
-import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { generateSlug, generateTextFromSlug } from '../utils/slug-manager';
-import { BatchEvaluationContext } from '../policies';
 import { OrgRole } from '../types/models/Organization';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
-import { OrgUserPermissionsContext } from '../types/policies';
 import UserService from './UserService';
+import PermissionService from './PermissionService';
 
 class PricingService {
   private pricingRepository: PricingRepository;
   private pricingCollectionService: PricingCollectionService;
   private cacheService: CacheService;
   private permissionEngine: PermissionEngine;
-  private permissionQueries: PermissionQueries;
+  private permissionService: PermissionService;
   private organizationService: OrganizationService;
   private userService: UserService;
 
@@ -36,7 +34,7 @@ class PricingService {
     this.pricingCollectionService = container.resolve('pricingCollectionService');
     this.cacheService = container.resolve('cacheService');
     this.permissionEngine = new PermissionEngine();
-    this.permissionQueries = new PermissionQueries();
+    this.permissionService = container.resolve('permissionService');
     this.organizationService = container.resolve('organizationService');
     this.userService = container.resolve('userService');
   }
@@ -59,7 +57,7 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: PricingIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionQueries.resolveOrgRole(
+    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
       reqUser?.id ?? '',
       organizationId
     );
@@ -73,7 +71,7 @@ class PricingService {
       return pricings;
     }
 
-    const permissions = await this._buildOrgUserPermissionsContext(reqUser, orgRole, organizationId);
+    const permissions = await this.permissionService.buildOrgUserPermissionsContext(reqUser, orgRole, organizationId);
 
     const pricings = await this.pricingRepository.findByOrganizationId(
       organizationId,
@@ -101,7 +99,7 @@ class PricingService {
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
-    const permissions = await this._buildUserPermissionsContext(user);
+    const permissions = await this.permissionService.buildUserPermissionsContext(user);
     const enhancedQueryParams = {
       ...queryParams,
       limit: queryParams?.limit ?? 10,
@@ -124,7 +122,7 @@ class PricingService {
     queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
   ) {
     if (reqUser) {
-      const role = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
+      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
       queryParams.includePrivate = reqUser.role === 'ADMIN' || role !== null;
     }
 
@@ -165,7 +163,7 @@ class PricingService {
 
     let includePrivate = false;
     if (reqUser) {
-      const role = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
+      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
       includePrivate = reqUser.role === 'ADMIN' || role !== null;
     }
 
@@ -218,8 +216,8 @@ class PricingService {
     collectionId?: string
   ) {
     try {
-      const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-      const batchCtx = await this.permissionQueries.buildBatchContext(
+      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+      const batchCtx = await this.permissionService.buildBatchContext(
         reqUser.id,
         organizationId,
         orgRole,
@@ -339,7 +337,7 @@ class PricingService {
     queryParams: { collectionSlug?: string; organizationId?: string } = {}
   ) {
     const effectiveOrgId = queryParams.organizationId || organizationId;
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, effectiveOrgId);
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
     const pricing = await this.pricingRepository.findOne(pricingName, effectiveOrgId, {
       ...queryParams,
@@ -351,7 +349,7 @@ class PricingService {
       );
     }
 
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       effectiveOrgId,
       orgRole,
@@ -437,14 +435,14 @@ class PricingService {
     const effectiveOrgId = queryParams.organizationId || organizationId;
     let collectionId;
 
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, effectiveOrgId);
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
     const pricing = await this.pricingRepository.findOne(pricingName, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
 
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       effectiveOrgId,
       orgRole,
@@ -503,13 +501,13 @@ class PricingService {
     organizationId: string,
     reqUser: LeanUser
   ) {
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
     const pricing = await this.pricingRepository.findOne(pricingName, organizationId, {
       includePrivate: true,
     });
 
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       organizationId,
       orgRole,
@@ -559,76 +557,6 @@ class PricingService {
     }
 
     return true;
-  }
-
-  private async _buildOrgUserPermissionsContext(
-    reqUser: LeanUser,
-    orgRole: OrgRole | null,
-    organizationId: string
-  ): Promise<OrgUserPermissionsContext> {
-    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
-      reqUser.id,
-      organizationId,
-      orgRole,
-      reqUser.role === 'ADMIN'
-    );
-
-    const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
-      .filter(([_, permissions]) => permissions.GET === true)
-      .map(([key]) => key);
-
-    const pricingsWithGetPermissions = entriesWithGetPermissions
-      .filter(key => key.startsWith('pricing:'))
-      .map(key => key.split(':')[1]);
-    const collectionsWithGetPermissions = entriesWithGetPermissions
-      .filter(key => key.startsWith('collection:'))
-      .map(key => key.split(':')[1]);
-
-    return {
-      orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
-      pricings: pricingsWithGetPermissions,
-      collections: collectionsWithGetPermissions,
-      isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
-      adminOrgIds: (orgRole === 'OWNER' || orgRole === 'ADMIN' || orgPermissions.isGlobalAdmin) ? [organizationId] : [],
-    };
-  }
-
-  private async _buildUserPermissionsContext(reqUser: LeanUser): Promise<OrgUserPermissionsContext> {
-    const permissions: Map<string, BatchEvaluationContext> = await this.permissionQueries.buildAllOrgsBatchContext(
-      reqUser.id,
-      reqUser.role === 'ADMIN'
-    );
-
-    const pricingsWithGetPermissions: string[] = [];
-    const collectionsWithGetPermissions: string[] = [];
-    const adminOrgIds: string[] = [];
-
-    for (const [orgId, orgPermissions] of permissions) {
-      if (orgPermissions.userOrgRole === 'OWNER' || orgPermissions.userOrgRole === 'ADMIN') {
-        adminOrgIds.push(orgId);
-        continue;
-      }
-
-      const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
-      .filter(([_, permissions]) => permissions.GET === true)
-      .map(([key]) => key);
-
-      pricingsWithGetPermissions.push(...entriesWithGetPermissions
-        .filter(key => key.startsWith('pricing:'))
-        .map(key => key.split(':')[1]));
-
-      collectionsWithGetPermissions.push(...entriesWithGetPermissions
-        .filter(key => key.startsWith('collection:'))
-        .map(key => key.split(':')[1]));
-    }
-
-    return {
-      orgRole: null,
-      pricings: pricingsWithGetPermissions,
-      collections: collectionsWithGetPermissions,
-      isGlobalAdmin: reqUser.role === 'ADMIN',
-      adminOrgIds,
-    };
   }
 }
 

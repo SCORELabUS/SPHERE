@@ -30,7 +30,7 @@ const lookupForPricingsAggregator = {
       },
 
       ...getPricingsAggregator(undefined, {orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: []}, []),
-    ],
+    ] as any,
     as: 'pricings',
   },
 };

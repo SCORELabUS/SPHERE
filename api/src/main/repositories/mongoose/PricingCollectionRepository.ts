@@ -8,37 +8,23 @@ import PricingCollectionMongoose from './models/PricingCollectionMongoose';
 import PricingMongoose from './models/PricingMongoose';
 import { processFileUris } from '../../services/FileService';
 import { getAllPricingsFromCollection } from './aggregators/get-pricings-from-collection';
-import { addNumberOfPricingsAggregator } from './aggregators/pricingCollections/add-number-of-pricings';
 import { addOrganizationToCollectionAggregator } from './aggregators/pricingCollections/add-organization-to-collection';
 import { addLastPricingUpdateAggregator } from './aggregators/pricingCollections/add-last-pricing-update';
 import { CollectionIndexQueryParams } from '../../types/services/PricingCollection';
 import { OrgUserPermissionsContext } from '../../types/policies';
-import { refactorCollectionOutput } from './aggregators/pricingCollections/refactor-output';
-import { considerUserCollectionPermissionsAggregator } from './aggregators/pricingCollections/apply-user-permissions';
+import { getCollectionsAggregator } from './aggregators/pricingCollections/get-collections';
 
 class PricingCollectionRepository extends RepositoryBase {
   async findAll(
     queryParams: CollectionIndexQueryParams,
-    includePrivate: boolean = false
+    permissions: OrgUserPermissionsContext
   ): Promise<{ collections: RetrievedCollection[]; total: number }> {
     const { filteringPipeline, sortPipeline } = this._processCollectionQueryParams(queryParams);
     const paginationPipeline = this._processCollectionPagination(queryParams);
 
     try {
-      const pipeline: any[] = [
-        {
-          $match: {
-            ...(includePrivate ? {} : { private: { $ne: true } }),
-          },
-        },
-        ...addNumberOfPricingsAggregator(),
-        ...addOrganizationToCollectionAggregator(),
-        ...filteringPipeline,
-        { $sort: { name: 1 } },
-        ...sortPipeline,
-        refactorCollectionOutput,
-        ...paginationPipeline,
-      ];
+      const pipeline: PipelineStage[] = getCollectionsAggregator(undefined, permissions, filteringPipeline, sortPipeline);
+      pipeline.push(...paginationPipeline);
 
       const aggResult = await PricingCollectionMongoose.aggregate(pipeline);
       const first = aggResult[0] || { collections: [], total: [] };
@@ -83,21 +69,10 @@ class PricingCollectionRepository extends RepositoryBase {
     const paginationPipeline = this._processCollectionPagination(queryParams);
 
     try {
-      const aggResult = await PricingCollectionMongoose.aggregate([
-        {
-          $match: {
-            _organizationId: new mongoose.Types.ObjectId(organizationId),
-          },
-        },
-        ...addNumberOfPricingsAggregator(),
-        ...addOrganizationToCollectionAggregator(),
-        ...filteringPipeline,
-        considerUserCollectionPermissionsAggregator(permissions),
-        { $sort: { name: 1 } },
-        ...sortPipeline,
-        refactorCollectionOutput,
-        ...paginationPipeline,
-      ]);
+      const pipeline: PipelineStage[] = getCollectionsAggregator(organizationId, permissions, filteringPipeline, sortPipeline);
+      pipeline.push(...paginationPipeline);
+
+      const aggResult = await PricingCollectionMongoose.aggregate(pipeline);
 
       const first = aggResult[0] || { collections: [], total: [] };
       const collections = first.collections || [];
@@ -106,7 +81,7 @@ class PricingCollectionRepository extends RepositoryBase {
       collections.forEach((c: any) => processFileUris(c.organization, ['avatar']));
       return { collections, total };
     } catch (err) {
-      return null;
+      return { collections: [], total: 0 };
     }
   }
 

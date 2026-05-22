@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import container from '../config/container';
 import PricingCollectionRepository from '../repositories/mongoose/PricingCollectionRepository';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
@@ -10,28 +9,40 @@ import fs from 'fs';
 import { calculateAnalyticsForPricings } from '../utils/pricing-collections-utils';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
-import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { generateSlug } from '../repositories/mongoose/models/PricingCollectionMongoose';
 import { OrgRole } from '../types/models/Organization';
-import { BatchEvaluationContext } from '../policies';
+import UserService from './UserService';
+import PermissionService from './PermissionService';
+import OrganizationService from './OrganizationService';
+import { Organization } from '../types/database/Organization';
 
 class PricingCollectionService {
   private readonly pricingCollectionRepository: PricingCollectionRepository;
   private readonly pricingRepository: PricingRepository;
   private readonly permissionEngine: PermissionEngine;
-  private readonly permissionQueries: PermissionQueries;
+  private readonly permissionService: PermissionService;
+  private readonly userService: UserService;
+  private readonly organizationService: OrganizationService;
 
   constructor() {
     this.pricingCollectionRepository = container.resolve('pricingCollectionRepository');
     this.pricingRepository = container.resolve('pricingRepository');
     this.permissionEngine = new PermissionEngine();
-    this.permissionQueries = new PermissionQueries();
+    this.permissionService = container.resolve('permissionService');
+    this.userService = container.resolve('userService');
+    this.organizationService = container.resolve('organizationService');
   }
 
   async index(queryParams: CollectionIndexQueryParams, reqUser?: LeanUser) {
     const isAdmin = reqUser && reqUser.role === 'ADMIN';
 
-    const pricings = await this.pricingCollectionRepository.findAll(queryParams, isAdmin);
+    const pricings = await this.pricingCollectionRepository.findAll(queryParams, {
+      orgRole: null,
+      pricings: [],
+      collections: [],
+      isGlobalAdmin: isAdmin ?? false,
+      adminOrgIds: [],
+    });
     return pricings;
   }
 
@@ -40,7 +51,7 @@ class PricingCollectionService {
     reqUser?: LeanUser,
     queryParams?: CollectionIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionQueries.resolveOrgRole(
+    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
       reqUser?.id ?? '',
       organizationId
     );
@@ -48,33 +59,58 @@ class PricingCollectionService {
     if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
       const collections = await this.pricingCollectionRepository.findByOrganizationId(
         organizationId,
-        { orgRole: null, pricings: [], collections: [] },
+        { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
         queryParams ?? { limit: 10, offset: 0 }
       );
       return collections;
     }
 
-    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
-      reqUser.id,
-      organizationId,
+    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
+      reqUser,
       orgRole,
-      reqUser.role === 'ADMIN'
+      organizationId
     );
-
-    const collectionsWithGetPermissions = Array.from(orgPermissions.collectionPermissions.entries())
-      .filter(([_, permissions]) => permissions.GET === true)
-      .map(([key]) => key);
 
     const collections = await this.pricingCollectionRepository.findByOrganizationId(
       organizationId,
       {
-        orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
-        pricings: [],
-        collections: collectionsWithGetPermissions,
+        ...permissions,
       },
       queryParams ?? { limit: 10, offset: 0 }
     );
 
+    return collections;
+  }
+
+  async indexByUser(username: string, reqUser: LeanUser, queryParams?: CollectionIndexQueryParams) {
+    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+      throw new Error(
+        'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
+      );
+    }
+
+    const user = await this.userService.show(username);
+
+    if (!user) {
+      throw new Error('NOT FOUND: User not found');
+    }
+
+    const userOrganizations = await this.organizationService.indexByUser(user.id, {
+      treeFormat: false,
+      pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
+    });
+    const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
+    const permissions = await this.permissionService.buildUserPermissionsContext(user);
+    const enhancedQueryParams = {
+      ...queryParams,
+      limit: queryParams?.limit ?? 10,
+      offset: queryParams?.offset ?? 0,
+      ...(permissions.isGlobalAdmin ? {} : { organizationIds: userOrganizationsIds }),
+    };
+    const collections = await this.pricingCollectionRepository.findAll(
+      enhancedQueryParams,
+      permissions
+    );
     return collections;
   }
 
@@ -91,8 +127,8 @@ class PricingCollectionService {
       if (!reqUser) {
         throw new Error('PERMISSION ERROR: You are not a member of this organization');
       }
-      const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-      const batchCtx = await this.permissionQueries.buildBatchContext(
+      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+      const batchCtx = await this.permissionService.buildBatchContext(
         reqUser.id,
         organizationId,
         orgRole,
@@ -121,8 +157,8 @@ class PricingCollectionService {
   }
 
   async create(newCollection: any, organizationId: string, reqUser: LeanUser) {
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       organizationId,
       orgRole,
@@ -195,8 +231,8 @@ class PricingCollectionService {
   }
 
   async bulkCreate(file: any, newCollectionData: any, organizationId: string, reqUser: LeanUser) {
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       organizationId,
       orgRole,
@@ -320,8 +356,8 @@ class PricingCollectionService {
       );
     }
 
-    const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-    const batchCtx = await this.permissionQueries.buildBatchContext(
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
       organizationId,
       orgRole,
@@ -419,8 +455,8 @@ class PricingCollectionService {
     }
 
     if (reqUser && !ignoreResult) {
-      const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
-      const batchCtx = await this.permissionQueries.buildBatchContext(
+      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+      const batchCtx = await this.permissionService.buildBatchContext(
         reqUser.id,
         organizationId,
         orgRole,
@@ -474,7 +510,7 @@ class PricingCollectionService {
   ) {
     try {
       if (reqUser) {
-        const orgRole = await this.permissionQueries.resolveOrgRole(reqUser.id, organizationId);
+        const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
         const evalResult = this.permissionEngine.evaluate({
           userId: reqUser.id,
           organizationId,

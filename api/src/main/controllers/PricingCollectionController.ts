@@ -14,8 +14,9 @@ class PricingCollectionController {
     this.pricingCollectionService = container.resolve('pricingCollectionService');
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
-    this.show = this.show.bind(this);
     this.indexByOrganizationId = this.indexByOrganizationId.bind(this);
+    this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
+    this.show = this.show.bind(this);
     this.downloadCollection = this.downloadCollection.bind(this);
     this.create = this.create.bind(this);
     this.bulkCreate = this.bulkCreate.bind(this);
@@ -38,6 +39,19 @@ class PricingCollectionController {
       const {status, message} = handleError(err);
       res.status(status).send({ error: message });
     }
+  }
+
+  async indexByAuthenticatedUser(req: any, res: any) {
+    try {
+          const queryParams: CollectionIndexQueryParams = this._transformIndexQueryParams(req.query);
+          const targetUserUsername = req.params.username === 'me' ? req.user.username : req.params.username;
+
+          const pricings = await this.pricingCollectionService.indexByUser(targetUserUsername, req.user, queryParams);
+          res.json(pricings);
+        } catch (err: any) {
+          const {status, message} = handleError(err);
+          res.status(status).send({ error: message });
+        }
   }
 
   async show(req: any, res: any) {
