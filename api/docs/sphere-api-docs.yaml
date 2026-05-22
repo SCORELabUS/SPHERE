@@ -2246,13 +2246,25 @@ paths:
         - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Operation Completed
+          description: Paginated list of pricings with filter statistics
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/responses/PricingList'
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of pricings matching the filter (before pagination)
+                  minPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  maxPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  configurationSpaceSize:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  pricings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pricing'
         default:
           description: Unexpected error
           content:
@@ -2335,23 +2347,28 @@ paths:
 
   /pricings/{organizationId}:
     get:
-      summary: Get all pricings from a user.
+      summary: Get pricings for an organization
       description: |
-        Retrieves a paginated list of a user's pricings that ARE NOT in a collection. If you want to retrieve pricings from a usar of a specific collection, use the `collection` query parameter in the `GET /pricings` endpoint.
+        Retrieves a paginated list of pricings belonging to the specified organization.
+        Supports entity-level permission filtering for organization members.
 
         **Authentication**: Public
 
-        **Permission**: 
-        - UNAUTHENTICATED: can only list PUBLIC pricings of any user.
-        - USER: can list all their pricings (PUBLIC, PRIVATE) and PUBLIC pricings of other users.
-        - ADMIN: can access any user's pricings.
+        **Permission**:
+        - UNAUTHENTICATED: can only see PUBLIC pricings in the organization.
+        - USER (not a member of the org): can only see PUBLIC pricings.
+        - MEMBER: can see PUBLIC pricings, plus PRIVATE pricings for which they have
+          an explicit `GET` permission (either directly on the pricing or via a collection
+          they have `GET` access to).
+        - OWNER / ADMIN of the org: can see all pricings (PUBLIC and PRIVATE).
+        - Global ADMIN: can see all pricings (PUBLIC and PRIVATE) in any organization.
 
       tags:
         - Pricings
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
+        - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/Name'
         - $ref: '#/components/parameters/SortByPricings'
         - $ref: '#/components/parameters/Sort'
@@ -2367,7 +2384,7 @@ paths:
         - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Operation Completed
+          description: Paginated list of pricings for the organization with filter statistics
           content:
             application/json:
               schema:
@@ -2375,7 +2392,7 @@ paths:
                 properties:
                   total:
                     type: integer
-                    description: The total number of pricings matching the query
+                    description: Total number of pricings matching the filter (before pagination)
                   configurationSpaceSize:
                     $ref: '#/components/schemas/MetricHistogram'
                   minPrice:
@@ -2385,11 +2402,11 @@ paths:
                   pricings:
                     type: array
                     items:
-                      $ref: '#/components/responses/PricingList'
+                      $ref: '#/components/schemas/Pricing'
         '403':
           description: Insufficient permissions
         '404':
-          description: User not found
+          description: Organization not found
         default:
           description: Unexpected error
           content:
