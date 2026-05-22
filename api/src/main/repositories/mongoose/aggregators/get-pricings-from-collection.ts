@@ -1,4 +1,4 @@
-import { getAllPricingsAggregator } from './get-all-pricings';
+import { getPricingsAggregator } from './pricings/get-pricings';
 
 export function getAllPricingsFromCollection() {
   return [
@@ -29,7 +29,7 @@ const lookupForPricingsAggregator = {
         },
       },
 
-      ...getAllPricingsAggregator([], []),
+      ...getPricingsAggregator(undefined, {orgRole: null, pricings: [], collections: [], isGlobalAdmin: false}, []),
     ],
     as: 'pricings',
   },

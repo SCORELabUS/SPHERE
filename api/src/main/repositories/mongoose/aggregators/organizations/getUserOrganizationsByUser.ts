@@ -1,12 +1,48 @@
 import mongoose, { PipelineStage } from 'mongoose';
+import { OrganizationIndexByUserOptions } from '../../../../types/services/Organization';
 
+/**
+ * Builds a Mongoose aggregation pipeline that retrieves all organizations a user belongs to,
+ * enriched with avatar data, role information, and optionally structured as a parent-child tree.
+ *
+ * @param userId - The ID of the user whose organizations to retrieve.
+ * @param options - Configuration options for the query.
+ * @param options.treeFormat - When `true` (default), organizations are nested into a tree
+ *   structure where child organizations appear inside their parent's `subOrganizations` array.
+ *   Only top-level organizations (those with no parent, or whose parent is not in the user's
+ *   membership set) appear as root items. When `false`, returns a flat list of all organizations
+ *   the user belongs to, each with its own `role` and `_parentId` field.
+ * @param options.pagination - Optional pagination applied **after** the tree is built (tree mode)
+ *   or directly on the flat list (flat mode). When provided, the return shape changes from an
+ *   array to `{ items: Organization[], total: number }`.
+ * @param options.pagination.limit - Maximum number of items to return per page. Defaults to 10.
+ * @param options.pagination.offset - Number of items to skip from the start. Defaults to 0.
+ * @returns A `PipelineStage[]` array that can be passed to `Mongoose.aggregate()`.
+ *
+ * @example
+ * // Tree mode (default) — returns [{ id, name, subOrganizations: [...] }, ...]
+ * getUserOrganizationsByUserAggregator(userId, { treeFormat: true });
+ *
+ * @example
+ * // Flat mode — returns [{ id, name, role, _parentId }, ...]
+ * getUserOrganizationsByUserAggregator(userId, { treeFormat: false });
+ *
+ * @example
+ * // Paginated flat mode — returns { items: [...], total: number }
+ * getUserOrganizationsByUserAggregator(userId, {
+ *   treeFormat: false,
+ *   pagination: { limit: 20, offset: 0 },
+ * });
+ */
 export function getUserOrganizationsByUserAggregator(
   userId: string,
-  pagination?: { limit?: number; offset?: number }
+  options: OrganizationIndexByUserOptions
 ): PipelineStage[] {
   const userObjectId = new mongoose.Types.ObjectId(userId);
+  const treeFormat = options.treeFormat ?? true;
 
-  const basePipeline: PipelineStage[] = [
+  // ── Shared stages: fetch memberships, join orgs, deduplicate, enrich ──────
+  const sharedPipeline: PipelineStage[] = [
     // 1. Match user's memberships
     { $match: { _userId: userObjectId } },
 
@@ -21,7 +57,7 @@ export function getUserOrganizationsByUserAggregator(
     },
     { $unwind: '$organization' },
 
-    // 3. Deduplicate: keep one membership per organization (e.g. the highest-weighted role)
+    // 3. Deduplicate: keep one membership per organization (highest-weighted role)
     {
       $sort: {
         _organizationId: 1,
@@ -122,7 +158,33 @@ export function getUserOrganizationsByUserAggregator(
         },
       },
     },
+  ];
 
+  // ── Flat mode stages ──────────────────────────────────────────────────────
+  const flatPipeline: PipelineStage[] = [
+    // Project the final shape for a flat list
+    {
+      $project: {
+        _id: 0,
+        id: 1,
+        name: '$organization.name',
+        displayName: '$organization.displayName',
+        avatar: '$organization.avatar',
+        isPersonal: '$organization.isPersonal',
+        _parentId: '$organization._parentId',
+        ancestors: '$organization.ancestors',
+        avatarBgColor: '$organization.avatarBgColor',
+        avatarFgColor: '$organization.avatarFgColor',
+        role: 1,
+      },
+    },
+
+    // Sort alphabetically by name
+    { $sort: { name: 1 as const } },
+  ];
+
+  // ── Tree mode stages ──────────────────────────────────────────────────────
+  const treePipeline: PipelineStage[] = [
     // 7. Lookup parent membership to determine top-level vs child
     {
       $lookup: {
@@ -243,13 +305,19 @@ export function getUserOrganizationsByUserAggregator(
     { $sort: { name: 1 as const } },
   ];
 
-  // 15. Pagination (optional)
+  // ── Assemble pipeline ─────────────────────────────────────────────────────
+  const basePipeline: PipelineStage[] = [
+    ...sharedPipeline,
+    ...(treeFormat ? treePipeline : flatPipeline),
+  ];
+
+  // ── Pagination (optional, applied last) ───────────────────────────────────
   if (
-    pagination &&
-    (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')
+    options.pagination &&
+    (typeof options.pagination.limit !== 'undefined' || typeof options.pagination.offset !== 'undefined')
   ) {
-    const offset = pagination.offset ?? 0;
-    const limit = pagination.limit ?? 10;
+    const offset = options.pagination.offset ?? 0;
+    const limit = options.pagination.limit ?? 10;
 
     basePipeline.push({
       $facet: {

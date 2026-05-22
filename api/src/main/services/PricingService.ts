@@ -17,6 +17,9 @@ import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { generateSlug, generateTextFromSlug } from '../utils/slug-manager';
 import { BatchEvaluationContext } from '../policies';
 import { OrgRole } from '../types/models/Organization';
+import OrganizationService from './OrganizationService';
+import { Organization } from '../types/database/Organization';
+import { OrgUserPermissionsContext } from '../types/policies';
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -24,6 +27,7 @@ class PricingService {
   private cacheService: CacheService;
   private permissionEngine: PermissionEngine;
   private permissionQueries: PermissionQueries;
+  private organizationService: OrganizationService;
 
   constructor() {
     this.pricingRepository = container.resolve('pricingRepository');
@@ -31,12 +35,18 @@ class PricingService {
     this.cacheService = container.resolve('cacheService');
     this.permissionEngine = new PermissionEngine();
     this.permissionQueries = new PermissionQueries();
+    this.organizationService = container.resolve('organizationService');
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
     const isAdmin = reqUser && reqUser.role === 'ADMIN';
 
-    const pricings = await this.pricingRepository.findAll(queryParams, isAdmin);
+    const pricings = await this.pricingRepository.findAll(queryParams, {
+      orgRole: null,
+      pricings: [],
+      collections: [],
+      isGlobalAdmin: isAdmin ?? false,
+    });
     return pricings;
   }
 
@@ -50,43 +60,34 @@ class PricingService {
       organizationId
     );
 
-    if (!reqUser || (reqUser.role !== "ADMIN" && !orgRole)) {
+    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
       const pricings = await this.pricingRepository.findByOrganizationId(
         organizationId,
-        { orgRole: null, pricings: [], collections: [] },
+        { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false },
         queryParams ?? { limit: 10, offset: 0 }
       );
       return pricings;
     }
 
-    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
-      reqUser.id,
-      organizationId,
-      orgRole,
-      reqUser.role === 'ADMIN'
-    );
-
-    const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
-      .filter(([_, permissions]) => permissions.GET === true)
-      .map(([key]) => key);
-
-    const pricingsWithGetPermissions = entriesWithGetPermissions
-      .filter(key => key.startsWith('pricing:'))
-      .map(key => key.split(':')[1]);
-    const collectionsWithGetPermissions = entriesWithGetPermissions
-      .filter(key => key.startsWith('collection:'))
-      .map(key => key.split(':')[1]);
+    const permissions = await this._buildOrgUserPermissionsContext(reqUser, orgRole, organizationId);
 
     const pricings = await this.pricingRepository.findByOrganizationId(
       organizationId,
-      {
-        orgRole: orgPermissions.isGlobalAdmin ? "OWNER" : orgRole,
-        pricings: pricingsWithGetPermissions,
-        collections: collectionsWithGetPermissions,
-      },
+      permissions,
       queryParams ?? { limit: 10, offset: 0 }
     );
 
+    return pricings;
+  }
+
+  async indexByUser(user: LeanUser, queryParams?: PricingIndexQueryParams) {
+    const userOrganizations = await this.organizationService.indexByUser(user.id, {
+      treeFormat: false,
+      pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
+    });
+    const userOrganizationsId = userOrganizations.map((org: Organization) => org.id);
+
+    const pricings = await this.index(queryParams ?? { limit: 10, offset: 0 }, user);
     return pricings;
   }
 
@@ -537,6 +538,37 @@ class PricingService {
     }
 
     return true;
+  }
+
+  private async _buildOrgUserPermissionsContext(
+    reqUser: LeanUser,
+    orgRole: OrgRole | null,
+    organizationId: string
+  ): Promise<OrgUserPermissionsContext> {
+    const orgPermissions: BatchEvaluationContext = await this.permissionQueries.buildBatchContext(
+      reqUser.id,
+      organizationId,
+      orgRole,
+      reqUser.role === 'ADMIN'
+    );
+
+    const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
+      .filter(([_, permissions]) => permissions.GET === true)
+      .map(([key]) => key);
+
+    const pricingsWithGetPermissions = entriesWithGetPermissions
+      .filter(key => key.startsWith('pricing:'))
+      .map(key => key.split(':')[1]);
+    const collectionsWithGetPermissions = entriesWithGetPermissions
+      .filter(key => key.startsWith('collection:'))
+      .map(key => key.split(':')[1]);
+
+    return {
+      orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
+      pricings: pricingsWithGetPermissions,
+      collections: collectionsWithGetPermissions,
+      isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
+    };
   }
 }
 

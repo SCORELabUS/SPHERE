@@ -1,29 +1,21 @@
 import RepositoryBase from '../RepositoryBase';
 import PricingMongoose from './models/PricingMongoose';
 import { PricingAnalytics } from '../../types/database/Pricing';
-import { getAllPricingsAggregator } from './aggregators/get-all-pricings';
 import { PricingIndexQueryParams } from '../../types/services/PricingService';
 import mongoose, { PipelineStage } from 'mongoose';
 import { getPricingByNameAndOrganizationAggregator } from './aggregators/get-pricing-by-name-and-organization';
 import { LeanPricing } from '../../types/models/Pricing';
 import { getPricingByNameOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-name-organization-and-version';
-import { OrgRole } from '../../types/models/Organization';
-import { getPricingsByOrganizationAggregator } from './aggregators/get-pricings-by-organization';
+import { OrgUserPermissionsContext } from '../../types/policies';
+import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 
 class PricingRepository extends RepositoryBase {
-  async findAll(queryParams: PricingIndexQueryParams, includePrivate: boolean = false) {
+  async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
     try {
-      const aggregator = getAllPricingsAggregator(filteringPipeline, sortPipeline);
-
       // Build base pipeline and optionally add pagination stages that operate inside aggregation
-      const basePipeline: any[] = [
-        ...(includePrivate
-          ? [] // no añadir nada
-          : [{ $match: { private: false } }]), // añadir etapa
-        ...aggregator,
-      ];
+      const basePipeline: PipelineStage[] = getPricingsAggregator(undefined, permissions, filteringPipeline, sortPipeline);;
 
       const paginationPipeline = this._processPricingPagination(queryParams);
 
@@ -47,12 +39,12 @@ class PricingRepository extends RepositoryBase {
 
   async findByOrganizationId(
     organizationId: string,
-    permissions: { orgRole: OrgRole | null; pricings: string[]; collections: string[] },
+    permissions: OrgUserPermissionsContext,
     queryParams: PricingIndexQueryParams
   ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
-    const aggregator = getPricingsByOrganizationAggregator(
+    const aggregator = getPricingsAggregator(
       organizationId,
       permissions,
       filteringPipeline,
