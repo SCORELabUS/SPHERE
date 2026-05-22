@@ -1397,6 +1397,92 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /users/{username}/collections:
+    get:
+      summary: Get collections accessible to the current user
+      description: |
+        Returns all collections the authenticated user can access across all
+        their organizations, applying permission checks.
+
+        The `{username}` path parameter accepts the reserved value `me` to
+        refer to the currently authenticated user.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - Any authenticated user (ADMIN or USER) can access this endpoint.
+        - Non-ADMIN users can only query their own collections (`{username}` must match their username or be `me`).
+        - Results are scoped to collections the user can access according to role and entity permissions.
+
+        **Supported Filters**: `name`, `organizationIds`, `sortBy`, `sort`.
+
+      tags:
+        - User Access
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username to query, or the reserved value `me` for the authenticated user
+          schema:
+            type: string
+            example: me
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/OrganizationIds'
+        - $ref: '#/components/parameters/SortByCollections'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list of collections the user has access to
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of collections matching the filter (before pagination)
+                  collections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        numberOfPricings:
+                          type: number
+                        organization:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            displayName:
+                              type: string
+                            avatar:
+                              type: string
+                              nullable: true
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: Insufficient permissions (non-ADMIN querying another user's collections)
+        '404':
+          description: User not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 
   /users/{username}/refresh-token:
     put:
@@ -6032,4 +6118,3 @@ components:
           Provides access scoped to the organization's resources.
 
         Include the token directly in the `Authorization` header **without** a `Bearer` prefix.
-
