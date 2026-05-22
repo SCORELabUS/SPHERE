@@ -31,83 +31,28 @@ class OrganizationService {
   }
 
   async indexByUser(userId: string, pagination?: { limit?: number; offset?: number }) {
-    let memberships: any[];
-    let totalCount: number | undefined;
+    const result = await this.organizationMembershipRepository.findOrganizationsByUserId(userId, pagination);
 
-    if (pagination && (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')) {
-      const limit = pagination.limit ?? 10;
-      const offset = pagination.offset ?? 0;
-      const result = await this.organizationMembershipRepository.findPaginatedByUserId(userId, { limit, offset });
-      memberships = result.items;
-      totalCount = result.total;
-    } else {
-      memberships = await this.organizationMembershipRepository.findByUserId(userId, true);
-    }
+    const organizations = result.items;
 
-    const enrichedMemberships = memberships.map((m: any) => ({
-      ...m.organization,
-      role: m.role,
-    }));
-
-    const organizations = enrichedMemberships;
-
-    // For personal orgs, use the owner's user avatar and colors (like GitHub)
-    const personalOrgs = organizations.filter((org: any) => org.isPersonal);
-    if (personalOrgs.length > 0) {
-      const user = await this.userRepository.findById(userId);
-      if (user) {
-        for (const org of personalOrgs) {
-          if (!org.avatar && user.settings?.avatar) {
-            org.avatar = user.settings.avatar;
-          }
-          org.avatarBgColor = user.settings?.avatarBgColor || '#fa520f';
-          org.avatarFgColor = user.settings?.avatarFgColor || '#ffffff';
+    const processOrgs = (orgs: any[]) => {
+      for (const org of orgs) {
+        processFileUris(org, ['avatar']);
+        if (org.subOrganizations?.length) {
+          processOrgs(org.subOrganizations);
         }
       }
-    }
+    };
+    processOrgs(organizations);
 
-    // For non-personal orgs without avatar, set default colors for initials fallback
-    for (const org of organizations) {
-      if (!org.isPersonal && !org.avatar) {
-        org.avatarBgColor = '#023e8a';
-        org.avatarFgColor = '#ffffff';
-      }
-    }
-
-    organizations.forEach((org: any) => processFileUris(org, ['avatar']));
-
-    // Build tree: nest children under top-level orgs
-    const orgMap = new Map<string, any>();
-    for (const org of organizations) {
-      orgMap.set(org.id, { ...org, subOrganizations: [] });
-    }
-
-    const topLevel: any[] = [];
-    for (const org of orgMap.values()) {
-      const parentId = org._parentId ? String(org._parentId) : null;
-      if (parentId && orgMap.has(parentId)) {
-        orgMap.get(parentId).subOrganizations.push(org);
-      } else if (!parentId) {
-        topLevel.push(org);
-      }
-    }
-
-    // Include orphan children (parent not in current user's memberships) at top level
-    for (const org of orgMap.values()) {
-      const parentId = org._parentId ? String(org._parentId) : null;
-      if (parentId && !orgMap.has(parentId)) {
-        topLevel.push(org);
-      }
-    }
-
-    if (typeof totalCount !== 'undefined') {
+    if (pagination && (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')) {
       return {
-        items: topLevel,
-        total: totalCount,
+        items: organizations,
+        total: result.total,
       };
     }
 
-    return topLevel;
+    return organizations;
   }
   
   async getUserOrgRole(userId: string, organizationId: string): Promise<OrgRole | null> {

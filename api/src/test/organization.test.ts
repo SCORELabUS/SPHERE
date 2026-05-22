@@ -3201,5 +3201,33 @@ describe('Organizations API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.total).toBeGreaterThanOrEqual(2); // personal + at least 1 created
     });
+
+    it('paginates top-level orgs, not memberships — sub-orgs do not reduce page count', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+
+      // Create parent with 2 children (3 memberships, but only 1 top-level)
+      const parent = await createTestOrganization(owner.token, { name: `ppag_${randomSuffix()}` });
+      await createTestOrganization(owner.token, { name: `ppagchild1_${randomSuffix()}`, _parentId: parent.id });
+      await createTestOrganization(owner.token, { name: `ppagchild2_${randomSuffix()}`, _parentId: parent.id });
+
+      // Create 2 more top-level orgs
+      await createTestOrganization(owner.token, { name: `tpag1_${randomSuffix()}` });
+      await createTestOrganization(owner.token, { name: `tpag2_${randomSuffix()}` });
+
+      // Total top-level: 1 personal + 1 parent + 2 top-level = 4
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/orgs?limit=3`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.items).toBeDefined();
+      expect(response.body.items.length).toBe(3);
+      expect(response.body.total).toBe(4);
+
+      // The parent must appear with its 2 children nested
+      const parentInResponse = response.body.items.find((o: any) => o.id === parent.id);
+      expect(parentInResponse).toBeDefined();
+      expect(parentInResponse.subOrganizations.length).toBe(2);
+    });
   });
 });

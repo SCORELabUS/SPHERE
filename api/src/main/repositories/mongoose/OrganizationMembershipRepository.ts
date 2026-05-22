@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import RepositoryBase from '../RepositoryBase';
 import OrganizationMembershipMongoose from './models/OrganizationMembershipMongoose';
 import { OrgRole, ROLE_WEIGHT } from '../../types/models/Organization';
+import { getUserOrganizationsByUserAggregator } from './aggregators/organizations/getUserOrganizationsByUser';
 
 class OrganizationMembershipRepository extends RepositoryBase {
   async findByUserId(userId: string, includeSubOrgs = false) {
@@ -57,60 +58,20 @@ class OrganizationMembershipRepository extends RepositoryBase {
     }
   }
 
-  async findPaginatedByUserId(userId: string, pagination: { limit: number; offset: number }) {
+  async findOrganizationsByUserId(userId: string, pagination?: { limit?: number; offset?: number }) {
     try {
-      const basePipeline: any[] = [
-        { $match: { _userId: new mongoose.Types.ObjectId(userId) } },
-        {
-          $lookup: {
-            from: 'organizations',
-            localField: '_organizationId',
-            foreignField: '_id',
-            as: 'organization',
-          },
-        },
-        { $unwind: '$organization' },
-        {
-          $addFields: {
-            id: { $toString: '$_id' },
-            'organization.id': { $toString: '$organization._id' },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            id: 1,
-            _userId: 1,
-            _organizationId: 1,
-            role: 1,
-            joinedAt: 1,
-            organization: {
-              id: 1,
-              name: 1,
-              displayName: 1,
-              avatar: 1,
-              isPersonal: 1,
-              _parentId: 1,
-              ancestors: 1,
-            },
-          },
-        },
-      ];
+      const pipeline = getUserOrganizationsByUserAggregator(userId, pagination);
+      const result = await OrganizationMembershipMongoose.aggregate(pipeline);
 
-      const result = await OrganizationMembershipMongoose.aggregate([
-        ...basePipeline,
-        {
-          $facet: {
-            items: [{ $skip: pagination.offset }, { $limit: pagination.limit }],
-            total: [{ $count: 'count' }],
-          },
-        },
-      ]);
-      const facet = result[0] || { items: [], total: [] };
-      return {
-        items: facet.items,
-        total: facet.total[0]?.count ?? 0,
-      };
+      if (pagination && (typeof pagination.limit !== 'undefined' || typeof pagination.offset !== 'undefined')) {
+        const facet = result[0] || { items: [], total: [] };
+        return {
+          items: facet.items,
+          total: facet.total[0]?.count ?? 0,
+        };
+      }
+
+      return { items: result, total: result.length };
     } catch {
       return { items: [], total: 0 };
     }
