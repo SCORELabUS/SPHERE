@@ -10,7 +10,7 @@
     "password": "$2a$05$su1Kqvc5EdsmVPcT1QsLcOWXZpFrWKKU/rsl8glLVWBV3gcKG/Byq",
     "token": "aa8b184a5b0b48737cfdfdbef8cc4990f3821c8b",
     "tokenExpiration": {"$date": "2023-02-23T11:10:52.000Z"},
-    "role": "ADMIN",
+    "role": "USER",
     "settings": {
       "phone": "+34666777888",
       "avatar": "static/avatars/users/default/avatar-1.svg",
