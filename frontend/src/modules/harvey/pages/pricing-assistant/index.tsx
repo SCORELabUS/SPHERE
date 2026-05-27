@@ -35,11 +35,7 @@ import {
 } from '../../sse';
 import { UseCases } from '../../use-cases';
 
-interface Props {
-  playground?: boolean;
-}
-
-function PricingAssistantPage({ playground = false }: Props) {
+function PricingAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
   const [contextItems, setContextItems] = useState<PricingContextItem[]>([]);
@@ -47,6 +43,7 @@ function PricingAssistantPage({ playground = false }: Props) {
   const [preset, setPreset] = useState<PromptPreset | null>(null);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showMobileContext, setShowMobileContext] = useState(false);
+  const [playground, setPlayground] = useState(false);
 
   const urlTransformEvent: UrlTransformEvent = !playground
     ? sseUrlTransformEvent
@@ -346,7 +343,7 @@ function PricingAssistantPage({ playground = false }: Props) {
     <PlaygroundProvider playground={playground}>
       <PresetProvider presetContext={{ preset, setPreset }}>
         <PricingContext.Provider value={contextItems}>
-          <HarveyLayout isPlayground={playground} onNewConversation={handleNewConversation}>
+          <HarveyLayout isPlayground={playground} onTogglePlayground={() => setPlayground(p => !p)} onNewConversation={handleNewConversation}>
             <div className="flex flex-1 overflow-hidden">
               {/* Chat area */}
               <div className="flex flex-1 flex-col overflow-hidden">
