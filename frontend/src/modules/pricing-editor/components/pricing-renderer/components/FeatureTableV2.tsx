@@ -257,6 +257,9 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
             <th className="px-4 py-2 text-left" />
             {planKeys.map((planKey, index) => {
               const plan = plans[planKey];
+              
+              if (plan.private === true) return(<></>);
+
               const planName = plan.name ?? camelToTitle(planKey);
               const [a, b] = PALETTE[index % PALETTE.length];
 
@@ -305,6 +308,9 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
 
                   {planKeys.map(planKey => {
                     const plan = plans[planKey];
+
+                    if (plan.private === true) return(<></>);
+
                     const featureValues = plan.features as Record<string, unknown> | undefined;
                     const featureRaw = featureValues ? featureValues[featureKey] : undefined;
 
@@ -398,6 +404,9 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
 
                 {planKeys.map(planKey => {
                   const plan = plans[planKey];
+
+                  if (plan.private === true) return(<></>);
+
                   const valueFromPlan = plan.usageLimits?.[usage?.name ?? ''];
                   const effectiveUsage = hasNonEmptyValue(valueFromPlan) ? valueFromPlan : usage?.defaultValue;
 
