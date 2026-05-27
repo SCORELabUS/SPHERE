@@ -11,10 +11,10 @@ interface Props {
 
 const NAV_STRUCTURE = [
   {
-    label: 'Pricings',
+    label: 'Explore',
     children: [
-      { label: 'All Pricings', to: '/pricings' },
-      { label: 'Collections', to: '/pricings/collections' },
+      { label: 'Pricings', to: '/pricings' },
+      { label: 'Collections', to: '/collections' },
     ],
   },
   {
@@ -26,7 +26,6 @@ const NAV_STRUCTURE = [
     children: [
       { label: 'Pricing2Yaml Editor', to: '/editor' },
       { label: 'HARVEY', to: '/harvey' },
-      { label: 'HARVEY Playground', to: '/harvey-play' },
     ],
   },
   { label: 'Team', to: '/team' },
@@ -181,7 +180,7 @@ export default function MobileNav({ isOpen, onClose }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleNavigate('/pricings/collections/new')}
+                  onClick={() => handleNavigate('/collections/new')}
                   className="mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-2 text-sm font-medium text-tp-ink transition-colors hover:bg-tp-surface"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
