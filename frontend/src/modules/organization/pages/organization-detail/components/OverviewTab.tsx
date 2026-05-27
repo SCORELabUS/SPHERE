@@ -10,9 +10,19 @@ interface Props {
   pricingsTotal: number;
   collectionsTotal: number;
   invitations: OrganizationInvitation[];
+  isPublicView?: boolean;
 }
 
-export default function OverviewTab({ org, members, pricingsTotal, collectionsTotal, invitations }: Props) {
+export default function OverviewTab({ org, members, pricingsTotal, collectionsTotal, invitations, isPublicView = false }: Props) {
+  const stats = [
+    { label: 'Members', value: members.length, icon: 'mdi:account-group-outline', color: 'bg-tp-primary/8 text-tp-primary' },
+    { label: 'Sub-organizations', value: org.subOrganizations?.length ?? 0, icon: 'mdi:graph-outline', color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Pricings', value: pricingsTotal, iconComponent: FaFileInvoiceDollar, color: 'bg-blue-50 text-blue-600' },
+    { label: 'Collections', value: collectionsTotal, icon: 'mdi:folder-outline', color: 'bg-purple-50 text-purple-600' },
+    ...(!isPublicView ? [{ label: 'Invitations', value: invitations.length, icon: 'mdi:link-variant', color: 'bg-amber-50 text-amber-600' }] : []),
+    { label: 'Created', value: org.createdAt ? new Date(org.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A', icon: 'mdi:calendar-outline', color: 'bg-tp-surface text-tp-steel', isText: true },
+  ];
+
   return (
     <motion.div
       key="overview"
@@ -22,14 +32,7 @@ export default function OverviewTab({ org, members, pricingsTotal, collectionsTo
       transition={transitionDefault}
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[
-          { label: 'Members', value: members.length, icon: 'mdi:account-group-outline', color: 'bg-tp-primary/8 text-tp-primary' },
-          { label: 'Sub-organizations', value: org.subOrganizations?.length ?? 0, icon: 'mdi:graph-outline', color: 'bg-emerald-50 text-emerald-600' },
-          { label: 'Pricings', value: pricingsTotal, iconComponent: FaFileInvoiceDollar, color: 'bg-blue-50 text-blue-600' },
-          { label: 'Collections', value: collectionsTotal, icon: 'mdi:folder-outline', color: 'bg-purple-50 text-purple-600' },
-          { label: 'Invitations', value: invitations.length, icon: 'mdi:link-variant', color: 'bg-amber-50 text-amber-600' },
-          { label: 'Created', value: org.createdAt ? new Date(org.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A', icon: 'mdi:calendar-outline', color: 'bg-tp-surface text-tp-steel', isText: true },
-        ].map((stat) => (
+        {stats.map((stat) => (
           <motion.div
             key={stat.label}
             variants={cardHover}
@@ -39,7 +42,7 @@ export default function OverviewTab({ org, members, pricingsTotal, collectionsTo
           >
             <div className="flex items-center gap-3">
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${stat.color}`}>
-                {stat.iconComponent ? (
+                {'iconComponent' in stat && stat.iconComponent ? (
                   <stat.iconComponent size={18} />
                 ) : (
                   <Iconify icon={stat.icon} width={18} />

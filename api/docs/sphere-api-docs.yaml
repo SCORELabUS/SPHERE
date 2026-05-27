@@ -1763,18 +1763,17 @@ paths:
     get:
       summary: Get organization details
       description: |
-        Retrieves detailed information about a specific organization by its ID. The
-        organization context is automatically resolved from the `organizationId` path
-        parameter — the middleware loads the organization from the database and resolves
-        the authenticated user's role within it.
+        Retrieves detailed information about a specific organization by its ID.
 
-        **Authentication**: User token
+        **Authentication**: Optional (public endpoint)
 
         **Permission**:
-        - **ADMIN** (global): Can access any organization. The system assigns an effective
-          org role of `OWNER` for permission checks.
-        - **USER**: Must be a member of the organization (any role: OWNER, ADMIN, or MEMBER).
-          Non-members will receive a 403 error.
+        - **Unauthenticated**: Can access any organization.
+        - **USER**: Can access any organization.
+        - **ADMIN** (global): Can access any organization.
+
+        This endpoint supports public access so that non-members and unauthenticated
+        users can view organization details (e.g., for the public organization profile page).
 
         **Response**: Returns the full organization object including `id`, `name`,
         `displayName`, `description`, `avatar`, `isPersonal`, and timestamps.
@@ -1792,12 +1791,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Organization'
-        '401':
-          description: Authentication required — no valid token or API key provided
-        '403':
-          description: |
-            Insufficient permissions — the user does not belong to this organization
-            or does not have the required role
         '404':
           description: Organization not found — no organization exists with the given ID
         default:
@@ -1933,11 +1926,15 @@ paths:
         dates, and basic user information. The response is enriched via a database
         aggregation pipeline that joins membership records with user data.
 
-        **Authentication**: User token
+        **Authentication**: Optional (public endpoint)
 
         **Permission**:
+        - **Unauthenticated**: Can view any organization's members.
+        - **USER**: Can view any organization's members.
         - **ADMIN** (global): Can view any organization's members.
-        - **USER**: Must be a member of the organization (any role: OWNER, ADMIN, or MEMBER).
+
+        This endpoint supports public access so that non-members and unauthenticated
+        users can view the member list (e.g., for the public organization profile page).
 
         **Response**: Each item in the array contains:
         - `id`: The membership record ID
@@ -1963,12 +1960,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/OrganizationMember'
-        '401':
-          description: Authentication required — no valid token or API key provided
-        '403':
-          description: |
-            Insufficient permissions — the user does not belong to this organization
-            or does not have the required role
         '404':
           description: Organization not found — no organization exists with the given ID
         default:

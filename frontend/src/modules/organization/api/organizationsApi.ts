@@ -372,5 +372,21 @@ export function useOrganizationsApi() {
     getUserAccessiblePricings,
     getUserAccessibleCollections,
     inviteUsers,
+    getPublicOrganization,
+    getPublicOrgMembers,
   };
+}
+
+const BASE_URL = import.meta.env.VITE_API_URL;
+
+export async function getPublicOrganization(orgId: string): Promise<Organization> {
+  const response = await fetch(`${BASE_URL}/orgs/${orgId}`);
+  if (!response.ok) throw new Error('Organization not found');
+  return response.json();
+}
+
+export async function getPublicOrgMembers(orgId: string): Promise<OrgMemberWithUser[]> {
+  const response = await fetch(`${BASE_URL}/orgs/${orgId}/members`);
+  if (!response.ok) throw new Error('Failed to fetch members');
+  return response.json();
 }

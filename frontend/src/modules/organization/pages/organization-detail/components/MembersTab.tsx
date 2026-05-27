@@ -14,6 +14,8 @@ interface Props {
   currentUserId: string | undefined;
   onRefresh: () => void;
   onAddMember: () => void;
+  onLeave: () => void;
+  isPublicView?: boolean;
 }
 
 export default function MembersTab({
@@ -23,6 +25,8 @@ export default function MembersTab({
   currentUserId,
   onRefresh,
   onAddMember,
+  onLeave,
+  isPublicView = false,
 }: Props) {
   const { updateMemberRole, removeMember } = useOrganizationsApi();
 
@@ -30,7 +34,13 @@ export default function MembersTab({
     customConfirm(`Remove @${member.user.username} from this organization?`, { danger: true })
       .then(() =>
         removeMember(orgId, member.user.id)
-          .then(() => onRefresh())
+          .then(() => {
+            if (member.user.id === currentUserId) {
+              onLeave();
+            } else {
+              onRefresh();
+            }
+          })
           .catch((err: Error) => customAlert(err.message, 'error'))
       )
       .catch(() => {});
@@ -54,7 +64,9 @@ export default function MembersTab({
         <div className="flex flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg text-tp-ink">Members</h2>
-            <p className="text-xs text-tp-steel">Manage who has access to this organization.</p>
+            <p className="text-xs text-tp-steel">
+              {isPublicView ? 'People who belong to this organization.' : 'Manage who has access to this organization.'}
+            </p>
           </div>
           {canManage && (
             <button
@@ -94,7 +106,7 @@ export default function MembersTab({
                 <p className="text-[11px] text-tp-steel">{member.user.email}</p>
               </div>
 
-              {canManage && member.user.id !== currentUserId && (
+              {!isPublicView && canManage && member.user.id !== currentUserId && (
                 <select
                   value={member.role}
                   onChange={event => handleRoleChange(member, event.target.value as OrgRole)}
@@ -105,21 +117,14 @@ export default function MembersTab({
                   <option value="OWNER">Owner</option>
                 </select>
               )}
-              {member.user.id === currentUserId ? (
+              {!isPublicView && member.user.id === currentUserId && (
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROLE_COLORS[member.role]}`}
                 >
                   {ROLE_LABELS[member.role]}
                 </span>
-              ) : !canManage ? (
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROLE_COLORS[member.role]}`}
-                >
-                  {ROLE_LABELS[member.role]}
-                </span>
-              ) : null}
-
-              {canManage && member.user.id !== currentUserId && (
+              )}
+              {!isPublicView && canManage && member.user.id !== currentUserId && (
                 <button
                   type="button"
                   onClick={() => handleRemoveMember(member)}
@@ -129,7 +134,7 @@ export default function MembersTab({
                   <Iconify icon="mdi:account-remove-outline" width={18} />
                 </button>
               )}
-              {member.user.id === currentUserId && (
+              {!isPublicView && member.user.id === currentUserId && (
                 <button
                   type="button"
                   onClick={() => handleRemoveMember(member)}

@@ -16,7 +16,10 @@ import {
   OrgPricing,
   OrgCollection,
   useOrganizationsApi,
+  getPublicOrganization,
+  getPublicOrgMembers,
 } from '../../api/organizationsApi';
+import { getPublicOrgPricings, getPublicOrgCollections } from '../../../pricing/api/pricingsApi';
 import PermissionsTab from '../../components/PermissionsTab';
 import OrgDetailSkeleton from '../../../core/components/skeletons/org-detail-skeleton';
 import { Tab, TreeNode, PER_PAGE } from './types';
@@ -40,6 +43,7 @@ export default function OrganizationDetailPage() {
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
+  const [isPublicView, setIsPublicView] = useState(false);
   const [members, setMembers] = useState<OrgMemberWithUser[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
   const [pricings, setPricings] = useState<OrgPricing[]>([]);
@@ -77,7 +81,7 @@ export default function OrganizationDetailPage() {
     removeMember,
   } = useOrganizationsApi();
 
-  const canManage = myRole === 'OWNER' || myRole === 'ADMIN';
+  const canManage = !isPublicView && (myRole === 'OWNER' || myRole === 'ADMIN');
 
   const handleLeaveOrg = useCallback(() => {
     if (!authUser.user?.id || !organizationId) return;
@@ -87,7 +91,7 @@ export default function OrganizationDetailPage() {
     )
       .then(() =>
         removeMember(organizationId, authUser.user!.id)
-          .then(() => router.push('/me/orgs'))
+          .then(() => router.push('/'))
           .catch((err: Error) => customAlert(err.message))
       )
       .catch(() => {});
@@ -95,94 +99,125 @@ export default function OrganizationDetailPage() {
 
   /* ─── Data loading ─── */
   const loadOrgData = useCallback(async () => {
-    if (!authUser.user?.id || !organizationId) return;
+    if (!organizationId) return;
 
     try {
-      const orgData = await getOrganization(organizationId);
-      setOrg(orgData);
+      const isAuth = authUser.isAuthenticated && authUser.user?.id;
 
-      const membersData = await getOrgMembers(organizationId);
-      setMembers(membersData);
+      let orgData: Organization;
+      let membersData: OrgMemberWithUser[];
 
-      const memberEntry = membersData.find(m => m.user.id === authUser.user?.id);
-      const userRole = memberEntry?.role ?? null;
-      if (userRole) setMyRole(userRole);
-
-      const invitationsData =
-        userRole === 'OWNER' || userRole === 'ADMIN' ? await listInvitations(organizationId) : [];
-      setInvitations(invitationsData);
-
-      if (userRole === 'MEMBER') {
-        const [accessiblePricingsResult, allOrgPricingsResult, accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
-          getUserAccessiblePricings().catch(() => ({ pricings: [], total: 0 })),
-          getOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
-          getUserAccessibleCollections().catch(() => ({ collections: [], total: 0 })),
-          getOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
-        ]);
-
-        const pricingNames = new Set(
-          accessiblePricingsResult.pricings
-            .filter(p => p.organization.id === organizationId)
-            .map(p => p.name)
-        );
-        const collectionNames = new Set(
-          accessibleCollectionsResult.collections
-            .filter(c => c.organization.id === organizationId)
-            .map(c => c.name)
-        );
-
-        const filteredPricings = allOrgPricingsResult.pricings.filter(p => pricingNames.has(p.name));
-        const filteredCollections = allOrgCollectionsResult.collections.filter(c => collectionNames.has(c.name));
-
-        setAllOrgPricings(allOrgPricingsResult.pricings);
-        setAccessiblePricingNames(pricingNames);
-        setPricings(filteredPricings);
-        setPricingsTotal(filteredPricings.length);
-
-        setAllOrgCollections(allOrgCollectionsResult.collections);
-        setAccessibleCollectionNames(collectionNames);
-        setCollections(filteredCollections);
-        setCollectionsTotal(filteredCollections.length);
+      if (isAuth) {
+        orgData = await getOrganization(organizationId);
+        membersData = await getOrgMembers(organizationId);
       } else {
-        const pricingsData = await getOrgPricings(organizationId).catch(() => ({
-          pricings: [],
-          total: 0,
-        }));
-        setPricings(pricingsData.pricings);
-        setPricingsTotal(pricingsData.total);
-
-        const collectionsData = await getOrgCollections(organizationId).catch(() => ({
-          collections: [],
-          total: 0,
-        }));
-        setCollections(collectionsData.collections);
-        setCollectionsTotal(collectionsData.total);
+        orgData = await getPublicOrganization(organizationId);
+        membersData = await getPublicOrgMembers(organizationId);
       }
 
-      const children = orgData.subOrganizations ?? [];
-      if (userRole === 'OWNER' || userRole === 'ADMIN') {
-        const map: Record<string, boolean> = {};
-        for (const child of children) map[child.id] = true;
-        setChildAccessMap(map);
+      setOrg(orgData);
+      setMembers(membersData);
+
+      const memberEntry = isAuth
+        ? membersData.find(m => m.user.id === authUser.user?.id)
+        : null;
+      const userRole = memberEntry?.role ?? null;
+      const isMember = userRole !== null;
+
+      if (userRole) setMyRole(userRole);
+
+      // Public view: not authenticated or authenticated but not a member
+      const publicView = !isAuth || !isMember;
+      setIsPublicView(publicView);
+
+      if (publicView) {
+        // Public view: only fetch public pricings and collections
+        const [publicPricings, publicCollections] = await Promise.all([
+          getPublicOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
+          getPublicOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
+        ]);
+        setPricings(publicPricings.pricings);
+        setPricingsTotal(publicPricings.total);
+        setCollections(publicCollections.collections);
+        setCollectionsTotal(publicCollections.total);
       } else {
-        const results = await Promise.allSettled(
-          children.map(async child => {
-            await getOrganization(child.id);
-            return { id: child.id, ok: true };
-          })
-        );
-        const map: Record<string, boolean> = {};
-        children.forEach((child, i) => {
-          map[child.id] = results[i].status === 'fulfilled';
-        });
-        setChildAccessMap(map);
+        // Member view: full access logic
+        const invitationsData =
+          userRole === 'OWNER' || userRole === 'ADMIN' ? await listInvitations(organizationId) : [];
+        setInvitations(invitationsData);
+
+        if (userRole === 'MEMBER') {
+          const [accessiblePricingsResult, allOrgPricingsResult, accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
+            getUserAccessiblePricings().catch(() => ({ pricings: [], total: 0 })),
+            getOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
+            getUserAccessibleCollections().catch(() => ({ collections: [], total: 0 })),
+            getOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
+          ]);
+
+          const pricingNames = new Set(
+            accessiblePricingsResult.pricings
+              .filter(p => p.organization.id === organizationId)
+              .map(p => p.name)
+          );
+          const collectionNames = new Set(
+            accessibleCollectionsResult.collections
+              .filter(c => c.organization.id === organizationId)
+              .map(c => c.name)
+          );
+
+          const filteredPricings = allOrgPricingsResult.pricings.filter(p => pricingNames.has(p.name));
+          const filteredCollections = allOrgCollectionsResult.collections.filter(c => collectionNames.has(c.name));
+
+          setAllOrgPricings(allOrgPricingsResult.pricings);
+          setAccessiblePricingNames(pricingNames);
+          setPricings(filteredPricings);
+          setPricingsTotal(filteredPricings.length);
+
+          setAllOrgCollections(allOrgCollectionsResult.collections);
+          setAccessibleCollectionNames(collectionNames);
+          setCollections(filteredCollections);
+          setCollectionsTotal(filteredCollections.length);
+        } else {
+          const pricingsData = await getOrgPricings(organizationId).catch(() => ({
+            pricings: [],
+            total: 0,
+          }));
+          setPricings(pricingsData.pricings);
+          setPricingsTotal(pricingsData.total);
+
+          const collectionsData = await getOrgCollections(organizationId).catch(() => ({
+            collections: [],
+            total: 0,
+          }));
+          setCollections(collectionsData.collections);
+          setCollectionsTotal(collectionsData.total);
+        }
+
+        const children = orgData.subOrganizations ?? [];
+        if (userRole === 'OWNER' || userRole === 'ADMIN') {
+          const map: Record<string, boolean> = {};
+          for (const child of children) map[child.id] = true;
+          setChildAccessMap(map);
+        } else {
+          const results = await Promise.allSettled(
+            children.map(async child => {
+              await getOrganization(child.id);
+              return { id: child.id, ok: true };
+            })
+          );
+          const map: Record<string, boolean> = {};
+          children.forEach((child, i) => {
+            map[child.id] = results[i].status === 'fulfilled';
+          });
+          setChildAccessMap(map);
+        }
       }
     } catch (err: any) {
       setError(err.message ?? 'Failed to load organization');
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, authUser.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [organizationId, authUser.isAuthenticated, authUser.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Hierarchy tree ─── */
   const buildHierarchyTree = useCallback(async () => {
@@ -314,7 +349,21 @@ export default function OrganizationDetailPage() {
     async (page: number, search: string) => {
       if (!org) return;
 
-      if (myRole === 'MEMBER' && accessiblePricingNames !== null) {
+      if (isPublicView) {
+        // Public view: use public API
+        try {
+          const filters: Record<string, string> = {
+            limit: String(PER_PAGE),
+            offset: String((page - 1) * PER_PAGE),
+          };
+          if (search) filters.name = search;
+          const data = await getPublicOrgPricings(org.id, filters);
+          setPricings(data.pricings);
+          setPricingsTotal(data.total);
+        } catch {
+          /* silently ignore */
+        }
+      } else if (myRole === 'MEMBER' && accessiblePricingNames !== null) {
         let filtered = allOrgPricings.filter(p => accessiblePricingNames.has(p.name));
         if (search) {
           const q = search.toLowerCase();
@@ -338,14 +387,28 @@ export default function OrganizationDetailPage() {
         }
       }
     },
-    [org, myRole, accessiblePricingNames, allOrgPricings, getOrgPricings]
+    [org, isPublicView, myRole, accessiblePricingNames, allOrgPricings, getOrgPricings]
   );
 
   const fetchCollections = useCallback(
     async (page: number, search: string) => {
       if (!org) return;
 
-      if (myRole === 'MEMBER' && accessibleCollectionNames !== null) {
+      if (isPublicView) {
+        // Public view: use public API
+        try {
+          const filters: Record<string, string> = {
+            limit: String(PER_PAGE),
+            offset: String((page - 1) * PER_PAGE),
+          };
+          if (search) filters.name = search;
+          const data = await getPublicOrgCollections(org.id, filters);
+          setCollections(data.collections);
+          setCollectionsTotal(data.total);
+        } catch {
+          /* silently ignore */
+        }
+      } else if (myRole === 'MEMBER' && accessibleCollectionNames !== null) {
         let filtered = allOrgCollections.filter(c => accessibleCollectionNames.has(c.name));
         if (search) {
           const q = search.toLowerCase();
@@ -369,19 +432,15 @@ export default function OrganizationDetailPage() {
         }
       }
     },
-    [org, myRole, accessibleCollectionNames, allOrgCollections, getOrgCollections]
+    [org, isPublicView, myRole, accessibleCollectionNames, allOrgCollections, getOrgCollections]
   );
 
   /* ─── Effects ─── */
   useEffect(() => {
     if (authUser.isLoading) return;
-    if (!authUser.isAuthenticated) {
-      router.push('/login');
-      return;
-    }
     if (!organizationId) return;
     loadOrgData();
-  }, [authUser.isLoading, authUser.isAuthenticated, organizationId]);
+  }, [authUser.isLoading, organizationId]);
 
   useEffect(() => {
     if (activeTab === 'pricings' && org) fetchPricings(pricingPage, debouncedPricingSearch);
@@ -404,6 +463,9 @@ export default function OrganizationDetailPage() {
 
   /* ─── Tabs ─── */
   const availableTabs = useMemo(() => {
+    if (isPublicView) {
+      return ['overview', 'members', 'pricings', 'collections'] as Tab[];
+    }
     const tabs: Tab[] = [
       'overview',
       'members',
@@ -414,7 +476,7 @@ export default function OrganizationDetailPage() {
     ];
     if (canManage) tabs.push('permissions');
     return tabs;
-  }, [canManage]);
+  }, [isPublicView, canManage]);
 
   /* ─── Loading / Error ─── */
   if (isLoading) return <OrgDetailSkeleton />;
@@ -439,11 +501,11 @@ export default function OrganizationDetailPage() {
               variants={fadeInUp}
               transition={transitionDefault}
               type="button"
-              onClick={() => router.push('/me/orgs')}
+              onClick={() => router.push(isPublicView ? '/' : '/me/orgs')}
               className="mb-5 inline-flex cursor-pointer items-center gap-1.5 text-sm text-tp-steel transition-colors hover:text-tp-ink"
             >
               <Iconify icon="mdi:arrow-left" width={16} />
-              Organizations
+              {isPublicView ? 'Home' : 'Organizations'}
             </motion.button>
 
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -481,7 +543,7 @@ export default function OrganizationDetailPage() {
                   <h1 className="font-display text-2xl text-tp-ink sm:text-3xl">
                     {org.displayName}
                   </h1>
-                  {myRole && (
+                  {!isPublicView && myRole && (
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROLE_COLORS[myRole]}`}
                     >
@@ -499,7 +561,7 @@ export default function OrganizationDetailPage() {
                         Edit
                       </button>
                     )}
-                    {!org.isPersonal && (
+                    {!isPublicView && !org.isPersonal && (
                       <button
                         type="button"
                         onClick={handleLeaveOrg}
@@ -544,10 +606,10 @@ export default function OrganizationDetailPage() {
                 },
                 { label: 'Pricings', value: pricingsTotal, icon: 'mdi:tag-outline', iconComponent: FaFileInvoiceDollar },
                 { label: 'Collections', value: collectionsTotal, icon: 'mdi:folder-outline' },
-                { label: 'Invitations', value: invitations.length, icon: 'mdi:link-variant' },
+                ...(!isPublicView ? [{ label: 'Invitations', value: invitations.length, icon: 'mdi:link-variant' }] : []),
               ].map(stat => (
                 <div key={stat.label} className="flex items-center gap-1.5">
-                  {stat.iconComponent ? (
+                  {'iconComponent' in stat && stat.iconComponent ? (
                     <stat.iconComponent size={14} className="text-tp-steel" />
                   ) : (
                     <Iconify icon={stat.icon} width={14} className="text-tp-steel" />
@@ -640,7 +702,8 @@ export default function OrganizationDetailPage() {
               members={members}
               pricingsTotal={pricingsTotal}
               collectionsTotal={collectionsTotal}
-              invitations={invitations}
+              invitations={isPublicView ? [] : invitations}
+              isPublicView={isPublicView}
             />
           )}
 
@@ -652,10 +715,12 @@ export default function OrganizationDetailPage() {
               currentUserId={authUser.user?.id}
               onRefresh={refreshMembers}
               onAddMember={() => setAddMemberModalOpen(true)}
+              onLeave={() => router.push('/')}
+              isPublicView={isPublicView}
             />
           )}
 
-          {activeTab === 'invitations' && (
+          {!isPublicView && activeTab === 'invitations' && (
             <InvitationsTab
               orgId={org.id}
               invitations={invitations}
@@ -687,7 +752,7 @@ export default function OrganizationDetailPage() {
             />
           )}
 
-          {activeTab === 'children' && (
+          {!isPublicView && activeTab === 'children' && (
             <HierarchyTab
               org={org}
               canManage={canManage}
@@ -699,7 +764,7 @@ export default function OrganizationDetailPage() {
             />
           )}
 
-          {activeTab === 'permissions' && organizationId && (
+          {!isPublicView && activeTab === 'permissions' && organizationId && (
             <motion.div
               key="permissions"
               initial={{ opacity: 0, y: 8 }}

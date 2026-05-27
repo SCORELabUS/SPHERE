@@ -134,6 +134,17 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET', 'POST'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
+  // Public org read access (unauthenticated users can view org details and members).
+  {
+    path: '/orgs/*/members',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  {
+    path: '/orgs/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
   // Entity permission management is OWNER/ADMIN.
   {
     path: '/orgs/*/permissions',
@@ -166,13 +177,6 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['POST', 'PUT', 'DELETE', 'PATCH'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
-  },
-  // Allow members to view org members.
-  {
-    path: '/orgs/*/members',
-    methods: ['GET'],
-    allowedUserRoles: ['ADMIN', 'USER'],
-    allowedOrganizationRoles: ['OWNER', 'ADMIN', 'MEMBER'],
   },
   // Only OWNER/ADMIN can manage org members.
   {

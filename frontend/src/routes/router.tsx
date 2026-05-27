@@ -124,6 +124,14 @@ export default function Router() {
         { element: <TeamPage />, path: '/team' },
         { element: <ResearchPage />, path: '/research' },
         { element: <ContributionsPage />, path: '/contributions' },
+        {
+          path: '/orgs/:organizationId',
+          element: (
+            <Suspense fallback={<OrgDetailSkeleton />}>
+              <OrganizationDetailPage />
+            </Suspense>
+          ),
+        },
       ],
     },
 
@@ -153,14 +161,6 @@ export default function Router() {
           element: (
             <Suspense fallback={<OrgJoinSkeleton />}>
               <OrganizationJoinPage />
-            </Suspense>
-          ),
-        },
-        {
-          path: '/orgs/:organizationId',
-          element: (
-            <Suspense fallback={<OrgDetailSkeleton />}>
-              <OrganizationDetailPage />
             </Suspense>
           ),
         },
