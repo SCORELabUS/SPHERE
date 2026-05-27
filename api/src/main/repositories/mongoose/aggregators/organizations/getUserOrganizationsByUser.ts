@@ -217,8 +217,8 @@ export function getUserOrganizationsByUserAggregator(
       },
     },
 
-    // 9. Sort by organization creation (oldest first so parents come before children)
-    { $sort: { 'organization.createdAt': 1 as const } },
+    // 9. Sort by creation date, then by _isChild so parents always come before children
+    { $sort: { 'organization.createdAt': 1 as const, _isChild: 1 as const } },
 
     // 10. Build child document inline (null for non-children)
     {
@@ -298,6 +298,9 @@ export function getUserOrganizationsByUserAggregator(
         _id: 0,
         org: 0,
         _allChildDocs: 0,
+        _isChild: 0,
+        _childDoc: 0,
+        _topLevelDoc: 0,
       },
     },
 

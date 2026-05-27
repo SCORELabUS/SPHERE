@@ -201,6 +201,11 @@ class OrganizationService {
   }
 
   async listMembers(organizationId: string, excludeUserId?: string) {
+    const organization = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
     const members = await this.organizationMembershipRepository.findByOrganizationId(organizationId);
 
     if (excludeUserId) {

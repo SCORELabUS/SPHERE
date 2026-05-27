@@ -347,3 +347,33 @@ export function usePricingsApi() {
     ]
   );
 }
+
+const BASE_URL = import.meta.env.VITE_API_URL;
+
+export async function getPublicOrgPricings(orgId: string, filters?: Record<string, string>): Promise<{ pricings: any[]; total: number }> {
+  const params = new URLSearchParams();
+  params.set('includePricingsInCollection', 'true');
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, v);
+    });
+  }
+  const response = await fetch(`${BASE_URL}/pricings/${orgId}?${params.toString()}`);
+  if (!response.ok) throw new Error('Failed to fetch organization pricings');
+  const data = await response.json();
+  return { pricings: data.pricings ?? [], total: data.total ?? 0 };
+}
+
+export async function getPublicOrgCollections(orgId: string, filters?: Record<string, string>): Promise<{ collections: any[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, v);
+    });
+  }
+  const qs = params.toString();
+  const response = await fetch(`${BASE_URL}/collections/${orgId}${qs ? `?${qs}` : ''}`);
+  if (!response.ok) throw new Error('Failed to fetch organization collections');
+  const data = await response.json();
+  return { collections: data.collections ?? [], total: data.total ?? 0 };
+}

@@ -73,7 +73,8 @@ class OrganizationMembershipRepository extends RepositoryBase {
       }
 
       return { items: result, total: result.length };
-    } catch {
+    } catch (error){
+      console.log(error);
       return { items: [], total: 0 };
     }
   }

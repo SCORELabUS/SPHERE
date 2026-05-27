@@ -391,7 +391,7 @@ describe('Organizations API integration', () => {
       expect(response.body.updatedAt).toBeDefined();
     });
 
-    it('returns 403 when non-member USER requests', async () => {
+    it('returns 200 when non-member USER requests (public endpoint)', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
       const { user: outsider } = await createAndLoginUser('USER');
 
@@ -399,8 +399,8 @@ describe('Organizations API integration', () => {
         .get(`${BASE_PATH}/orgs/${organizationId}`)
         .set('Authorization', `Bearer ${outsider.token}`);
 
-      expect(response.status).toBe(403);
-      expect(response.body.error).toBeDefined();
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBe(organizationId);
     });
 
     it('returns 404 when organization does not exist', async () => {
@@ -414,14 +414,14 @@ describe('Organizations API integration', () => {
       expect(response.body.error).toBeDefined();
     });
 
-    it('returns 401 without Authorization header', async () => {
+    it('returns 200 without Authorization header (public endpoint)', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
       const response = await request(app)
         .get(`${BASE_PATH}/orgs/${organizationId}`);
 
-      expect(response.status).toBe(401);
-      expect(response.body.error).toBeDefined();
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBe(organizationId);
     });
   });
 
@@ -834,7 +834,7 @@ describe('Organizations API integration', () => {
       expect(Array.isArray(response.body)).toBe(true);
     });
 
-    it('returns 403 when non-member USER requests', async () => {
+    it('returns 200 when non-member USER requests (public endpoint)', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
       const { user: outsider } = await createAndLoginUser('USER');
 
@@ -842,8 +842,8 @@ describe('Organizations API integration', () => {
         .get(`${BASE_PATH}/orgs/${organizationId}/members`)
         .set('Authorization', `Bearer ${outsider.token}`);
 
-      expect(response.status).toBe(403);
-      expect(response.body.error).toBeDefined();
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
     });
 
     it('returns 404 when organization does not exist', async () => {
@@ -857,14 +857,15 @@ describe('Organizations API integration', () => {
       expect(response.body.error).toBeDefined();
     });
 
-    it('returns 401 without Authorization header', async () => {
+    it('returns 200 without Authorization header (public endpoint)', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
       const response = await request(app)
         .get(`${BASE_PATH}/orgs/${organizationId}/members`);
 
-      expect(response.status).toBe(401);
-      expect(response.body.error).toBeDefined();
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(1);
     });
   });
 
@@ -3099,6 +3100,120 @@ describe('Organizations API integration', () => {
       const parent = response.body.find((o: any) => o.id === parentOrg.id);
       expect(parent.subOrganizations[0].role).toBeDefined();
       expect(['OWNER', 'ADMIN', 'MEMBER']).toContain(parent.subOrganizations[0].role);
+    });
+
+    it('always returns parent org even when multiple children share the same createdAt', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parentOrg = await createTestOrganization(owner.token, { name: `stableparent_${randomSuffix()}` });
+
+      const child1 = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `stablechild1_${randomSuffix()}`, displayName: 'Child 1', _parentId: parentOrg.id });
+      expect(child1.status).toBe(201);
+
+      const child2 = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `stablechild2_${randomSuffix()}`, displayName: 'Child 2', _parentId: parentOrg.id });
+      expect(child2.status).toBe(201);
+
+      const child3 = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `stablechild3_${randomSuffix()}`, displayName: 'Child 3', _parentId: parentOrg.id });
+      expect(child3.status).toBe(201);
+
+      // Run the query multiple times to exercise different internal orderings
+      for (let i = 0; i < 5; i++) {
+        const response = await request(app)
+          .get(`${BASE_PATH}/users/me/orgs`)
+          .set('Authorization', `Bearer ${owner.token}`);
+
+        expect(response.status).toBe(200);
+        const topLevelIds = response.body.map((o: any) => o.id);
+        expect(topLevelIds).toContain(parentOrg.id);
+
+        const parent = response.body.find((o: any) => o.id === parentOrg.id);
+        expect(parent).toBeDefined();
+        expect(Array.isArray(parent.subOrganizations)).toBe(true);
+        expect(parent.subOrganizations.length).toBe(3);
+
+        const childIds = parent.subOrganizations.map((c: any) => c.id);
+        expect(childIds).toContain(child1.body.id);
+        expect(childIds).toContain(child2.body.id);
+        expect(childIds).toContain(child3.body.id);
+      }
+    });
+
+    it('returns parent org with children even when user has different roles in parent vs children', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      const parentOrg = await createTestOrganization(owner.token, { name: `roleparent_${randomSuffix()}` });
+
+      const child1Resp = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `rolechild_a_${randomSuffix()}`, displayName: 'Child A', _parentId: parentOrg.id });
+      expect(child1Resp.status).toBe(201);
+
+      const child2Resp = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `rolechild_b_${randomSuffix()}`, displayName: 'Child B', _parentId: parentOrg.id });
+      expect(child2Resp.status).toBe(201);
+
+      // Member has ADMIN on parent but MEMBER on one child only
+      await createMembership(member.id, parentOrg.id, 'ADMIN');
+      await createMembership(member.id, child1Resp.body.id, 'MEMBER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/orgs`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      const topLevelIds = response.body.map((o: any) => o.id);
+      expect(topLevelIds).toContain(parentOrg.id);
+
+      const parent = response.body.find((o: any) => o.id === parentOrg.id);
+      expect(parent).toBeDefined();
+      expect(parent.role).toBe('ADMIN');
+
+      // child1 is nested (member has direct membership)
+      const childIds = parent.subOrganizations.map((c: any) => c.id);
+      expect(childIds).toContain(child1Resp.body.id);
+      const nestedChild1 = parent.subOrganizations.find((c: any) => c.id === child1Resp.body.id);
+      expect(nestedChild1.role).toBe('MEMBER');
+    });
+
+    it('does not leak internal pipeline fields in response', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parentOrg = await createTestOrganization(owner.token, { name: `cleanparent_${randomSuffix()}` });
+
+      await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `cleanchild_${randomSuffix()}`, displayName: 'Clean Child', _parentId: parentOrg.id });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      for (const org of response.body) {
+        expect(org._isChild).toBeUndefined();
+        expect(org._childDoc).toBeUndefined();
+        expect(org._topLevelDoc).toBeUndefined();
+        expect(org._allChildDocs).toBeUndefined();
+        if (org.subOrganizations) {
+          for (const child of org.subOrganizations) {
+            expect(child._isChild).toBeUndefined();
+            expect(child._childDoc).toBeUndefined();
+            expect(child._topLevelDoc).toBeUndefined();
+          }
+        }
+      }
     });
   });
 
