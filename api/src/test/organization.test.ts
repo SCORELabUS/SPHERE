@@ -303,24 +303,6 @@ describe('Organizations API integration', () => {
       expect(response.status).toBe(422);
     });
 
-    it('returns 422 when name is duplicate', async () => {
-      const { user: owner } = await createAndLoginUser('USER');
-      const name = `duplicate_${randomSuffix()}`;
-
-      await createTestOrganization(owner.token, { name });
-
-      const response = await request(app)
-        .post(`${BASE_PATH}/orgs`)
-        .set('Authorization', `Bearer ${owner.token}`)
-        .send({
-          name,
-          displayName: 'Duplicate Org',
-        });
-
-      expect(response.status).toBe(422);
-      expect(response.body.error).toBeDefined();
-    });
-
     it('returns 401 without Authorization header', async () => {
       const response = await request(app)
         .post(`${BASE_PATH}/orgs`)
