@@ -70,8 +70,21 @@ export function usePricingCollectionsApi() {
 
   const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
 
-  const getPermissionBasedUserCollections = useCallback(async () => {
-    return fetchWithInterceptor(`${USERS_BASE_PATH}/me/collections?limit=100`, {
+  const getPermissionBasedUserCollections = useCallback(async (filters: Record<string, string | number> = {}) => {
+    const filterParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (key === 'limit' || key === 'offset') {
+        filterParams.append(key, String(value));
+        return;
+      }
+      const stringValue = String(value);
+      if (stringValue.trim().length > 0) filterParams.append(key, stringValue);
+    });
+    const qs = filterParams.toString();
+    const url = `${USERS_BASE_PATH}/me/collections${qs ? `?${qs}` : ''}`;
+
+    return fetchWithInterceptor(url, {
       method: 'GET',
       headers: basicHeaders,
     })

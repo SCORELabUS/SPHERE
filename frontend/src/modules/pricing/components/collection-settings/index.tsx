@@ -48,7 +48,7 @@ export default function CollectionSettings({
     ).then(() => {
       updateCollection(organizationId, collection.slug, { name: newName })
         .then(() => {
-          router.push('/pricings/collections');
+          router.push('/collections');
         })
         .catch((error: Error) => {
           customAlert(`Error: ${error.message}`, 'error');
@@ -95,7 +95,7 @@ export default function CollectionSettings({
     ).then(() => {
       deleteCollection(organizationId, collection.slug, false)
         .then(() => {
-          router.push('/pricings/collections');
+          router.push('/collections');
         })
         .catch(() => {
           customAlert('An error has occurred while removing the collection. Please, try again later.', 'error');
@@ -110,7 +110,7 @@ export default function CollectionSettings({
     ).then(() => {
       deleteCollection(organizationId, collection.slug, true)
         .then(() => {
-          router.push('/pricings/collections');
+          router.push('/collections');
         })
         .catch(() => {
           customAlert('An error has occurred while removing the collection. Please, try again later.', 'error');

@@ -28,7 +28,7 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                   </button>
                   <button
                     type="button"
-                    onClick={() => onNavigate('/pricings/collections')}
+                    onClick={() => onNavigate('/collections')}
                     className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Collections

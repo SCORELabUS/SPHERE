@@ -20,7 +20,7 @@ export default function CollectionCard({ collection }: Props) {
     <motion.div
       whileHover={{ y: -2 }}
       transition={{ duration: 0.15 }}
-      onClick={() => router.push(`/pricings/collections/${collection.organization.id}/${collection.slug}`)}
+      onClick={() => router.push(`/collections/${collection.organization.id}/${collection.slug}`)}
       className="group cursor-pointer rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
     >
       <div className="mb-3 flex items-center gap-3">

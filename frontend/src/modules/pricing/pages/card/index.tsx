@@ -359,7 +359,7 @@ export default function CardPage() {
           <div className="mb-2 flex items-center gap-2 text-xs text-tp-steel">
             <button type="button" onClick={() => router.push('/pricings')} className="cursor-pointer hover:text-tp-ink">Pricings</button>
             <span>/</span>
-            {collectionSlug && <><button type="button" onClick={() => router.push('/pricings/collections')} className="cursor-pointer hover:text-tp-ink">{collectionSlug}</button><span>/</span></>}
+            {collectionSlug && <><button type="button" onClick={() => router.push('/collections')} className="cursor-pointer hover:text-tp-ink">{collectionSlug}</button><span>/</span></>}
             <span className="text-tp-ink">{name}</span>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

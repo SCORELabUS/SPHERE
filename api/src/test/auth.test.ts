@@ -57,8 +57,6 @@ const buildRequestPath = (pattern: string, ctx: AuthContext) => {
 			return `${BASE_PATH}/pricings`;
 		case '/pricings/**':
 			return `${BASE_PATH}/pricings/${ctx.ownerOrg.id}`;
-		case '/me/pricings':
-			return `${BASE_PATH}/me/pricings`;
 		case '/collections/**':
 			return `${BASE_PATH}/collections/${ctx.ownerOrg.id}`;
 		case '/orgs/invitations/preview/*':
@@ -486,34 +484,6 @@ describe('Auth Middleware - Integration Tests', () => {
 			responses.forEach((response) => {
 				expect(isAuthError(response.status)).toBe(false);
 			});
-		});
-
-		it('touches protected pricing and collection routes with real owner auth', async () => {
-			const responses = await Promise.all([
-				request(app)
-					.get(`${BASE_PATH}/pricings/${ownerUser.organizationId}`)
-					.set('Authorization', `Bearer ${ownerUser.token}`),
-				request(app)
-					.get(`${BASE_PATH}/collections/${ownerUser.organizationId}`)
-					.set('Authorization', `Bearer ${ownerUser.token}`),
-				request(app)
-					.post(`${BASE_PATH}/collections/${ownerUser.organizationId}`)
-					.set('Authorization', `Bearer ${ownerUser.token}`)
-					.send({
-						name: `auth_extra_collection_${randomSuffix()}`,
-						description: 'collection created to hit the protected route',
-						private: false,
-					}),
-				request(app)
-					.put(`${BASE_PATH}/me/pricings`)
-					.set('Authorization', `Bearer ${ownerUser.token}`)
-					.send({
-						collectionName: collectionFixture.name,
-						pricingName: pricingFixture.serviceName,
-					}),
-			]);
-
-			expect(responses).toHaveLength(4);
 		});
 
 		it('touches organization invitation and membership routes', async () => {

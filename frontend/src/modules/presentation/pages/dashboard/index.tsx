@@ -275,7 +275,7 @@ export default function DashboardPage() {
               <h2 className="text-sm font-medium text-tp-ink">Recent Pricings</h2>
               <button
                 type="button"
-                onClick={() => router.push('/pricings')}
+                onClick={() => router.push('/me/pricings')}
                 className="cursor-pointer text-xs text-tp-primary hover:underline"
               >
                 View all
@@ -287,7 +287,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-tp-steel">No recent activity yet</p>
                 <button
                   type="button"
-                  onClick={() => router.push('/pricings')}
+                  onClick={() => router.push('/me/pricings')}
                   className="mt-2 cursor-pointer text-sm font-medium text-tp-primary hover:underline"
                 >
                   Browse pricings
@@ -312,7 +312,7 @@ export default function DashboardPage() {
               <h2 className="text-sm font-medium text-tp-ink">Recent Collections</h2>
               <button
                 type="button"
-                onClick={() => router.push('/pricings/collections')}
+                onClick={() => router.push('/me/collections')}
                 className="cursor-pointer text-xs text-tp-primary hover:underline"
               >
                 View all
@@ -324,7 +324,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-tp-steel">No recent activity yet</p>
                 <button
                   type="button"
-                  onClick={() => router.push('/pricings/collections')}
+                  onClick={() => router.push('/me/collections')}
                   className="mt-2 cursor-pointer text-sm font-medium text-tp-primary hover:underline"
                 >
                   Browse collections

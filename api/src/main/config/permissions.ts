@@ -87,11 +87,6 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['POST', 'PUT', 'DELETE', 'PATCH'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
-  {
-    path: '/me/pricings',
-    methods: ['PUT'],
-    allowedUserRoles: ['ADMIN', 'USER'],
-  },
 
   // ============================================
   // Collection Management Routes 

@@ -196,11 +196,11 @@ export default function CollectionCardPage() {
     <>
       <Helmet><title>SPHERE - {collection?.name || collectionSlug}</title></Helmet>
 
-      <div className="mx-auto max-w-[1280px] px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault} className="mb-6">
           <div className="mb-2 flex items-center gap-2 text-xs text-tp-steel">
-            <button type="button" onClick={() => router.push('/pricings/collections')} className="cursor-pointer hover:text-tp-ink">Collections</button>
+            <button type="button" onClick={() => router.push('/collections')} className="cursor-pointer hover:text-tp-ink">Collections</button>
             <span>/</span>
             <span className="text-tp-ink">{collection?.name || collectionSlug}</span>
           </div>

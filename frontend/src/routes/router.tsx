@@ -32,6 +32,8 @@ import CreatePricingPage from '../modules/pricing/pages/create';
 import CollectionCardPage from '../modules/pricing/pages/collection-card';
 import CreateCollectionPage from '../modules/profile/pages/create-collection';
 import CollectionsListPage from '../modules/pricing/pages/collections-list';
+import UserPricingListPage from '../modules/pricing/pages/user-list';
+import UserCollectionsListPage from '../modules/pricing/pages/user-collections-list';
 import PricingAssistantPage from '../modules/harvey/pages/pricing-assistant';
 import OrganizationsListPage from '../modules/organization/pages/organizations-list';
 import CreateOrganizationPage from '../modules/organization/pages/create-organization';
@@ -104,7 +106,7 @@ export default function Router() {
           ),
         },
         {
-          path: '/pricings/collections',
+          path: '/collections',
           element: (
             <Suspense fallback={<CollectionsListSkeleton />}>
               <CollectionsListPage />
@@ -112,7 +114,7 @@ export default function Router() {
           ),
         },
         {
-          path: '/pricings/collections/:ownerId/:collectionSlug',
+          path: '/collections/:ownerId/:collectionSlug',
           element: (
             <Suspense fallback={<CollectionCardSkeleton />}>
               <CollectionCardPage />
@@ -140,9 +142,11 @@ export default function Router() {
       ),
       children: [
         { element: <CreatePricingPage />, path: '/pricings/new' },
-        { element: <CreateCollectionPage />, path: '/pricings/collections/new' },
+        { element: <CreateCollectionPage />, path: '/collections/new' },
         { element: <OrganizationsListPage />, path: '/me/orgs' },
         { element: <SettingsPage />, path: '/me/settings' },
+        { element: <UserPricingListPage />, path: '/me/pricings' },
+        { element: <UserCollectionsListPage />, path: '/me/collections' },
         { element: <CreateOrganizationPage />, path: '/orgs/new' },
         {
           path: '/orgs/join/:code',
@@ -193,14 +197,6 @@ export default function Router() {
       element: (
         <Suspense fallback={<LoadingView />}>
           <PricingAssistantPage />
-        </Suspense>
-      ),
-    },
-    {
-      path: '/harvey-play',
-      element: (
-        <Suspense fallback={<LoadingView />}>
-          <PricingAssistantPage playground />
         </Suspense>
       ),
     },

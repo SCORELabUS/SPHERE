@@ -52,7 +52,7 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
 
       createCollection(collectionToCreate, selectedOrg.id)
         .then(() => {
-          router.push('/pricings/collections');
+          router.push('/collections');
         })
         .catch(error => {
           // If API returned an Error with status 409, show duplicate alert and keep form
@@ -92,16 +92,16 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
   function handleBulkSuccess(data: { pricingsWithErrors?: Array<{ name: string; error: string }>} ) {
     if (data.pricingsWithErrors && data.pricingsWithErrors.length > 0) {
       customConfirm(`Some pricings could not be added to the collection due to errors: ${data.pricingsWithErrors.map((p: {name: string, error: string}) => p.name).join(' | ')}. Do you still want to save the collection and add them again manually?`, { danger: false }).then(() => {
-        router.push('/pricings/collections');
+        router.push('/collections');
       }).catch(() => {
         if (selectedOrg) {
           deleteCollection(selectedOrg.id, collectionName, true).then(() => {
-            router.push('/pricings/collections');
+            router.push('/collections');
           });
         }
       });
     } else {
-      router.push('/pricings/collections');
+      router.push('/collections');
     }
   }
 

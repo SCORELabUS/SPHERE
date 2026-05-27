@@ -6,16 +6,16 @@ const ROWS = 4;
 const COLS = 3;
 const PER_PAGE = ROWS * COLS;
 
-export default function PricingListPage() {
-  const { getPricings } = usePricingsApi();
+export default function UserPricingListPage() {
+  const { getPermissionBasedUserPricings } = usePricingsApi();
 
   return (
     <>
-      <Helmet><title>SPHERE - Public Pricings</title></Helmet>
+      <Helmet><title>SPHERE - My Pricings</title></Helmet>
       <PricingListView
-        fetchPricings={(filters) => getPricings(filters)}
-        title="Public Pricings"
-        subtitle="Browse all public pricing configurations in SPHERE."
+        fetchPricings={(filters) => getPermissionBasedUserPricings(filters)}
+        title="My Pricings"
+        subtitle="Pricing you have access to."
         perPage={PER_PAGE}
       />
     </>

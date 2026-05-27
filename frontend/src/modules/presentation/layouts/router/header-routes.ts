@@ -20,11 +20,6 @@ export const headerRoutes: HeaderRoute[] = [
         disabled: false,
         to: '/harvey',
       },
-      {
-        name: 'HARVEY (Playground)',
-        disabled: false,
-        to: '/harvey-play',
-      },
     ],
   },
   {
@@ -44,7 +39,7 @@ export const headerRoutes: HeaderRoute[] = [
       {
         name: 'Collections',
         disabled: false,
-        to: '/pricings/collections',
+        to: '/collections',
       },
     ],
   },
