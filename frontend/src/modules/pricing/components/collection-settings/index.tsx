@@ -10,15 +10,18 @@ import { transitionDefault } from '../../../core/utils/motion-variants';
 
 export interface CollectionPermissions {
   GET: boolean;
+  CREATE: boolean;
   PUT: boolean;
   DELETE: boolean;
 }
 
 export default function CollectionSettings({
+  organizationId,
   collection,
   permissions,
   onCollectionUpdated,
 }: {
+  organizationId: string;
   collection: Collection;
   permissions: CollectionPermissions;
   onCollectionUpdated: (collection: Collection) => void;
@@ -29,8 +32,6 @@ export default function CollectionSettings({
 
   const { updateCollection, deleteCollection } = usePricingCollectionsApi();
   const router = useRouter();
-
-  const organizationId = collection.organization.id;
 
   useEffect(() => {
     setVisibility(collection.private ? 'Private' : 'Public');
@@ -70,7 +71,7 @@ export default function CollectionSettings({
     customConfirm('Are you sure you want to change the visibility of this collection?', { danger: false })
       .then(() => {
         const collectionUpdateBody = { private: visibility === 'Public' };
-
+        console.log("organizationId:", organizationId);
         updateCollection(organizationId, collection.slug, collectionUpdateBody)
           .then((data: any) => {
             if (data.error) {

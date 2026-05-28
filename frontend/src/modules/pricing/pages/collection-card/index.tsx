@@ -39,7 +39,7 @@ const compactNum = new Intl.NumberFormat('en', { notation: 'compact', maximumFra
 const fmtY = (v: number) => { if (!Number.isFinite(v)) return ''; return Math.abs(v) >= 1000 ? compactNum.format(v) : String(v); };
 
 export default function CollectionCardPage() {
-  const { ownerId, collectionSlug } = useParams<{ ownerId: string; collectionSlug: string }>();
+  const { organizationId, collectionSlug } = useParams<{ organizationId: string; collectionSlug: string }>();
   const router = useRouter();
   const { getCollectionByOwnerAndName, downloadCollection, getCollectionPermissions } = usePricingCollectionsApi();
   const { getPricings } = usePricingsApi();
@@ -62,31 +62,31 @@ export default function CollectionCardPage() {
   const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
-    if (!ownerId || !collectionSlug) return;
+    if (!organizationId || !collectionSlug) return;
     setIsLoadingCollection(true);
-    getCollectionByOwnerAndName(ownerId, collectionSlug)
+    getCollectionByOwnerAndName(organizationId, collectionSlug)
       .then(data => setCollection(data))
       .catch(() => {})
       .finally(() => setIsLoadingCollection(false));
-  }, [ownerId, collectionSlug]);
+  }, [organizationId, collectionSlug]);
 
   // Track visit for recent items
   useEffect(() => {
-    if (!authUser.isAuthenticated || !ownerId || !collectionSlug) return;
+    if (!authUser.isAuthenticated || !organizationId || !collectionSlug) return;
     addRecentCollection({
-      id: `${ownerId}/${collectionSlug}`,
+      id: `${organizationId}/${collectionSlug}`,
       name: collectionSlug,
-      orgId: ownerId,
-      orgName: collection?.organization?.name ?? ownerId,
+      orgId: organizationId,
+      orgName: collection?.organization?.name ?? organizationId,
     });
-  }, [ownerId, collectionSlug, collection?.organization?.name, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [organizationId, collectionSlug, collection?.organization?.name, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!ownerId || !collectionSlug || !authUser?.isAuthenticated) return;
-    getCollectionPermissions(ownerId, collectionSlug)
+    if (!organizationId || !collectionSlug || !authUser?.isAuthenticated) return;
+    getCollectionPermissions(organizationId, collectionSlug)
       .then(data => setPermissions(data))
       .catch(() => {});
-  }, [ownerId, collectionSlug, authUser?.isAuthenticated]);
+  }, [organizationId, collectionSlug, authUser?.isAuthenticated]);
 
   const fetchPricings = useCallback(async () => {
     if (!collectionSlug) return;
@@ -117,9 +117,9 @@ export default function CollectionCardPage() {
   const d = collection?.data;
 
   const handleDownload = async () => {
-    if (!ownerId || !collectionSlug) return;
+    if (!organizationId || !collectionSlug) return;
     setIsDownloading(true);
-    try { await downloadCollection(ownerId, collectionSlug); } catch { /* download failed */ }
+    try { await downloadCollection(organizationId, collectionSlug); } catch { /* download failed */ }
     setIsDownloading(false);
   };
 
@@ -219,7 +219,7 @@ export default function CollectionCardPage() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
-              {isDownloading ? 'Downloading...' : 'Download ZIP'}
+              {isDownloading ? 'Downloading...' : 'Download'}
             </button>
           </div>
         </motion.div>
@@ -363,6 +363,7 @@ export default function CollectionCardPage() {
           {tab === 'settings' && collection && (
             <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
               <CollectionSettings
+                organizationId={organizationId ?? ""}
                 collection={collection}
                 permissions={permissions}
                 onCollectionUpdated={handleCollectionUpdated}

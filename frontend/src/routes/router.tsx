@@ -114,7 +114,7 @@ export default function Router() {
           ),
         },
         {
-          path: '/collections/:ownerId/:collectionSlug',
+          path: '/collections/:organizationId/:collectionSlug',
           element: (
             <Suspense fallback={<CollectionCardSkeleton />}>
               <CollectionCardPage />
