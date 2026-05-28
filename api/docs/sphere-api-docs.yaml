@@ -5949,6 +5949,15 @@ components:
       schema:
         $ref: '#/components/schemas/SortByPricings'
 
+    OrganizationIds:
+      name: organizationIds
+      in: query
+      required: false
+      description: Comma-separated list of organization IDs to filter pricings by (only pricings that belong to these organizations will be included in the results)
+      schema:
+        type: string
+        example: "68050bd09890322c57842f6f,68050bd09890322c57842f70"
+
     SortByCollections:
       name: sortBy
       in: query
