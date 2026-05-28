@@ -46,6 +46,7 @@ export interface OrganizationInvitation {
 }
 
 export interface OrgPricing {
+  id: string;
   name: string;
   version: string;
   createdAt: string;

@@ -21,6 +21,7 @@ import { randomSuffix } from './utils/helpers';
 import { createOrgScopedPermission, createMembership } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
+import { createEntityPermission } from './utils/permissions/permissionTestUtils';
 
 dotenv.config();
 
@@ -492,7 +493,7 @@ describe('Pricings API integration', () => {
       ]);
 
       const response = await request(app)
-        .get(`${BASE_PATH}/pricings/${organizationId}?includePricingsInCollection=true`)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
         .set('Authorization', `Bearer ${requester.token}`);
 
       expect(response.status).toBe(200);
@@ -503,27 +504,79 @@ describe('Pricings API integration', () => {
 
     it('Return 200 and filter pricings by collection with spaces in name', async () => {
       const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
 
       const pricingInCollection = await createPricingForOrganization({
         organizationId,
         isPrivate: false,
       });
 
-      const collection = await createTestCollectionWithPricings(
+      await createTestCollectionWithPricings(
         { _organizationId: organizationId, name: 'IEEE TSC 2025' },
         [pricingInCollection.serviceName]
       );
 
       const response = await request(app)
         .get(
-          `${BASE_PATH}/pricings?collection=${encodeURIComponent(collection.slug || 'ieee-tsc-2025')}`
+          `${BASE_PATH}/pricings/${organizationId}`
         )
-        .set('Authorization', `Bearer ${(await createAndLoginUser('USER')).user.token}`);
+        .set('Authorization', `Bearer ${member.token}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.pricings)).toBe(true);
       expect(response.body.pricings.length).toBe(1);
       expect(response.body.pricings[0].name).toBe(pricingInCollection.serviceName);
+    });
+    
+    it('Return 200 and list of pricings (including private) in public collection the user has access to', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicPricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const privatePricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: true,
+      });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'IEEE TSC 2025' },
+        [publicPricingInCollection.serviceName, privatePricingInCollection.serviceName]
+      );
+
+      await createEntityPermission(
+        member.id,
+        organizationId,
+        'pricing',
+        privatePricingInCollection.id,
+        {
+          GET: true,
+          CREATE: false,
+          PUT: false,
+          DELETE: false,
+        }
+      );
+
+      const response = await request(app)
+        .get(
+          `${BASE_PATH}/pricings/${organizationId}`
+        )
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(2);
+      response.body.pricings.forEach((pricing: any) => {
+        expect([
+          publicPricingInCollection.serviceName,
+          privatePricingInCollection.serviceName,
+        ]).toContain(pricing.name);
+      });
     });
   });
 
@@ -1190,7 +1243,9 @@ describe('Pricings API integration', () => {
       );
 
       const response = await request(app)
-        .get(`${BASE_PATH}/users/me/pricings?collection=${encodeURIComponent(collection.slug || '')}`)
+        .get(
+          `${BASE_PATH}/users/me/pricings?collection=${encodeURIComponent(collection.slug || '')}`
+        )
         .set('Authorization', `Bearer ${user.token}`);
 
       expect(response.status).toBe(200);
@@ -1212,12 +1267,18 @@ describe('Pricings API integration', () => {
 
       await createPricingForOrganization({ organizationId, isPrivate: true });
 
-      await createEntityScopedPermission(member.id, organizationId, accessiblePricing.id, 'pricing', {
-        GET: true,
-        PUT: false,
-        DELETE: false,
-        CREATE: false,
-      });
+      await createEntityScopedPermission(
+        member.id,
+        organizationId,
+        accessiblePricing.id,
+        'pricing',
+        {
+          GET: true,
+          PUT: false,
+          DELETE: false,
+          CREATE: false,
+        }
+      );
 
       const response = await request(app)
         .get(`${BASE_PATH}/users/me/pricings`)

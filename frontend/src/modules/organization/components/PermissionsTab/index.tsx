@@ -134,7 +134,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
       entityScopedPermissions.map(p => p.entityId)
     );
     const entities = entityTab === 'pricing'
-      ? pricings.map(p => ({ id: p.name, label: p.name, sub: p.collection?.name ?? 'No collection' }))
+      ? pricings.map(p => ({ id: p.id, label: p.name, sub: p.collection?.name ?? 'No collection' }))
       : collections.map(c => ({ id: c.id, label: c.name, sub: `${c.numberOfPricings} pricings` }));
     return entities.filter(e => !existingEntityIds.has(e.id)).filter(e => {
       if (!addSearch.trim()) return true;
@@ -500,7 +500,8 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
               {availableEntities.length === 0 && (
                 <div className="py-6 text-center text-xs text-tp-steel">No {entityTab}s available.</div>
               )}
-              {availableEntities.map(entity => (
+              {availableEntities.map(entity => {
+                return (
                 <button
                   key={entity.id}
                   type="button"
@@ -521,7 +522,8 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                   </div>
                   <Iconify icon="mdi:plus" width={16} className="shrink-0 text-tp-muted" />
                 </button>
-              ))}
+              )
+              })}
             </div>
 
             <div className="mt-4">
