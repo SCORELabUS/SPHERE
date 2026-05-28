@@ -252,7 +252,6 @@ export function useOrganizationsApi() {
 
   const getOrgPricings = useCallback(async (orgId: string, filters?: Record<string, string>): Promise<{ pricings: OrgPricing[]; total: number }> => {
     const params = new URLSearchParams();
-    params.set('includePricingsInCollection', 'true');
     if (filters) {
       Object.entries(filters).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') params.set(k, v);

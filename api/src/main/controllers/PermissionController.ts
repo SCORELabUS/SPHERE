@@ -11,8 +11,6 @@ class PermissionController {
     this.getOrgPermissions = this.getOrgPermissions.bind(this);
     this.setPermission = this.setPermission.bind(this);
     this.removePermission = this.removePermission.bind(this);
-    this.getUserPricings = this.getUserPricings.bind(this);
-    this.getUserCollections = this.getUserCollections.bind(this);
     this.getPricingPermissions = this.getPricingPermissions.bind(this);
     this.getCollectionPermissions = this.getCollectionPermissions.bind(this);
   }
@@ -67,52 +65,6 @@ class PermissionController {
     }
   }
 
-  async getUserPricings(req: any, res: any) {
-    try {
-      const targetUserId = req.params.userId === 'me' ? req.user.id : req.params.userId;
-
-      if (req.params.userId !== 'me' && req.user.role !== 'ADMIN') {
-        return res.status(403).json({
-          error: 'PERMISSION ERROR: Only ADMIN users can query other users\' permissions',
-        });
-      }
-
-      const queryParams = this._transformPricingQueryParams(req.query);
-      const result = await this.permissionService.getUserAccessiblePricings(
-        targetUserId,
-        queryParams,
-        req.user
-      );
-      res.json(result);
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
-
-  async getUserCollections(req: any, res: any) {
-    try {
-      const targetUserId = req.params.userId === 'me' ? req.user.id : req.params.userId;
-
-      if (req.params.userId !== 'me' && req.user.role !== 'ADMIN') {
-        return res.status(403).json({
-          error: 'PERMISSION ERROR: Only ADMIN users can query other users\' permissions',
-        });
-      }
-
-      const queryParams = this._transformCollectionQueryParams(req.query);
-      const result = await this.permissionService.getUserAccessibleCollections(
-        targetUserId,
-        queryParams,
-        req.user
-      );
-      res.json(result);
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
-
   async getPricingPermissions(req: any, res: any) {
     try {
       const result = await this.permissionService.getPricingPermissions(
@@ -141,33 +93,6 @@ class PermissionController {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }
-  }
-
-  _transformPricingQueryParams(query: Record<string, string>) {
-    return {
-      name: query.name as string,
-      sortBy: query.sortBy as any,
-      sort: query.sort === 'asc' ? 'asc' as const : 'desc' as const,
-      selectedOrganizations: query.selectedOrganizations
-        ? (query.selectedOrganizations as string).split(',')
-        : undefined,
-      limit: parseInt(query.limit) || 10,
-      offset: parseInt(query.offset) || 0,
-      includePricingsInCollection: true,
-    };
-  }
-
-  _transformCollectionQueryParams(query: Record<string, string>) {
-    return {
-      name: query.name as string,
-      sortBy: query.sortBy as string,
-      sort: query.sort ?? 'asc',
-      organizationIds: query.organizationIds
-        ? query.organizationIds.split(',')
-        : undefined,
-      limit: query.limit || '10',
-      offset: query.offset || '0',
-    };
   }
 }
 

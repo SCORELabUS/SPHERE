@@ -352,7 +352,6 @@ const BASE_URL = import.meta.env.VITE_API_URL;
 
 export async function getPublicOrgPricings(orgId: string, filters?: Record<string, string>): Promise<{ pricings: any[]; total: number }> {
   const params = new URLSearchParams();
-  params.set('includePricingsInCollection', 'true');
   if (filters) {
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') params.set(k, v);
