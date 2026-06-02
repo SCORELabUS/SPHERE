@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useOrganizationsApi } from '../../api/organizationsApi';
 import { useRouter } from '../../../core/hooks/useRouter';
+import { useOrganization } from '../../hooks/useOrganization';
 import customAlert from '../../../core/utils/custom-alert';
 import OrgAvatar from '../../../core/components/org-avatar';
 
@@ -20,6 +21,7 @@ export default function CreateOrganizationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { createOrganization } = useOrganizationsApi();
+  const { refresh } = useOrganization();
   const router = useRouter();
 
   const slug = generateSlug(orgName);
@@ -28,7 +30,10 @@ export default function CreateOrganizationPage() {
     e.preventDefault();
     setIsSubmitting(true);
     createOrganization({ name: slug, displayName: orgName.trim(), description: description || undefined })
-      .then((org) => router.push(`/me/orgs/${org.id}`))
+      .then(() => {
+        refresh();
+        router.push('/me/orgs');
+      })
       .catch((err: Error) => {
         customAlert(err.message, 'error');
         setIsSubmitting(false);

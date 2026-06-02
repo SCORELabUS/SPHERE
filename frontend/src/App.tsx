@@ -9,13 +9,14 @@ import { useOrganizationManager } from './modules/organization/hooks/useOrganiza
 import { NotificationsProvider } from './modules/notification/contexts/notificationsContext';
 import { useNotificationsSSE } from './modules/notification/hooks/useNotificationsSSE';
 import { ToastProvider } from './modules/core/contexts/toastContext';
+import { useToast } from './modules/core/contexts/useToast';
 
 function OrganizationProvider({ children }: { children: React.ReactNode }) {
-  const { organizations, isLoading, page, totalPages, setPage } = useOrganizationManager();
+  const { organizations, isLoading, page, totalPages, setPage, refresh } = useOrganizationManager();
 
   return (
     <OrganizationContext.Provider
-      value={{ organizations, isLoading, page, totalPages, setPage }}
+      value={{ organizations, isLoading, page, totalPages, setPage, refresh }}
     >
       {children}
     </OrganizationContext.Provider>
@@ -23,7 +24,8 @@ function OrganizationProvider({ children }: { children: React.ReactNode }) {
 }
 
 function NotificationsSSEProvider({ children }: { children: React.ReactNode }) {
-  useNotificationsSSE();
+  const { addToast } = useToast();
+  useNotificationsSSE(addToast);
   return <>{children}</>;
 }
 

@@ -314,6 +314,126 @@ describe('Organizations API integration', () => {
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();
     });
+
+    it('returns 201 when creating two orgs with same displayName but different parentId', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parentA = await createTestOrganization(owner.token, { displayName: 'Parent A' });
+      const parentB = await createTestOrganization(owner.token, { displayName: 'Parent B' });
+
+      const slugA = `same_display_${randomSuffix()}`;
+      const slugB = `same_display_${randomSuffix()}`;
+
+      const responseA = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: slugA,
+          displayName: 'Same Display Name',
+          _parentId: parentA.id,
+        });
+
+      const responseB = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: slugB,
+          displayName: 'Same Display Name',
+          _parentId: parentB.id,
+        });
+
+      expect(responseA.status).toBe(201);
+      expect(responseB.status).toBe(201);
+      expect(responseA.body.displayName).toBe('Same Display Name');
+      expect(responseB.body.displayName).toBe('Same Display Name');
+      expect(responseA.body.name).not.toBe(responseB.body.name);
+    });
+
+    it('returns 201 and deduplicates slug when same name is used under same parent', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token, { displayName: 'Shared Parent' });
+      const baseSlug = `dedup_slug_${randomSuffix()}`;
+
+      const responseA = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: baseSlug,
+          displayName: 'Org One',
+          _parentId: parent.id,
+        });
+
+      const responseB = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: baseSlug,
+          displayName: 'Org Two',
+          _parentId: parent.id,
+        });
+
+      expect(responseA.status).toBe(201);
+      expect(responseB.status).toBe(201);
+      expect(responseA.body.name).toBe(baseSlug);
+      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{10}$`));
+      expect(responseA.body.displayName).toBe('Org One');
+      expect(responseB.body.displayName).toBe('Org Two');
+    });
+
+    it('returns 201 and deduplicates slug when same name is used at root level', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const baseSlug = `root_dup_${randomSuffix()}`;
+
+      const responseA = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: baseSlug,
+          displayName: 'Root Org One',
+        });
+
+      const responseB = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: baseSlug,
+          displayName: 'Root Org Two',
+        });
+
+      expect(responseA.status).toBe(201);
+      expect(responseB.status).toBe(201);
+      expect(responseA.body.name).toBe(baseSlug);
+      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{10}$`));
+    });
+
+    it('returns 201 and deduplicates slug when same name is used under different parents', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parentA = await createTestOrganization(owner.token, { displayName: 'Parent A' });
+      const parentB = await createTestOrganization(owner.token, { displayName: 'Parent B' });
+      const sharedSlug = `shared_slug_${randomSuffix()}`;
+
+      const responseA = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: sharedSlug,
+          displayName: 'Org Under A',
+          _parentId: parentA.id,
+        });
+
+      const responseB = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          name: sharedSlug,
+          displayName: 'Org Under B',
+          _parentId: parentB.id,
+        });
+
+      expect(responseA.status).toBe(201);
+      expect(responseB.status).toBe(201);
+      expect(responseA.body.name).toBe(sharedSlug);
+      expect(responseB.body.name).toMatch(new RegExp(`^${sharedSlug}-\\d{10}$`));
+    });
   });
 
   // =========================================================================

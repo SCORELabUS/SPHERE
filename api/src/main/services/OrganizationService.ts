@@ -79,6 +79,10 @@ class OrganizationService {
       data.ancestors = [...(parent.ancestors ?? []), parent.id ?? parent._id?.toString()];
     }
 
+    if (data.name && !data.isPersonal) {
+      data.name = await this.deduplicateSlug(data.name);
+    }
+
     const organization: any = await this.organizationRepository.create(data);
     const orgId = organization.id ?? organization._id?.toString();
 
@@ -94,6 +98,15 @@ class OrganizationService {
     }
 
     return organization;
+  }
+
+  private async deduplicateSlug(baseSlug: string): Promise<string> {
+    let slug = baseSlug;
+    while (await this.organizationRepository.findExistingSlug(slug)) {
+      const suffix = crypto.randomBytes(5).readUInt32BE(0).toString().slice(0, 10);
+      slug = `${baseSlug}-${suffix}`;
+    }
+    return slug;
   }
 
   private async propagateMembershipsToChild(parentId: string, childId: string) {

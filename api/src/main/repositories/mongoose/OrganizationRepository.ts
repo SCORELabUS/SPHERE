@@ -45,14 +45,8 @@ class OrganizationRepository extends RepositoryBase {
     return result?.deletedCount === 1;
   }
 
-  async findExistingSlug(name: string, parentId: string | null): Promise<boolean> {
-    const filter: any = { name };
-    if (parentId) {
-      filter._parentId = new mongoose.Types.ObjectId(parentId);
-    } else {
-      filter._parentId = null;
-    }
-    const existing = await OrganizationMongoose.findOne(filter).collation({ locale: 'en', strength: 2 }).lean();
+  async findExistingSlug(name: string): Promise<boolean> {
+    const existing = await OrganizationMongoose.findOne({ name }).collation({ locale: 'en', strength: 2 }).lean();
     return existing !== null;
   }
 

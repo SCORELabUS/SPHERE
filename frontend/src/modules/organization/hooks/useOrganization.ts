@@ -14,6 +14,7 @@ export const useOrganizationManager = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { authUser } = useAuth();
   const { getMyOrganizations } = useOrganizationsApi();
   const getMyOrganizationsRef = useRef(getMyOrganizations);
@@ -45,11 +46,15 @@ export const useOrganizationManager = () => {
         setTotalPages(1);
       })
       .finally(() => setIsLoading(false));
-  }, [authUser.isAuthenticated, authUser.isLoading, page]);
+  }, [authUser.isAuthenticated, authUser.isLoading, page, refreshKey]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
   }, []);
 
-  return { organizations, isLoading, page, totalPages, setPage: handlePageChange };
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  return { organizations, isLoading, page, totalPages, setPage: handlePageChange, refresh };
 };
