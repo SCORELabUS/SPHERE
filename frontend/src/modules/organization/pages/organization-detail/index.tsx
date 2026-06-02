@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Iconify from '../../../core/components/iconify';
 import { FaFileInvoiceDollar } from 'react-icons/fa';
 import { useRouter } from '../../../core/hooks/useRouter';
+import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import customConfirm from '../../../core/utils/custom-confirm';
 import customAlert from '../../../core/utils/custom-alert';
@@ -40,6 +41,7 @@ export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
   const { authUser } = useAuth();
   const router = useRouter();
+  const { addRecentOrganization } = useRecentItems();
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
@@ -450,6 +452,17 @@ export default function OrganizationDetailPage() {
     if (activeTab === 'collections' && org)
       fetchCollections(collectionPage, debouncedCollectionSearch);
   }, [activeTab, org, collectionPage, debouncedCollectionSearch]);
+
+  // Track visit for recent organizations
+  useEffect(() => {
+    if (!authUser.isAuthenticated || !org) return;
+    addRecentOrganization({
+      id: org.id,
+      name: org.displayName || org.name,
+      orgId: org.id,
+      orgName: org.displayName || org.name,
+    });
+  }, [org?.id, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Tree toggle ─── */
   const handleTreeToggle = useCallback((id: string) => {

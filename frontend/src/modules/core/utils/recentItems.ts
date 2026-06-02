@@ -9,6 +9,7 @@ export interface RecentItem {
 const STORAGE_KEYS = {
   pricings: 'sphere:recentPricings',
   collections: 'sphere:recentCollections',
+  organizations: 'sphere:recentOrganizations',
 } as const;
 
 const MAX_ITEMS = 20;
@@ -52,4 +53,12 @@ export function getRecentPricings(): RecentItem[] {
 
 export function getRecentCollections(): RecentItem[] {
   return readList(STORAGE_KEYS.collections);
+}
+
+export function addRecentOrganization(item: Omit<RecentItem, 'visitedAt'>): void {
+  addRecent(STORAGE_KEYS.organizations, item);
+}
+
+export function getRecentOrganizations(): RecentItem[] {
+  return readList(STORAGE_KEYS.organizations);
 }

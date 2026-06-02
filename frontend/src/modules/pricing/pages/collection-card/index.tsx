@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import Skeleton from 'react-loading-skeleton';
 import { usePricingCollectionsApi } from '../../../profile/api/pricingCollectionsApi';
 import { usePricingsApi } from '../../api/pricingsApi';
+import { getPublicOrganization } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import PricingCard from '../../components/pricing-card';
@@ -52,6 +53,7 @@ export default function CollectionCardPage() {
   const [sortAsc, setSortAsc] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [permissions, setPermissions] = useState<CollectionPermissions>({ GET: true, PUT: false, DELETE: false });
+  const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
 
   const [pricings, setPricings] = useState<PricingEntry[]>([]);
   const [pricingsTotal, setPricingsTotal] = useState(0);
@@ -69,6 +71,13 @@ export default function CollectionCardPage() {
       .catch(() => {})
       .finally(() => setIsLoadingCollection(false));
   }, [organizationId, collectionSlug]);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    getPublicOrganization(organizationId)
+      .then(org => setOrgDisplayName(org.displayName || org.name))
+      .catch(() => setOrgDisplayName(null));
+  }, [organizationId]);
 
   // Track visit for recent items
   useEffect(() => {
@@ -200,7 +209,9 @@ export default function CollectionCardPage() {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault} className="mb-6">
           <div className="mb-2 flex items-center gap-2 text-xs text-tp-steel">
-            <button type="button" onClick={() => router.push('/collections')} className="cursor-pointer hover:text-tp-ink">Collections</button>
+            <button type="button" onClick={() => router.push(`/orgs/${organizationId}`)} className="cursor-pointer hover:text-tp-ink">
+              {orgDisplayName || 'Organization'}
+            </button>
             <span>/</span>
             <span className="text-tp-ink">{collection?.name || collectionSlug}</span>
           </div>

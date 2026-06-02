@@ -8,6 +8,7 @@ import { useRouter } from '../../../core/hooks/useRouter';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import PricingCard from '../../../pricing/components/pricing-card';
 import CollectionCard from '../../../pricing/components/collection-card';
+import OrganizationCard from '../../../organization/components/organization-card';
 import { staggerContainer, fadeInUp, transitionDefault } from '../../../core/utils/motion-variants';
 import DashboardSkeleton from '../../../core/components/skeletons/dashboard-skeleton';
 
@@ -41,7 +42,7 @@ export default function DashboardPage() {
   const { getPermissionBasedUserPricings } = usePricingsApi();
   const { getPermissionBasedUserCollections } = usePricingCollectionsApi();
   const router = useRouter();
-  const { recentPricings, recentCollections } = useRecentItems();
+  const { recentPricings, recentCollections, recentOrganizations } = useRecentItems();
 
   const [accessiblePricings, setAccessiblePricings] = useState<PricingEntry[]>([]);
   const [accessibleCollections, setAccessibleCollections] = useState<CollectionEntry[]>([]);
@@ -85,6 +86,24 @@ export default function DashboardPage() {
         return { ...collection, visitedAt: item.visitedAt };
       });
   }, [recentCollections, accessibleCollections]);
+
+  const recentOrganizationsData = useMemo(() => {
+    const orgMap = new Map<string, { id: string; name: string; displayName: string; avatar: string | null; avatarBgColor?: string; avatarFgColor?: string; isPersonal: boolean }>();
+    const flatten = (orgs: typeof organizations) => {
+      for (const org of orgs) {
+        orgMap.set(org.id, org);
+        if (org.subOrganizations) flatten(org.subOrganizations);
+      }
+    };
+    flatten(organizations);
+    return recentOrganizations
+      .filter(item => orgMap.has(item.id))
+      .slice(0, RECENT_LIMIT)
+      .map(item => {
+        const org = orgMap.get(item.id)!;
+        return { ...org, visitedAt: item.visitedAt };
+      });
+  }, [recentOrganizations, organizations]);
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -220,7 +239,7 @@ export default function DashboardPage() {
             transition={{ ...transitionDefault, delay: 0.1 }}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-tp-ink">Your Organizations</h2>
+              <h2 className="text-sm font-medium text-tp-ink">Recent Organizations</h2>
               <button
                 type="button"
                 onClick={() => router.push('/me/orgs')}
@@ -230,36 +249,21 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {organizations.length === 0 ? (
+            {recentOrganizationsData.length === 0 ? (
               <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 text-center">
-                <p className="text-sm text-tp-steel">No organizations yet</p>
+                <p className="text-sm text-tp-steel">No recent organizations yet</p>
                 <button
                   type="button"
-                  onClick={() => router.push('/orgs/new')}
+                  onClick={() => router.push('/me/orgs')}
                   className="mt-2 cursor-pointer text-sm font-medium text-tp-primary hover:underline"
                 >
-                  Create your first organization
+                  Browse organizations
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {organizations.slice(0, 4).map(org => (
-                  <button
-                    key={org.id}
-                    type="button"
-                    onClick={() => router.push(`/orgs/${org.id}`)}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 text-left transition-all hover:border-tp-hairline-strong hover:shadow-elevation-1"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tp-cream text-sm font-bold text-tp-primary">
-                      {org.name?.[0]?.toUpperCase() ?? 'O'}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-tp-ink">{org.displayName || org.name}</p>
-                      <p className="text-[11px] text-tp-steel">
-                        {org.isPersonal ? 'Personal' : 'Team'}
-                      </p>
-                    </div>
-                  </button>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {recentOrganizationsData.map(org => (
+                  <OrganizationCard key={org.id} org={org} />
                 ))}
               </div>
             )}
