@@ -17,6 +17,7 @@ import customConfirm from '../../../core/utils/custom-confirm';
 import customAlert from '../../../core/utils/custom-alert';
 import Iconify from '../../../core/components/iconify';
 import DatePicker from '../../../core/components/date-picker';
+import FileUpload from '../../../core/components/file-upload-input';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { EntityPermissions } from '../../../organization/types/permissions';
@@ -124,7 +125,7 @@ export default function CardPage() {
   const [searchParams] = useSearchParams();
   const collectionSlug = searchParams.get('collectionSlug');
   const router = useRouter();
-  const { getPricingByName, removePricingVersion, removePricingByName, updatePricing } = usePricingsApi();
+  const { getPricingByName, removePricingVersion, removePricingByName, updatePricing, createPricing } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
@@ -146,6 +147,7 @@ export default function CardPage() {
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
   const [visibility, setVisibility] = useState('Public');
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Fetch org display name
   useEffect(() => {
@@ -355,6 +357,62 @@ export default function CardPage() {
       .catch(() => {});
   };
 
+  const handleImportVersion = async (file: File) => {
+    if (!name || !organizationId) return;
+
+    try {
+      const text = await file.text();
+      let uploadedPricing: Pricing;
+      try {
+        uploadedPricing = retrievePricingFromYaml(text);
+      } catch {
+        customAlert('The uploaded file is not a valid Pricing2Yaml file.', 'error');
+        return;
+      }
+
+      if (uploadedPricing.saasName !== name) {
+        try {
+          await customConfirm(
+            `The pricing name in the file ("${uploadedPricing.saasName}") does not match the current pricing ("${name}"). The name will be overridden to "${name}". Do you want to continue?`,
+            { danger: false }
+          );
+        } catch {
+          return;
+        }
+      }
+
+      const versionExists = versions.some(v => v.version === uploadedPricing.version);
+      if (versionExists) {
+        customAlert(`Version "${uploadedPricing.version}" already exists. Please upload a file with a different version.`, 'error');
+        return;
+      }
+
+      const newYamlText = text.replace(
+        /^saasName:\s*["']?[^"'\n]+["']?\s*$/m,
+        `saasName: ${name}`
+      );
+      const modifiedFile = new File([newYamlText], file.name, { type: file.type });
+
+      const formData = new FormData();
+      formData.append('yaml', modifiedFile);
+      formData.append('private', 'false');
+
+      await createPricing(formData, organizationId);
+      customAlert('New version added successfully', 'success');
+      setShowImportModal(false);
+
+      getPricingByName(name, organizationId, collectionSlug).then(async (data) => {
+        const vers = (data.versions ?? []) as VersionData[];
+        setVersions(vers);
+        if (vers.length > 0) {
+          setCurrentVersion(vers[0]);
+        }
+      });
+    } catch (err) {
+      customAlert(`Error adding version: ${(err as Error).message}`, 'error');
+    }
+  };
+
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
 
   if (isLoading) return <PricingCardSkeleton />;
@@ -385,6 +443,16 @@ export default function CardPage() {
                   className="h-8 cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-2 text-xs text-tp-ink focus:border-tp-primary focus:outline-none">
                   {versions.map(v => <option key={v.id} value={v.id}>{v.version}</option>)}
                 </select>
+              )}
+              {entityPermissions?.CREATE && (
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(true)}
+                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-xs text-tp-ink transition-colors hover:bg-tp-surface focus:border-tp-primary focus:outline-none"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  New Version
+                </button>
               )}
             </div>
           </div>
@@ -581,6 +649,42 @@ export default function CardPage() {
           </div>
         </div>
       )}
+
+      {/* ═══ IMPORT VERSION MODAL ═══ */}
+      <AnimatePresence>
+        {showImportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-tp-ink/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setShowImportModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="w-full max-w-[28rem] rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-4"
+              onClick={e => e.stopPropagation()}
+            >
+              <h2 className="mb-2 text-center font-display text-lg font-semibold text-tp-ink">Add new pricing version</h2>
+              <p className="mb-4 text-center text-sm text-tp-steel">
+                Upload a Pricing2Yaml file. The pricing name will be set to <span className="font-medium text-tp-ink">{name}</span>.
+              </p>
+              <FileUpload
+                onSubmit={handleImportVersion}
+                submitButtonText="Upload Version"
+                isDragActiveText="Drop the Pricing2Yaml file here"
+                isNotDragActiveText="Drag and drop a Pricing2Yaml file here"
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
