@@ -398,11 +398,25 @@ export default function CardPage() {
         return;
       }
 
-      const formData = new FormData();
+      if (uploadedPricing.saasName !== name){
+        customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${name}". Do you want to proceed?`, { danger: true })
+          .then(() => {
+            _createPricingVersion(file, organizationId, name, uploadedPricing.version);
+          })
+      }else{
+        _createPricingVersion(file, organizationId, name, uploadedPricing.version);
+      }
+    } catch (err) {
+      customAlert(`Error adding version: ${(err as Error).message}`, 'error');
+    }
+  };
+
+  async function _createPricingVersion(file: File, organizationId: string, name: string, version: string) {
+    const formData = new FormData();
       formData.append('yaml', file);
       formData.append('private', 'false');
 
-      await createPricingVersion(formData, organizationId, name, uploadedPricing.version);
+      await createPricingVersion(formData, organizationId, name, version);
       customAlert('New version added successfully', 'success');
       setShowImportModal(false);
 
@@ -413,10 +427,7 @@ export default function CardPage() {
           setCurrentVersion(vers[0]);
         }
       });
-    } catch (err) {
-      customAlert(`Error adding version: ${(err as Error).message}`, 'error');
-    }
-  };
+  }
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
   const isPrivateNoAccess = !entityPermissions?.GET && currentVersion?.private;
