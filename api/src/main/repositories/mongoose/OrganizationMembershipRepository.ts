@@ -61,6 +61,23 @@ class OrganizationMembershipRepository extends RepositoryBase {
 
   async findOrganizationsByUserId(userId: string, options: OrganizationIndexByUserOptions) {
     try {
+      if (options.treeFormat) {
+        const flatPipeline = getUserOrganizationsByUserAggregator(userId, { ...options, treeFormat: false, pagination: undefined });
+        const flatOrgs = await OrganizationMembershipMongoose.aggregate(flatPipeline);
+        const tree = this.buildOrgTree(flatOrgs);
+
+        if (options.pagination && (typeof options.pagination.limit !== 'undefined' || typeof options.pagination.offset !== 'undefined')) {
+          const offset = options.pagination.offset ?? 0;
+          const limit = options.pagination.limit ?? 10;
+          return {
+            items: tree.slice(offset, offset + limit),
+            total: tree.length,
+          };
+        }
+
+        return { items: tree, total: tree.length };
+      }
+
       const pipeline = getUserOrganizationsByUserAggregator(userId, options);
       const result = await OrganizationMembershipMongoose.aggregate(pipeline);
 
@@ -77,6 +94,36 @@ class OrganizationMembershipRepository extends RepositoryBase {
       console.log(error);
       return { items: [], total: 0 };
     }
+  }
+
+  private buildOrgTree(flatOrgs: any[]): any[] {
+    const map = new Map<string, any>();
+    const roots: any[] = [];
+
+    for (const org of flatOrgs) {
+      map.set(org.id, { ...org, subOrganizations: [] });
+    }
+
+    for (const org of flatOrgs) {
+      const node = map.get(org.id)!;
+      if (org._parentId && map.has(org._parentId)) {
+        map.get(org._parentId)!.subOrganizations.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    const sortNodes = (nodes: any[]): any[] => {
+      nodes.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+      for (const node of nodes) {
+        if (node.subOrganizations?.length) {
+          sortNodes(node.subOrganizations);
+        }
+      }
+      return nodes;
+    };
+
+    return sortNodes(roots);
   }
 
   async findByOrganizationId(organizationId: string) {

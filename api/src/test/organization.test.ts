@@ -3187,6 +3187,49 @@ describe('Organizations API integration', () => {
       expect(nestedChild1.role).toBe('MEMBER');
     });
 
+    it('nests deeply (3+ levels) sub-organizations recursively', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const grandparent = await createTestOrganization(owner.token, { name: `gp_${randomSuffix()}` });
+
+      const parentResp = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `pa_${randomSuffix()}`, displayName: 'Parent', _parentId: grandparent.id });
+      expect(parentResp.status).toBe(201);
+
+      const childResp = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `ch_${randomSuffix()}`, displayName: 'Child', _parentId: parentResp.body.id });
+      expect(childResp.status).toBe(201);
+
+      const grandchildResp = await request(app)
+        .post(`${BASE_PATH}/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `gc_${randomSuffix()}`, displayName: 'Grandchild', _parentId: childResp.body.id });
+      expect(grandchildResp.status).toBe(201);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/orgs`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      const gp = response.body.find((o: any) => o.id === grandparent.id);
+      expect(gp).toBeDefined();
+      expect(gp.subOrganizations.length).toBe(1);
+      expect(gp.subOrganizations[0].id).toBe(parentResp.body.id);
+
+      const pa = gp.subOrganizations[0];
+      expect(pa.subOrganizations.length).toBe(1);
+      expect(pa.subOrganizations[0].id).toBe(childResp.body.id);
+
+      const ch = pa.subOrganizations[0];
+      expect(ch.subOrganizations.length).toBe(1);
+      expect(ch.subOrganizations[0].id).toBe(grandchildResp.body.id);
+
+      expect(ch.subOrganizations[0].subOrganizations).toEqual([]);
+    });
+
     it('does not leak internal pipeline fields in response', async () => {
       const { user: owner } = await createAndLoginUser('USER');
       const parentOrg = await createTestOrganization(owner.token, { name: `cleanparent_${randomSuffix()}` });
