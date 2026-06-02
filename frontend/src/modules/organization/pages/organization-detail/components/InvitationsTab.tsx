@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Iconify from '../../../../core/components/iconify';
 import { transitionDefault } from '../../../../core/utils/motion-variants';
@@ -14,7 +15,16 @@ interface Props {
 }
 
 export default function InvitationsTab({ orgId, invitations, canManage, onRefresh, onOpenInvite }: Props) {
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const { revokeInvitation } = useOrganizationsApi();
+
+  const handleCopy = (code: string) => {
+    const joinUrl = `${window.location.origin}/orgs/join/${code}`;
+    navigator.clipboard.writeText(joinUrl).then(() => {
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 2000);
+    });
+  };
 
   return (
     <motion.div
@@ -68,17 +78,27 @@ export default function InvitationsTab({ orgId, invitations, canManage, onRefres
                   {isActive ? 'Active' : 'Expired'}
                 </span>
                 {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      customConfirm('Revoke this invitation?', { danger: true })
-                        .then(() => revokeInvitation(orgId, inv.id).then(() => onRefresh()).catch((err: Error) => customAlert(err.message, 'error')))
-                        .catch(() => {});
-                    }}
-                    className="cursor-pointer text-tp-hairline-strong transition-colors hover:text-red-500"
-                  >
-                    <Iconify icon="mdi:trash-can-outline" width={16} />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(inv.code)}
+                      title="Copy invite link"
+                      className="cursor-pointer text-tp-hairline-strong transition-colors hover:text-tp-primary"
+                    >
+                      <Iconify icon={copiedCode === inv.code ? 'mdi:check' : 'mdi:content-copy'} width={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        customConfirm('Revoke this invitation?', { danger: true })
+                          .then(() => revokeInvitation(orgId, inv.id).then(() => onRefresh()).catch((err: Error) => customAlert(err.message, 'error')))
+                          .catch(() => {});
+                      }}
+                      className="cursor-pointer text-tp-hairline-strong transition-colors hover:text-red-500"
+                    >
+                      <Iconify icon="mdi:trash-can-outline" width={16} />
+                    </button>
+                  </>
                 )}
               </div>
             );

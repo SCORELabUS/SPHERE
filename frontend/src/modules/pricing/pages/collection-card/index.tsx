@@ -17,6 +17,7 @@ import DatePicker from '../../../core/components/date-picker';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Collection } from '../../types/collection';
 import CollectionCardSkeleton from '../../../core/components/skeletons/collection-card-skeleton';
+import PrivateAccessFallback from '../../components/private-access-fallback';
 
 type Tab = 'pricings' | 'analytics' | 'settings';
 
@@ -190,6 +191,7 @@ export default function CollectionCardPage() {
   }, [pricings]);
 
   const showSettingsTab = permissions.PUT || permissions.DELETE;
+  const isPrivateNoAccess = !permissions.GET && collection?.private;
 
   const availableTabs: [Tab, string][] = [
     ['pricings', 'Pricings'],
@@ -264,6 +266,8 @@ export default function CollectionCardPage() {
           {/* PRICINGS TAB */}
           {tab === 'pricings' && (
             <motion.div key="pricings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback entityLabel="collection" /> : (
+              <>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-medium text-tp-ink">
                   {isLoadingPricings ? 'Loading...' : `${pricingsTotal} ${pricingsTotal === 1 ? 'pricing' : 'pricings'} in collection`}
@@ -303,12 +307,16 @@ export default function CollectionCardPage() {
               <div className="mt-6">
                 <Pagination currentPage={pricingsPage} totalPages={pricingsTotalPages} onPageChange={setPricingsPage} />
               </div>
+              </>
+              )}
             </motion.div>
           )}
 
           {/* ANALYTICS TAB */}
           {tab === 'analytics' && (
             <motion.div key="analytics" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback entityLabel="collection" /> : (
+              <>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-medium text-tp-ink">Analytics</h3>
                 <DatePicker dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} />
@@ -366,6 +374,8 @@ export default function CollectionCardPage() {
                 <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
                   <p className="text-sm text-tp-steel">No analytics data available for this collection.</p>
                 </div>
+              )}
+              </>
               )}
             </motion.div>
           )}

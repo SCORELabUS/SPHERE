@@ -235,7 +235,7 @@ async function checkEntityPermissions(
       user.role === 'ADMIN'
     );
 
-    const result = permissionEngine.evaluate({
+    const orgResult = permissionEngine.evaluate({
       userId: user.id,
       organizationId,
       entityType,
@@ -245,8 +245,34 @@ async function checkEntityPermissions(
       orgPermissions: batchCtx.orgPermissions.get(entityType),
     });
 
-    if (!result.allowed) {
-      return result.reason || `PERMISSION ERROR: You do not have CREATE permission for ${entityType} in this organization`;
+    // For POST /pricings/:orgId/:pricingName/:pricingVersion (4+ segments),
+    // also check entity-level CREATE permission on the existing pricing
+    if (segments.length >= 4 && entityType === 'pricing') {
+      const pricingRepo = container.resolve('pricingRepository');
+      const pricingEntityName = segments[2]; // the pricingName from the URL
+      const pricing = await pricingRepo.findOne(pricingEntityName, organizationId, { includePrivate: true });
+      if (pricing && pricing.versions && pricing.versions.length > 0) {
+        const entityId = pricing.versions[0]._id?.toString() ?? pricing.versions[0].id;
+        const entityResult = permissionEngine.evaluate({
+          userId: user.id,
+          organizationId,
+          entityType,
+          entityId,
+          action: 'CREATE',
+          isPrivate: pricing.private === true,
+          userOrgRole: user.orgRole,
+          isGlobalAdmin: user.role === 'ADMIN',
+          entityPermissions: batchCtx.entityPermissions.get(`${entityType}:${entityId}`),
+        });
+        // If entity-level CREATE is allowed, permit the request even if org-level failed
+        if (entityResult.allowed) {
+          return null;
+        }
+      }
+    }
+
+    if (!orgResult.allowed) {
+      return orgResult.reason || `PERMISSION ERROR: You do not have CREATE permission for ${entityType} in this organization`;
     }
 
     return null;

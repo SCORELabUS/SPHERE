@@ -192,6 +192,25 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, token]);
 
+  const createPricingVersion = useCallback(async (formData: FormData, organizationId: string, pricingName: string, pricingVersion: string) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}/${pricingVersion}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+      .then(async response => {
+        const parsedResponse = await response.json();
+
+        if (!response.ok) {
+          throw new Error(parsedResponse.error);
+        }
+
+        return parsedResponse;
+      });
+  }, [fetchWithInterceptor, token]);
+
   const addPricingToCollection = useCallback(async (pricingName: string, collectionId: string) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${authUser.user?.username}/pricings`, {
       method: 'POST',
@@ -250,9 +269,9 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingVersion = useCallback(async (pricingName: string, pricingVersion: string) => {
+  const removePricingVersion = useCallback(async (organizationId: string, pricingName: string, pricingVersion: string) => {
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${username}/${pricingName}/${pricingVersion}`,
+      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}/${pricingVersion}`,
       {
         method: 'DELETE',
         headers: basicHeaders,
@@ -324,6 +343,7 @@ export function usePricingsApi() {
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
+      createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingByName,
@@ -338,6 +358,7 @@ export function usePricingsApi() {
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
+      createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingByName,

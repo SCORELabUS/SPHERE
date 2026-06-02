@@ -738,6 +738,315 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toBeDefined();
     });
+
+    it('Return 403 when MEMBER with org CREATE permission but without entity CREATE permission tries to add version to existing pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      // Grant org-level CREATE permission
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Owner creates the pricing first
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      // Member tries to add a new version — should be denied at entity level
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 200 when MEMBER with both org CREATE and entity CREATE permission adds version to existing pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      // Grant org-level CREATE permission
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Owner creates the pricing first
+      const { serviceName, id: pricingId } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      // Grant entity-level CREATE permission on the specific pricing
+      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Member adds a new version
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name ?? response.body[0]?.name).toBe(fixture.saasName);
+    });
+
+    it('Return 200 when OWNER adds version to existing pricing (bypasses entity-level check).', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      // Owner creates the pricing first
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      // Owner adds a new version
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name ?? response.body[0]?.name).toBe(fixture.saasName);
+    });
+  });
+
+  describe('POST /api/v1/pricings/:organizationId/:pricingName/:pricingVersion', () => {
+    it('Return 200 when OWNER adds version with matching name.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+    });
+
+    it('Return 200 when OWNER adds version with different YAML name (name is overridden).', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(`different_name_${randomSuffix()}`);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+    });
+
+    it('Return 200 when MEMBER with org CREATE and entity CREATE adds version.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const { serviceName, id: pricingId } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+    });
+
+    it('Return 403 when MEMBER with org CREATE but without entity CREATE tries to add version.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 403 when MEMBER without org CREATE tries to add version.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 403 when user not in org tries to add version.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${outsider.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 401 when no auth header is provided.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 200 when MEMBER with entity CREATE but WITHOUT org CREATE adds version via named endpoint.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      // NO org-level CREATE permission granted
+
+      // Owner creates the pricing first
+      const { serviceName, id: pricingId } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      // Grant ONLY entity-level CREATE permission on the specific pricing
+      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Member adds a new version via the named endpoint
+      const fixture = await createValidPricingYaml(serviceName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+    });
   });
 
   describe('GET /api/v1/pricings/:organizationId/:pricingName', () => {

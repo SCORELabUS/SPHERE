@@ -67,6 +67,20 @@ const COLLECTION_INHERITED_GET: Policy = {
   },
 };
 
+const ENTITY_POST: Policy = {
+  name: 'entity-post',
+  description: 'POST on existing entity requires explicit CREATE permission at entity level',
+  evaluate: (ctx) => {
+    if (ctx.action === 'CREATE' && ctx.entityId) {
+      if (ctx.entityPermissions?.CREATE) {
+        return { allowed: true, reason: 'Entity-level CREATE permission granted' };
+      }
+      return { allowed: false, reason: 'Entity-level CREATE permission required' };
+    }
+    return null;
+  },
+};
+
 const ENTITY_PUT: Policy = {
   name: 'entity-put',
   description: 'PUT requires both GET (can see) and PUT (can edit) permissions',
@@ -105,6 +119,7 @@ export const entityPolicies: Policy[] = [
   PUBLIC_ENTITY_GET,
   COLLECTION_INHERITED_GET, // Must come before PRIVATE_ENTITY_GET
   PRIVATE_ENTITY_GET,
+  ENTITY_POST,
   ENTITY_PUT,
   ENTITY_DELETE,
 ];

@@ -215,6 +215,28 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string
   ) {
+    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId);
+  }
+
+  async createVersion(
+    pricingFile: any,
+    organizationId: string,
+    pricingName: string,
+    isPrivate: boolean,
+    reqUser: LeanUser,
+    collectionId?: string
+  ) {
+    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId, pricingName);
+  }
+
+  private async _createPricingVersion(
+    pricingFile: any,
+    organizationId: string,
+    isPrivate: boolean,
+    reqUser: LeanUser,
+    collectionId?: string,
+    overrideName?: string
+  ) {
     try {
       const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
       const batchCtx = await this.permissionService.buildBatchContext(
@@ -223,28 +245,54 @@ class PricingService {
         orgRole,
         reqUser.role === 'ADMIN'
       );
-      const createResult = this.permissionEngine.evaluate({
-        userId: reqUser.id,
-        organizationId,
-        entityType: 'pricing',
-        action: 'CREATE',
-        userOrgRole: orgRole,
-        isGlobalAdmin: reqUser.role === 'ADMIN',
-        orgPermissions: batchCtx.orgPermissions.get('pricing'),
-      });
-      if (!createResult.allowed) {
-        throw new Error(`PERMISSION ERROR: ${createResult.reason}`);
-      }
 
       const uploadedPricing: Pricing = retrievePricingFromPath(
         typeof pricingFile === 'string' ? pricingFile : pricingFile.path
       );
 
+      const effectiveName = overrideName ?? uploadedPricing.saasName;
+
       const previousPricing = await this.pricingRepository.findOne(
-        uploadedPricing.saasName,
+        effectiveName,
         organizationId,
         { collectionId: collectionId, includePrivate: true }
       );
+
+      const isAddingVersion = !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
+
+      if (isAddingVersion) {
+        // Adding a version to existing pricing: only entity-level CREATE required
+        const entityId = previousPricing.versions[0]._id?.toString() ?? previousPricing.versions[0].id;
+        const entityPerms = batchCtx.entityPermissions.get(`pricing:${entityId}`);
+        const entityCreateResult = this.permissionEngine.evaluate({
+          userId: reqUser.id,
+          organizationId,
+          entityType: 'pricing',
+          entityId,
+          action: 'CREATE',
+          isPrivate: previousPricing.private === true,
+          userOrgRole: orgRole,
+          isGlobalAdmin: reqUser.role === 'ADMIN',
+          entityPermissions: entityPerms,
+        });
+        if (!entityCreateResult.allowed) {
+          throw new Error(`PERMISSION ERROR: ${entityCreateResult.reason}`);
+        }
+      } else {
+        // Creating a new pricing: org-level CREATE required
+        const createResult = this.permissionEngine.evaluate({
+          userId: reqUser.id,
+          organizationId,
+          entityType: 'pricing',
+          action: 'CREATE',
+          userOrgRole: orgRole,
+          isGlobalAdmin: reqUser.role === 'ADMIN',
+          orgPermissions: batchCtx.orgPermissions.get('pricing'),
+        });
+        if (!createResult.allowed) {
+          throw new Error(`PERMISSION ERROR: ${createResult.reason}`);
+        }
+      }
 
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
@@ -261,7 +309,7 @@ class PricingService {
       const yamlPath = normalizedPath.slice(staticIndex);
 
       const pricingData = {
-        name: uploadedPricing.saasName,
+        name: effectiveName,
         version: uploadedPricing.version,
         _collectionId: collectionId,
         _organizationId: organizationId,

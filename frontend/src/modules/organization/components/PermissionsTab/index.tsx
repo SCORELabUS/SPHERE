@@ -10,14 +10,16 @@ interface PermissionsTabProps {
   canManage: boolean;
 }
 
-const PERMISSION_LABELS: Record<'GET' | 'PUT' | 'DELETE', string> = {
+const PERMISSION_LABELS: Record<'GET' | 'CREATE' | 'PUT' | 'DELETE', string> = {
   GET: 'Read',
+  CREATE: 'Create',
   PUT: 'Edit',
   DELETE: 'Delete',
 };
 
-const PERMISSION_COLORS: Record<'GET' | 'PUT' | 'DELETE', string> = {
+const PERMISSION_COLORS: Record<'GET' | 'CREATE' | 'PUT' | 'DELETE', string> = {
   GET: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  CREATE: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400',
   PUT: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   DELETE: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
 };
@@ -42,7 +44,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   const [collections, setCollections] = useState<OrgCollection[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSearch, setAddSearch] = useState('');
-  const [addPermissions, setAddPermissions] = useState<{ GET: boolean; PUT: boolean; DELETE: boolean }>({ GET: true, PUT: false, DELETE: false });
+  const [addPermissions, setAddPermissions] = useState<{ GET: boolean; CREATE: boolean; PUT: boolean; DELETE: boolean }>({ GET: true, CREATE: false, PUT: false, DELETE: false });
   const [isSaving, setIsSaving] = useState(false);
 
   const getOrgPricingsRef = useRef(getOrgPricings);
@@ -145,9 +147,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   const handleToggleOrgPermission = useCallback(async (targetType: EntityType) => {
     if (!canManage || !selectedMemberId || isOwnerOrAdmin) return;
 
-    const existing = orgScopedPermissions.find(p => p.entityType === targetType);
-    const currentVal = existing?.permissions.CREATE ?? false;
-    const newPermissions: EntityPermissions = { GET: false, PUT: false, DELETE: false, CREATE: !currentVal };
+    const newPermissions: EntityPermissions = { GET: false, CREATE: false, PUT: false, DELETE: false };
 
     try {
       await setOrgPermission(organizationId, {
@@ -163,7 +163,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   }, [canManage, selectedMemberId, isOwnerOrAdmin, orgScopedPermissions, organizationId, setOrgPermission, reloadPermissions]);
 
   const handleToggleEntityPermission = useCallback(async (
-    permType: 'GET' | 'PUT' | 'DELETE',
+    permType: 'GET' | 'PUT' | 'DELETE' | 'CREATE',
     permission: EntityPermission
   ) => {
     if (!canManage || isOwnerOrAdmin) return;
@@ -207,12 +207,12 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
         userId: selectedMemberId,
         entityType: entityTab,
         entityId,
-        permissions: { ...addPermissions, CREATE: false },
+        permissions: { ...addPermissions },
       });
       await reloadPermissions();
       setShowAddModal(false);
       setAddSearch('');
-      setAddPermissions({ GET: true, PUT: false, DELETE: false });
+      setAddPermissions({ GET: true, PUT: false, DELETE: false, CREATE: false });
     } catch (err: any) {
       customAlert(err.message, 'error');
     } finally {
@@ -377,7 +377,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                       {canManage && (
                         <button
                           type="button"
-                          onClick={() => { setShowAddModal(true); setAddSearch(''); setAddPermissions({ GET: true, PUT: false, DELETE: false }); }}
+                          onClick={() => { setShowAddModal(true); setAddSearch(''); setAddPermissions({ GET: true, PUT: false, DELETE: false, CREATE: false }); }}
                           className="mt-3 flex cursor-pointer items-center gap-1 mx-auto rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
                         >
                           <Iconify icon="mdi:plus" width={14} />
@@ -392,7 +392,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                           <thead>
                             <tr className="border-b border-tp-hairline-soft bg-tp-surface/50">
                               <th className="px-4 py-2.5 text-left text-xs font-semibold text-tp-steel">Name</th>
-                              {(['GET', 'PUT', 'DELETE'] as const).map(perm => (
+                              {(['GET', 'CREATE', 'PUT', 'DELETE'] as const).map(perm => (
                                 <th key={perm} className="px-4 py-2.5 text-center text-xs font-semibold text-tp-steel">
                                   {PERMISSION_LABELS[perm]}
                                 </th>
@@ -406,7 +406,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                                 <td className="px-4 py-2.5 font-medium text-tp-ink">
                                   {permission.entityName ?? 'Unknown'}
                                 </td>
-                                {(['GET', 'PUT', 'DELETE'] as const).map(perm => (
+                                {(['GET', 'CREATE', 'PUT', 'DELETE'] as const).map(perm => (
                                   <td key={perm} className="px-4 py-2.5 text-center">
                                     <button
                                       type="button"
@@ -447,7 +447,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                       {canManage && (
                         <button
                           type="button"
-                          onClick={() => { setShowAddModal(true); setAddSearch(''); setAddPermissions({ GET: true, PUT: false, DELETE: false }); }}
+                          onClick={() => { setShowAddModal(true); setAddSearch(''); setAddPermissions({ GET: true, PUT: false, DELETE: false, CREATE: false }); }}
                           className="mt-3 flex cursor-pointer items-center gap-1.5 rounded-lg border border-tp-hairline-strong px-3 py-1.5 text-xs font-medium text-tp-slate transition-colors hover:bg-tp-surface"
                         >
                           <Iconify icon="mdi:plus" width={14} />
@@ -529,7 +529,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
             <div className="mt-4">
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-tp-steel">Permissions to grant</label>
               <div className="flex gap-2">
-                {(['GET', 'PUT', 'DELETE'] as const).map(perm => (
+                {(['GET', 'CREATE', 'PUT', 'DELETE'] as const).map(perm => (
                   <button
                     key={perm}
                     type="button"

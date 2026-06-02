@@ -2785,6 +2785,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    post:
+      summary: Add a new version to an existing pricing.
+      description: |
+        Creates a new version of the specified pricing. The `saasName` field in the
+        uploaded YAML file will be overridden to match the `:pricingName` path parameter,
+        ensuring consistency across all versions of the same pricing.
+
+        **Authentication**: Bearer Token or User API Key
+
+        **Permission**:
+        - OWNER or ADMIN of the organization: can always add versions.
+        - MEMBER: requires both org-level `CREATE` permission on the `pricing` entity type
+          AND entity-level `CREATE` permission on the specific pricing.
+        - Global ADMIN: can add versions to any pricing.
+
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/PricingVersion'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                yaml:
+                  type: string
+                  format: binary
+                  description: The Pricing2Yaml file
+                private:
+                  type: boolean
+                  default: false
+                  description: Whether the pricing version should be private
+                collectionId:
+                  type: string
+                  description: Optional collection ID to associate this version with
+              required:
+                - yaml
+      responses:
+        '200':
+          description: Pricing version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pricing'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (not a member of the organization, or lacks CREATE permission)
+        '404':
+          description: Organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       summary: Delete a specific version of a pricing.
       description: |

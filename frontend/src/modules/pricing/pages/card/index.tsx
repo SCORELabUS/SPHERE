@@ -22,6 +22,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { EntityPermissions } from '../../../organization/types/permissions';
 import PricingCardSkeleton from '../../../core/components/skeletons/pricing-card-skeleton';
+import PrivateAccessFallback from '../../components/private-access-fallback';
 
 const axisTick = { fill: '#4a4a4a', fontSize: 11 };
 const compactNum = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
@@ -125,7 +126,7 @@ export default function CardPage() {
   const [searchParams] = useSearchParams();
   const collectionSlug = searchParams.get('collectionSlug');
   const router = useRouter();
-  const { getPricingByName, removePricingVersion, removePricingByName, updatePricing, createPricing } = usePricingsApi();
+  const { getPricingByName, removePricingVersion, removePricingByName, updatePricing, createPricingVersion } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
@@ -311,7 +312,7 @@ export default function CardPage() {
     if (!name) return;
     if (!confirm(`Delete version ${v.version}? This cannot be undone.`)) return;
     try {
-      await removePricingVersion(name, v.version);
+      await removePricingByName(organizationId || "", name, collectionSlug ?? undefined);
       setVersions(prev => prev.filter(x => x.id !== v.id));
       if (currentVersion?.id === v.id) setCurrentVersion(versions.find(x => x.id !== v.id) ?? null);
     } catch {
@@ -331,6 +332,27 @@ export default function CardPage() {
           })
           .catch((error: Error) => {
             customAlert(`Error: ${error.message}`, 'error');
+          });
+      })
+      .catch(() => {});
+  };
+
+  const handleDeleteCurrentVersion = () => {
+    if (!name || !currentVersion) return;
+    customConfirm(`Are you sure you want to delete version ${currentVersion.version}? This action is irreversible.`, { danger: true })
+      .then(() => {
+        removePricingVersion(organizationId || "", name, currentVersion.version)
+          .then(() => {
+            setVersions(prev => {
+              const next = prev.filter(x => x.id !== currentVersion.id);
+              if (next.length > 0) setCurrentVersion(next[0]);
+              else setCurrentVersion(null);
+              return next;
+            });
+            customAlert(`Version ${currentVersion.version} deleted successfully`, 'success');
+          })
+          .catch(() => {
+            customAlert('An error has occurred while deleting the version. Please, try again later.', 'error');
           });
       })
       .catch(() => {});
@@ -370,34 +392,17 @@ export default function CardPage() {
         return;
       }
 
-      if (uploadedPricing.saasName !== name) {
-        try {
-          await customConfirm(
-            `The pricing name in the file ("${uploadedPricing.saasName}") does not match the current pricing ("${name}"). The name will be overridden to "${name}". Do you want to continue?`,
-            { danger: false }
-          );
-        } catch {
-          return;
-        }
-      }
-
       const versionExists = versions.some(v => v.version === uploadedPricing.version);
       if (versionExists) {
         customAlert(`Version "${uploadedPricing.version}" already exists. Please upload a file with a different version.`, 'error');
         return;
       }
 
-      const newYamlText = text.replace(
-        /^saasName:\s*["']?[^"'\n]+["']?\s*$/m,
-        `saasName: ${name}`
-      );
-      const modifiedFile = new File([newYamlText], file.name, { type: file.type });
-
       const formData = new FormData();
-      formData.append('yaml', modifiedFile);
+      formData.append('yaml', file);
       formData.append('private', 'false');
 
-      await createPricing(formData, organizationId);
+      await createPricingVersion(formData, organizationId, name, uploadedPricing.version);
       customAlert('New version added successfully', 'success');
       setShowImportModal(false);
 
@@ -415,18 +420,6 @@ export default function CardPage() {
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
   const isPrivateNoAccess = !entityPermissions?.GET && currentVersion?.private;
-
-  const PrivateAccessFallback = () => (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-20 text-center">
-      <svg className="mb-4 h-16 w-16 text-tp-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" role="img">
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <rect x="8.5" y="11" width="7" height="6" rx="1" />
-        <path d="M10 11V9a2 2 0 0 1 4 0v2" />
-      </svg>
-      <p className="text-sm font-medium text-tp-ink">This pricing is private</p>
-      <p className="mt-1 text-xs text-tp-steel">You don't have permission to view this pricing. Please request access from an organization admin.</p>
-    </div>
-  );
 
   if (isLoading) return <PricingCardSkeleton />;
 
@@ -614,7 +607,26 @@ export default function CardPage() {
                 {entityPermissions?.DELETE && (
                   <div>
                     <h3 className="mb-2 text-sm font-medium text-red-500">Danger Zone</h3>
-                    <div className="rounded-lg border border-red-500 p-4">
+
+                    {currentVersion && (
+                      <div className="rounded-lg border border-red-500 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-tp-ink">Delete current version ({currentVersion.version})</p>
+                            <p className="mt-1 text-xs text-tp-steel">Once you delete this version, there is no going back. Other versions will remain intact.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleDeleteCurrentVersion}
+                            className="cursor-pointer rounded-md border border-red-500 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-500 hover:text-white"
+                          >
+                            Delete version
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-4 rounded-lg border border-red-500 p-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-medium text-tp-ink">Delete this pricing</p>

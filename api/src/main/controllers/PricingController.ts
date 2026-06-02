@@ -16,6 +16,7 @@ class PricingController {
     this.show = this.show.bind(this);
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
+    this.createVersion = this.createVersion.bind(this);
     this.update = this.update.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
@@ -96,6 +97,36 @@ class PricingController {
       const pricing = await this.pricingService.create(
         req.file,
         req.params.organizationId,
+        isPrivate,
+        req.user,
+        collectionId
+      );
+      res.json(pricing[0]);
+    } catch (err: any) {
+      try {
+        const file = req.file;
+        const directory = path.dirname(file.path);
+        if (fs.readdirSync(directory).length === 1) {
+          fs.rmSync(directory, { recursive: true });
+        } else {
+          fs.rmSync(file.path);
+        }
+        const { status, message } = handleError(err);
+        res.status(status).send({ error: message });
+      } catch (err) {
+        res.status(500).send({ error: (err as Error).message });
+      }
+    }
+  }
+
+  async createVersion(req: any, res: any) {
+    try {
+      const isPrivate = req.body.private === 'true' || req.body.private === true;
+      const collectionId = req.body.collectionId;
+      const pricing = await this.pricingService.createVersion(
+        req.file,
+        req.params.organizationId,
+        req.params.pricingName,
         isPrivate,
         req.user,
         collectionId
