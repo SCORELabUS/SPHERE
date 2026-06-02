@@ -592,7 +592,7 @@ class PricingCollectionService {
   }
 
   _getExtractPath(organizationId: string, collectionSlug: string) {
-    return `${process.env.COLLECTIONS_FOLDER}/${organizationId}/${collectionSlug}`;
+    return `${process.env.SERVER_STATICS_FOLDER || "public/"}${process.env.COLLECTIONS_FOLDER || "static/collections"}/${organizationId}/${collectionSlug}`;
   }
 
   async _handleCollectionCreationError(

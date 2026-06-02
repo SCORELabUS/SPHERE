@@ -414,6 +414,19 @@ export default function CardPage() {
   };
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
+  const isPrivateNoAccess = !entityPermissions?.GET && currentVersion?.private;
+
+  const PrivateAccessFallback = () => (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-20 text-center">
+      <svg className="mb-4 h-16 w-16 text-tp-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" role="img">
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <rect x="8.5" y="11" width="7" height="6" rx="1" />
+        <path d="M10 11V9a2 2 0 0 1 4 0v2" />
+      </svg>
+      <p className="text-sm font-medium text-tp-ink">This pricing is private</p>
+      <p className="mt-1 text-xs text-tp-steel">You don't have permission to view this pricing. Please request access from an organization admin.</p>
+    </div>
+  );
 
   if (isLoading) return <PricingCardSkeleton />;
 
@@ -485,6 +498,7 @@ export default function CardPage() {
           {/* ═══ OVERVIEW ═══ */}
           {tab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
                 <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
                   {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
@@ -496,12 +510,15 @@ export default function CardPage() {
                   {yamlText && <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4"><h3 className="mb-3 text-xs font-medium text-tp-ink">YAML source</h3><pre className="max-h-125 overflow-auto rounded-lg bg-tp-surface-code p-3 text-[11px] leading-relaxed text-tp-on-dark">{yamlText}</pre></div>}
                 </div>
               </div>
+              )}
             </motion.div>
           )}
 
           {/* ═══ ANALYTICS ═══ */}
           {tab === 'analytics' && (
             <motion.div key="analytics" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
+              <>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-medium text-tp-ink">Analytics</h3>
                 <DatePicker dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} />
@@ -525,12 +542,16 @@ export default function CardPage() {
                   ))}
                 </div>
               ) : <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center"><p className="text-sm text-tp-steel">No data available for the selected date range.</p></div>}
+              </>
+              )}
             </motion.div>
           )}
 
           {/* ═══ CONFIGURATION SPACE ═══ */}
           {tab === 'config-space' && (
             <motion.div key="config-space" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
+              <>
               {a && a.configurationSpaceSize && a.configurationSpaceSize > 2000 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
                   <svg className="mb-3 h-10 w-10 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
@@ -540,12 +561,15 @@ export default function CardPage() {
               ) : organizationId && currentVersion ? (
                 <ConfigurationSpaceView organizationId={organizationId} pricingName={name!} pricingVersion={currentVersion.version} />
               ) : null}
+              </>
+              )}
             </motion.div>
           )}
 
           {/* ═══ VERSIONS ═══ */}
           {tab === 'versions' && (
             <motion.div key="versions" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
               <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
                 <div className="divide-y divide-tp-hairline-soft">
                   {versions.map(v => (
@@ -566,6 +590,7 @@ export default function CardPage() {
                   ))}
                 </div>
               </div>
+              )}
             </motion.div>
           )}
 
