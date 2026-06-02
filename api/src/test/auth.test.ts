@@ -207,7 +207,7 @@ describe('Auth Middleware - Integration Tests', () => {
 			lastName: params.role,
 			email: `${username}@example.com`,
 			tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000),
-			avatar: `${process.env.AVATARS_FOLDER}/default-avatar.png`,
+			avatar: `${process.env.SERVER_STATICS_FOLDER || 'public/'}${process.env.AVATARS_FOLDER || 'static/avatars/users'}/default-avatar.png`,
 		});
 
 		const saved = await userDoc.save();

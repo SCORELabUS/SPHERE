@@ -34,7 +34,7 @@ class NotificationService {
 
     // Send real-time event to connected user
     sseManager.sendToUser(data.userId, 'notification', {
-      id: notification._id,
+      id: notification.id,
       kind: notification.kind,
       title: notification.title,
       message: notification.message,

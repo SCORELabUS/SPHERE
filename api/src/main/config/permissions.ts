@@ -196,6 +196,13 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   // ============================================
   // Notification Routes
   // ============================================
+  // SSE stream endpoint: EventSource cannot set headers, so the token is passed
+  // as a query parameter. The controller handles its own authentication.
+  {
+    path: '/notifications/stream',
+    methods: ['GET'],
+    isPublic: true,
+  },
   {
     path: '/notifications/**',
     methods: ['GET', 'PUT', 'DELETE'],

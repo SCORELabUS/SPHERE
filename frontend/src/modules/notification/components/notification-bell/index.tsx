@@ -53,13 +53,11 @@ export default function NotificationBell() {
   const hasUnread = unreadCount > 0;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative flex items-center justify-center">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative cursor-pointer rounded-lg border p-1.5 transition-colors ${
-          hasUnread
-            ? 'border-tp-primary/30 bg-tp-primary/10 text-tp-primary hover:bg-tp-primary/20'
-            : 'border-tp-hairline-soft bg-tp-canvas text-tp-steel hover:text-tp-ink'
+        className={`relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition-colors ${
+          hasUnread ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'
         }`}
         title="Notifications"
       >
@@ -67,7 +65,7 @@ export default function NotificationBell() {
           <Iconify icon={hasUnread ? 'mdi:bell-badge-outline' : 'mdi:bell-outline'} width={18} />
         </span>
         {hasUnread && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-tp-primary px-1 text-[10px] font-medium text-tp-on-primary">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-tp-primary px-1 text-[10px] font-medium text-tp-on-primary">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
