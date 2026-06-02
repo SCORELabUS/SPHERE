@@ -7,7 +7,7 @@ import * as OrganizationValidation from '../controllers/validation/OrganizationV
 const loadFileRoutes = function (app: express.Application) {
   const organizationController = new OrganizationController();
   const baseUrl = (process.env.BASE_URL_PATH ?? '') + '/api/v1';
-  const orgAvatarUpload = handleFileUpload(['avatar'], process.env.ORG_AVATARS_FOLDER!);
+  const orgAvatarUpload = handleFileUpload(['avatar'], (process.env.SERVER_STATICS_FOLDER || 'public/') + (process.env.ORG_AVATARS_FOLDER || 'static/avatars/orgs'));
 
   app
     .route(baseUrl + '/users/me/orgs')

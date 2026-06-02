@@ -18,7 +18,7 @@ export const createMockUser = (overrides?: any): LeanUser => {
     firstName: 'Test',
     lastName: 'User',
     email: `test_${id}@example.com`,
-    avatar: `${process.env.AVATARS_FOLDER}/default-avatar.png`,
+    avatar: `${process.env.SERVER_STATICS_FOLDER || 'public/'}${process.env.AVATARS_FOLDER || 'static/avatars/users'}/default-avatar.png`,
     token: `token_${id}`,
     tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000),
     apiKeys: [],

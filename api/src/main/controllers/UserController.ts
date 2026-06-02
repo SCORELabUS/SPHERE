@@ -257,13 +257,13 @@ class UserController {
 
       const ext = req.file.originalname.split('.').pop() || 'webp';
       const filename = `${targetUserId}-${Date.now()}.${ext}`;
-      const folder = process.env.AVATARS_FOLDER || 'public/static/avatars/users';
+      const folder = (process.env.SERVER_STATICS_FOLDER || 'public/') + (process.env.AVATARS_FOLDER || 'static/avatars/users');
 
       fs.mkdirSync(folder, { recursive: true });
       const filePath = path.join(folder, filename);
       fs.writeFileSync(filePath, req.file.buffer);
 
-      const avatarPath = `${process.env.AVATARS_FOLDER?.replace("public/", "") || 'public/static/avatars/users/uploaded'}/${filename}`;
+      const avatarPath = `${process.env.AVATARS_FOLDER || 'static/avatars/users/uploaded'}/${filename}`;
       const updated = await this.userSettingsService.updateAvatar(targetUserId, {
         avatarPath,
         avatarBgColor: req.body.avatarBgColor || '#fa520f',

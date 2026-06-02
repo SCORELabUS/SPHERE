@@ -13,7 +13,7 @@ const loadFileRoutes = function (app: express.Application) {
   const pricingController = new PricingController();
   const collectionController = new PricingCollectionController();
   const userService = container.resolve('userService');
-  const upload = handleFileUpload(['avatar'], process.env.AVATARS_FOLDER!);
+  const upload = handleFileUpload(['avatar'], (process.env.SERVER_STATICS_FOLDER || 'public/') + (process.env.AVATARS_FOLDER || 'static/avatars/users'));
   const baseUrl = (process.env.BASE_URL_PATH ?? "") + '/api/v1';
 
   app
