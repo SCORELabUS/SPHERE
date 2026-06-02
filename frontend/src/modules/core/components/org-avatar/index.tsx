@@ -7,6 +7,7 @@ interface OrgAvatarProps {
   avatarFgColor?: string;
   isPersonal?: boolean;
   size?: number;
+  square?: boolean;
   className?: string;
 }
 
@@ -25,15 +26,17 @@ export default function OrgAvatar({
   avatarBgColor,
   avatarFgColor,
   size = 32,
+  square = false,
   className = '',
 }: OrgAvatarProps) {
   const initials = useMemo(() => getInitials(name), [name]);
   const bgColor = avatarBgColor || '#023e8a';
   const fgColor = avatarFgColor || '#ffffff';
+  const radius = square ? 'rounded-sm' : 'rounded-full';
 
   if (avatar) {
     return (
-      <div className={`relative shrink-0 overflow-hidden rounded-full ${className}`} style={{ width: size, height: size }}>
+      <div className={`relative shrink-0 overflow-hidden ${radius} ${className}`} style={{ width: size, height: size }}>
         <img
           src={avatar}
           alt={name}
@@ -45,7 +48,7 @@ export default function OrgAvatar({
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold ${className}`}
+      className={`flex shrink-0 items-center justify-center overflow-hidden ${radius} font-semibold ${className}`}
       style={{
         width: size,
         height: size,

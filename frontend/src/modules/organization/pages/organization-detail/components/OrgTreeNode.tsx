@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import Iconify from '../../../../core/components/iconify';
+import OrgAvatar from '../../../../core/components/org-avatar';
 import { TreeNode } from '../types';
 
 interface Props {
@@ -43,22 +44,12 @@ export default function OrgTreeNode({ node, level = 0, expandedIds, onToggle, on
           <span className="h-5 w-5 shrink-0" />
         )}
 
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-tp-cream text-[11px] font-bold text-tp-primary">
-          {node.avatar ? (
-            <img
-              src={node.avatar}
-              alt=""
-              className="h-7 w-7 rounded-md object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-              }}
-            />
-          ) : null}
-          <span className={node.avatar ? 'hidden' : ''}>
-            {node.name[0]?.toUpperCase() ?? 'O'}
-          </span>
-        </div>
+        <OrgAvatar
+          name={node.name}
+          avatar={node.avatar}
+          size={28}
+          square
+        />
 
         <div className="min-w-0 flex-1">
           <p className={`truncate text-sm ${node.isCurrent ? 'font-semibold text-tp-ink' : 'font-medium text-tp-ink'}`}>

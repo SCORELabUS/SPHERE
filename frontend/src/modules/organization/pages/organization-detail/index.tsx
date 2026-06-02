@@ -22,6 +22,7 @@ import {
 } from '../../api/organizationsApi';
 import { getPublicOrgPricings, getPublicOrgCollections } from '../../../pricing/api/pricingsApi';
 import PermissionsTab from '../../components/PermissionsTab';
+import OrgAvatar from '../../../core/components/org-avatar';
 import OrgDetailSkeleton from '../../../core/components/skeletons/org-detail-skeleton';
 import { Tab, TreeNode, PER_PAGE } from './types';
 import { ROLE_LABELS, ROLE_COLORS, TAB_META } from './constants';
@@ -523,28 +524,15 @@ export default function OrganizationDetailPage() {
 
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               <motion.div variants={fadeInUp} transition={transitionDefault} className="shrink-0">
-                {org.avatar ? (
-                  <>
-                    <img
-                      src={org.avatar}
-                      alt={org.displayName}
-                      className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
-                      onError={e => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove(
-                          'hidden'
-                        );
-                      }}
-                    />
-                    <div className="hidden h-16 w-16 items-center justify-center rounded-2xl bg-tp-primary/10 ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20">
-                      <Iconify icon="mdi:domain" width={32} className="text-tp-primary" />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-tp-primary/10 ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20">
-                    <Iconify icon="mdi:domain" width={32} className="text-tp-primary" />
-                  </div>
-                )}
+                <OrgAvatar
+                  name={org.displayName}
+                  avatar={org.avatar}
+                  avatarBgColor={org.avatarBgColor}
+                  avatarFgColor={org.avatarFgColor}
+                  size={80}
+                  square
+                  className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
+                />
               </motion.div>
 
               <div className="min-w-0 flex-1">

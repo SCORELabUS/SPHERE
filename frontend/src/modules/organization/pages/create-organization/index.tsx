@@ -4,19 +4,30 @@ import { useRouter } from '../../../core/hooks/useRouter';
 import customAlert from '../../../core/utils/custom-alert';
 import OrgAvatar from '../../../core/components/org-avatar';
 
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 export default function CreateOrganizationPage() {
-  const [name, setName] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [orgName, setOrgName] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { createOrganization } = useOrganizationsApi();
   const router = useRouter();
 
+  const slug = generateSlug(orgName);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    createOrganization({ name, displayName, description: description || undefined })
+    createOrganization({ name: slug, displayName: orgName.trim(), description: description || undefined })
       .then((org) => router.push(`/me/orgs/${org.id}`))
       .catch((err: Error) => {
         customAlert(err.message, 'error');
@@ -30,7 +41,7 @@ export default function CreateOrganizationPage() {
 
       <div className="flex justify-center mb-4">
         <OrgAvatar
-          name={displayName || name || '?'}
+          name={orgName || '?'}
           size={72}
         />
       </div>
@@ -43,33 +54,18 @@ export default function CreateOrganizationPage() {
           <input
             id="org-name"
             type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="my-organization"
-            required
-            minLength={3}
-            maxLength={50}
-            pattern="[a-z0-9_-]+"
-            title="Lowercase letters, numbers, hyphens and underscores only"
-            className="rounded-md border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm outline-none focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20"
-          />
-          <p className="text-xs text-sphere-grey-500">Lowercase letters, numbers, hyphens and underscores only</p>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-semibold text-sphere-grey-700" htmlFor="org-display-name">
-            Display name <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="org-display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
             placeholder="My Organization"
             required
             maxLength={255}
             className="rounded-md border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm outline-none focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20"
           />
+          {orgName.trim() && (
+            <p className="text-xs text-sphere-grey-500">
+              Slug: <span className="font-mono text-sphere-grey-700">{slug}</span>
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1">
@@ -97,7 +93,7 @@ export default function CreateOrganizationPage() {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || slug.length < 3}
             className="cursor-pointer rounded-md bg-tp-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-tp-primary disabled:opacity-50"
           >
             {isSubmitting ? 'Creating...' : 'Create organization'}

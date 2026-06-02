@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { usePricingsApi } from '../../api/pricingsApi';
+import OrgAvatar from '../../../core/components/org-avatar';
 import { getCurrency } from '../stats';
 import customConfirm from '../../../core/utils/custom-confirm';
 import customAlert from '../../../core/utils/custom-alert';
@@ -86,9 +87,12 @@ export default function PricingCard({ data, onRemoved }: Props) {
       <div className="mb-3 flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-tp-cream text-[10px] font-bold text-tp-primary">
-              {data.organization.name?.[0]?.toUpperCase() ?? 'O'}
-            </span>
+            <OrgAvatar
+              name={data.organization.displayName || data.organization.name}
+              avatar={data.organization.avatar}
+              size={20}
+              square
+            />
             <span className="truncate text-[11px] text-tp-steel">
               {data.organization.displayName || data.organization.name}
             </span>
