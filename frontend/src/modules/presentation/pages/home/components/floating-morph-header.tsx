@@ -235,14 +235,14 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => onNavigate('/login')}
+                  onClick={() => onNavigate('/authentication')}
                   className="inline-flex h-10 cursor-pointer items-center justify-center rounded-full border border-black/15 bg-white px-5 text-xs uppercase tracking-[0.14em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#0f172a]"
                 >
                   Login
                 </button>
                 <button
                   type="button"
-                  onClick={() => onNavigate('/register')}
+                  onClick={() => onNavigate('/authentication?view=register')}
                   className="group inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/10 bg-[#0f172a] px-5 text-xs uppercase tracking-[0.14em] text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#1e293b] active:scale-[0.98]"
                 >
                   Register
@@ -360,7 +360,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
-                  onNavigate('/login');
+                  onNavigate('/authentication');
                 }}
                 className={`inline-flex items-center justify-center cursor-pointer rounded-full border border-black/10 bg-white px-6 py-3 text-sm font-medium text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
               >
@@ -370,7 +370,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
-                  onNavigate('/register');
+                  onNavigate('/authentication?view=register');
                 }}
                 className={`inline-flex items-center justify-between cursor-pointer rounded-full border border-black/10 bg-[#0f172a] px-6 py-3 text-sm font-medium text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
               >

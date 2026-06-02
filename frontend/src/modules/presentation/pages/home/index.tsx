@@ -79,7 +79,7 @@ export default function HomePage() {
 
           <main className="relative z-[3] mx-auto flex w-full max-w-[1240px] flex-col px-4 pb-24 pt-28 md:px-8 md:pb-36 md:pt-40">
             <HeroSection
-              onRegister={() => handleNavigate('/register')}
+              onRegister={() => handleNavigate('/authentication?view=register')}
               onPricings={() => handleNavigate('/pricings')}
             />
             {/* <ProofMarqueeSection logos={PROOF_LOGOS} /> */}

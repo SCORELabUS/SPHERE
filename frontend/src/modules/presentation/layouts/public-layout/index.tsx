@@ -9,7 +9,7 @@ export default function PublicLayout({ children }: { children?: React.ReactNode 
   const location = useLocation();
   const router = useRouter();
   const isLanding = location.pathname === '/';
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const isAuthPage = location.pathname === '/authentication';
 
   const handleNavigate = (to: string) => router.push(to);
 

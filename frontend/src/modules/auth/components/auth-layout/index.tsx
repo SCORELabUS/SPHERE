@@ -65,7 +65,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       const sameOrigin = url && url.origin === window.location.origin;
       const path = sameOrigin ? url!.pathname : null;
 
-      if (path && !path.startsWith("/login") && !path.startsWith("/register")) {
+      if (path && !path.startsWith("/authentication")) {
         sessionStorage.setItem(AUTH_RETURN_KEY, path);
       }
     }

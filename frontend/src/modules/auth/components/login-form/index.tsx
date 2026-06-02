@@ -139,7 +139,7 @@ const LoginForm: React.FC = () => {
       <motion.p variants={fadeUp} className="mt-8 text-center text-sm text-tp-steel">
         Don&apos;t have an account?{' '}
         <Link
-          to="/register"
+          to="/authentication?view=register"
           className="cursor-pointer font-medium text-tp-primary transition-colors duration-200 hover:text-tp-primary-deep"
         >
           Create one

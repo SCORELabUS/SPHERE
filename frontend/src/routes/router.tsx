@@ -25,8 +25,7 @@ import EditorLayout from '../modules/pricing-editor/layouts/editor-layout';
 import ResearchPage from '../modules/presentation/pages/research';
 import ContributionsPage from '../modules/presentation/pages/contributions';
 import PricingListPage from '../modules/pricing/pages/list';
-import LoginPage from '../modules/auth/pages/login-page';
-import RegisterPage from '../modules/auth/pages/register-page';
+import AuthenticationPage from '../modules/auth/pages/authentication-page';
 import CardPage from '../modules/pricing/pages/card';
 import CreatePricingPage from '../modules/pricing/pages/create';
 import CollectionCardPage from '../modules/pricing/pages/collection-card';
@@ -87,8 +86,7 @@ export default function Router() {
         </AppLayout>
       ),
       children: [
-        { element: <LoginPage />, path: '/login' },
-        { element: <RegisterPage />, path: '/register' },
+        { element: <AuthenticationPage />, path: '/authentication' },
         {
           path: '/pricings',
           element: (

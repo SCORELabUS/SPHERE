@@ -44,7 +44,7 @@ export default function OrganizationJoinPage() {
   useEffect(() => {
     if (authUser.isLoading) return;
     if (!authUser.isAuthenticated) {
-      router.push('/login');
+      router.push('/authentication');
       return;
     }
     if (!code) {

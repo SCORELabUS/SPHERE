@@ -252,7 +252,7 @@ const RegisterForm: React.FC = () => {
       <motion.p variants={fadeUp} className="mt-8 text-center text-sm text-tp-steel">
         Already have an account?{' '}
         <Link
-          to="/login"
+          to="/authentication"
           className="cursor-pointer font-medium text-tp-primary transition-colors duration-200 hover:text-tp-primary-deep"
         >
           Sign in
