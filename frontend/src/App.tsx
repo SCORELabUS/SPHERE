@@ -8,6 +8,7 @@ import OrganizationContext from './modules/organization/contexts/organizationCon
 import { useOrganizationManager } from './modules/organization/hooks/useOrganization';
 import { NotificationsProvider } from './modules/notification/contexts/notificationsContext';
 import { useNotificationsSSE } from './modules/notification/hooks/useNotificationsSSE';
+import { ToastProvider } from './modules/core/contexts/toastContext';
 
 function OrganizationProvider({ children }: { children: React.ReactNode }) {
   const { organizations, isLoading, page, totalPages, setPage } = useOrganizationManager();
@@ -42,9 +43,11 @@ export default function App() {
       <AuthContext.Provider value={{ authUser, setAuthUser }}>
         <OrganizationProvider>
           <NotificationsProvider>
-            <NotificationsSSEProvider>
-              <Router />
-            </NotificationsSSEProvider>
+            <ToastProvider>
+              <NotificationsSSEProvider>
+                <Router />
+              </NotificationsSSEProvider>
+            </ToastProvider>
           </NotificationsProvider>
         </OrganizationProvider>
       </AuthContext.Provider>
