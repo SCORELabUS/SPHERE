@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useNotificationsContext } from './useNotificationsContext';
+import { useToast } from '../../core/contexts/useToast';
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 const SSE_URL = `${BASE_URL}/notifications/stream`;
@@ -10,11 +11,14 @@ const MAX_DELAY = 60000;
 export function useNotificationsSSE() {
   const { authUser } = useAuth();
   const { addNotification, fetchUnreadCount } = useNotificationsContext();
+  const { addToast } = useToast();
 
   const addNotificationRef = useRef(addNotification);
   const fetchUnreadCountRef = useRef(fetchUnreadCount);
+  const addToastRef = useRef(addToast);
   addNotificationRef.current = addNotification;
   fetchUnreadCountRef.current = fetchUnreadCount;
+  addToastRef.current = addToast;
 
   const esRef = useRef<EventSource | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -48,7 +52,9 @@ export function useNotificationsSSE() {
 
       es.addEventListener('notification', (event) => {
         try {
-          addNotificationRef.current(JSON.parse(event.data));
+          const notification = JSON.parse(event.data);
+          addNotificationRef.current(notification);
+          addToastRef.current(notification);
         } catch { /* ignore */ }
       });
 
