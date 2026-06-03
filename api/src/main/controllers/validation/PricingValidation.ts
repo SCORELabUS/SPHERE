@@ -10,6 +10,13 @@ const create = [
     .isString()
     .withMessage('The collectionId field must be a string')
     .trim(),
+  check('name')
+    .optional()
+    .isString()
+    .withMessage('The name field must be a string')
+    .isLength({ min: 1, max: 255 })
+    .withMessage('The name must have between 1 and 255 characters long')
+    .trim(),
 ];
 
 const update = [

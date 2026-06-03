@@ -2605,6 +2605,10 @@ paths:
                 collectionId:
                   type: string
                   description: Optional collection ID to add the pricing to upon creation
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Custom display name for the pricing. If provided, overrides the saasName field in the YAML file.
               required:
                 - yaml
       responses:

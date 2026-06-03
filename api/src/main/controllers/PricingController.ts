@@ -94,12 +94,14 @@ class PricingController {
     try {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
+      const name = req.body.name;
       const pricing = await this.pricingService.create(
         req.file,
         req.params.organizationId,
         isPrivate,
         req.user,
-        collectionId
+        collectionId,
+        name
       );
       res.json(pricing[0]);
     } catch (err: any) {
