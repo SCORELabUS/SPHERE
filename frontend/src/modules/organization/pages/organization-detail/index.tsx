@@ -709,9 +709,12 @@ export default function OrganizationDetailPage() {
               pricingPage={pricingPage}
               pricingSearch={pricingSearch}
               showOnlyUnlinked={showOnlyUnlinked}
+              orgId={organizationId ?? ''}
+              myRole={myRole}
               onPageChange={setPricingPage}
               onSearchChange={setPricingSearch}
               onToggleUnlinked={setShowOnlyUnlinked}
+              onPricingAdded={() => fetchPricings(pricingPage, debouncedPricingSearch)}
             />
           )}
 

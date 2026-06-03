@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
-import { useAuth } from '../../../auth/hooks/useAuth';
-import { usePricingsApi } from '../../api/pricingsApi';
 import OrgAvatar from '../../../core/components/org-avatar';
 import { getCurrency } from '../stats';
-import customConfirm from '../../../core/utils/custom-confirm';
-import customAlert from '../../../core/utils/custom-alert';
 
 interface PricingEntry {
   name: string;
@@ -23,15 +19,22 @@ interface PricingEntry {
   };
 }
 
+export interface MenuItem {
+  label: string;
+  icon?: 'trash' | 'link';
+  onClick: (e: React.MouseEvent) => void;
+  variant?: 'danger' | 'default';
+}
+
 interface Props {
   data: PricingEntry;
   onRemoved?: () => void;
+  showMenu?: boolean;
+  menuItems?: MenuItem[];
 }
 
-export default function PricingCard({ data, onRemoved }: Props) {
+export default function PricingCard({ data, showMenu = false, menuItems = [] }: Props) {
   const router = useRouter();
-  const { authUser } = useAuth();
-  const { removePricingByName } = usePricingsApi();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -47,29 +50,6 @@ export default function PricingCard({ data, onRemoved }: Props) {
   const handleNavigate = () => {
     const slug = data.collection?.slug || data.collection?.name;
     router.push(`/pricings/${data.organization.id}/${data.slug}?collection=${slug}`);
-  };
-
-  const handleRemove = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      customConfirm(`Are you sure you want to remove ${data.name} from the collection?`, {
-        danger: true,
-      }).then(async () => {
-        if (!data.organization.id) {
-          customAlert('Organization ID is missing. Cannot delete pricing.', 'error');
-          return;
-        }
-        await removePricingByName(
-          data.organization.id,
-          data.name,
-          data.collection?.slug || undefined
-        );
-        onRemoved?.();
-      });
-    } catch {
-      // error
-    }
-    setMenuOpen(false);
   };
 
   const symbol = getCurrency(data.currency);
@@ -109,7 +89,7 @@ export default function PricingCard({ data, onRemoved }: Props) {
           </h3>
         </div>
 
-        {authUser.isAuthenticated && (
+        {showMenu && menuItems.length > 0 && (
           <div ref={menuRef} className="relative" onClick={e => e.stopPropagation()}>
             <button
               type="button"
@@ -132,26 +112,33 @@ export default function PricingCard({ data, onRemoved }: Props) {
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 w-47 rounded-lg border border-tp-hairline bg-tp-canvas py-1 shadow-elevation-4">
-                <button
-                  type="button"
-                  onClick={handleRemove}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50"
-                >
-                  <svg
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
+                {menuItems.map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => {
+                      item.onClick(e);
+                      setMenuOpen(false);
+                    }}
+                    className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                      item.variant === 'danger'
+                        ? 'text-red-600 hover:bg-red-50'
+                        : 'text-tp-ink hover:bg-tp-surface'
+                    }`}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                    />
-                  </svg>
-                  Remove from collection
-                </button>
+                    {item.icon === 'trash' && (
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    )}
+                    {item.icon === 'link' && (
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-4.18a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.374" />
+                      </svg>
+                    )}
+                    {item.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>

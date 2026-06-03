@@ -1,8 +1,13 @@
+import { useEffect, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { motion } from 'framer-motion';
 import { FaFileInvoiceDollar } from 'react-icons/fa';
 import { transitionDefault } from '../../../../core/utils/motion-variants';
-import { OrgPricing } from '../../../api/organizationsApi';
-import PricingCard from '../../../../pricing/components/pricing-card';
+import { OrgPricing, OrgRole, useOrganizationsApi } from '../../../api/organizationsApi';
+import type { EntityPermission } from '../../../types/permissions';
+import { useAuth } from '../../../../auth/hooks/useAuth';
+import PricingCard, { type MenuItem } from '../../../../pricing/components/pricing-card';
+import AddToCollectionModal from '../../../../pricing/components/add-to-collection-modal';
 import Pagination from '../../../../pricing/components/pagination';
 import { PER_PAGE } from '../types';
 
@@ -12,12 +17,34 @@ interface Props {
   pricingPage: number;
   pricingSearch: string;
   showOnlyUnlinked: boolean;
+  orgId: string;
+  myRole: OrgRole | null;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
   onToggleUnlinked: (value: boolean) => void;
+  onPricingAdded?: () => void;
 }
 
-export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, showOnlyUnlinked, onPageChange, onSearchChange, onToggleUnlinked }: Props) {
+export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, showOnlyUnlinked, orgId, myRole, onPageChange, onSearchChange, onToggleUnlinked, onPricingAdded }: Props) {
+  const { authUser } = useAuth();
+  const { getOrgPermissions } = useOrganizationsApi();
+  const [pricingPermissions, setPricingPermissions] = useState<EntityPermission[]>([]);
+  const [addToCollectionPricing, setAddToCollectionPricing] = useState<OrgPricing | null>(null);
+
+  useEffect(() => {
+    if (!authUser.isAuthenticated || !orgId) return;
+    getOrgPermissions(orgId, 'pricing')
+      .then(perms => setPricingPermissions(perms))
+      .catch(() => setPricingPermissions([]));
+  }, [orgId, authUser.isAuthenticated, getOrgPermissions]);
+
+  const hasPutPermission = (pricingSlug: string) => {
+    if (myRole === 'OWNER' || myRole === 'ADMIN') return true;
+    return pricingPermissions.some(
+      p => p.entitySlug === pricingSlug && p.permissions.PUT
+    );
+  };
+
   return (
     <motion.div
       key="pricings"
@@ -60,9 +87,26 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {pricings.map((pricing) => (
-                <PricingCard key={`${pricing.name}-${pricing.version}`} data={pricing} />
-              ))}
+              {pricings.map((pricing) => {
+                const isUnlinked = !pricing.collection?.id;
+                const showMenu = isUnlinked && hasPutPermission(pricing.slug);
+                const menuItems: MenuItem[] = showMenu
+                  ? [{
+                      label: 'Add to collection',
+                      icon: 'link',
+                      onClick: () => setAddToCollectionPricing(pricing),
+                    }]
+                  : [];
+
+                return (
+                  <PricingCard
+                    key={`${pricing.name}-${pricing.version}`}
+                    data={pricing}
+                    showMenu={showMenu}
+                    menuItems={menuItems}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -77,6 +121,20 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {addToCollectionPricing && (
+          <AddToCollectionModal
+            pricingName={addToCollectionPricing.name}
+            pricingSlug={addToCollectionPricing.slug}
+            onAdded={() => {
+              setAddToCollectionPricing(null);
+              onPricingAdded?.();
+            }}
+            onClose={() => setAddToCollectionPricing(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

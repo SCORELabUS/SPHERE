@@ -211,11 +211,11 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, token]);
 
-  const addPricingToCollection = useCallback(async (pricingName: string, collectionId: string) => {
+  const addPricingToCollection = useCallback(async (pricingSlug: string, collectionId: string) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${authUser.user?.username}/pricings`, {
       method: 'POST',
       headers: basicHeaders,
-      body: JSON.stringify({ pricingName, collectionId }),
+      body: JSON.stringify({ pricingSlug, collectionId }),
     })
       .then(response => {
         if (!response.ok) {

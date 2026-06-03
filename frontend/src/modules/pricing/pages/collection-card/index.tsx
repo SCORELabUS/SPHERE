@@ -7,12 +7,14 @@ import { usePricingsApi } from '../../api/pricingsApi';
 import { getPublicOrganization } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
-import PricingCard from '../../components/pricing-card';
+import PricingCard, { type MenuItem } from '../../components/pricing-card';
 import Pagination from '../../components/pagination';
 import CollectionSettings, { type CollectionPermissions } from '../../components/collection-settings';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { transitionDefault, staggerContainer, fadeInUp } from '../../../core/utils/motion-variants';
+import customConfirm from '../../../core/utils/custom-confirm';
+import customAlert from '../../../core/utils/custom-alert';
 import DatePicker from '../../../core/components/date-picker';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Collection } from '../../types/collection';
@@ -45,7 +47,7 @@ export default function CollectionCardPage() {
   const { organizationId, collectionSlug } = useParams<{ organizationId: string; collectionSlug: string }>();
   const router = useRouter();
   const { getCollectionByOwnerAndName, downloadCollection, getCollectionPermissions } = usePricingCollectionsApi();
-  const { getPricings } = usePricingsApi();
+  const { getPricings, removePricingFromCollection } = usePricingsApi();
   const { authUser } = useAuth();
   const { addRecentCollection } = useRecentItems();
 
@@ -54,7 +56,7 @@ export default function CollectionCardPage() {
   const [tab, setTab] = useState<Tab>('pricings');
   const [sortAsc, setSortAsc] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [permissions, setPermissions] = useState<CollectionPermissions>({ GET: false, PUT: false, DELETE: false });
+  const [permissions, setPermissions] = useState<CollectionPermissions>({ GET: false, PUT: false, DELETE: false, CREATE: false });
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
 
   const [pricings, setPricings] = useState<PricingEntry[]>([]);
@@ -294,11 +296,41 @@ export default function CollectionCardPage() {
                 </div>
               ) : (
                 <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {pricings.map((p) => (
-                    <motion.div key={`${p.organization.name}-${p.name}`} variants={fadeInUp} transition={transitionDefault}>
-                      <PricingCard data={p} onRemoved={fetchPricings} />
-                    </motion.div>
-                  ))}
+                  {pricings.map((p) => {
+                    const menuItems: MenuItem[] = [{
+                      label: 'Remove from collection',
+                      icon: 'trash',
+                      variant: 'danger',
+                      onClick: async (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        try {
+                          await customConfirm(
+                            `Are you sure you want to remove "${p.name}" from this collection?`,
+                            { danger: true }
+                          );
+                          await removePricingFromCollection(
+                            p.slug,
+                            p.organization.id,
+                            collection?.slug || collectionSlug || ''
+                          );
+                          customAlert(`"${p.name}" removed from collection`, 'success');
+                          fetchPricings();
+                        } catch {
+                          // user cancelled or error
+                        }
+                      },
+                    }];
+
+                    return (
+                      <motion.div key={`${p.organization.name}-${p.name}`} variants={fadeInUp} transition={transitionDefault}>
+                        <PricingCard
+                          data={p}
+                          showMenu={true}
+                          menuItems={menuItems}
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </motion.div>
               )}
 
