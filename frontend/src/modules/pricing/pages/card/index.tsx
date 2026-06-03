@@ -23,6 +23,9 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { EntityPermissions } from '../../../organization/types/permissions';
 import PricingCardSkeleton from '../../../core/components/skeletons/pricing-card-skeleton';
 import PrivateAccessFallback from '../../components/private-access-fallback';
+import HarveyChat from '../../../core/components/harvey-chat';
+import type { SuggestedQuestion } from '../../../core/components/harvey-chat';
+
 
 const axisTick = { fill: '#4a4a4a', fontSize: 11 };
 const compactNum = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
@@ -54,6 +57,35 @@ interface TreeAnalytics {
   numberOfReplacementAddons: number; numberOfExtensionAddons: number;
   numberOfBotAutomationFeatures: number; numberOfFilteringAutomationFeatures: number;
   numberOfTrackingAutomationFeatures: number; numberOfTaskAutomationFeatures: number;
+}
+
+function YamlSourcePanel({ yamlText }: { yamlText: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+      <button
+        type="button"
+        onClick={() => setExpanded(p => !p)}
+        className="flex w-full cursor-pointer items-center justify-between"
+      >
+        <h3 className="text-xs font-medium text-tp-ink">YAML source</h3>
+        <svg
+          className={`h-4 w-4 shrink-0 text-tp-steel transition-transform md:hidden ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+      {/* Always visible on desktop, toggleable on mobile */}
+      <div className={`${expanded ? 'block' : 'hidden'} mt-3 md:block`}>
+        <pre className="max-h-125 overflow-auto rounded-lg bg-tp-surface-code p-3 text-[11px] leading-relaxed text-tp-on-dark">{yamlText}</pre>
+      </div>
+    </div>
+  );
 }
 
 function PricingTree({ analytics: a }: { analytics: TreeAnalytics }) {
@@ -122,11 +154,11 @@ function PricingTree({ analytics: a }: { analytics: TreeAnalytics }) {
 }
 
 export default function CardPage() {
-  const { organizationId, name } = useParams<{ organizationId: string; name: string }>();
+  const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
   const [searchParams] = useSearchParams();
   const collectionSlug = searchParams.get('collectionSlug');
   const router = useRouter();
-  const { getPricingByName, removePricingVersion, removePricingByName, updatePricing, createPricingVersion } = usePricingsApi();
+  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
@@ -134,6 +166,7 @@ export default function CardPage() {
   const [versions, setVersions] = useState<VersionData[]>([]);
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
   const [pricing, setPricing] = useState<Pricing | null>(null);
+  const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
@@ -160,10 +193,11 @@ export default function CardPage() {
 
   // Fetch versions + check permissions
   useEffect(() => {
-    if (!name || !organizationId) return;
+    if (!slug || !organizationId) return;
     setIsLoading(true);
-    getPricingByName(name, organizationId, collectionSlug)
+    getPricingBySlug(slug, organizationId, collectionSlug)
       .then(async (data) => {
+        setPricingName(data.name ?? slug);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
@@ -181,7 +215,7 @@ export default function CardPage() {
         try {
           const baseUrl = import.meta.env.VITE_API_URL;
           const token = authUser?.token;
-          const response = await fetch(`${baseUrl}/pricings/${organizationId}/${name}/permissions`, {
+          const response = await fetch(`${baseUrl}/pricings/${organizationId}/${slug}/permissions`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (response.ok) {
@@ -192,18 +226,18 @@ export default function CardPage() {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [name, organizationId, collectionSlug]);
+  }, [slug, organizationId, collectionSlug]);
 
   // Track visit for recent items
   useEffect(() => {
-    if (!authUser.isAuthenticated || !name || !organizationId) return;
+    if (!authUser.isAuthenticated || !slug || !organizationId) return;
     addRecentPricing({
-      id: `${organizationId}/${name}`,
-      name,
+      id: `${organizationId}/${slug}`,
+      name: slug,
       orgId: organizationId,
       orgName: organizationId,
     });
-  }, [name, organizationId, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slug, organizationId, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-dependencies
 
   // Fetch YAML when version changes
   useEffect(() => {
@@ -309,10 +343,10 @@ export default function CardPage() {
   };
 
   const handleDelete = async (v: VersionData) => {
-    if (!name) return;
+    if (!slug) return;
     if (!confirm(`Delete version ${v.version}? This cannot be undone.`)) return;
     try {
-      await removePricingByName(organizationId || "", name, collectionSlug ?? undefined);
+      await removePricingBySlug(organizationId || "", slug, collectionSlug ?? undefined);
       setVersions(prev => prev.filter(x => x.id !== v.id));
       if (currentVersion?.id === v.id) setCurrentVersion(versions.find(x => x.id !== v.id) ?? null);
     } catch {
@@ -321,11 +355,11 @@ export default function CardPage() {
   };
 
   const handleVisibilityChange = () => {
-    if (!name) return;
+    if (!slug) return;
     customConfirm('Are you sure you want to change the visibility of this pricing?', { danger: true })
       .then(() => {
         const pricingUpdateBody = { private: visibility === 'Public' }; // We check the oposite cause the visibility state has not yet being changed
-        updatePricing(organizationId!, name, collectionSlug ?? '', pricingUpdateBody)
+        updatePricing(organizationId!, slug, collectionSlug ?? '', pricingUpdateBody)
           .then(() => {
             setVisibility(visibility === 'Private' ? 'Public' : 'Private');
             customAlert('Pricing visibility updated successfully', 'success');
@@ -338,10 +372,10 @@ export default function CardPage() {
   };
 
   const handleDeleteCurrentVersion = () => {
-    if (!name || !currentVersion) return;
+    if (!slug || !currentVersion) return;
     customConfirm(`Are you sure you want to delete version ${currentVersion.version}? This action is irreversible.`, { danger: true })
       .then(() => {
-        removePricingVersion(organizationId || "", name, currentVersion.version)
+        removePricingVersion(organizationId || "", slug, currentVersion.version)
           .then(() => {
             setVersions(prev => {
               const next = prev.filter(x => x.id !== currentVersion.id);
@@ -359,14 +393,14 @@ export default function CardPage() {
   };
 
   const handleDeletePricing = () => {
-    if (!name) return;
+    if (!slug) return;
     customConfirm('Are you sure you want to delete this pricing? This action is irreversible.', { danger: true })
       .then(() => {
         if (!organizationId) {
           customAlert('Organization ID is missing. Cannot delete pricing.', 'error');
           return;
         }
-        removePricingByName(organizationId, name, collectionSlug ?? undefined)
+        removePricingBySlug(organizationId, slug, collectionSlug ?? undefined)
           .then(() => {
             customConfirm('Pricing deleted successfully. Do you want to return to the main page?', { danger: false })
               .then(() => router.push('/'))
@@ -380,7 +414,7 @@ export default function CardPage() {
   };
 
   const handleImportVersion = async (file: File) => {
-    if (!name || !organizationId) return;
+    if (!slug || !organizationId) return;
 
     try {
       const text = await file.text();
@@ -398,29 +432,29 @@ export default function CardPage() {
         return;
       }
 
-      if (uploadedPricing.saasName !== name){
-        customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${name}". Do you want to proceed?`, { danger: true })
+      if (uploadedPricing.saasName !== pricing?.name){
+        customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${pricing?.name}". Do you want to proceed?`, { danger: true })
           .then(() => {
-            _createPricingVersion(file, organizationId, name, uploadedPricing.version);
+            _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
           })
       }else{
-        _createPricingVersion(file, organizationId, name, uploadedPricing.version);
+        _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
       }
     } catch (err) {
       customAlert(`Error adding version: ${(err as Error).message}`, 'error');
     }
   };
 
-  async function _createPricingVersion(file: File, organizationId: string, name: string, version: string) {
+  async function _createPricingVersion(file: File, organizationId: string, slug: string, version: string) {
     const formData = new FormData();
       formData.append('yaml', file);
       formData.append('private', 'false');
 
-      await createPricingVersion(formData, organizationId, name, version);
+      await createPricingVersion(formData, organizationId, slug, version);
       customAlert('New version added successfully', 'success');
       setShowImportModal(false);
 
-      getPricingByName(name, organizationId, collectionSlug).then(async (data) => {
+      getPricingBySlug(slug, organizationId, collectionSlug).then(async (data) => {
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
@@ -432,11 +466,25 @@ export default function CardPage() {
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
   const isPrivateNoAccess = !entityPermissions?.GET && currentVersion?.private;
 
+  const pricingSuggestions: SuggestedQuestion[] = useMemo(() => {
+    if (!a) return [
+      { id: 'overview', label: 'Give me an overview of this pricing', question: 'Can you give me an overview of this pricing structure? What are the main plans and features?' },
+      { id: 'compare', label: 'Compare plans and their differences', question: 'What are the differences between the available plans? Which one offers the best value?' },
+      { id: 'optimize', label: 'Suggest improvements for this pricing', question: 'Do you see any opportunities to improve this pricing strategy? Any redundancies or gaps?' },
+    ];
+    return [
+      { id: 'cheapest', label: `Find the cheapest plan with the most features`, question: `Which is the most affordable configuration that includes the maximum number of features in ${pricingName}?` },
+      { id: 'compare', label: 'Compare all plans side by side', question: `Can you compare all the plans in ${pricingName}? What are the key differences and which offers the best value?` },
+      { id: 'gaps', label: 'Identify gaps in the pricing strategy', question: `Are there any gaps or missing tiers in the ${pricingName} pricing? Could there be a plan that captures users between tiers?` },
+      { id: 'redundancies', label: 'Check for redundant plans or features', question: `Are there any redundant plans or overlapping features in ${pricingName}? How could the pricing be streamlined?` },
+    ];
+  }, [a, pricingName]);
+
   if (isLoading) return <PricingCardSkeleton />;
 
   return (
     <>
-      <Helmet><title>SPHERE - {name}</title></Helmet>
+      <Helmet><title>SPHERE - {pricingName}</title></Helmet>
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
         {/* Breadcrumb + header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault} className="mb-6">
@@ -446,11 +494,11 @@ export default function CardPage() {
             </button>
             <span>/</span>
             {collectionSlug && <><button type="button" onClick={() => router.push('/collections')} className="cursor-pointer hover:text-tp-ink">{collectionSlug}</button><span>/</span></>}
-            <span className="text-tp-ink">{name}</span>
+            <span className="text-tp-ink">{pricingName}</span>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="font-display text-2xl font-normal text-tp-ink">{name}</h1>
+              <h1 className="font-display text-2xl font-normal text-tp-ink">{pricingName}</h1>
               {currentVersion && <p className="mt-1 text-sm text-tp-steel">Updated {formatDistanceToNow(parseISO(currentVersion.createdAt))} ago</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -482,20 +530,35 @@ export default function CardPage() {
           ))}
         </motion.div>
 
-        {/* Tabs */}
-        <div className="mb-6 flex gap-1 overflow-x-auto border-b border-tp-hairline-soft">
-          {([
-            ['overview', 'Overview'],
-            ['analytics', 'Analytics'],
-            ['config-space', 'Configuration Space'],
-            ['versions', 'Versions'],
-            ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
-          ] as const).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}>
-              {l}
-              {tab === k && <motion.div layoutId="pricing-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary" transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
-            </button>
-          ))}
+        {/* Tabs — select on mobile, tabs on desktop */}
+        <div className="mb-6 border-b border-tp-hairline-soft">
+          {/* Mobile: select dropdown */}
+          <select
+            value={tab}
+            onChange={e => setTab(e.target.value as Tab)}
+            className="mb-2 w-full cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink focus:border-tp-primary focus:outline-none md:hidden"
+          >
+            <option value="overview">Overview</option>
+            <option value="analytics">Analytics</option>
+            <option value="config-space">Configuration Space</option>
+            <option value="versions">Versions</option>
+            {showSettingsTab && <option value="settings">Settings</option>}
+          </select>
+          {/* Desktop: tab bar */}
+          <div className="hidden gap-1 md:flex">
+            {([
+              ['overview', 'Overview'],
+              ['analytics', 'Analytics'],
+              ['config-space', 'Configuration Space'],
+              ['versions', 'Versions'],
+              ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
+            ] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setTab(k)} className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}>
+                {l}
+                {tab === k && <motion.div layoutId="pricing-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary" transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
+              </button>
+            ))}
+          </div>
         </div>
 
         <AnimatePresence mode="wait">
@@ -511,7 +574,7 @@ export default function CardPage() {
                 </div>
                 <div className="space-y-4">
                   {aSafe && <PricingTree analytics={aSafe} />}
-                  {yamlText && <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4"><h3 className="mb-3 text-xs font-medium text-tp-ink">YAML source</h3><pre className="max-h-125 overflow-auto rounded-lg bg-tp-surface-code p-3 text-[11px] leading-relaxed text-tp-on-dark">{yamlText}</pre></div>}
+                  {yamlText && <YamlSourcePanel yamlText={yamlText} />}
                 </div>
               </div>
               )}
@@ -523,7 +586,7 @@ export default function CardPage() {
             <motion.div key="analytics" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
               {isPrivateNoAccess ? <PrivateAccessFallback /> : (
               <>
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-sm font-medium text-tp-ink">Analytics</h3>
                 <DatePicker dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} />
               </div>
@@ -563,7 +626,7 @@ export default function CardPage() {
                   <p className="mt-1 max-w-md text-xs text-tp-steel">This pricing has {a.configurationSpaceSize.toLocaleString()} configurations. The explorer is only available for pricing with ≤2,000 configurations.</p>
                 </div>
               ) : organizationId && currentVersion ? (
-                <ConfigurationSpaceView organizationId={organizationId} pricingName={name!} pricingVersion={currentVersion.version} />
+                <ConfigurationSpaceView organizationId={organizationId} pricingSlug={slug!} pricingVersion={currentVersion.version} />
               ) : null}
               </>
               )}
@@ -621,7 +684,7 @@ export default function CardPage() {
 
                     {currentVersion && (
                       <div className="rounded-lg border border-red-500 p-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <p className="text-sm font-medium text-tp-ink">Delete current version ({currentVersion.version})</p>
                             <p className="mt-1 text-xs text-tp-steel">Once you delete this version, there is no going back. Other versions will remain intact.</p>
@@ -629,7 +692,7 @@ export default function CardPage() {
                           <button
                             type="button"
                             onClick={handleDeleteCurrentVersion}
-                            className="cursor-pointer rounded-md border border-red-500 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-500 hover:text-white"
+                            className="cursor-pointer shrink-0 rounded-md border border-red-500 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-500 hover:text-white"
                           >
                             Delete version
                           </button>
@@ -638,7 +701,7 @@ export default function CardPage() {
                     )}
 
                     <div className="mt-4 rounded-lg border border-red-500 p-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm font-medium text-tp-ink">Delete this pricing</p>
                           <p className="mt-1 text-xs text-tp-steel">Once you delete a pricing, there is no going back. Please be certain.</p>
@@ -646,7 +709,7 @@ export default function CardPage() {
                         <button
                           type="button"
                           onClick={handleDeletePricing}
-                          className="cursor-pointer rounded-md border border-red-500 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-500 hover:text-white"
+                          className="cursor-pointer shrink-0 rounded-md border border-red-500 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-500 hover:text-white"
                         >
                           Delete pricing
                         </button>
@@ -721,7 +784,7 @@ export default function CardPage() {
             >
               <h2 className="mb-2 text-center font-display text-lg font-semibold text-tp-ink">Add new pricing version</h2>
               <p className="mb-4 text-center text-sm text-tp-steel">
-                Upload a Pricing2Yaml file. The pricing name will be set to <span className="font-medium text-tp-ink">{name}</span>.
+                Upload a Pricing2Yaml file. The pricing name will be set to <span className="font-medium text-tp-ink">{pricingName}</span>.
               </p>
               <FileUpload
                 onSubmit={handleImportVersion}
@@ -733,6 +796,13 @@ export default function CardPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ═══ HARVEY CHAT ═══ */}
+      <HarveyChat
+        yamlContent={yamlText}
+        pricingSlug={slug ?? undefined}
+        organizationId={organizationId ?? undefined}
+        suggestedQuestions={pricingSuggestions}
+      />
     </>
   );
 }

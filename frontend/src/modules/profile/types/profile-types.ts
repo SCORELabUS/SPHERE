@@ -12,6 +12,7 @@ export interface CollectionEntry {
 
 export interface PricingEntry {
   name: string,
+  slug: string;
   version: string;
   createdAt: string;
   currency: string;
