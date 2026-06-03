@@ -278,16 +278,14 @@ export const createEntityScopedPermission = async (
   entityType: EntityType,
   permissions: EntityPermissions
 ): Promise<void> => {
-  const permission = new EntityPermissionMongoose({
-    _userId: new mongoose.Types.ObjectId(userId),
-    _organizationId: new mongoose.Types.ObjectId(organizationId),
-    entityType,
-    entitySlug: entityId,
-    permissions,
-  });
-
-  const saved = await permission.save();
-  if (!saved) {
-    throw new Error('Failed to create entity-scoped permission');
-  }
+  await EntityPermissionMongoose.findOneAndUpdate(
+    {
+      _userId: new mongoose.Types.ObjectId(userId),
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      entityType,
+      entitySlug: entityId,
+    },
+    { $set: { permissions } },
+    { new: true, upsert: true }
+  );
 };
