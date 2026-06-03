@@ -5,6 +5,7 @@ export const filtersDataGenerator = {
         $project: {
           id: { $toString: '$_id' },
           name: 1,
+          slug: 1,
           organization: 1,
           collection: {
             id: 1,

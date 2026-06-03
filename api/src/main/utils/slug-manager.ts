@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export function generateSlug(text: string): string {
   return text
     .toString()
@@ -14,6 +16,18 @@ export function generateUniqueSlug(text: string, existingSlugs: number): string 
     return baseSlug;
   }
   return `${baseSlug}--${existingSlugs + 1}`;
+}
+
+export async function deduplicateSlug(
+  baseSlug: string,
+  checkExists: (slug: string) => Promise<boolean>
+): Promise<string> {
+  let slug = baseSlug;
+  while (await checkExists(slug)) {
+    const suffix = crypto.randomBytes(5).readUInt32BE(0).toString().slice(0, 10);
+    slug = `${baseSlug}-${suffix}`;
+  }
+  return slug;
 }
 
 export function generateTextFromSlug(slug: string): string {

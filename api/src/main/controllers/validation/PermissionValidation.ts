@@ -13,12 +13,12 @@ const setPermission = [
     .withMessage('An entityType must be provided')
     .isIn(['pricing', 'collection'])
     .withMessage('The entityType must be one of: pricing, collection'),
-  check('entityId')
+  check('entitySlug')
     .optional({ values: 'null' })
     .isString()
-    .withMessage('The entityId field must be a string')
+    .withMessage('The entitySlug field must be a string')
     .notEmpty()
-    .withMessage('The entityId must not be an empty string'),
+    .withMessage('The entitySlug must not be an empty string'),
   check('permissions')
     .exists()
     .withMessage('A permissions object must be provided')

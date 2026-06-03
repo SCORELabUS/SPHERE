@@ -18,7 +18,7 @@ import { allPolicies } from './policies';
  *     userId: 'user1',
  *     organizationId: 'org1',
  *     entityType: 'pricing',
- *     entityId: 'pricing1',
+ *     entitySlug: 'pricing1',
  *     action: 'GET',
  *     isPrivate: true,
  *     userOrgRole: 'MEMBER',
@@ -89,14 +89,14 @@ export class PermissionEngine {
     }
 
     // Apply entity-level permissions if not already set
-    if (!enriched.entityPermissions && enriched.entityId) {
-      const key = `${enriched.entityType}:${enriched.entityId}`;
+    if (!enriched.entityPermissions && enriched.entitySlug) {
+      const key = `${enriched.entityType}:${enriched.entitySlug}`;
       enriched.entityPermissions = batchContext.entityPermissions.get(key);
     }
 
     // Apply collection permissions for pricing inheritance
-    if (!enriched.collectionPermissions && enriched.collectionId) {
-      enriched.collectionPermissions = batchContext.collectionPermissions.get(enriched.collectionId);
+    if (!enriched.collectionPermissions && enriched.collectionSlug) {
+      enriched.collectionPermissions = batchContext.collectionPermissions.get(enriched.collectionSlug);
     }
 
     // Apply role info if not already set

@@ -6,8 +6,10 @@ import mongoose, { PipelineStage } from 'mongoose';
 import { getPricingByNameAndOrganizationAggregator } from './aggregators/get-pricing-by-name-and-organization';
 import { LeanPricing } from '../../types/models/Pricing';
 import { getPricingByNameOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-name-organization-and-version';
+import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-slug-organization-and-version';
 import { OrgUserPermissionsContext } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
+import { generateSlug } from '../../utils/slug-manager';
 
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
@@ -176,6 +178,71 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject<LeanPricing>();
   }
 
+  async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
+    const existing = await PricingMongoose.findOne({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    }).lean();
+    return existing !== null;
+  }
+
+  async findBySlugAndOrganization(slug: string, organizationId: string): Promise<LeanPricing | null> {
+    const pricing = await PricingMongoose.findOne({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    });
+    if (!pricing) {
+      return null;
+    }
+    return pricing.toObject<LeanPricing>();
+  }
+
+  async findOneBySlug(
+    slug: string,
+    organizationId: string,
+    queryParams: {
+      collectionId?: string;
+      collectionSlug?: string;
+      version?: string;
+      includePrivate?: boolean;
+    } = { includePrivate: false }
+  ) {
+    const visibilityMatch = queryParams.includePrivate
+      ? {}
+      : { private: false };
+
+    try {
+      let pricing;
+      const organizationMatch = { _organizationId: new mongoose.Types.ObjectId(organizationId) };
+
+      if (queryParams?.collectionSlug) {
+        pricing = await PricingMongoose.aggregate([
+          { $match: { ...visibilityMatch, ...organizationMatch } },
+          ...getPricingBySlugOrganizationAndVersionAggregator(slug, organizationId, queryParams.version),
+          { $match: { 'collection.slug': queryParams.collectionSlug } },
+        ]);
+      } else if (queryParams?.collectionId) {
+        pricing = await PricingMongoose.aggregate([
+          { $match: { ...visibilityMatch, ...organizationMatch, _collectionId: queryParams.collectionId } },
+          ...getPricingBySlugOrganizationAndVersionAggregator(slug, organizationId, queryParams.version),
+        ]);
+      } else {
+        pricing = await PricingMongoose.aggregate([
+          { $match: { ...visibilityMatch, ...organizationMatch } },
+          ...getPricingBySlugOrganizationAndVersionAggregator(slug, organizationId, queryParams.version),
+        ]);
+      }
+
+      if (!pricing || pricing.length === 0) {
+        return null;
+      }
+
+      return pricing[0];
+    } catch (err) {
+      return null;
+    }
+  }
+
   async create(data: any[]) {
     data.forEach(item => {
       if (item._collectionId) {
@@ -184,6 +251,10 @@ class PricingRepository extends RepositoryBase {
 
       if (item._organizationId) {
         item._organizationId = new mongoose.Types.ObjectId(item._organizationId);
+      }
+
+      if (!item.slug && item.name) {
+        item.slug = generateSlug(item.name);
       }
 
       if (

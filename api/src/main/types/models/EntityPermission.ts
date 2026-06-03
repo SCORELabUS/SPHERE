@@ -13,7 +13,7 @@ export interface LeanEntityPermission {
   _userId: string;
   _organizationId: string;
   entityType: EntityType;
-  entityId: string | null;
+  entitySlug: string | null;
   permissions: EntityPermissions;
   grantedBy?: string;
   createdAt: Date;

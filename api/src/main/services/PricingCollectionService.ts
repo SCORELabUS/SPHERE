@@ -134,12 +134,12 @@ class PricingCollectionService {
         orgRole,
         reqUser.role === 'ADMIN'
       );
-      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.id}`);
+      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
       const evalResult = this.permissionEngine.evaluate({
         userId: reqUser.id,
         organizationId,
         entityType: 'collection',
-        entityId: collection.id,
+        entitySlug: collection.slug,
         action: 'GET',
         isPrivate: true,
         userOrgRole: orgRole,
@@ -364,13 +364,13 @@ class PricingCollectionService {
       reqUser.role === 'ADMIN'
     );
 
-    const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.id}`);
+    const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
 
     const updateResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
       organizationId,
       entityType: 'collection',
-      entityId: collection.id,
+      entitySlug: collection.slug,
       action: 'PUT',
       isPrivate: collection.private,
       userOrgRole: orgRole,
@@ -463,13 +463,13 @@ class PricingCollectionService {
         reqUser.role === 'ADMIN'
       );
 
-      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.id}`);
+      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
 
       const deleteResult = this.permissionEngine.evaluate({
         userId: reqUser.id,
         organizationId,
         entityType: 'collection',
-        entityId: collection.id,
+        entitySlug: collection.slug,
         action: 'DELETE',
         isPrivate: collection.private,
         userOrgRole: orgRole,

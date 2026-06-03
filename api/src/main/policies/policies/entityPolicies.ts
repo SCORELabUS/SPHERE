@@ -57,7 +57,7 @@ const COLLECTION_INHERITED_GET: Policy = {
   name: 'collection-inherited-get',
   description: 'Pricing inherits GET permission from its parent collection',
   evaluate: (ctx) => {
-    if (ctx.action === 'GET' && ctx.entityType === 'pricing' && ctx.collectionId) {
+    if (ctx.action === 'GET' && ctx.entityType === 'pricing' && ctx.collectionSlug) {
       // If the pricing has no direct GET permission but has a collection
       if (!ctx.entityPermissions?.GET && ctx.collectionPermissions?.GET) {
         return { allowed: true, reason: 'Inherited GET from parent collection' };
@@ -71,7 +71,7 @@ const ENTITY_POST: Policy = {
   name: 'entity-post',
   description: 'POST on existing entity requires explicit CREATE permission at entity level',
   evaluate: (ctx) => {
-    if (ctx.action === 'CREATE' && ctx.entityId) {
+    if (ctx.action === 'CREATE' && ctx.entitySlug) {
       if (ctx.entityPermissions?.CREATE) {
         return { allowed: true, reason: 'Entity-level CREATE permission granted' };
       }

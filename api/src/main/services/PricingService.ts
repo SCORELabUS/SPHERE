@@ -116,7 +116,7 @@ class PricingService {
   }
 
   async show(
-    name: string,
+    slug: string,
     organizationId: string,
     reqUser?: LeanUser,
     queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
@@ -126,8 +126,8 @@ class PricingService {
       queryParams.includePrivate = reqUser.role === 'ADMIN' || role !== null;
     }
 
-    const pricing: { name: string; versions: PricingModel[] } | null =
-      await this.pricingRepository.findOne(name, organizationId, queryParams);
+    const pricing: { name: string; slug: string; versions: PricingModel[] } | null =
+      await this.pricingRepository.findOneBySlug(slug, organizationId, queryParams);
 
     if (!pricing) {
       throw new Error('NOT FOUND: Pricing not found');
@@ -142,7 +142,7 @@ class PricingService {
 
   async getConfigurationSpace(
     organizationId: string,
-    pricingName: string,
+    pricingSlug: string,
     pricingVersion: string,
     reqUser?: LeanUser,
     queryParams?: { collectionSlug?: string; limit?: string; offset?: string }
@@ -167,7 +167,7 @@ class PricingService {
       includePrivate = reqUser.role === 'ADMIN' || role !== null;
     }
 
-    const retrievedPricing = await this.pricingRepository.findOne(pricingName, organizationId, {
+    const retrievedPricing = await this.pricingRepository.findOneBySlug(pricingSlug, organizationId, {
       ...queryParams,
       version: pricingVersion,
       includePrivate,
@@ -181,7 +181,7 @@ class PricingService {
     }
 
     let configurationSpace = null;
-    const key: string = `${organizationId}.${pricingName}.${pricingVersion}.configurationSpace`;
+    const key: string = `${organizationId}.${pricingSlug}.${pricingVersion}.configurationSpace`;
     const cachedConfigurationSpace = await this.cacheService.get(key);
 
     if (cachedConfigurationSpace) {
@@ -221,12 +221,12 @@ class PricingService {
   async createVersion(
     pricingFile: any,
     organizationId: string,
-    pricingName: string,
+    pricingSlug: string,
     isPrivate: boolean,
     reqUser: LeanUser,
     collectionId?: string
   ) {
-    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId, pricingName);
+    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId, pricingSlug);
   }
 
   private async _createPricingVersion(
@@ -235,7 +235,7 @@ class PricingService {
     isPrivate: boolean,
     reqUser: LeanUser,
     collectionId?: string,
-    overrideName?: string
+    overrideSlug?: string
   ) {
     try {
       const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
@@ -250,25 +250,25 @@ class PricingService {
         typeof pricingFile === 'string' ? pricingFile : pricingFile.path
       );
 
-      const effectiveName = overrideName ?? uploadedPricing.saasName;
-
-      const previousPricing = await this.pricingRepository.findOne(
-        effectiveName,
-        organizationId,
-        { collectionId: collectionId, includePrivate: true }
-      );
+      const previousPricing = overrideSlug
+        ? await this.pricingRepository.findOneBySlug(overrideSlug, organizationId, {
+            collectionId: collectionId, includePrivate: true,
+          })
+        : await this.pricingRepository.findOne(uploadedPricing.saasName, organizationId, {
+            collectionId: collectionId, includePrivate: true,
+          });
 
       const isAddingVersion = !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
 
       if (isAddingVersion) {
         // Adding a version to existing pricing: only entity-level CREATE required
-        const entityId = previousPricing.versions[0]._id?.toString() ?? previousPricing.versions[0].id;
-        const entityPerms = batchCtx.entityPermissions.get(`pricing:${entityId}`);
+        const pricingSlug = previousPricing.slug!;
+        const entityPerms = batchCtx.entityPermissions.get(`pricing:${pricingSlug}`);
         const entityCreateResult = this.permissionEngine.evaluate({
           userId: reqUser.id,
           organizationId,
           entityType: 'pricing',
-          entityId,
+          entitySlug: pricingSlug,
           action: 'CREATE',
           isPrivate: previousPricing.private === true,
           userOrgRole: orgRole,
@@ -308,8 +308,12 @@ class PricingService {
 
       const yamlPath = normalizedPath.slice(staticIndex);
 
+      const pricingName = isAddingVersion ? previousPricing.name : uploadedPricing.saasName;
+      const pricingSlug = isAddingVersion ? previousPricing.slug : undefined;
+
       const pricingData = {
-        name: effectiveName,
+        name: pricingName,
+        slug: pricingSlug,
         version: uploadedPricing.version,
         _collectionId: collectionId,
         _organizationId: organizationId,
@@ -378,7 +382,7 @@ class PricingService {
   }
 
   async update(
-    pricingName: string,
+    pricingSlug: string,
     organizationId: string,
     reqUser: LeanUser,
     data: any,
@@ -387,7 +391,7 @@ class PricingService {
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOne(pricingName, effectiveOrgId, {
+    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
@@ -404,16 +408,13 @@ class PricingService {
       reqUser.role === 'ADMIN'
     );
 
-    const entityId = pricing.versions[0]?.id;
-    const entityPerms = entityId
-      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
-      : undefined;
+    const entityPerms = batchCtx.entityPermissions.get(`pricing:${pricingSlug}`);
 
     const updateResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
       organizationId: effectiveOrgId,
       entityType: 'pricing',
-      entityId,
+      entitySlug: pricingSlug,
       action: 'PUT',
       isPrivate: pricing.private,
       userOrgRole: orgRole,
@@ -428,7 +429,7 @@ class PricingService {
       await this.pricingRepository.update(pricingVersion.id, data);
     }
 
-    const updatedPricing = await this.pricingRepository.findOne(pricingName, effectiveOrgId, {
+    const updatedPricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
@@ -475,7 +476,7 @@ class PricingService {
   }
 
   async destroy(
-    pricingName: string,
+    pricingSlug: string,
     organizationId: string,
     reqUser: LeanUser,
     queryParams: { collectionSlug?: string; organizationId?: string } = {}
@@ -485,10 +486,14 @@ class PricingService {
 
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOne(pricingName, effectiveOrgId, {
+    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
+
+    if (!pricing) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
 
     const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
@@ -497,16 +502,13 @@ class PricingService {
       reqUser.role === 'ADMIN'
     );
 
-    const entityId = pricing?.versions[0]?.id;
-    const entityPerms = entityId
-      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
-      : undefined;
+    const entityPerms = batchCtx.entityPermissions.get(`pricing:${pricingSlug}`);
 
     const deleteResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
       organizationId: effectiveOrgId,
       entityType: 'pricing',
-      entityId,
+      entitySlug: pricingSlug,
       action: 'DELETE',
       isPrivate: pricing?.private,
       userOrgRole: orgRole,
@@ -530,8 +532,9 @@ class PricingService {
       collectionId = collection.id;
     }
 
+    // TODO: debe eliminar por slug
     const result = await this.pricingRepository.destroyByNameOrganizationAndCollectionId(
-      pricingName,
+      pricing!.name,
       effectiveOrgId,
       collectionId
     );
@@ -544,16 +547,20 @@ class PricingService {
   }
 
   async destroyVersion(
-    pricingName: string,
+    pricingSlug: string,
     pricingVersion: string,
     organizationId: string,
     reqUser: LeanUser
   ) {
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
-    const pricing = await this.pricingRepository.findOne(pricingName, organizationId, {
+    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, organizationId, {
       includePrivate: true,
     });
+
+    if (!pricing) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
 
     const batchCtx = await this.permissionService.buildBatchContext(
       reqUser.id,
@@ -562,16 +569,13 @@ class PricingService {
       reqUser.role === 'ADMIN'
     );
 
-    const entityId = pricing?.versions[0]?.id;
-    const entityPerms = entityId
-      ? batchCtx.entityPermissions.get(`pricing:${entityId}`)
-      : undefined;
+    const entityPerms = batchCtx.entityPermissions.get(`pricing:${pricingSlug}`);
 
     const deleteResult = this.permissionEngine.evaluate({
       userId: reqUser.id,
       organizationId,
       entityType: 'pricing',
-      entityId,
+      entitySlug: pricingSlug,
       action: 'DELETE',
       isPrivate: pricing?.private,
       userOrgRole: orgRole,
@@ -584,15 +588,17 @@ class PricingService {
 
     let result;
 
+    // TODO: debe eliminar por slug y version
     result = await this.pricingRepository.destroyVersionByNameAndOrganization(
-      pricingName,
+      pricing!.name,
       pricingVersion,
       organizationId
     );
 
     if (!result) {
+      // TODO: debe eliminar por slug y version
       result = await this.pricingRepository.destroyVersionByNameAndOrganization(
-        pricingName,
+        pricing!.name,
         pricingVersion.replace('_', '.'),
         organizationId
       );

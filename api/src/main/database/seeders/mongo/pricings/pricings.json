@@ -4,7 +4,9 @@
       "$oid": "6787d0facaeb2b25748bc01c"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": true,
@@ -46,14 +48,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 8,
       "maxSubscriptionPrice": 420
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01d"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": true,
@@ -95,14 +100,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 8,
       "maxSubscriptionPrice": 420
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01e"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": true,
@@ -144,14 +152,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01f"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": true,
@@ -193,14 +204,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc020"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": true,
@@ -242,14 +256,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc021"
     },
     "name": "Box",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": true,
@@ -291,14 +308,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc022"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -340,14 +360,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 126
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc023"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -389,14 +412,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 126
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc024"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -438,14 +464,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 125
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc025"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -487,14 +516,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 12
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc026"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -536,14 +568,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 99
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc027"
     },
     "name": "Buffer",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -585,14 +620,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 99
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc028"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -634,14 +672,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc029"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -683,14 +724,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 23
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02a"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -732,14 +776,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.9
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02b"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -781,14 +828,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.9
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02c"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -830,14 +880,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.5
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02d"
     },
     "name": "Canva",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -879,14 +932,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.5
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02e"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -928,14 +984,17 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02f"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -977,14 +1036,17 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 197
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc030"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -1026,14 +1088,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 292
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc031"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -1075,14 +1140,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 292
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc032"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -1124,14 +1192,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 190
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc033"
     },
     "name": "Clickup",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -1173,14 +1244,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 190
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc034"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -1222,14 +1296,17 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc035"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -1271,14 +1348,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc036"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -1320,14 +1400,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc037"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -1369,14 +1452,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc038"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -1418,14 +1504,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 29.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc039"
     },
     "name": "Clockify",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -1467,14 +1556,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 29.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03a"
     },
     "name": "Crowdcast",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -1516,14 +1608,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03b"
     },
     "name": "Crowdcast",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -1565,14 +1660,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03c"
     },
     "name": "Crowdcast",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -1614,14 +1712,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03d"
     },
     "name": "Crowdcast",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -1663,14 +1764,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 29,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03e"
     },
     "name": "Crowdcast",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -1712,14 +1816,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 29,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03f"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -1761,14 +1868,17 @@
       "configurationSpaceSize": 786,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2617
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc040"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -1810,14 +1920,17 @@
       "configurationSpaceSize": 786,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2699
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc041"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -1859,14 +1972,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 539
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc042"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -1908,14 +2024,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 689
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc043"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -1957,14 +2076,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc044"
     },
     "name": "Databox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -2006,14 +2128,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc045"
     },
     "name": "Deskera",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -2055,14 +2180,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 199,
       "maxSubscriptionPrice": 2490
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc046"
     },
     "name": "Deskera",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -2104,14 +2232,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 200,
       "maxSubscriptionPrice": 3000
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc047"
     },
     "name": "Deskera",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -2153,14 +2284,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 200,
       "maxSubscriptionPrice": 3000
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc048"
     },
     "name": "Deskera",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -2202,14 +2336,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 35,
       "maxSubscriptionPrice": 119
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc049"
     },
     "name": "Dropbox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -2251,14 +2388,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04a"
     },
     "name": "Dropbox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -2300,14 +2440,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04b"
     },
     "name": "Dropbox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -2349,14 +2492,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04c"
     },
     "name": "Dropbox",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -2398,14 +2544,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 20
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04d"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -2447,14 +2596,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 24.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04e"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -2496,14 +2648,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 16.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04f"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -2545,14 +2700,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 10.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc050"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -2594,14 +2752,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc051"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -2643,14 +2804,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc052"
     },
     "name": "Evernote",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -2692,14 +2856,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc053"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -2741,14 +2908,17 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc054"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -2790,14 +2960,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc055"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -2839,14 +3012,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc056"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -2888,14 +3064,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc057"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -2937,14 +3116,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc058"
     },
     "name": "Figma",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -2986,14 +3168,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc059"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -3035,14 +3220,17 @@
       "configurationSpaceSize": 1630,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 416.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05a"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -3084,14 +3272,17 @@
       "configurationSpaceSize": 1611,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 416.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05b"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -3133,14 +3324,17 @@
       "configurationSpaceSize": 261,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 372.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05c"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -3182,14 +3376,17 @@
       "configurationSpaceSize": 261,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 372.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05d"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -3231,14 +3428,17 @@
       "configurationSpaceSize": 14,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 410
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05e"
     },
     "name": "Github",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -3280,14 +3480,17 @@
       "configurationSpaceSize": 11,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 321
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05f"
     },
     "name": "Hypercontext",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -3329,14 +3532,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 12.8
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc060"
     },
     "name": "Hypercontext",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -3378,14 +3584,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc061"
     },
     "name": "Hypercontext",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -3427,14 +3636,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc062"
     },
     "name": "Hypercontext",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -3476,14 +3688,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc063"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -3525,14 +3740,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc064"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -3574,14 +3792,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc065"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -3623,14 +3844,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc066"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -3672,14 +3896,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 140
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc067"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -3721,14 +3948,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 140
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc068"
     },
     "name": "Jira",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -3770,14 +4000,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc069"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -3819,14 +4052,17 @@
       "configurationSpaceSize": 11,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 550
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06a"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -3868,14 +4104,17 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 399
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06b"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -3917,14 +4156,17 @@
       "configurationSpaceSize": 26,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 507
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06c"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -3966,14 +4208,17 @@
       "configurationSpaceSize": 26,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 507
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06d"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -4015,14 +4260,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06e"
     },
     "name": "Mailchimp",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -4064,14 +4312,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06f"
     },
     "name": "Office",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -4113,14 +4364,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 15
-    }
+    },
+    "slug": "office"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc070"
     },
     "name": "Microsoft",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -4162,14 +4416,17 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 56.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc071"
     },
     "name": "Microsoft",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -4211,14 +4468,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 26.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc072"
     },
     "name": "Microsoft",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -4260,14 +4520,17 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 129.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc073"
     },
     "name": "Microsoft",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -4309,14 +4572,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc074"
     },
     "name": "Microsoft",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -4358,14 +4624,17 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc075"
     },
     "name": "Notion",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -4407,14 +4676,17 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 380
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc076"
     },
     "name": "Notion",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -4456,14 +4728,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 180
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc077"
     },
     "name": "Notion",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -4505,14 +4780,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc078"
     },
     "name": "Notion",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -4554,14 +4832,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc079"
     },
     "name": "Openphone",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -4603,14 +4884,17 @@
       "configurationSpaceSize": 288,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 557.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07a"
     },
     "name": "Openphone",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -4652,14 +4936,17 @@
       "configurationSpaceSize": 288,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 557.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07b"
     },
     "name": "Openphone",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -4701,14 +4988,17 @@
       "configurationSpaceSize": 36,
       "minSubscriptionPrice": 13,
       "maxSubscriptionPrice": 355.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07c"
     },
     "name": "Openphone",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -4750,14 +5040,17 @@
       "configurationSpaceSize": 24,
       "minSubscriptionPrice": 10,
       "maxSubscriptionPrice": 355.01
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07d"
     },
     "name": "Openphone",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -4799,14 +5092,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 10,
       "maxSubscriptionPrice": 105
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07e"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -4848,14 +5144,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 42
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07f"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -4897,14 +5196,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 42
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc080"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -4946,14 +5248,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc081"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -4995,14 +5300,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc082"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -5044,14 +5352,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc083"
     },
     "name": "Overleaf",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -5093,14 +5404,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc084"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -5142,14 +5456,17 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 289
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc085"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -5191,14 +5508,17 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 260
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc086"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -5240,14 +5560,17 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 260
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc087"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -5289,14 +5612,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc088"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -5338,14 +5664,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc089"
     },
     "name": "Planable",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -5387,14 +5716,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 24,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08a"
     },
     "name": "Postman",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -5436,14 +5768,17 @@
       "configurationSpaceSize": 706,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 246.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08b"
     },
     "name": "Postman",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -5485,14 +5820,17 @@
       "configurationSpaceSize": 1280,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 590.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08c"
     },
     "name": "Postman",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -5534,14 +5872,17 @@
       "configurationSpaceSize": 112,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 150.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08d"
     },
     "name": "Postman",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -5583,14 +5924,17 @@
       "configurationSpaceSize": 112,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 120.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08e"
     },
     "name": "Postman",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -5632,14 +5976,17 @@
       "configurationSpaceSize": 64,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 110.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08f"
     },
     "name": "Pumble",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -5681,14 +6028,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 7.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc090"
     },
     "name": "Pumble",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -5730,14 +6080,17 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc091"
     },
     "name": "Pumble",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -5779,14 +6132,17 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc092"
     },
     "name": "Pumble",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -5828,14 +6184,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 19.9
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc093"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -5877,14 +6236,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc094"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -5926,14 +6288,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc095"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -5975,14 +6340,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc096"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -6024,14 +6392,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc097"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -6073,14 +6444,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc098"
     },
     "name": "Quip",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -6122,14 +6496,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc099"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -6171,14 +6548,17 @@
       "configurationSpaceSize": 12544,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1555
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09a"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -6220,14 +6600,17 @@
       "configurationSpaceSize": 522,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1065
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09b"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -6269,14 +6652,17 @@
       "configurationSpaceSize": 1042,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1150
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09c"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -6318,14 +6704,17 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09d"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -6367,14 +6756,17 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09e"
     },
     "name": "Salesforce",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -6416,14 +6808,17 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09f"
     },
     "name": "Slack",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -6465,14 +6860,17 @@
       "configurationSpaceSize": 21,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 350.05
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a0"
     },
     "name": "Slack",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -6514,14 +6912,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a1"
     },
     "name": "Slack",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -6563,14 +6964,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a2"
     },
     "name": "Slack",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -6612,14 +7016,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 15
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a3"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -6661,14 +7068,17 @@
       "configurationSpaceSize": 48,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 725
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a4"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -6710,14 +7120,17 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 375
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a5"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -6759,14 +7172,17 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 370
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a6"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -6808,14 +7224,17 @@
       "configurationSpaceSize": 24,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 620
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a7"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -6857,14 +7276,17 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 325.5
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a8"
     },
     "name": "Tableau",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -6906,14 +7328,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 70
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a9"
     },
     "name": "Trustmary",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -6955,14 +7380,17 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1149
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0aa"
     },
     "name": "Trustmary",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -7004,14 +7432,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 189
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ab"
     },
     "name": "Trustmary",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -7053,14 +7484,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 590
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ac"
     },
     "name": "Trustmary",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -7102,14 +7536,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 290,
       "maxSubscriptionPrice": 590
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ad"
     },
     "name": "Userguiding",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -7151,14 +7588,17 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 129,
       "maxSubscriptionPrice": 3990
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ae"
     },
     "name": "Userguiding",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -7200,14 +7640,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 129,
       "maxSubscriptionPrice": 999
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0af"
     },
     "name": "Userguiding",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -7249,14 +7692,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 99,
       "maxSubscriptionPrice": 699
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b0"
     },
     "name": "Userguiding",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -7298,14 +7744,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 99,
       "maxSubscriptionPrice": 699
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b1"
     },
     "name": "Userguiding",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -7347,14 +7796,17 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 199,
       "maxSubscriptionPrice": 999
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b2"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -7396,14 +7848,17 @@
       "configurationSpaceSize": 85,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2980
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b3"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -7445,14 +7900,17 @@
       "configurationSpaceSize": 85,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2980
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b4"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -7494,14 +7952,17 @@
       "configurationSpaceSize": 42,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2880
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b5"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
     "private": false,
@@ -7543,14 +8004,17 @@
       "configurationSpaceSize": 42,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2880
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b6"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -7592,14 +8056,17 @@
       "configurationSpaceSize": 194,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 948
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b7"
     },
     "name": "Wrike",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -7641,14 +8108,17 @@
       "configurationSpaceSize": 194,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 948
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b8"
     },
     "name": "Zapier",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
     "private": false,
@@ -7690,14 +8160,17 @@
       "configurationSpaceSize": 40,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 4762.7
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b9"
     },
     "name": "Zapier",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
     "private": false,
@@ -7739,14 +8212,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 4462.7
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ba"
     },
     "name": "Zapier",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
     "private": false,
@@ -7788,14 +8264,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0bb"
     },
     "name": "Zapier",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
     "private": false,
@@ -7837,14 +8316,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0bc"
     },
     "name": "Zapier",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
     "private": false,
@@ -7886,14 +8368,17 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0fe"
     },
     "name": "Fleet Management",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "1.0.0",
     "private": false,
     "createdAt": {
@@ -7936,14 +8421,17 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 77.55
-    }
+    },
+    "slug": "fleet-management"
   },
   {
     "_id": {
       "$oid": "67a8af9c0f009fd3b4310151"
     },
     "name": "Fleet Management",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "0.1.0",
     "private": false,
     "createdAt": {
@@ -7987,14 +8475,17 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 101.8
-    }
+    },
+    "slug": "fleet-management"
   },
   {
     "_id": {
       "$oid": "67a8b01f0f009fd3b4310167"
     },
     "name": "Fleet Management",
-    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "0.0.1",
     "private": false,
     "createdAt": {
@@ -8038,6 +8529,7 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "fleet-management"
   }
 ]

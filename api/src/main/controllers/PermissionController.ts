@@ -31,12 +31,12 @@ class PermissionController {
 
   async setPermission(req: any, res: any) {
     try {
-      const { userId, entityType, entityId, permissions } = req.body;
+      const { userId, entityType, entitySlug, permissions } = req.body;
       const result = await this.permissionService.setPermission(
         req.params.orgId,
         userId,
         entityType as EntityType,
-        entityId ?? null,
+        entitySlug ?? null,
         permissions as EntityPermissions,
         req.user.id,
         req.user.orgRole
@@ -70,7 +70,7 @@ class PermissionController {
       const result = await this.permissionService.getPricingPermissions(
         req.user.id,
         req.params.organizationId,
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.user.orgRole
       );
       res.json(result);

@@ -331,10 +331,10 @@ async function checkEntityPermissions(
   const organizationId = req.params.organizationId;
   if (!organizationId) return null;
 
-  // Extract entity name from URL path
+  // Extract entity slug from URL path
   const segments = apiPath.split('/').filter(Boolean);
-  const entityName = entityType === 'pricing' ? segments[1] : segments[1];
-  if (!entityName) return null;
+  const entitySlug = segments[1];
+  if (!entitySlug) return null;
 
   // Skip entity permission check for permission management routes
   if (segments.includes('permissions')) return null;
@@ -350,10 +350,9 @@ async function checkEntityPermissions(
 
     let entity;
     if (entityType === 'pricing') {
-      entity = await entityRepo.findOne(entityName, organizationId, { includePrivate: true });
+      entity = await entityRepo.findBySlugAndOrganization(entitySlug, organizationId);
     } else {
-      console.log('Checking collection permissions for', entityName, organizationId);
-      entity = await entityRepo.findByOrganizationAndSlug(organizationId, entityName);
+      entity = await entityRepo.findByOrganizationAndSlug(organizationId, entitySlug);
     }
 
     if (!entity) return null; // Let the service layer handle 404
@@ -364,29 +363,11 @@ async function checkEntityPermissions(
 
   const permissionService: PermissionService = container.resolve('permissionService');
 
-  // Resolve entity ID
-  let entityId: string | null = null;
-  if (entityType === 'pricing') {
-    const pricingRepo = container.resolve('pricingRepository');
-    const pricing = await pricingRepo.findOne(entityName, organizationId, { includePrivate: true });
-    if (pricing && pricing.versions && pricing.versions.length > 0) {
-      entityId = pricing.versions[0]._id?.toString() ?? pricing.versions[0].id;
-    }
-  } else {
-    const collectionRepo = container.resolve('pricingCollectionRepository');
-    const collection = await collectionRepo.findByOrganizationAndSlug(organizationId, entityName);
-    if (collection) {
-      entityId = collection._id?.toString() ?? (collection as any).id;
-    }
-  }
-
-  if (!entityId) return null; // Let the service layer handle 404
-
   const hasPermission = await permissionService.hasPermission(
     user.id,
     organizationId,
     entityType,
-    entityId,
+    entitySlug,
     permissionType,
     user.orgRole
   );

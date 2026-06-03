@@ -12,8 +12,8 @@ export interface PermissionContext {
   organizationId: string;
   /** Entity type being accessed */
   entityType: EntityType;
-  /** Specific entity ID (undefined for org-scoped operations like CREATE) */
-  entityId?: string;
+  /** Specific entity slug (undefined for org-scoped operations like CREATE) */
+  entitySlug?: string;
   /** Action being performed */
   action: PermissionType;
   /** Whether the entity is private (affects GET checks) */
@@ -22,8 +22,8 @@ export interface PermissionContext {
   userOrgRole?: OrgRole | null;
   /** Whether the user is a global SPHERE ADMIN */
   isGlobalAdmin?: boolean;
-  /** Collection ID for inheritance checks (pricing inside collection) */
-  collectionId?: string;
+  /** Collection slug for inheritance checks (pricing inside collection) */
+  collectionSlug?: string;
   /** Pre-fetched org-scoped permissions (for CREATE checks) */
   orgPermissions?: EntityPermissions;
   /** Pre-fetched entity-level permissions */
@@ -69,7 +69,7 @@ export interface BatchEvaluationContext {
   isGlobalAdmin?: boolean;
   /** Pre-fetched org-scoped permissions keyed by entityType */
   orgPermissions: Map<string, EntityPermissions>;
-  /** Pre-fetched entity permissions keyed by "entityType:entityId" */
+  /** Pre-fetched entity permissions keyed by "entityType:entitySlug" */
   entityPermissions: Map<string, EntityPermissions>;
   /** Pre-fetched collection permissions for pricing inheritance */
   collectionPermissions: Map<string, EntityPermissions>;

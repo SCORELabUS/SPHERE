@@ -109,10 +109,10 @@ export class PermissionQueries {
     const entityPermissions = new Map<string, EntityPermissions>();
 
     for (const perm of records) {
-      if (!perm.entityId) {
+      if (!perm.entitySlug) {
         orgPermissions.set(perm.entityType, perm.permissions);
       } else {
-        entityPermissions.set(`${perm.entityType}:${perm.entityId}`, perm.permissions);
+        entityPermissions.set(`${perm.entityType}:${perm.entitySlug}`, perm.permissions);
       }
     }
 
@@ -140,7 +140,7 @@ export class PermissionQueries {
   }
 
   /**
-   * Fetch org-scoped permissions (entityId = null) for CREATE checks.
+   * Fetch org-scoped permissions (entitySlug = null) for CREATE checks.
    */
   private async fetchOrgScopedPermissions(
     userId: string,
@@ -171,7 +171,7 @@ export class PermissionQueries {
 
   /**
    * Fetch all entity-level permissions for a user in an organization.
-   * Returns a Map keyed by "entityType:entityId".
+   * Returns a Map keyed by "entityType:entitySlug".
    */
   private async fetchEntityPermissions(
     userId: string,
@@ -185,8 +185,8 @@ export class PermissionQueries {
     );
 
     for (const perm of entityPerms) {
-      if (perm.entityId) {
-        const key = `${perm.entityType}:${perm.entityId}`;
+      if (perm.entitySlug) {
+        const key = `${perm.entityType}:${perm.entitySlug}`;
         permissions.set(key, perm.permissions);
       }
     }

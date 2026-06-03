@@ -24,19 +24,23 @@ class EntityPermissionRepository extends RepositoryBase {
       {
         $lookup: {
           from: 'pricings',
-          localField: 'entityId',
-          foreignField: '_id',
+          let: { slug: '$entitySlug', orgId: '$_organizationId' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$slug', '$$slug'] }, { $eq: ['$_organizationId', '$$orgId'] }] } } },
+            { $project: { name: 1, slug: 1 } },
+          ],
           as: 'pricingEntity',
-          pipeline: [{ $project: { name: 1, _organizationId: 1 } }],
         },
       },
       {
         $lookup: {
           from: 'pricingCollections',
-          localField: 'entityId',
-          foreignField: '_id',
+          let: { slug: '$entitySlug', orgId: '$_organizationId' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$slug', '$$slug'] }, { $eq: ['$_organizationId', '$$orgId'] }] } } },
+            { $project: { name: 1, slug: 1 } },
+          ],
           as: 'collectionEntity',
-          pipeline: [{ $project: { name: 1, _organizationId: 1 } }],
         },
       },
       {
@@ -44,9 +48,6 @@ class EntityPermissionRepository extends RepositoryBase {
           id: { $toString: '$_id' },
           _userId: { $toString: '$_userId' },
           _organizationId: { $toString: '$_organizationId' },
-          entityId: {
-            $cond: [{ $ifNull: ['$entityId', null] }, { $toString: '$entityId' }, null]
-          },
           grantedBy: { $cond: [{ $ifNull: ['$grantedBy', null] }, { $toString: '$grantedBy' }, null] },
           entityName: {
             $cond: [
@@ -64,7 +65,7 @@ class EntityPermissionRepository extends RepositoryBase {
           _userId: 1,
           _organizationId: 1,
           entityType: 1,
-          entityId: 1,
+          entitySlug: 1,
           permissions: 1,
           grantedBy: 1,
           entityName: 1,
@@ -80,13 +81,15 @@ class EntityPermissionRepository extends RepositoryBase {
 
   async findByEntity(
     entityType: EntityType,
-    entityId: string
+    entitySlug: string,
+    organizationId: string
   ): Promise<LeanEntityPermission[]> {
     const results = await EntityPermissionMongoose.aggregate([
       {
         $match: {
           entityType,
-          entityId: new mongoose.Types.ObjectId(entityId),
+          entitySlug,
+          _organizationId: new mongoose.Types.ObjectId(organizationId),
         },
       },
       {
@@ -94,7 +97,6 @@ class EntityPermissionRepository extends RepositoryBase {
           id: { $toString: '$_id' },
           _userId: { $toString: '$_userId' },
           _organizationId: { $toString: '$_organizationId' },
-          entityId: { $toString: '$entityId' },
           grantedBy: { $cond: [{ $ifNull: ['$grantedBy', null] }, { $toString: '$grantedBy' }, null] },
         },
       },
@@ -119,7 +121,7 @@ class EntityPermissionRepository extends RepositoryBase {
           _userId: 1,
           _organizationId: 1,
           entityType: 1,
-          entityId: 1,
+          entitySlug: 1,
           permissions: 1,
           grantedBy: 1,
           userName: 1,
@@ -157,19 +159,23 @@ class EntityPermissionRepository extends RepositoryBase {
       {
         $lookup: {
           from: 'pricings',
-          localField: 'entityId',
-          foreignField: '_id',
+          let: { slug: '$entitySlug', orgId: '$_organizationId' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$slug', '$$slug'] }, { $eq: ['$_organizationId', '$$orgId'] }] } } },
+            { $project: { name: 1 } },
+          ],
           as: 'pricingEntity',
-          pipeline: [{ $project: { name: 1 } }],
         },
       },
       {
         $lookup: {
           from: 'pricingCollections',
-          localField: 'entityId',
-          foreignField: '_id',
+          let: { slug: '$entitySlug', orgId: '$_organizationId' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$slug', '$$slug'] }, { $eq: ['$_organizationId', '$$orgId'] }] } } },
+            { $project: { name: 1 } },
+          ],
           as: 'collectionEntity',
-          pipeline: [{ $project: { name: 1 } }],
         },
       },
       {
@@ -177,9 +183,6 @@ class EntityPermissionRepository extends RepositoryBase {
           id: { $toString: '$_id' },
           _userId: { $toString: '$_userId' },
           _organizationId: { $toString: '$_organizationId' },
-          entityId: {
-            $cond: [{ $ifNull: ['$entityId', null] }, { $toString: '$entityId' }, null]
-          },
           grantedBy: { $cond: [{ $ifNull: ['$grantedBy', null] }, { $toString: '$grantedBy' }, null] },
           userName: { $arrayElemAt: ['$user.username', 0] },
           entityName: {
@@ -198,7 +201,7 @@ class EntityPermissionRepository extends RepositoryBase {
           _userId: 1,
           _organizationId: 1,
           entityType: 1,
-          entityId: 1,
+          entitySlug: 1,
           permissions: 1,
           grantedBy: 1,
           userName: 1,
@@ -213,29 +216,32 @@ class EntityPermissionRepository extends RepositoryBase {
     return results as LeanEntityPermission[];
   }
 
-  private async resolveEntityId(
+  private async resolveEntitySlug(
     entityType: EntityType,
-    entityId: string,
+    entitySlug: string,
     organizationId: string
-  ): Promise<mongoose.Types.ObjectId | null> {
-    if (mongoose.Types.ObjectId.isValid(entityId)) {
-      return new mongoose.Types.ObjectId(entityId);
-    }
+  ): Promise<string> {
     if (entityType === 'pricing') {
-      const pricing = await PricingMongoose.findOne({ name: entityId, _organizationId: new mongoose.Types.ObjectId(organizationId) }).select('_id');
-      if (!pricing) throw new Error(`Pricing "${entityId}" not found in this organization`);
-      return pricing._id;
+      const pricing = await PricingMongoose.findOne({
+        slug: entitySlug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+      }).select('slug');
+      if (!pricing) throw new Error(`Pricing "${entitySlug}" not found in this organization`);
+      return pricing.slug!;
     }
-    const collection = await PricingCollectionMongoose.findOne({ name: entityId, _organizationId: new mongoose.Types.ObjectId(organizationId) }).select('_id');
-    if (!collection) throw new Error(`Collection "${entityId}" not found in this organization`);
-    return collection._id;
+    const collection = await PricingCollectionMongoose.findOne({
+      slug: entitySlug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    }).select('slug');
+    if (!collection) throw new Error(`Collection "${entitySlug}" not found in this organization`);
+    return collection.slug!;
   }
 
   async findOrCreate(
     userId: string,
     organizationId: string,
     entityType: EntityType,
-    entityId: string | null,
+    entitySlug: string | null,
     permissions: EntityPermissions,
     grantedBy?: string
   ): Promise<LeanEntityPermission> {
@@ -245,10 +251,10 @@ class EntityPermissionRepository extends RepositoryBase {
       entityType,
     };
 
-    if (entityId) {
-      match.entityId = await this.resolveEntityId(entityType, entityId, organizationId);
+    if (entitySlug) {
+      match.entitySlug = await this.resolveEntitySlug(entityType, entitySlug, organizationId);
     } else {
-      match.entityId = null;
+      match.entitySlug = null;
     }
 
     const update: any = {
@@ -271,13 +277,13 @@ class EntityPermissionRepository extends RepositoryBase {
     userId: string,
     organizationId: string,
     entityType: EntityType,
-    entityId: string
+    entitySlug: string
   ): Promise<LeanEntityPermission | null> {
     const result = await EntityPermissionMongoose.findOne({
       _userId: new mongoose.Types.ObjectId(userId),
       _organizationId: new mongoose.Types.ObjectId(organizationId),
       entityType,
-      entityId: new mongoose.Types.ObjectId(entityId),
+      entitySlug,
     });
 
     if (!result) return null;
@@ -293,7 +299,7 @@ class EntityPermissionRepository extends RepositoryBase {
       _userId: new mongoose.Types.ObjectId(userId),
       _organizationId: new mongoose.Types.ObjectId(organizationId),
       entityType,
-      entityId: null,
+      entitySlug: null,
     });
 
     if (!result) return null;
@@ -308,9 +314,6 @@ class EntityPermissionRepository extends RepositoryBase {
           id: { $toString: '$_id' },
           _userId: { $toString: '$_userId' },
           _organizationId: { $toString: '$_organizationId' },
-          entityId: {
-            $cond: [{ $ifNull: ['$entityId', null] }, { $toString: '$entityId' }, null],
-          },
           grantedBy: {
             $cond: [{ $ifNull: ['$grantedBy', null] }, { $toString: '$grantedBy' }, null],
           },
@@ -323,7 +326,7 @@ class EntityPermissionRepository extends RepositoryBase {
           _userId: 1,
           _organizationId: 1,
           entityType: 1,
-          entityId: 1,
+          entitySlug: 1,
           permissions: 1,
           grantedBy: 1,
           createdAt: 1,
@@ -342,10 +345,11 @@ class EntityPermissionRepository extends RepositoryBase {
     return result?.deletedCount === 1;
   }
 
-  async destroyByEntity(entityType: EntityType, entityId: string): Promise<void> {
+  async destroyByEntity(entityType: EntityType, entitySlug: string, organizationId: string): Promise<void> {
     await EntityPermissionMongoose.deleteMany({
       entityType,
-      entityId: new mongoose.Types.ObjectId(entityId),
+      entitySlug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
     });
   }
 
@@ -356,10 +360,11 @@ class EntityPermissionRepository extends RepositoryBase {
     });
   }
 
-  async countByEntity(entityType: EntityType, entityId: string): Promise<number> {
+  async countByEntity(entityType: EntityType, entitySlug: string, organizationId: string): Promise<number> {
     return EntityPermissionMongoose.countDocuments({
       entityType,
-      entityId: new mongoose.Types.ObjectId(entityId),
+      entitySlug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
     });
   }
 }

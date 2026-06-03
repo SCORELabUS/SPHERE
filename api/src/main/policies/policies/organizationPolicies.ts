@@ -33,8 +33,8 @@ const CREATE_ENTITY: Policy = {
   evaluate: (ctx) => {
     if (ctx.action !== 'CREATE') return null;
 
-    // If there's an entityId, defer to entity-level policies
-    if (ctx.entityId) return null;
+    // If there's an entitySlug, defer to entity-level policies
+    if (ctx.entitySlug) return null;
 
     // Global ADMIN and OWNER/ADMIN are already handled by previous policies
     if (ctx.userOrgRole === 'MEMBER') {

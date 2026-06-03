@@ -64,7 +64,7 @@ class PricingController {
     try {
       const queryParams = req.query;
       const pricing = await this.pricingService.show(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         queryParams
@@ -79,7 +79,7 @@ class PricingController {
   async getConfigurationSpace(req: any, res: any) {
     try {
       const [configurationSpace, configurationSpaceSize] =
-        await this.pricingService.getConfigurationSpace(req.params.organizationId, req.params.pricingName, req.params.pricingVersion, req.user, req.query);
+        await this.pricingService.getConfigurationSpace(req.params.organizationId, req.params.pricingSlug, req.params.pricingVersion, req.user, req.query);
       res.json({
         configurationSpace: configurationSpace,
         configurationSpaceSize: configurationSpaceSize,
@@ -126,7 +126,7 @@ class PricingController {
       const pricing = await this.pricingService.createVersion(
         req.file,
         req.params.organizationId,
-        req.params.pricingName,
+        req.params.pricingSlug,
         isPrivate,
         req.user,
         collectionId
@@ -154,7 +154,7 @@ class PricingController {
       const queryParams = req.query; 
 
       const pricing = await this.pricingService.update(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         req.body,
@@ -181,7 +181,7 @@ class PricingController {
     try {
       const queryParams = req.query;
       const result = await this.pricingService.destroy(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         queryParams
@@ -200,7 +200,7 @@ class PricingController {
   async destroyVersionByNameAndOrganization(req: any, res: any) {
     try {
       const result = await this.pricingService.destroyVersion(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.pricingVersion,
         req.params.organizationId,
         req.user

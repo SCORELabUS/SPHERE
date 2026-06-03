@@ -21,12 +21,10 @@ const entityPermissionSchema = new Schema(
       required: true,
       enum: ['pricing', 'collection'],
     },
-    entityId: {
-      type: Schema.Types.ObjectId,
+    entitySlug: {
+      type: String,
       required: false,
       default: null,
-      set: (v: string | mongoose.Types.ObjectId | null) => v ? new mongoose.Types.ObjectId(v) : null,
-      get: (v: mongoose.Types.ObjectId | null) => v?.toString() ?? null,
     },
     permissions: {
       GET: { type: Boolean, required: true, default: false },
@@ -52,7 +50,7 @@ const entityPermissionSchema = new Schema(
         delete (resultObject as any).__v;
         delete (resultObject as any)._userId;
         delete (resultObject as any)._organizationId;
-        delete (resultObject as any).entityId;
+        delete (resultObject as any).entitySlug;
         delete (resultObject as any).grantedBy;
         return resultObject;
       },
@@ -60,12 +58,12 @@ const entityPermissionSchema = new Schema(
   }
 );
 
-// Unique index: one permission per user/org/entityType/entityId combination.
+// Unique index: one permission per user/org/entityType/entitySlug combination.
 // MongoDB treats null as a distinct value in unique indexes, so:
-// - entity-scoped (entityId present): enforced per entityId
-// - org-scoped (entityId null): only one per user/org/entityType
+// - entity-scoped (entitySlug present): enforced per entitySlug
+// - org-scoped (entitySlug null): only one per user/org/entityType
 entityPermissionSchema.index(
-  { _userId: 1, _organizationId: 1, entityType: 1, entityId: 1 },
+  { _userId: 1, _organizationId: 1, entityType: 1, entitySlug: 1 },
   { unique: true }
 );
 

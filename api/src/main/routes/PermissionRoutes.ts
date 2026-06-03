@@ -27,7 +27,7 @@ const loadPermissionRoutes = function (app: express.Application) {
 
   // Current user's permissions on a specific pricing/collection
   app
-    .route(baseUrl + '/pricings/:organizationId/:pricingName/permissions')
+    .route(baseUrl + '/pricings/:organizationId/:pricingSlug/permissions')
     .get(permissionController.getPricingPermissions);
 
   app

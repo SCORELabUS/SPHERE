@@ -218,8 +218,8 @@ async function checkEntityPermissions(
   if (!organizationId) return null;
 
   const segments = apiPath.split('/').filter(Boolean);
-  const entityName = segments[1];
-  if (!entityName) return null;
+  const entitySlug = segments[1];
+  if (!entitySlug) return null;
 
   if (segments.includes('permissions')) return null;
 
@@ -245,24 +245,23 @@ async function checkEntityPermissions(
       orgPermissions: batchCtx.orgPermissions.get(entityType),
     });
 
-    // For POST /pricings/:orgId/:pricingName/:pricingVersion (4+ segments),
+    // For POST /pricings/:orgId/:pricingSlug/:pricingVersion (4+ segments),
     // also check entity-level CREATE permission on the existing pricing
     if (segments.length >= 4 && entityType === 'pricing') {
       const pricingRepo = container.resolve('pricingRepository');
-      const pricingEntityName = segments[2]; // the pricingName from the URL
-      const pricing = await pricingRepo.findOne(pricingEntityName, organizationId, { includePrivate: true });
-      if (pricing && pricing.versions && pricing.versions.length > 0) {
-        const entityId = pricing.versions[0]._id?.toString() ?? pricing.versions[0].id;
+      const pricingSlug = segments[2]; // the pricingSlug from the URL
+      const pricing = await pricingRepo.findBySlugAndOrganization(pricingSlug, organizationId);
+      if (pricing) {
         const entityResult = permissionEngine.evaluate({
           userId: user.id,
           organizationId,
           entityType,
-          entityId,
+          entitySlug: pricingSlug,
           action: 'CREATE',
           isPrivate: pricing.private === true,
           userOrgRole: user.orgRole,
           isGlobalAdmin: user.role === 'ADMIN',
-          entityPermissions: batchCtx.entityPermissions.get(`${entityType}:${entityId}`),
+          entityPermissions: batchCtx.entityPermissions.get(`${entityType}:${pricingSlug}`),
         });
         // If entity-level CREATE is allowed, permit the request even if org-level failed
         if (entityResult.allowed) {
@@ -288,28 +287,25 @@ async function checkEntityPermissions(
 
     let entity;
     if (entityType === 'pricing') {
-      entity = await entityRepo.findOne(entityName, organizationId, { includePrivate: true });
+      entity = await entityRepo.findBySlugAndOrganization(entitySlug, organizationId);
     } else {
-      console.log('Checking collection permissions for', entityName, organizationId);
-      entity = await entityRepo.findByOrganizationAndSlug(organizationId, entityName);
+      entity = await entityRepo.findByOrganizationAndSlug(organizationId, entitySlug);
     }
 
     if (!entity) return null;
 
     const isPrivate = entity.private === true;
-    const entityId = entityType === 'pricing'
-      ? (entity.versions?.[0]?._id?.toString() ?? entity.versions?.[0]?.id)
-      : (entity._id?.toString() ?? entity.id);
 
     const result = permissionEngine.evaluate({
       userId: user.id,
       organizationId,
       entityType,
-      entityId,
+      entitySlug,
       action: 'GET',
       isPrivate,
       userOrgRole: user.orgRole,
       isGlobalAdmin: user.role === 'ADMIN',
+      collectionSlug: entity.collection?.slug,
     });
 
     if (!result.allowed) {
@@ -319,31 +315,26 @@ async function checkEntityPermissions(
     return null;
   }
 
-  let entityId: string | null = null;
   let isPrivate = false;
   if (entityType === 'pricing') {
     const pricingRepo = container.resolve('pricingRepository');
-    const pricing = await pricingRepo.findOne(entityName, organizationId, { includePrivate: true });
-    if (pricing && pricing.versions && pricing.versions.length > 0) {
-      entityId = pricing.versions[0]._id?.toString() ?? pricing.versions[0].id;
+    const pricing = await pricingRepo.findBySlugAndOrganization(entitySlug, organizationId);
+    if (pricing) {
       isPrivate = pricing.private === true;
     }
   } else {
     const collectionRepo = container.resolve('pricingCollectionRepository');
-    const collection = await collectionRepo.findByOrganizationAndSlug(organizationId, entityName);
+    const collection = await collectionRepo.findByOrganizationAndSlug(organizationId, entitySlug);
     if (collection) {
-      entityId = collection._id?.toString() ?? (collection as any).id;
       isPrivate = collection.private === true;
     }
   }
-
-  if (!entityId) return null;
 
   const result = permissionEngine.evaluate({
     userId: user.id,
     organizationId,
     entityType,
-    entityId,
+    entitySlug,
     action: permissionType,
     isPrivate,
     userOrgRole: user.orgRole,

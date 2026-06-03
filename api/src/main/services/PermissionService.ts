@@ -134,7 +134,7 @@ class PermissionService {
     userId: string,
     organizationId: string,
     entityType: EntityType,
-    entityId: string,
+    entitySlug: string,
     userOrgRole?: OrgRole | null
   ): Promise<EntityPermissions> {
     if (userOrgRole === 'OWNER' || userOrgRole === 'ADMIN') {
@@ -145,7 +145,7 @@ class PermissionService {
       userId,
       organizationId,
       entityType,
-      entityId
+      entitySlug
     );
 
     if (!permission) {
@@ -162,7 +162,7 @@ class PermissionService {
     userId: string,
     organizationId: string,
     entityType: EntityType,
-    entityId: string,
+    entitySlug: string,
     permission: PermissionType,
     userOrgRole?: OrgRole | null
   ): Promise<boolean> {
@@ -170,19 +170,19 @@ class PermissionService {
       return true;
     }
 
-    const perms = await this.getEffectivePermissions(userId, organizationId, entityType, entityId, userOrgRole);
+    const perms = await this.getEffectivePermissions(userId, organizationId, entityType, entitySlug, userOrgRole);
     return perms[permission] === true;
   }
 
   /**
    * Sets permissions for a user on an entity. Only OWNER/ADMIN can call this.
-   * When entityId is null, sets org-scoped permissions (e.g., CREATE).
+   * When entitySlug is null, sets org-scoped permissions (e.g., CREATE).
    */
   async setPermission(
     organizationId: string,
     userId: string,
     entityType: EntityType,
-    entityId: string | null,
+    entitySlug: string | null,
     permissions: EntityPermissions,
     grantedBy: string,
     granterOrgRole: OrgRole
@@ -195,7 +195,7 @@ class PermissionService {
       userId,
       organizationId,
       entityType,
-      entityId,
+      entitySlug,
       permissions,
       grantedBy
     );
@@ -266,12 +266,13 @@ class PermissionService {
 
       if (result && result.pricings) {
         for (const pricing of result.pricings) {
-          const entityId = pricing._id?.toString() ?? pricing.id;
+          const entitySlug = pricing.slug;
+          if (!entitySlug) continue;
           const permissions = await this.getEffectivePermissions(
             userId,
             orgId,
             'pricing',
-            entityId,
+            entitySlug,
             orgRole
           );
 
@@ -340,12 +341,13 @@ class PermissionService {
 
       if (result && result.collections) {
         for (const collection of result.collections) {
-          const entityId = (collection as any)._id?.toString() ?? (collection as any).id;
+          const entitySlug = (collection as any).slug;
+          if (!entitySlug) continue;
           const permissions = await this.getEffectivePermissions(
             userId,
             orgId,
             'collection',
-            entityId,
+            entitySlug,
             orgRole
           );
 
@@ -385,15 +387,14 @@ class PermissionService {
   async getPricingPermissions(
     userId: string,
     organizationId: string,
-    pricingName: string,
+    pricingSlug: string,
     userOrgRole?: OrgRole | null
   ): Promise<EntityPermissions> {
-    const pricing = await this.pricingRepository.findOne(pricingName, organizationId, { includePrivate: true });
-    if (!pricing || !pricing.versions || pricing.versions.length === 0) {
+    const pricing = await this.pricingRepository.findBySlugAndOrganization(pricingSlug, organizationId);
+    if (!pricing) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
-    const entityId = pricing.versions[0].id;
     const isOwnerOrAdmin = userOrgRole === 'OWNER' || userOrgRole === 'ADMIN';
     if (isOwnerOrAdmin) {
       return { ...FULL_PERMISSIONS };
@@ -402,7 +403,7 @@ class PermissionService {
       userId,
       organizationId,
       'pricing',
-      entityId,
+      pricingSlug,
       userOrgRole
     );
 
@@ -426,7 +427,6 @@ class PermissionService {
       throw new Error('NOT FOUND: Collection not found');
     }
 
-    const entityId = collection.id;
     const isOwnerOrAdmin = userOrgRole === 'OWNER' || userOrgRole === 'ADMIN';
     if (isOwnerOrAdmin) {
       return { ...FULL_PERMISSIONS };
@@ -435,7 +435,7 @@ class PermissionService {
       userId,
       organizationId,
       'collection',
-      entityId,
+      collectionSlug,
       userOrgRole
     );
 
