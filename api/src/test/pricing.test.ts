@@ -1761,6 +1761,111 @@ describe('Pricings API integration', () => {
     });
   });
 
+  describe('MEMBER visibility of pricings without collection', () => {
+    it('Return 200 and public pricings without collection for MEMBER via /users/me/pricings.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicPricingNoCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/pricings`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      const pricingNames = response.body.pricings.map((p: any) => p.name);
+      expect(pricingNames).toContain(publicPricingNoCollection.serviceName);
+    });
+
+    it('Return 200 and public pricings without collection via org endpoint for MEMBER.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicPricingNoCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      const pricingNames = response.body.pricings.map((p: any) => p.name);
+      expect(pricingNames).toContain(publicPricingNoCollection.serviceName);
+    });
+  });
+
+  describe('GET /api/v1/pricings with excludePricingsInCollection filter', () => {
+    it('Return 200 and only pricings without collection when excludePricingsInCollection=true.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const pricingWithoutCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const pricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        [pricingInCollection.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?excludePricingsInCollection=true`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBeGreaterThanOrEqual(1);
+      const pricingNames = response.body.pricings.map((p: any) => p.name);
+      expect(pricingNames).toContain(pricingWithoutCollection.serviceName);
+      expect(pricingNames).not.toContain(pricingInCollection.serviceName);
+    });
+
+    it('Return 200 and empty list when all pricings are in collections and excludePricingsInCollection=true.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const pricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        [pricingInCollection.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?excludePricingsInCollection=true`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(0);
+    });
+
+    it('Return 400 when excludePricingsInCollection and collection are used together.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?excludePricingsInCollection=true&collection=some-slug`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toBeDefined();
+    });
+  });
+
   describe('DELETE /api/v1/pricings/:organizationId/:pricingName/:pricingVersion', () => {
     it('Return 200 and success message when owner deletes a specific pricing version.', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');

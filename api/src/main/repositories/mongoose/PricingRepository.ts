@@ -374,6 +374,7 @@ class PricingRepository extends RepositoryBase {
         maxPrice,
         selectedOrganizations,
         collection,
+        excludePricingsInCollection,
         sortBy,
         sort,
       } = queryParams;
@@ -382,6 +383,14 @@ class PricingRepository extends RepositoryBase {
         filteringPipeline.push({
           $match: {
             'collection.slug': collection,
+          },
+        });
+      }
+
+      if (excludePricingsInCollection) {
+        filteringPipeline.push({
+          $match: {
+            _collectionId: null,
           },
         });
       }

@@ -16,6 +16,7 @@ export type PricingIndexQueryParams = {
   };
   selectedOrganizations?: string[];
   collection?: string;
+  excludePricingsInCollection?: boolean;
   limit: number;
   offset: number;
 }

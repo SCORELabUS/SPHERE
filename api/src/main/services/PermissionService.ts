@@ -357,7 +357,17 @@ class PermissionService {
         organizationIds: [orgId],
       };
 
-      const result = await this.pricingCollectionRepository.findAll(orgQueryParams, true);
+      const orgPermissionsContext: OrgUserPermissionsContext = reqUser
+        ? await this.buildOrgUserPermissionsContext(reqUser, orgRole ?? null, orgId)
+        : {
+            orgRole: null,
+            pricings: [],
+            collections: [],
+            isGlobalAdmin: false,
+            adminOrgIds: [],
+          };
+
+      const result = await this.pricingCollectionRepository.findAll(orgQueryParams, orgPermissionsContext);
 
       if (result && result.collections) {
         for (const collection of result.collections) {

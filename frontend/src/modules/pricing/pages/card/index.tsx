@@ -330,7 +330,7 @@ export default function CardPage() {
   }
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
-  const isPrivateNoAccess = !entityPermissions?.GET && currentVersion?.private;
+  const isPrivateNoAccess = !entityPermissions?.GET && !currentVersion;
 
   const pricingSuggestions: SuggestedQuestion[] = useMemo(() => {
     if (!a) return [

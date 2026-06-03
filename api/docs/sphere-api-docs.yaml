@@ -1365,6 +1365,7 @@ paths:
           schema:
             type: string
             example: "ieee-tsc-2025"
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -2398,6 +2399,7 @@ paths:
           schema:
             type: string
             example: "ieee-tsc-2025"
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -2535,6 +2537,7 @@ paths:
         - $ref: '#/components/parameters/MinMaxPrice'
         - $ref: '#/components/parameters/MaxMaxPrice'
         - $ref: '#/components/parameters/CollectionQuery'
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -5995,6 +5998,16 @@ components:
       schema:
         type: string
         example: "my-collection"
+
+    ExcludePricingsInCollection:
+      name: excludePricingsInCollection
+      description: If set to "true", only pricings that are NOT in any collection will be returned. Cannot be used together with the `collection` parameter.
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: ["true", "false"]
+        example: "true"
 
     CollectionCascade:
       name: cascade

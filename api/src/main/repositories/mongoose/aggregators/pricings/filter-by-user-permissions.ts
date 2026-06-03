@@ -20,4 +20,4 @@ export const considerUserPermissionsAggregator = (permissions: OrgUserPermission
         ],
       },
     };
-} ;
+};

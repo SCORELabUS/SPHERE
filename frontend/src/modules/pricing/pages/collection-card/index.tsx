@@ -97,13 +97,6 @@ export default function CollectionCardPage() {
     });
   }, [organizationId, collectionSlug, collection?.organization?.name, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!organizationId || !collectionSlug || !authUser?.isAuthenticated) return;
-    getCollectionPermissions(organizationId, collectionSlug)
-      .then(data => setPermissions(data))
-      .catch(() => {});
-  }, [organizationId, collectionSlug, authUser?.isAuthenticated]);
-
   const fetchPricings = useCallback(async () => {
     if (!collectionSlug) return;
     setIsLoadingPricings(true);
@@ -197,7 +190,7 @@ export default function CollectionCardPage() {
   }, [pricings]);
 
   const showSettingsTab = permissions.PUT || permissions.DELETE;
-  const isPrivateNoAccess = !permissions.GET && collection?.private;
+  const isPrivateNoAccess = !permissions.GET && !collection;
 
   const availableTabs: [Tab, string][] = [
     ['pricings', 'Pricings'],

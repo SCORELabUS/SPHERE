@@ -246,6 +246,7 @@ class PricingController {
         ? (indexQueryParams.selectedOrganizations as string).split(',')
         : undefined,
       collection: indexQueryParams.collection as string,
+      excludePricingsInCollection: indexQueryParams.excludePricingsInCollection === 'true',
       limit: parseInt(indexQueryParams.limit) || 10,
       offset: parseInt(indexQueryParams.offset) || 0,
     };
@@ -257,12 +258,13 @@ class PricingController {
       'maxPrice',
       'selectedOrganizations',
       'collection',
+      'excludePricingsInCollection',
       'sortBy',
       'sort',
     ] as const;
 
     optionalFields.forEach(field => {
-      if (['name', 'selectedOrganizations', 'sortBy', 'sort', 'collection'].includes(field)) {
+      if (['name', 'selectedOrganizations', 'sortBy', 'sort', 'collection', 'excludePricingsInCollection'].includes(field)) {
         if (!transformedData[field]) {
           delete transformedData[field];
         }

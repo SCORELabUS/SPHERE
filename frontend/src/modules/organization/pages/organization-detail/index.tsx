@@ -53,13 +53,12 @@ export default function OrganizationDetailPage() {
   const [pricingsTotal, setPricingsTotal] = useState(0);
   const [pricingPage, setPricingPage] = useState(1);
   const [pricingSearch, setPricingSearch] = useState('');
+  const [showOnlyUnlinked, setShowOnlyUnlinked] = useState(false);
   const [collections, setCollections] = useState<OrgCollection[]>([]);
   const [collectionsTotal, setCollectionsTotal] = useState(0);
   const [collectionPage, setCollectionPage] = useState(1);
   const [collectionSearch, setCollectionSearch] = useState('');
-  const [allOrgPricings, setAllOrgPricings] = useState<OrgPricing[]>([]);
   const [allOrgCollections, setAllOrgCollections] = useState<OrgCollection[]>([]);
-  const [accessiblePricingNames, setAccessiblePricingNames] = useState<Set<string> | null>(null);
   const [accessibleCollectionNames, setAccessibleCollectionNames] = useState<Set<string> | null>(null);
   const [childAccessMap, setChildAccessMap] = useState<Record<string, boolean>>({});
   const [hierarchyTree, setHierarchyTree] = useState<TreeNode | null>(null);
@@ -150,12 +149,11 @@ export default function OrganizationDetailPage() {
         setInvitations(invitationsData);
 
         if (userRole === 'MEMBER') {
-          const MEMBER_LIST_LIMIT = 500;
-          const [accessiblePricingsResult, allOrgPricingsResult, accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
+          const [accessiblePricingsResult, , accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
             getUserAccessiblePricings().catch(() => ({ pricings: [], total: 0 })),
-            getOrgPricings(organizationId, { limit: String(MEMBER_LIST_LIMIT) }).catch(() => ({ pricings: [], total: 0 })),
+            getOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
             getUserAccessibleCollections().catch(() => ({ collections: [], total: 0 })),
-            getOrgCollections(organizationId, { limit: String(MEMBER_LIST_LIMIT) }).catch(() => ({ collections: [], total: 0 })),
+            getOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
           ]);
 
           const pricingNames = new Set(
@@ -169,18 +167,12 @@ export default function OrganizationDetailPage() {
               .map(c => c.name)
           );
 
-          const filteredPricings = allOrgPricingsResult.pricings.filter(p => pricingNames.has(p.name));
-          const filteredCollections = allOrgCollectionsResult.collections.filter(c => collectionNames.has(c.name));
-
-          setAllOrgPricings(allOrgPricingsResult.pricings);
-          setAccessiblePricingNames(pricingNames);
-          setPricings(filteredPricings);
-          setPricingsTotal(filteredPricings.length);
+          setPricingsTotal(pricingNames.size);
 
           setAllOrgCollections(allOrgCollectionsResult.collections);
           setAccessibleCollectionNames(collectionNames);
-          setCollections(filteredCollections);
-          setCollectionsTotal(filteredCollections.length);
+          setCollections(allOrgCollectionsResult.collections.filter(c => collectionNames.has(c.name)));
+          setCollectionsTotal(collectionNames.size);
         } else {
           const pricingsData = await getOrgPricings(organizationId).catch(() => ({
             pricings: [],
@@ -353,45 +345,23 @@ export default function OrganizationDetailPage() {
     async (page: number, search: string) => {
       if (!org) return;
 
-      if (isPublicView) {
-        // Public view: use public API
-        try {
-          const filters: Record<string, string> = {
-            limit: String(PER_PAGE),
-            offset: String((page - 1) * PER_PAGE),
-          };
-          if (search) filters.name = search;
-          const data = await getPublicOrgPricings(org.id, filters);
-          setPricings(data.pricings);
-          setPricingsTotal(data.total);
-        } catch {
-          /* silently ignore */
-        }
-      } else if (myRole === 'MEMBER' && accessiblePricingNames !== null) {
-        let filtered = allOrgPricings.filter(p => accessiblePricingNames.has(p.name));
-        if (search) {
-          const q = search.toLowerCase();
-          filtered = filtered.filter(p => p.name.toLowerCase().includes(q));
-        }
-        setPricingsTotal(filtered.length);
-        const start = (page - 1) * PER_PAGE;
-        setPricings(filtered.slice(start, start + PER_PAGE));
-      } else {
-        try {
-          const filters: Record<string, string> = {
-            limit: String(PER_PAGE),
-            offset: String((page - 1) * PER_PAGE),
-          };
-          if (search) filters.name = search;
-          const data = await getOrgPricings(org.id, filters);
-          setPricings(data.pricings);
-          setPricingsTotal(data.total);
-        } catch {
-          /* silently ignore */
-        }
+      try {
+        const filters: Record<string, string> = {
+          limit: String(PER_PAGE),
+          offset: String((page - 1) * PER_PAGE),
+        };
+        if (search) filters.name = search;
+        if (showOnlyUnlinked) filters.excludePricingsInCollection = 'true';
+        const data = isPublicView
+          ? await getPublicOrgPricings(org.id, filters)
+          : await getOrgPricings(org.id, filters);
+        setPricings(data.pricings);
+        setPricingsTotal(data.total);
+      } catch {
+        /* silently ignore */
       }
     },
-    [org, isPublicView, myRole, accessiblePricingNames, allOrgPricings, getOrgPricings]
+    [org, isPublicView, getOrgPricings, showOnlyUnlinked]
   );
 
   const fetchCollections = useCallback(
@@ -418,7 +388,7 @@ export default function OrganizationDetailPage() {
           const q = search.toLowerCase();
           filtered = filtered.filter(c => c.name.toLowerCase().includes(q));
         }
-        setCollectionsTotal(filtered.length);
+        setCollectionsTotal(search ? filtered.length : accessibleCollectionNames.size);
         const start = (page - 1) * PER_PAGE;
         setCollections(filtered.slice(start, start + PER_PAGE));
       } else {
@@ -448,7 +418,7 @@ export default function OrganizationDetailPage() {
 
   useEffect(() => {
     if (activeTab === 'pricings' && org) fetchPricings(pricingPage, debouncedPricingSearch);
-  }, [activeTab, org, pricingPage, debouncedPricingSearch]);
+  }, [activeTab, org, pricingPage, debouncedPricingSearch, showOnlyUnlinked]);
 
   useEffect(() => {
     if (activeTab === 'collections' && org)
@@ -738,8 +708,10 @@ export default function OrganizationDetailPage() {
               pricingsTotal={pricingsTotal}
               pricingPage={pricingPage}
               pricingSearch={pricingSearch}
+              showOnlyUnlinked={showOnlyUnlinked}
               onPageChange={setPricingPage}
               onSearchChange={setPricingSearch}
+              onToggleUnlinked={setShowOnlyUnlinked}
             />
           )}
 

@@ -11,11 +11,13 @@ interface Props {
   pricingsTotal: number;
   pricingPage: number;
   pricingSearch: string;
+  showOnlyUnlinked: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
+  onToggleUnlinked: (value: boolean) => void;
 }
 
-export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, onPageChange, onSearchChange }: Props) {
+export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, showOnlyUnlinked, onPageChange, onSearchChange, onToggleUnlinked }: Props) {
   return (
     <motion.div
       key="pricings"
@@ -30,7 +32,7 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
             <h2 className="font-display text-lg text-tp-ink">Pricings</h2>
             <p className="text-xs text-tp-steel">Pricings owned by this organization.</p>
           </div>
-          <div className="w-full sm:w-64">
+          <div className="flex flex-col gap-2 sm:w-64">
             <input
               type="text"
               value={pricingSearch}
@@ -38,6 +40,15 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
               placeholder="Search pricings..."
               className="h-9 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-sm text-tp-ink placeholder-tp-muted transition-colors focus:border-tp-primary focus:outline-none"
             />
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-tp-steel">
+              <input
+                type="checkbox"
+                checked={showOnlyUnlinked}
+                onChange={(e) => { onToggleUnlinked(e.target.checked); onPageChange(1); }}
+                className="h-3.5 w-3.5 rounded border-tp-input-border text-tp-primary focus:ring-tp-primary"
+              />
+              Only unlinked pricings
+            </label>
           </div>
         </div>
 
