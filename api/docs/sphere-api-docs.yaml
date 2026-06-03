@@ -2629,11 +2629,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /pricings/{organizationId}/{pricingName}:
+  /pricings/{organizationId}/{pricingSlug}:
     get:
       summary: Get public pricing details.
       description: |
-        Retrieves a pricing by name for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
+        Retrieves a pricing by slug for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
 
         **Authentication**: Public
 
@@ -2647,8 +2647,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/CollectionSlug'
       responses:
         '200':
           description: Operation Completed
@@ -2682,8 +2683,8 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/CollectionQuery'
       requestBody:
         $ref: '#/components/requestBodies/PricingUpdate'
@@ -2721,8 +2722,8 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/CollectionQuery'
       responses:
         '200':
@@ -2746,7 +2747,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
-  /pricings/{organizationId}/{pricingName}/{pricingVersion}:
+  /pricings/{organizationId}/{pricingSlug}/{pricingVersion}:
     get:
       summary: Get the configurations of a pricing version.
       description: |
@@ -2764,8 +2765,8 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
         - $ref: '#/components/parameters/CollectionSlug'
       responses:
@@ -2789,7 +2790,7 @@ paths:
       summary: Add a new version to an existing pricing.
       description: |
         Creates a new version of the specified pricing. The `saasName` field in the
-        uploaded YAML file will be overridden to match the `:pricingName` path parameter,
+        uploaded YAML file will be overridden to match the `:pricingSlug` path parameter,
         ensuring consistency across all versions of the same pricing.
 
         **Authentication**: Bearer Token or User API Key
@@ -2807,7 +2808,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
       requestBody:
         required: true
@@ -2866,8 +2867,8 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
       responses:
         '200':
@@ -3263,7 +3264,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /collections/{organizationId}/{collectionSlug}/pricings/{pricingName}:
+  /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}:
     delete:
       summary: Remove a pricing from a collection.
       description: |
@@ -3282,9 +3283,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
+        - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/CollectionSlug'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/PricingSlug'
       responses:
         '200':
           description: Operation Completed
@@ -3522,147 +3523,10 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # ============================================
-  # User Access Query Routes
-  # ============================================
-
-  /users/{userId}/pricings:
-    get:
-      summary: Get pricings accessible to a user
-      description: |
-        Returns all pricings a user has access to across all their organizations, with
-        effective permissions included in the response. Use 'me' as the userId to query
-        the current user. Only ADMIN users can query other users.
-      tags:
-        - User Access
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: The user ID or 'me' for the current user
-          schema:
-            type: string
-        - name: name
-          in: query
-          required: false
-          description: Filter pricings by name (case-insensitive partial match)
-          schema:
-            type: string
-        - name: sortBy
-          in: query
-          required: false
-          description: Field to sort by
-          schema:
-            type: string
-            enum: [name, configurationSpaceSize, featuresCount, usageLimitsCount, plansCount, addonsCount, minPrice, maxPrice]
-        - name: sort
-          in: query
-          required: false
-          description: Sort direction
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: desc
-        - name: limit
-          in: query
-          required: false
-          description: Number of results per page
-          schema:
-            type: integer
-            default: 10
-        - name: offset
-          in: query
-          required: false
-          description: Offset for pagination
-          schema:
-            type: integer
-            default: 0
-      responses:
-        '200':
-          description: List of pricings with permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserPricingsResponse'
-        '403':
-          description: Cannot query other users' pricings (requires ADMIN)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /users/{userId}/collections:
-    get:
-      summary: Get collections accessible to a user
-      description: |
-        Returns all collections a user has access to across all their organizations, with
-        effective permissions included in the response. Use 'me' as the userId to query
-        the current user. Only ADMIN users can query other users.
-      tags:
-        - User Access
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: The user ID or 'me' for the current user
-          schema:
-            type: string
-        - name: name
-          in: query
-          required: false
-          description: Filter collections by name (case-insensitive partial match)
-          schema:
-            type: string
-        - name: sortBy
-          in: query
-          required: false
-          description: Field to sort by
-          schema:
-            type: string
-        - name: sort
-          in: query
-          required: false
-          description: Sort direction
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-        - name: limit
-          in: query
-          required: false
-          description: Number of results per page
-          schema:
-            type: string
-            default: "10"
-        - name: offset
-          in: query
-          required: false
-          description: Offset for pagination
-          schema:
-            type: string
-            default: "0"
-      responses:
-        '200':
-          description: List of collections with permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserCollectionsResponse'
-        '403':
-          description: Cannot query other users' collections (requires ADMIN)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  # ============================================
   # Entity Permission Query Routes
   # ============================================
 
-  /pricings/{organizationId}/{pricingName}/permissions:
+  /pricings/{organizationId}/{pricingSlug}/permissions:
     get:
       summary: Get current user's permissions on a pricing
       description: |
@@ -3673,13 +3537,8 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/OrgId'
-        - name: pricingName
-          in: path
-          required: true
-          description: The name of the pricing
-          schema:
-            type: string
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
       responses:
         '200':
           description: User's permissions on the pricing
@@ -4360,6 +4219,10 @@ components:
       properties:
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the pricing name
+          example: "zoom"
         owner:
           type: string
         collection:
@@ -4389,6 +4252,10 @@ components:
           type: string
           description: ISO 4217 currency code for the pricing definition
           example: "USD"
+        private:
+          type: boolean
+          description: Whether the pricing is private (only accessible to users with explicit permissions)
+          default: false
         analytics:
           type: object
           nullable: true
@@ -4418,6 +4285,10 @@ components:
         name:
           type: string
           description: Common name of all pricing versions
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the pricing name
+          example: "zoom"
         collection:
           type: object
           description: Details about the collection that contains the pricing, if any
@@ -4656,6 +4527,10 @@ components:
           type: string
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the collection name
+          example: "my-collection"
         description:
           type: string
           nullable: true
@@ -4685,6 +4560,10 @@ components:
           type: string
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the collection name
+          example: "my-collection"
         description:
           type: string
           nullable: true
@@ -5114,11 +4993,11 @@ components:
           enum: [pricing, collection]
           description: The type of entity this permission applies to
           example: "pricing"
-        entityId:
+        entitySlug:
           type: string
           nullable: true
-          description: The MongoDB ObjectId of the entity (pricing or collection). Null for org-scoped permissions.
-          example: "68050bd09890322c57842f90"
+          description: The URL-friendly slug of the entity (pricing or collection). Null for org-scoped permissions.
+          example: "zoom"
         permissions:
           $ref: '#/components/schemas/EntityPermissions'
         grantedBy:
@@ -5155,6 +5034,10 @@ components:
         DELETE:
           type: boolean
           description: Whether the user can delete the entity
+          example: false
+        CREATE:
+          type: boolean
+          description: Whether the user can create new versions or child entities
           example: false
 
     UserPricingsResponse:
@@ -5745,14 +5628,14 @@ components:
                 enum: [pricing, collection]
                 description: The type of entity to set permissions for
                 example: "pricing"
-              entityId:
+              entitySlug:
                 type: string
                 nullable: true
                 description: >-
-                  The entity identifier. Can be the entity name (e.g. pricing name or collection name)
-                  or a MongoDB ObjectId. Use null for org-scoped permissions (e.g. CREATE permission
-                  at the organization level).
-                example: "68050bd09890322c57842f90"
+                  The URL-friendly slug of the entity (pricing name or collection name).
+                  Use null for org-scoped permissions (e.g. CREATE permission at the
+                  organization level).
+                example: "zoom"
               permissions:
                 $ref: '#/components/schemas/EntityPermissions'
 
@@ -5943,12 +5826,14 @@ components:
         type: string
         example: "my-collection"
     
-    PricingName:
-      name: pricingName
+    PricingSlug:
+      name: pricingSlug
       in: path
       required: true
+      description: The URL-friendly slug identifier of the pricing (auto-generated from name)
       schema:
         type: string
+        example: "zoom"
 
     PricingVersion:
       name: pricingVersion

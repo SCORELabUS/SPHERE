@@ -9,14 +9,14 @@ export const considerUserPermissionsAggregator = (permissions: OrgUserPermission
             ? [{ $expr: { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] } }]
             : []),
 
-          // El ID de la colección está en las colecciones permitidas
-          { 'collection.id': { $in: permissions.collections } },
+          // El slug de la colección está en las colecciones permitidas
+          { 'collection.slug': { $in: permissions.collections } },
 
           // El pricing es público
           { private: false },
 
-          // Está explícitamente en el array de pricings permitidos
-          { id: { $in: permissions.pricings } },
+          // Está explícitamente en el array de slugs de pricings permitidos
+          { slug: { $in: permissions.pricings } },
         ],
       },
     };

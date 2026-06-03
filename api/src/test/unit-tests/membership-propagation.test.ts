@@ -17,11 +17,12 @@ function createMockOrgRepo() {
   return {
     findById: vi.fn(),
     create: vi.fn(),
-    findChildOrganizationIds: vi.fn(),
-    findAll: vi.fn(),
+    findChildOrganizationIds: vi.fn().mockResolvedValue([]),
+    findAll: vi.fn().mockResolvedValue([]),
     findOne: vi.fn(),
     update: vi.fn(),
     destroy: vi.fn(),
+    findExistingSlug: vi.fn().mockResolvedValue(false),
   };
 }
 

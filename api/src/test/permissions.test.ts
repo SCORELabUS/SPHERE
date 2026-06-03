@@ -54,7 +54,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -78,14 +78,13 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: null,
-          permissions: { CREATE: true },
+          permissions: { GET: true, PUT: false, DELETE: false },
         });
 
       expect(response.status).toBe(201);
       expect(response.body.permissions).toEqual({
-        GET: false,
-        CREATE: true,
+        GET: true,
+        CREATE: false,
         PUT: false,
         DELETE: false,
       });
@@ -102,7 +101,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'collection',
-          entityId: null,
+          entitySlug: null,
           permissions: { CREATE: true },
         });
 
@@ -131,9 +130,9 @@ describe('Entity Permissions API integration', () => {
         .post(`${BASE_PATH}/orgs/${organizationId}/permissions`)
         .set('Authorization', `Bearer ${member1.token}`)
         .send({
-          userId: member2.id,
+          userId: member1.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -149,7 +148,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: 'invalid-id',
           entityType: 'invalid',
-          entityId: 'invalid',
+          entitySlug: 'invalid',
           permissions: 'not-an-object',
         });
 
@@ -174,7 +173,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -205,7 +204,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -215,8 +214,8 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'collection',
-          entityId: collection.id,
-          permissions: { GET: true, PUT: true, DELETE: false },
+          entitySlug: collection.slug,
+          permissions: { GET: true, PUT: false, DELETE: false },
         });
 
       const pricingResponse = await request(app)
@@ -252,7 +251,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.serviceName,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -282,7 +281,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'collection',
-          entityId: collectionName,
+          entitySlug: collection.slug,
           permissions: { GET: true, PUT: true, DELETE: false },
         });
 
@@ -314,7 +313,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -348,7 +347,7 @@ describe('Entity Permissions API integration', () => {
         .send({
           userId: member.id,
           entityType: 'pricing',
-          entityId: pricing.response.body.id,
+          entitySlug: pricing.serviceName,
           permissions: { GET: true, PUT: false, DELETE: false },
         });
 
@@ -442,7 +441,7 @@ describe('Entity Permissions API integration', () => {
       });
 
       await createMembership(requester.id, organizationId, 'MEMBER');
-      await createEntityPermission(requester.id, organizationId, 'pricing', pricing.response.body.id, { GET: true, CREATE: false, PUT: false, DELETE: false });
+      await createEntityPermission(requester.id, organizationId, 'pricing', pricing.serviceName, { GET: true, CREATE: false, PUT: false, DELETE: false });
 
       const response = await request(app)
         .get(`${BASE_PATH}/pricings/${organizationId}/${pricing.serviceName}/permissions`)

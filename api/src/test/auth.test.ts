@@ -66,7 +66,7 @@ const buildRequestPath = (pattern: string, ctx: AuthContext) => {
 		case '/orgs':
 			return `${BASE_PATH}/orgs`;
 		case '/orgs/**':
-			return `${BASE_PATH}/orgs/${ctx.ownerOrg.id}`;
+			return `${BASE_PATH}/orgs/${ctx.ownerOrg.id}/permissions`;
 		case '/orgs/*/members':
 			return `${BASE_PATH}/orgs/${ctx.ownerOrg.id}/members`;
 		case '/orgs/*/members/**':
@@ -421,7 +421,7 @@ describe('Auth Middleware - Integration Tests', () => {
 
 			await createMembership(managementScopeUser.id, ownerOrg.id, 'MEMBER');
 
-			const response = await requestWithAuth(app, 'GET', `${BASE_PATH}/orgs/${childOrg._id.toString()}`, {
+			const response = await requestWithAuth(app, 'GET', `${BASE_PATH}/orgs/${childOrg._id.toString()}/permissions`, {
 				apiKey: managementScopeUser.apiKey,
 			});
 

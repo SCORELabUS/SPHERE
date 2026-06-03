@@ -145,11 +145,11 @@ describe('PermissionEngine', () => {
       const result = engine.evaluate(baseCtx({
         action: 'GET',
         entityType: 'pricing',
-        entityId: 'pricing1',
+        entitySlug: 'pricing1',
         isPrivate: true,
         userOrgRole: 'MEMBER',
         entityPermissions: NO_PERMS, // No direct permission on pricing
-        collectionId: 'col1',
+        collectionSlug: 'col1',
         collectionPermissions: GET_ONLY, // But collection has GET
       }));
       expect(result.allowed).toBe(true);
@@ -159,11 +159,11 @@ describe('PermissionEngine', () => {
       const result = engine.evaluate(baseCtx({
         action: 'GET',
         entityType: 'pricing',
-        entityId: 'pricing1',
+        entitySlug: 'pricing1',
         isPrivate: true,
         userOrgRole: 'MEMBER',
         entityPermissions: NO_PERMS,
-        collectionId: 'col1',
+        collectionSlug: 'col1',
         collectionPermissions: NO_PERMS,
       }));
       expect(result.allowed).toBe(false);
@@ -173,7 +173,7 @@ describe('PermissionEngine', () => {
       const result = engine.evaluate(baseCtx({
         action: 'GET',
         entityType: 'pricing',
-        entityId: 'pricing1',
+        entitySlug: 'pricing1',
         isPrivate: true,
         userOrgRole: 'MEMBER',
         entityPermissions: GET_ONLY,
@@ -312,7 +312,7 @@ describe('PermissionEngine', () => {
         {
           key: 'pricing1',
           context: baseCtx({
-            entityId: 'pricing1',
+            entitySlug: 'pricing1',
             isPrivate: true,
             userOrgRole: undefined,
             isGlobalAdmin: undefined,

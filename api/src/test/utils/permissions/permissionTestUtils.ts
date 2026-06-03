@@ -15,7 +15,7 @@ export const createEntityPermission = async (
     _userId: new mongoose.Types.ObjectId(userId),
     _organizationId: new mongoose.Types.ObjectId(organizationId),
     entityType,
-    entityId: new mongoose.Types.ObjectId(entityId),
+    entitySlug: entityId,
     permissions,
     grantedBy: grantedBy ? new mongoose.Types.ObjectId(grantedBy) : undefined,
   });

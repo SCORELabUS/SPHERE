@@ -278,7 +278,7 @@ describe('Pricings API integration', () => {
         isPrivate: true,
       });
 
-      await createEntityScopedPermission(member.id, organizationId, pricing.id, 'pricing', {
+      await createEntityScopedPermission(member.id, organizationId, pricing.serviceName, 'pricing', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -406,7 +406,7 @@ describe('Pricings API integration', () => {
         pricingsInCollection
       );
 
-      await createEntityScopedPermission(member.id, organizationId, collection.id, 'collection', {
+      await createEntityScopedPermission(member.id, organizationId, collection.slug, 'collection', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -454,7 +454,7 @@ describe('Pricings API integration', () => {
       await createEntityScopedPermission(
         member.id,
         organizationId,
-        privatePricingWithAccess.id,
+        privatePricingWithAccess.serviceName,
         'pricing',
         {
           GET: true,
@@ -553,7 +553,7 @@ describe('Pricings API integration', () => {
         member.id,
         organizationId,
         'pricing',
-        privatePricingInCollection.id,
+        privatePricingInCollection.serviceName,
         {
           GET: true,
           CREATE: false,
@@ -795,7 +795,7 @@ describe('Pricings API integration', () => {
       });
 
       // Grant entity-level CREATE permission on the specific pricing
-      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+      await createEntityScopedPermission(member.id, organizationId, serviceName, 'pricing', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -901,7 +901,7 @@ describe('Pricings API integration', () => {
         isPrivate: false,
       });
 
-      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+      await createEntityScopedPermission(member.id, organizationId, serviceName, 'pricing', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -1028,7 +1028,7 @@ describe('Pricings API integration', () => {
       });
 
       // Grant ONLY entity-level CREATE permission on the specific pricing
-      await createEntityScopedPermission(member.id, organizationId, pricingId, 'pricing', {
+      await createEntityScopedPermission(member.id, organizationId, serviceName, 'pricing', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -1478,7 +1478,7 @@ describe('Pricings API integration', () => {
         isPrivate: true,
       });
 
-      await createEntityScopedPermission(member.id, organizationId, privatePricing.id, 'pricing', {
+      await createEntityScopedPermission(member.id, organizationId, privatePricing.serviceName, 'pricing', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -1579,7 +1579,7 @@ describe('Pricings API integration', () => {
       await createEntityScopedPermission(
         member.id,
         organizationId,
-        accessiblePricing.id,
+        accessiblePricing.serviceName,
         'pricing',
         {
           GET: true,
@@ -1685,6 +1685,90 @@ describe('Pricings API integration', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBeDefined();
+    });
+  });
+
+  describe('Pricing version name consistency', () => {
+    it('should preserve the original pricing name when adding a new version', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const serviceName = `TestPricing_${randomSuffix()}`;
+
+      // Create first version with a specific name
+      const v1 = await createPricingForOrganization({
+        organizationId,
+        serviceName,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+
+      expect(v1.serviceName).toBe(serviceName);
+
+      // Create a second version using the slug
+      const fixture = await createValidPricingYaml(serviceName, '2.0.0');
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/2.0.0`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+
+      // Verify both versions exist with the SAME name in the database
+      const allVersions = await PricingMongoose.find({
+        name: serviceName,
+        _organizationId: organizationId,
+      }).sort({ version: 1 });
+
+      expect(allVersions.length).toBe(2);
+      expect(allVersions[0].name).toBe(serviceName);
+      expect(allVersions[0].version).toBe('1.0.0');
+      expect(allVersions[1].name).toBe(serviceName);
+      expect(allVersions[1].version).toBe('2.0.0');
+
+      // Verify slugs are the same for both versions
+      expect(allVersions[0].slug).toBeDefined();
+      expect(allVersions[1].slug).toBeDefined();
+      expect(allVersions[0].slug).toBe(allVersions[1].slug);
+    });
+
+    it('should not use the slug as the pricing name', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const serviceName = `MyPricing_${randomSuffix()}`;
+
+      const v1 = await createPricingForOrganization({
+        organizationId,
+        serviceName,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+
+      // The slug should be lowercase version of the name
+      const pricingDoc = await PricingMongoose.findOne({
+        name: serviceName,
+        _organizationId: organizationId,
+      });
+      expect(pricingDoc).toBeDefined();
+      expect(pricingDoc!.name).toBe(serviceName);
+      expect(pricingDoc!.slug).toBeDefined();
+      expect(pricingDoc!.slug).not.toBe(serviceName); // slug is lowercase, name preserves case
+
+      // Add another version
+      const fixture = await createValidPricingYaml(serviceName, '2.0.0');
+      await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/2.0.0`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      // Verify the second version also has the original name, not the slug
+      const v2Doc = await PricingMongoose.findOne({
+        name: serviceName,
+        version: '2.0.0',
+        _organizationId: organizationId,
+      });
+      expect(v2Doc).toBeDefined();
+      expect(v2Doc!.name).toBe(serviceName);
+      expect(v2Doc!.name).not.toBe(pricingDoc!.slug);
     });
   });
 });

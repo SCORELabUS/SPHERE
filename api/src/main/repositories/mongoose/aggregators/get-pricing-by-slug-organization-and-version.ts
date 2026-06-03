@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
-export function getPricingByNameOrganizationAndVersionAggregator(
-  pricingName: string,
+export function getPricingBySlugOrganizationAndVersionAggregator(
+  pricingSlug: string,
   organizationId: string,
   version?: string
 ) {
@@ -12,13 +12,9 @@ export function getPricingByNameOrganizationAndVersionAggregator(
   return [
     {
       $match: {
-        $expr: {
-          $and: [
-            { $eq: [{ $toLower: '$name' }, { $toLower: pricingName }] },
-            { $eq: ['$_organizationId', new mongoose.Types.ObjectId(organizationId)] },
-            versionMatch,
-          ],
-        },
+        slug: pricingSlug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+        $expr: versionMatch,
       },
     },
     {
@@ -76,6 +72,7 @@ export function getPricingByNameOrganizationAndVersionAggregator(
       $group: {
         _id: { name: '$name', organizationId: { $toString: '$organization._id' }, collectionSlug: '$collection.slug' },
         name: { $first: '$name' },
+        slug: { $first: '$slug' },
         collection: {
           $first: {
             id: { $toString: '$collection._id' },
@@ -114,6 +111,7 @@ export function getPricingByNameOrganizationAndVersionAggregator(
       $project: {
         _id: 0,
         name: 1,
+        slug: 1,
         organization: 1,
         collection: 1,
         versions: { $sortArray: { input: '$versions', sortBy: { createdAt: -1 } } },

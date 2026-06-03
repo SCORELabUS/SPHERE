@@ -13,7 +13,7 @@ import PricingRepository from '../repositories/mongoose/PricingRepository';
 import CacheService from './CacheService';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
-import { generateSlug, generateTextFromSlug } from '../utils/slug-manager';
+import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
 import { OrgRole } from '../types/models/Organization';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
@@ -71,7 +71,11 @@ class PricingService {
       return pricings;
     }
 
-    const permissions = await this.permissionService.buildOrgUserPermissionsContext(reqUser, orgRole, organizationId);
+    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
+      reqUser,
+      orgRole,
+      organizationId
+    );
 
     const pricings = await this.pricingRepository.findByOrganizationId(
       organizationId,
@@ -83,9 +87,10 @@ class PricingService {
   }
 
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
-    
     if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
-      throw new Error('PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.');
+      throw new Error(
+        'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
+      );
     }
 
     const user = await this.userService.show(username);
@@ -93,7 +98,7 @@ class PricingService {
     if (!user) {
       throw new Error('NOT FOUND: User not found');
     }
-    
+
     const userOrganizations = await this.organizationService.indexByUser(user.id, {
       treeFormat: false,
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
@@ -127,7 +132,7 @@ class PricingService {
     }
 
     const pricing: { name: string; slug: string; versions: PricingModel[] } | null =
-      await this.pricingRepository.findOneBySlug(slug, organizationId, queryParams);
+      await this.pricingRepository.findOne(slug, organizationId, queryParams);
 
     if (!pricing) {
       throw new Error('NOT FOUND: Pricing not found');
@@ -167,11 +172,15 @@ class PricingService {
       includePrivate = reqUser.role === 'ADMIN' || role !== null;
     }
 
-    const retrievedPricing = await this.pricingRepository.findOneBySlug(pricingSlug, organizationId, {
-      ...queryParams,
-      version: pricingVersion,
-      includePrivate,
-    });
+    const retrievedPricing = await this.pricingRepository.findOne(
+      pricingSlug,
+      organizationId,
+      {
+        ...queryParams,
+        version: pricingVersion,
+        includePrivate,
+      }
+    );
     if (!retrievedPricing) {
       throw new Error('NOT FOUND: Pricing not found');
     }
@@ -215,7 +224,13 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string
   ) {
-    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId);
+    return this._createPricingVersion(
+      pricingFile,
+      organizationId,
+      isPrivate,
+      reqUser,
+      collectionId
+    );
   }
 
   async createVersion(
@@ -226,7 +241,14 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string
   ) {
-    return this._createPricingVersion(pricingFile, organizationId, isPrivate, reqUser, collectionId, pricingSlug);
+    return this._createPricingVersion(
+      pricingFile,
+      organizationId,
+      isPrivate,
+      reqUser,
+      collectionId,
+      pricingSlug
+    );
   }
 
   private async _createPricingVersion(
@@ -237,6 +259,10 @@ class PricingService {
     collectionId?: string,
     overrideSlug?: string
   ) {
+    if (!pricingFile) {
+      throw new Error('INVALID DATA: Pricing file is required');
+    }
+
     try {
       const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
       const batchCtx = await this.permissionService.buildBatchContext(
@@ -250,15 +276,21 @@ class PricingService {
         typeof pricingFile === 'string' ? pricingFile : pricingFile.path
       );
 
-      const previousPricing = overrideSlug
-        ? await this.pricingRepository.findOneBySlug(overrideSlug, organizationId, {
-            collectionId: collectionId, includePrivate: true,
-          })
-        : await this.pricingRepository.findOne(uploadedPricing.saasName, organizationId, {
-            collectionId: collectionId, includePrivate: true,
-          });
+      const lookupSlug = overrideSlug
+        ? generateSlug(overrideSlug)
+        : generateSlug(uploadedPricing.saasName);
 
-      const isAddingVersion = !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
+      const previousPricing = await this.pricingRepository.findOne(
+        lookupSlug,
+        organizationId,
+        {
+          collectionId: collectionId,
+          includePrivate: true,
+        }
+      );
+
+      const isAddingVersion =
+        !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
 
       if (isAddingVersion) {
         // Adding a version to existing pricing: only entity-level CREATE required
@@ -309,7 +341,16 @@ class PricingService {
       const yamlPath = normalizedPath.slice(staticIndex);
 
       const pricingName = isAddingVersion ? previousPricing.name : uploadedPricing.saasName;
-      const pricingSlug = isAddingVersion ? previousPricing.slug : undefined;
+
+      let pricingSlug: string;
+      if (isAddingVersion) {
+        pricingSlug = previousPricing.slug!;
+      } else {
+        const baseSlug = generateSlug(pricingName);
+        pricingSlug = await deduplicateSlug(baseSlug, (slug) =>
+          this.pricingRepository.findExistingSlug(slug, organizationId)
+        );
+      }
 
       const pricingData = {
         name: pricingName,
@@ -391,7 +432,7 @@ class PricingService {
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
+    const pricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
@@ -429,7 +470,7 @@ class PricingService {
       await this.pricingRepository.update(pricingVersion.id, data);
     }
 
-    const updatedPricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
+    const updatedPricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
@@ -486,7 +527,7 @@ class PricingService {
 
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, effectiveOrgId, {
+    const pricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
@@ -554,7 +595,7 @@ class PricingService {
   ) {
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
-    const pricing = await this.pricingRepository.findOneBySlug(pricingSlug, organizationId, {
+    const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
       includePrivate: true,
     });
 

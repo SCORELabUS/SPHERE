@@ -374,7 +374,7 @@ describe('Organizations API integration', () => {
       expect(responseA.status).toBe(201);
       expect(responseB.status).toBe(201);
       expect(responseA.body.name).toBe(baseSlug);
-      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{10}$`));
+      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{1,10}$`));
       expect(responseA.body.displayName).toBe('Org One');
       expect(responseB.body.displayName).toBe('Org Two');
     });
@@ -402,7 +402,7 @@ describe('Organizations API integration', () => {
       expect(responseA.status).toBe(201);
       expect(responseB.status).toBe(201);
       expect(responseA.body.name).toBe(baseSlug);
-      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{10}$`));
+      expect(responseB.body.name).toMatch(new RegExp(`^${baseSlug}-\\d{1,10}$`));
     });
 
     it('returns 201 and deduplicates slug when same name is used under different parents', async () => {
@@ -432,7 +432,7 @@ describe('Organizations API integration', () => {
       expect(responseA.status).toBe(201);
       expect(responseB.status).toBe(201);
       expect(responseA.body.name).toBe(sharedSlug);
-      expect(responseB.body.name).toMatch(new RegExp(`^${sharedSlug}-\\d{10}$`));
+      expect(responseB.body.name).toMatch(new RegExp(`^${sharedSlug}-\\d{1,10}$`));
     });
   });
 
@@ -2612,7 +2612,7 @@ describe('Organizations API integration', () => {
       const childId = childResponse.body.id;
 
       const response = await request(app)
-        .get(`${BASE_PATH}/orgs/${childId}`)
+        .get(`${BASE_PATH}/orgs/${childId}/permissions`)
         .set('Authorization', `Bearer ${member.token}`);
 
       expect(response.status).toBe(403);
@@ -2767,7 +2767,7 @@ describe('Organizations API integration', () => {
       const childId = childResponse.body.id;
 
       const response = await request(app)
-        .get(`${BASE_PATH}/orgs/${childId}`);
+        .get(`${BASE_PATH}/orgs/${childId}/permissions`);
 
       expect(response.status).toBe(401);
     });

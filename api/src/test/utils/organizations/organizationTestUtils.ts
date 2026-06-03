@@ -257,7 +257,7 @@ export const createOrgScopedPermission = async (
     _userId: new mongoose.Types.ObjectId(userId),
     _organizationId: new mongoose.Types.ObjectId(organizationId),
     entityType,
-    entityId: null,
+    entitySlug: null,
     permissions,
   });
 
@@ -282,7 +282,7 @@ export const createEntityScopedPermission = async (
     _userId: new mongoose.Types.ObjectId(userId),
     _organizationId: new mongoose.Types.ObjectId(organizationId),
     entityType,
-    entityId: entityId,
+    entitySlug: entityId,
     permissions,
   });
 

@@ -30,7 +30,7 @@ function makePerm(overrides: Partial<LeanEntityPermission> & { entityType: strin
     id: 'perm_' + Math.random().toString(36).slice(2, 8),
     _userId: 'user1',
     _organizationId: 'org1',
-    entityId: null,
+    entitySlug: null,
     permissions: { GET: true, PUT: false, DELETE: false, CREATE: false },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -82,8 +82,8 @@ describe('PermissionQueries', () => {
     it('populates entityPermissions from entity-level records', async () => {
       mockEntityPermRepo.findByUserAndOrgScopedType.mockResolvedValue(null);
       mockEntityPermRepo.findByUserAndOrganization.mockResolvedValue([
-        makePerm({ entityType: 'pricing', entityId: 'p1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
-        makePerm({ entityType: 'collection', entityId: 'c1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
+        makePerm({ entityType: 'pricing', entitySlug: 'p1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
+        makePerm({ entityType: 'collection', entitySlug: 'c1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
       ]);
 
       const ctx = await queries.buildBatchContext('user1', 'org1');
@@ -95,8 +95,8 @@ describe('PermissionQueries', () => {
     it('extracts collectionPermissions from collection entity records', async () => {
       mockEntityPermRepo.findByUserAndOrgScopedType.mockResolvedValue(null);
       mockEntityPermRepo.findByUserAndOrganization.mockResolvedValue([
-        makePerm({ entityType: 'collection', entityId: 'c1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
-        makePerm({ entityType: 'pricing', entityId: 'p1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
+        makePerm({ entityType: 'collection', entitySlug: 'c1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
+        makePerm({ entityType: 'pricing', entitySlug: 'p1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
       ]);
 
       const ctx = await queries.buildBatchContext('user1', 'org1');
@@ -108,8 +108,8 @@ describe('PermissionQueries', () => {
     it('skips entity records with null entityId', async () => {
       mockEntityPermRepo.findByUserAndOrgScopedType.mockResolvedValue(null);
       mockEntityPermRepo.findByUserAndOrganization.mockResolvedValue([
-        makePerm({ entityType: 'pricing', entityId: null }),
-        makePerm({ entityType: 'pricing', entityId: 'p1' }),
+        makePerm({ entityType: 'pricing', entitySlug: null }),
+        makePerm({ entityType: 'pricing', entitySlug: 'p1' }),
       ]);
 
       const ctx = await queries.buildBatchContext('user1', 'org1');
@@ -146,9 +146,9 @@ describe('PermissionQueries', () => {
       const orgRoles = new Map([['org1', 'ADMIN'], ['org2', 'MEMBER']]);
       mockOrgMemberRepo.findRolesByUserId.mockResolvedValue(orgRoles);
       mockEntityPermRepo.findByUser.mockResolvedValue([
-        makePerm({ _organizationId: 'org1', entityType: 'pricing', entityId: 'p1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
-        makePerm({ _organizationId: 'org1', entityType: 'collection', entityId: 'c1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
-        makePerm({ _organizationId: 'org2', entityType: 'pricing', entityId: 'p2', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
+        makePerm({ _organizationId: 'org1', entityType: 'pricing', entitySlug: 'p1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
+        makePerm({ _organizationId: 'org1', entityType: 'collection', entitySlug: 'c1', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
+        makePerm({ _organizationId: 'org2', entityType: 'pricing', entitySlug: 'p2', permissions: { GET: true, PUT: false, DELETE: false, CREATE: false } }),
       ]);
 
       const ctx = await queries.buildAllOrgsBatchContext('user1');
@@ -164,8 +164,8 @@ describe('PermissionQueries', () => {
       const orgRoles = new Map([['org1', 'MEMBER']]);
       mockOrgMemberRepo.findRolesByUserId.mockResolvedValue(orgRoles);
       mockEntityPermRepo.findByUser.mockResolvedValue([
-        makePerm({ _organizationId: 'org1', entityType: 'pricing', entityId: null, permissions: { GET: true, PUT: true, DELETE: true, CREATE: true } }),
-        makePerm({ _organizationId: 'org1', entityType: 'pricing', entityId: 'p1' }),
+        makePerm({ _organizationId: 'org1', entityType: 'pricing', entitySlug: null, permissions: { GET: true, PUT: true, DELETE: true, CREATE: true } }),
+        makePerm({ _organizationId: 'org1', entityType: 'pricing', entitySlug: 'p1' }),
       ]);
 
       const ctx = await queries.buildAllOrgsBatchContext('user1');
@@ -180,8 +180,8 @@ describe('PermissionQueries', () => {
       const orgRoles = new Map([['org1', 'MEMBER'], ['org2', 'MEMBER']]);
       mockOrgMemberRepo.findRolesByUserId.mockResolvedValue(orgRoles);
       mockEntityPermRepo.findByUser.mockResolvedValue([
-        makePerm({ _organizationId: 'org1', entityType: 'collection', entityId: 'c1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
-        makePerm({ _organizationId: 'org2', entityType: 'collection', entityId: 'c2', permissions: { GET: false, PUT: false, DELETE: false, CREATE: false } }),
+        makePerm({ _organizationId: 'org1', entityType: 'collection', entitySlug: 'c1', permissions: { GET: true, PUT: true, DELETE: false, CREATE: false } }),
+        makePerm({ _organizationId: 'org2', entityType: 'collection', entitySlug: 'c2', permissions: { GET: false, PUT: false, DELETE: false, CREATE: false } }),
       ]);
 
       const ctx = await queries.buildAllOrgsBatchContext('user1');
@@ -196,7 +196,7 @@ describe('PermissionQueries', () => {
       const orgRoles = new Map([['org1', 'MEMBER'], ['org2', 'MEMBER']]);
       mockOrgMemberRepo.findRolesByUserId.mockResolvedValue(orgRoles);
       mockEntityPermRepo.findByUser.mockResolvedValue([
-        makePerm({ _organizationId: 'org1', entityType: 'pricing', entityId: 'p1' }),
+        makePerm({ _organizationId: 'org1', entityType: 'pricing', entitySlug: 'p1' }),
       ]);
 
       const ctx = await queries.buildAllOrgsBatchContext('user1');

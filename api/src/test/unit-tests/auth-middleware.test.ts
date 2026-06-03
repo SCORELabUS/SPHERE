@@ -354,7 +354,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_child',
+        path: '/api/v1/orgs/org_child/permissions',
         params: { organizationId: 'org_child' },
         headers: buildApiKeyHeader(user.apiKey.key),
       });
@@ -377,7 +377,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123/members',
+        path: '/api/v1/orgs/org_123/permissions',
         params: {},
         headers: buildBearerTokenHeader(user.token!),
       });
@@ -404,7 +404,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_child',
+        path: '/api/v1/orgs/org_child/permissions',
         params: { organizationId: 'org_child' },
         headers: buildApiKeyHeader(user.apiKey.key),
       });
@@ -570,7 +570,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123',
+        path: '/api/v1/orgs/org_123/permissions',
         params: { organizationId: 'org_123' },
         headers: buildBearerTokenHeader(user.token!),
       });
@@ -591,7 +591,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123',
+        path: '/api/v1/orgs/org_123/permissions',
         params: { organizationId: 'org_123' },
         headers: buildBearerTokenHeader(user.token!),
       });

@@ -38,4 +38,4 @@ nginx/production/ssl/
 coverage/
 .secrets
 
-api/public/static/avatars/users/uploaded/
+api/public/static/avatars/users/
