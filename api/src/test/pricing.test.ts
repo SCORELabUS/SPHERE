@@ -1004,7 +1004,9 @@ describe('Pricings API integration', () => {
       const yamlUrl = response.body.yaml;
       expect(yamlUrl).toBeDefined();
 
-      const localPath = yamlUrl.replace(/^http:\/\/[^/]+/, process.cwd());
+      const relativePath = yamlUrl.replace(/^https?:\/\/[^/]+\//, '');
+      const staticFolder = (process.env.SERVER_STATICS_FOLDER || 'public/').replace(/\/$/, '/');
+      const localPath = path.resolve(process.cwd(), staticFolder + relativePath);
       const yamlContent = await fs.readFile(localPath, 'utf8');
       const parsed = yaml.load(yamlContent) as Record<string, any>;
       expect(parsed.saasName).toBe(serviceName);
@@ -2104,7 +2106,7 @@ describe('Pricings API integration', () => {
       expect(permission).toBeNull();
     });
 
-    it('Return 200 and auto-grant full permissions when MEMBER adds a version to an existing pricing.', async () => {
+    it('Return 200 and NOT auto-grant full permissions when MEMBER adds a version to an existing pricing.', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
       const { user: member } = await createAndLoginUser('USER');
 
@@ -2148,7 +2150,7 @@ describe('Pricings API integration', () => {
 
       expect(response.status).toBe(200);
 
-      // Verify permissions still have all flags true (findOrCreate upserts)
+      // Verify permissions are NOT auto-granted when adding a version
       const permission = await EntityPermissionMongoose.findOne({
         _userId: member.id,
         _organizationId: organizationId,
@@ -2158,8 +2160,8 @@ describe('Pricings API integration', () => {
 
       expect(permission).toBeDefined();
       expect(permission!.permissions.GET).toBe(true);
-      expect(permission!.permissions.PUT).toBe(true);
-      expect(permission!.permissions.DELETE).toBe(true);
+      expect(permission!.permissions.PUT).toBe(false);
+      expect(permission!.permissions.DELETE).toBe(false);
       expect(permission!.permissions.CREATE).toBe(true);
     });
 

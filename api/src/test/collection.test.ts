@@ -13,8 +13,9 @@ import testContainer from './utils/config/testContainer';
 import { BASE_PATH } from './utils/config/variables';
 import { randomSuffix } from './utils/helpers';
 import { LeanUser } from '../main/types/models/User';
-import { createMembership } from './utils/organizations';
+import { createMembership, createOrgScopedPermission } from './utils/organizations';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
+import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 
 dotenv.config();
 
@@ -983,6 +984,116 @@ describe('Pricing Collections API integration', () => {
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
+    });
+  });
+
+  describe('Auto-grant permissions on collection creation for MEMBER', () => {
+    it('Return 201 and auto-grant full permissions when MEMBER creates a new collection.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'collection', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const collectionName = `collection_${randomSuffix()}`;
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ name: collectionName, private: false });
+
+      expect(response.status).toBe(201);
+
+      const slug = response.body.slug;
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'collection',
+        entitySlug: slug,
+      });
+
+      expect(permission).toBeDefined();
+      expect((permission!.permissions as any).GET).toBe(true);
+      expect((permission!.permissions as any).PUT).toBe(true);
+      expect((permission!.permissions as any).DELETE).toBe(true);
+      expect((permission!.permissions as any).CREATE).toBe(true);
+    });
+
+    it('Return 201 and NOT auto-grant permissions when OWNER creates a collection.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const collectionName = `collection_${randomSuffix()}`;
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: collectionName, private: false });
+
+      expect(response.status).toBe(201);
+
+      const slug = response.body.slug;
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: owner.id,
+        _organizationId: organizationId,
+        entityType: 'collection',
+        entitySlug: slug,
+      });
+
+      expect(permission).toBeNull();
+    });
+
+    it('Return 201 and MEMBER can access private collection with auto-granted permissions.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'collection', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const collectionName = `collection_${randomSuffix()}`;
+
+      const postResponse = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ name: collectionName, private: true });
+
+      expect(postResponse.status).toBe(201);
+
+      const slug = postResponse.body.slug;
+
+      // Member can GET the private collection they created
+      const getResponse = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.name).toBe(collectionName);
+
+      // Member can UPDATE the collection they created
+      const putResponse = await request(app)
+        .put(`${BASE_PATH}/collections/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ description: 'Updated description' });
+
+      expect(putResponse.status).toBe(200);
+
+      // Member can DELETE the collection they created
+      const deleteResponse = await request(app)
+        .delete(`${BASE_PATH}/collections/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(deleteResponse.status).toBe(204);
     });
   });
 });

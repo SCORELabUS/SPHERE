@@ -204,6 +204,20 @@ class PricingCollectionService {
 
       collection = await this.pricingCollectionRepository.create(newCollection);
 
+      if (orgRole === 'MEMBER') {
+        try {
+          await this.permissionService.grantEntityPermission(
+            reqUser.id,
+            organizationId,
+            'collection',
+            newCollection.slug,
+            { GET: true, PUT: true, DELETE: true, CREATE: true }
+          );
+        } catch {
+          // Permission grant failure should not block collection creation
+        }
+      }
+
       if (newCollection.pricings && newCollection.pricings.length > 0) {
         await this.pricingRepository.addPricingsToCollection(
           collection.id,
