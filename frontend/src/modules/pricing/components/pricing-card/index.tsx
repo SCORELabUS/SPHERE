@@ -10,6 +10,7 @@ import customAlert from '../../../core/utils/custom-alert';
 
 interface PricingEntry {
   name: string;
+  slug: string;
   organization: { id: string; name: string; displayName: string; avatar: string };
   version: string;
   collection: { id: string; name: string; slug: string } | null;
@@ -45,7 +46,7 @@ export default function PricingCard({ data, onRemoved }: Props) {
 
   const handleNavigate = () => {
     const slug = data.collection?.slug || data.collection?.name;
-    router.push(`/pricings/${data.organization.id}/${data.name}?collection=${slug}`);
+    router.push(`/pricings/${data.organization.id}/${data.slug}?collection=${slug}`);
   };
 
   const handleRemove = async (e: React.MouseEvent) => {

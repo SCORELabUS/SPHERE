@@ -31,7 +31,7 @@ function compactList(v: string[], max = 7) { return v.length <= max ? v : v.slic
 const PAGE_SIZE = 200;
 const BATCH = 120;
 
-export default function ConfigurationSpaceView({ organizationId, pricingName, pricingVersion }: { organizationId: string; pricingName: string; pricingVersion: string }) {
+export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion }: { organizationId: string; pricingSlug: string; pricingVersion: string }) {
   const [allConfigs, setAllConfigs] = useState<IndexedConfiguration[]>([]);
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingName, pr
         const all: IndexedConfiguration[] = [];
         let total = 0, offset = 0, keep = true;
         while (keep && !canceled) {
-          const res = await getConfigurationSpace(organizationId, pricingName, pricingVersion, PAGE_SIZE, offset);
+          const res = await getConfigurationSpace(organizationId, pricingSlug, pricingVersion, PAGE_SIZE, offset);
           const chunk = (res?.configurationSpace as Partial<Configuration>[] | undefined) ?? [];
           if (offset === 0) { total = Number(res?.configurationSpaceSize ?? chunk.length); setTotalSize(total); }
           all.push(...chunk.map(c => ({ ...normalizeConfiguration(c), id: `cfg-${idRef.current++}` })));
@@ -85,7 +85,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingName, pr
     };
     load();
     return () => { canceled = true; };
-  }, [organizationId, pricingName, pricingVersion]);
+  }, [organizationId, pricingSlug, pricingVersion]);
 
   useEffect(() => {
     if (filtered.length === 0) { setFocusedId(null); return; }

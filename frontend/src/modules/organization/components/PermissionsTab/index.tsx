@@ -112,12 +112,12 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   );
 
   const orgScopedPermissions = useMemo(
-    () => memberPermissions.filter(p => p.entityId === null),
+    () => memberPermissions.filter(p => p.entitySlug === null),
     [memberPermissions]
   );
 
   const entityScopedPermissions = useMemo(
-    () => memberPermissions.filter(p => p.entityId !== null && p.entityType === entityTab),
+    () => memberPermissions.filter(p => p.entitySlug !== null && p.entityType === entityTab),
     [memberPermissions, entityTab]
   );
 
@@ -132,13 +132,13 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   }, [members, memberSearch]);
 
   const availableEntities = useMemo(() => {
-    const existingEntityIds = new Set(
-      entityScopedPermissions.map(p => p.entityId)
+    const existingSlugs = new Set(
+      entityScopedPermissions.map(p => p.entitySlug)
     );
     const entities = entityTab === 'pricing'
-      ? pricings.map(p => ({ id: p.id, label: p.name, sub: p.collection?.name ?? 'No collection' }))
-      : collections.map(c => ({ id: c.id, label: c.name, sub: `${c.numberOfPricings} pricings` }));
-    return entities.filter(e => !existingEntityIds.has(e.id)).filter(e => {
+      ? pricings.map(p => ({ slug: p.slug, label: p.name, sub: p.collection?.name ?? 'No collection' }))
+      : collections.map(c => ({ slug: c.slug, label: c.name, sub: `${c.numberOfPricings} pricings` }));
+    return entities.filter(e => !existingSlugs.has(e.slug)).filter(e => {
       if (!addSearch.trim()) return true;
       return e.label.toLowerCase().includes(addSearch.toLowerCase());
     });
@@ -153,7 +153,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
       await setOrgPermission(organizationId, {
         userId: selectedMemberId,
         entityType: targetType,
-        entityId: null,
+        entitySlug: null,
         permissions: newPermissions,
       });
       await reloadPermissions();
@@ -175,7 +175,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
       await setOrgPermission(organizationId, {
         userId: permission._userId,
         entityType: permission.entityType,
-        entityId: permission.entityId,
+        entitySlug: permission.entitySlug,
         permissions: newPermissions,
       });
       await reloadPermissions();
@@ -199,14 +199,14 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
     }
   }, [canManage, organizationId, removeOrgPermission, reloadPermissions]);
 
-  const handleAddPermission = useCallback(async (entityId: string) => {
+  const handleAddPermission = useCallback(async (entitySlug: string) => {
     if (!canManage || !selectedMemberId) return;
     setIsSaving(true);
     try {
       await setOrgPermission(organizationId, {
         userId: selectedMemberId,
         entityType: entityTab,
-        entityId,
+        entitySlug,
         permissions: { ...addPermissions },
       });
       await reloadPermissions();
@@ -503,9 +503,9 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
               {availableEntities.map(entity => {
                 return (
                 <button
-                  key={entity.id}
+                  key={entity.slug}
                   type="button"
-                  onClick={() => handleAddPermission(entity.id)}
+                  onClick={() => handleAddPermission(entity.slug)}
                   disabled={isSaving}
                   className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-tp-surface/60 disabled:opacity-50"
                 >

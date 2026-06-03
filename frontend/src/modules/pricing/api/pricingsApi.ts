@@ -66,9 +66,9 @@ export function usePricingsApi() {
       });
   }, []);
 
-  const getPricingByName = useCallback(async (name: string, organizationId: string, collectionSlug: string | null) => {
+  const getPricingBySlug = useCallback(async (slug: string, organizationId: string, collectionSlug: string | null) => {
     return fetch(
-      `${PRICINGS_BASE_PATH}/${organizationId}/${name}${
+      `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
         collectionSlug && collectionSlug !== 'undefined' ? `?collectionSlug=${collectionSlug}` : ''
       }`,
       {
@@ -140,7 +140,7 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getConfigurationSpace = useCallback(async (organizationId: string, pricingName: string, pricingVersion: string, limit?: number, offset?: number) => {
+  const getConfigurationSpace = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string, limit?: number, offset?: number) => {
     
     const params = new URLSearchParams();
 
@@ -150,7 +150,7 @@ export function usePricingsApi() {
     const queryString = params.toString(); 
     
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}/${pricingVersion}${queryString ? `?${queryString}` : ''}`,
+      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}${queryString ? `?${queryString}` : ''}`,
       {
         method: 'GET',
         headers: basicHeaders,
@@ -192,8 +192,8 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, token]);
 
-  const createPricingVersion = useCallback(async (formData: FormData, organizationId: string, pricingName: string, pricingVersion: string) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}/${pricingVersion}`, {
+  const createPricingVersion = useCallback(async (formData: FormData, organizationId: string, pricingSlug: string, pricingVersion: string) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -231,8 +231,8 @@ export function usePricingsApi() {
   }, [fetchWithInterceptor, basicHeaders, authUser]);
 
    
-  const updatePricing = useCallback((organizationId: string, pricingName: string, collectionSlug: string, pricingData: any) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}?collectionSlug=${collectionSlug}`, {
+  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collectionSlug=${collectionSlug}`, {
       method: 'PUT',
       headers: basicHeaders,
       body: JSON.stringify(pricingData),
@@ -269,9 +269,9 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingVersion = useCallback(async (organizationId: string, pricingName: string, pricingVersion: string) => {
+  const removePricingVersion = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string) => {
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingName}/${pricingVersion}`,
+      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`,
       {
         method: 'DELETE',
         headers: basicHeaders,
@@ -311,9 +311,9 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingByName = useCallback(async (organizationId: string, name: string, collectionSlug?: string) => {
+  const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${organizationId}/${name}${
+      `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
         collectionSlug ? `?collectionSlug=${collectionSlug}` : ''
       }`,
       {
@@ -338,7 +338,7 @@ export function usePricingsApi() {
   return useMemo(
     () => ({
       getPricings,
-      getPricingByName,
+      getPricingBySlug,
       getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
@@ -346,14 +346,14 @@ export function usePricingsApi() {
       createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
-      removePricingByName,
+      removePricingBySlug,
       updatePricing,
       updateClientPricingVersion,
       removePricingVersion,
     }),
     [
       getPricings,
-      getPricingByName,
+      getPricingBySlug,
       getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
@@ -361,7 +361,7 @@ export function usePricingsApi() {
       createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
-      removePricingByName,
+      removePricingBySlug,
       updatePricing,
       updateClientPricingVersion,
       removePricingVersion,

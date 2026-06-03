@@ -14,6 +14,7 @@ import DashboardSkeleton from '../../../core/components/skeletons/dashboard-skel
 
 interface PricingEntry {
   name: string;
+  slug: string;
   version: string;
   createdAt: string;
   currency: string;

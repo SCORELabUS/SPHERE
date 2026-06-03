@@ -8,6 +8,7 @@ export interface PricingSearchResult {
 
 export interface PricingSearchResultItem {
   name: string;
+  slug: string;
   owner: string;
   version: string;
   createdAt: string;
@@ -25,6 +26,7 @@ export interface PricingSearchResultItem {
 
 export interface PricingEntry {
   name: string;
+  slug: string;
   organization: { id: string; name: string; displayName: string; avatar: string };
   version: string;
   collection: { id: string; name: string; slug: string } | null;

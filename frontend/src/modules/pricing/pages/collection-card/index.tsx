@@ -23,6 +23,7 @@ type Tab = 'pricings' | 'analytics' | 'settings';
 
 interface PricingEntry {
   name: string;
+  slug: string;
   organization: { id: string; name: string; displayName: string; avatar: string };
   version: string;
   collection: { id: string; name: string; slug: string };

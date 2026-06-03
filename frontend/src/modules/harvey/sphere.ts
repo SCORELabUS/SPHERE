@@ -5,6 +5,7 @@ export interface PricingSearchResult {
 
 export interface PricingSearchResultItem {
   name: string;
+  slug: string;
   owner: string;
   version: string;
   createdAt: string;
@@ -34,6 +35,7 @@ export async function fetchPricingYaml(url: string) {
 
 export interface PricingVersionsResult {
   name: string;
+  slug: string;
   collection: { id: string; name: string; slug: string } | null;
   versions: PricingVersion[];
 }

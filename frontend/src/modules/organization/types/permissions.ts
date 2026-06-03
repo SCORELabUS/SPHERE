@@ -13,7 +13,7 @@ export interface EntityPermission {
   _userId: string;
   _organizationId: string;
   entityType: EntityType;
-  entityId: string | null;
+  entitySlug: string | null;
   permissions: EntityPermissions;
   grantedBy?: string;
   entityName?: string;
@@ -25,6 +25,6 @@ export interface EntityPermission {
 export interface SetPermissionPayload {
   userId: string;
   entityType: EntityType;
-  entityId: string | null;
+  entitySlug: string | null;
   permissions: EntityPermissions;
 }

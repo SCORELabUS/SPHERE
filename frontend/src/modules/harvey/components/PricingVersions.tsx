@@ -6,7 +6,7 @@ import PricingVersionLoader from './PricingVersionLoader';
 
 interface PricingVersionProps {
   owner: string;
-  name: string;
+  slug: string;
   collectionSlug?: string | null;
   onContextAdd: (input: SphereContextItemInput) => void;
   onContextRemove: (id: string) => void;
@@ -14,12 +14,12 @@ interface PricingVersionProps {
 
 function PricingVersions({
   owner,
-  name,
+  slug,
   collectionSlug,
   onContextAdd,
   onContextRemove,
 }: PricingVersionProps) {
-  const { loading, error, versions } = usePricingVersions(owner, name, collectionSlug);
+  const { loading, error, versions } = usePricingVersions(owner, slug, collectionSlug);
   const pricingContextItems = usePricingContext();
 
   const isVersionIncludedInContext = (yamlPath: string) =>
