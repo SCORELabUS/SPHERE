@@ -384,6 +384,20 @@ class PricingService {
 
       const pricing = await this.pricingRepository.create([pricingData]);
 
+      if (!isAddingVersion && orgRole === 'MEMBER') {
+        try {
+          await this.permissionService.grantEntityPermission(
+            reqUser.id,
+            organizationId,
+            'pricing',
+            pricingSlug,
+            { GET: true, PUT: true, DELETE: true, CREATE: true }
+          );
+        } catch {
+          // Permission grant failure should not block pricing creation
+        }
+      }
+
       if (pricingName !== uploadedPricing.saasName) {
         const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
         const finalYamlPath = path.resolve(staticFolder, yamlPath);

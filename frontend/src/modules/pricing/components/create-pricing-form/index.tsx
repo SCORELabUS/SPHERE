@@ -83,17 +83,17 @@ export default function CreatePricingForm() {
         Upload a pricing to SPHERE
       </h2>
 
-      <div className="flex items-end gap-1">
+      <div className="flex items-start gap-3">
         <div className="flex-1">
           <OrganizationSelector value={selectedOrg} onChange={setSelectedOrg} />
         </div>
 
-        <div className="text-4xl text-slate-400">
+        <div className="pt-7 text-2xl text-slate-400">
           /
         </div>
 
-        <div className="relative flex-2">
-          <label className="absolute -top-8 left-0 block text-base text-slate-700">
+        <div className="flex-2">
+          <label className="mb-1 block text-sm text-slate-700">
             Pricing Name
           </label>
           <input
@@ -101,17 +101,14 @@ export default function CreatePricingForm() {
             value={useYamlName ? '' : pricingName}
             onChange={e => setPricingName(e.target.value)}
             disabled={useYamlName}
-            className="w-full rounded-md border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors hover:border-slate-400 focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
           />
-          {!useYamlName && <SlugPreview value={pricingName} />}
-        </div>
-      </div>
-
-      <div className="flex gap-1">
-        <div className="flex-1" />
-        <div className="w-8" />
-        <div className="flex-2">
-          <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+          <div
+            className={`transition-all duration-300 ease-in-out overflow-hidden ${!useYamlName && pricingName.trim() ? 'max-h-8 opacity-100' : 'max-h-0 opacity-0'}`}
+          >
+            <SlugPreview value={pricingName} />
+          </div>
+          <label className="mt-1 flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
             <span
               onClick={() => setUseYamlName(!useYamlName)}
               className={`relative inline-block h-4 w-7 rounded-full transition-colors ${useYamlName ? 'bg-tp-primary' : 'bg-slate-300'}`}

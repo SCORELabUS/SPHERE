@@ -204,6 +204,26 @@ class PermissionService {
   }
 
   /**
+   * Grants entity permissions without role verification. Internal use only.
+   * Used by services to auto-grant permissions (e.g., MEMBER creating a pricing).
+   */
+  async grantEntityPermission(
+    userId: string,
+    organizationId: string,
+    entityType: EntityType,
+    entitySlug: string,
+    permissions: EntityPermissions
+  ): Promise<LeanEntityPermission> {
+    return this.entityPermissionRepository.findOrCreate(
+      userId,
+      organizationId,
+      entityType,
+      entitySlug,
+      permissions
+    );
+  }
+
+  /**
    * Removes a permission by ID. Only OWNER/ADMIN can call this.
    */
   async removePermission(permissionId: string, granterOrgRole: OrgRole): Promise<boolean> {

@@ -218,7 +218,7 @@ async function checkEntityPermissions(
   if (!organizationId) return null;
 
   const segments = apiPath.split('/').filter(Boolean);
-  const entitySlug = segments[1];
+  const entitySlug = segments.length >= 3 ? segments[2] : null;
   if (!entitySlug) return null;
 
   if (segments.includes('permissions')) return null;
@@ -330,6 +330,20 @@ async function checkEntityPermissions(
     }
   }
 
+  let entityPermissions;
+  try {
+    const permissionQueries = new (await import('../policies/queries/PermissionQueries')).PermissionQueries();
+    const batchCtx = await permissionQueries.buildBatchContext(
+      user.id,
+      organizationId,
+      user.orgRole,
+      user.role === 'ADMIN'
+    );
+    entityPermissions = batchCtx.entityPermissions.get(`${entityType}:${entitySlug}`);
+  } catch {
+    entityPermissions = undefined;
+  }
+
   const result = permissionEngine.evaluate({
     userId: user.id,
     organizationId,
@@ -339,6 +353,7 @@ async function checkEntityPermissions(
     isPrivate,
     userOrgRole: user.orgRole,
     isGlobalAdmin: user.role === 'ADMIN',
+    entityPermissions,
   });
 
   if (!result.allowed) {

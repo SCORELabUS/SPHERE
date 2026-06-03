@@ -22,6 +22,7 @@ import {
 import { randomSuffix } from './utils/helpers';
 import { createOrgScopedPermission, createMembership, createTestOrganizationDirect } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
+import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
 
@@ -1930,6 +1931,181 @@ describe('Pricings API integration', () => {
       expect(v2Doc).toBeDefined();
       expect(v2Doc!.name).toBe(serviceName);
       expect(v2Doc!.name).not.toBe(pricingDoc!.slug);
+    });
+  });
+
+  describe('Auto-grant permissions on pricing creation for MEMBER', () => {
+    it('Return 200 and auto-grant full permissions when MEMBER creates a new pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const fixture = await createValidPricingYaml(`pricing_${randomSuffix()}`);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'pricing',
+        entitySlug: fixture.saasName.toLowerCase().replace(/\s+/g, '-'),
+      });
+
+      expect(permission).toBeDefined();
+      expect(permission!.permissions.GET).toBe(true);
+      expect(permission!.permissions.PUT).toBe(true);
+      expect(permission!.permissions.DELETE).toBe(true);
+      expect(permission!.permissions.CREATE).toBe(true);
+    });
+
+    it('Return 200 and NOT auto-grant permissions when OWNER creates a pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const fixture = await createValidPricingYaml(`pricing_${randomSuffix()}`);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: owner.id,
+        _organizationId: organizationId,
+        entityType: 'pricing',
+        entitySlug: fixture.saasName.toLowerCase().replace(/\s+/g, '-'),
+      });
+
+      expect(permission).toBeNull();
+    });
+
+    it('Return 200 and auto-grant full permissions when MEMBER adds a version to an existing pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      // Grant org-level CREATE so member can create new pricings
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Member creates a new pricing first (should get auto-granted permissions)
+      const fixture1 = await createValidPricingYaml(`pricing_${randomSuffix()}`);
+      await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture1.saasName)
+        .field('version', fixture1.version)
+        .attach('yaml', fixture1.filePath);
+
+      // Grant entity-level CREATE so member can add versions
+      await createEntityScopedPermission(member.id, organizationId, fixture1.saasName, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Member adds a second version to the same pricing
+      const fixture2 = await createValidPricingYaml(fixture1.saasName);
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .field('saasName', fixture2.saasName)
+        .field('version', fixture2.version)
+        .attach('yaml', fixture2.filePath);
+
+      expect(response.status).toBe(200);
+
+      // Verify permissions still have all flags true (findOrCreate upserts)
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'pricing',
+        entitySlug: fixture1.saasName.toLowerCase().replace(/\s+/g, '-'),
+      });
+
+      expect(permission).toBeDefined();
+      expect(permission!.permissions.GET).toBe(true);
+      expect(permission!.permissions.PUT).toBe(true);
+      expect(permission!.permissions.DELETE).toBe(true);
+      expect(permission!.permissions.CREATE).toBe(true);
+    });
+
+    it('Return 200 and MEMBER can access private pricing with auto-granted permissions.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      // Member creates a private pricing
+      const fixture = await createValidPricingYaml(`pricing_${randomSuffix()}`);
+      const postResponse = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'true')
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(postResponse.status).toBe(200);
+
+      // Member can GET the private pricing they created
+      const getResponse = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${fixture.saasName}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.name).toBe(fixture.saasName);
+
+      // Member can UPDATE the pricing they created
+      const putResponse = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${fixture.saasName}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ url: 'https://example.com/updated' });
+
+      expect(putResponse.status).toBe(200);
+
+      // Member can DELETE the pricing they created
+      const deleteResponse = await request(app)
+        .delete(`${BASE_PATH}/pricings/${organizationId}/${fixture.saasName}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(deleteResponse.status).toBe(200);
+      expect(deleteResponse.body.message).toBeDefined();
     });
   });
 });
