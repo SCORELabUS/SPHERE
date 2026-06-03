@@ -2075,10 +2075,10 @@ describe('Pricings API integration', () => {
       });
 
       expect(permission).toBeDefined();
-      expect(permission!.permissions.GET).toBe(true);
-      expect(permission!.permissions.PUT).toBe(true);
-      expect(permission!.permissions.DELETE).toBe(true);
-      expect(permission!.permissions.CREATE).toBe(true);
+      expect((permission!.permissions as any).GET).toBe(true);
+      expect((permission!.permissions as any).PUT).toBe(true);
+      expect((permission!.permissions as any).DELETE).toBe(true);
+      expect((permission!.permissions as any).CREATE).toBe(true);
     });
 
     it('Return 200 and NOT auto-grant permissions when OWNER creates a pricing.', async () => {
@@ -2159,10 +2159,10 @@ describe('Pricings API integration', () => {
       });
 
       expect(permission).toBeDefined();
-      expect(permission!.permissions.GET).toBe(true);
-      expect(permission!.permissions.PUT).toBe(false);
-      expect(permission!.permissions.DELETE).toBe(false);
-      expect(permission!.permissions.CREATE).toBe(true);
+      expect((permission!.permissions as any).GET).toBe(true);
+      expect((permission!.permissions as any).PUT).toBe(false);
+      expect((permission!.permissions as any).DELETE).toBe(false);
+      expect((permission!.permissions as any).CREATE).toBe(true);
     });
 
     it('Return 200 and MEMBER can access private pricing with auto-granted permissions.', async () => {
