@@ -147,7 +147,9 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   const handleToggleOrgPermission = useCallback(async (targetType: EntityType) => {
     if (!canManage || !selectedMemberId || isOwnerOrAdmin) return;
 
-    const newPermissions: EntityPermissions = { GET: false, CREATE: false, PUT: false, DELETE: false };
+    const existing = orgScopedPermissions.find(p => p.entityType === targetType);
+    const current = existing?.permissions ?? { GET: false, CREATE: false, PUT: false, DELETE: false };
+    const newPermissions = { ...current, CREATE: !current.CREATE };
 
     try {
       await setOrgPermission(organizationId, {
