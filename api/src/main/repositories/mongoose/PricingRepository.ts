@@ -8,6 +8,7 @@ import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/
 import { OrgUserPermissionsContext } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
+import { processFileUris } from '../../services/FileService';
 
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
@@ -28,15 +29,17 @@ class PricingRepository extends RepositoryBase {
         ...basePipeline,
         ...paginationPipeline,
       ]);
-      return (
-        pricings[0] || {
-          pricings: [],
-          minPrice: [],
-          maxPrice: [],
-          configurationSpaceSize: [],
-          total: 0,
-        }
-      );
+      const result = pricings[0] || {
+        pricings: [],
+        minPrice: [],
+        maxPrice: [],
+        configurationSpaceSize: [],
+        total: 0,
+      };
+      result.pricings?.forEach((p: any) => {
+        if (p.organization) processFileUris(p.organization, ['avatar']);
+      });
+      return result;
     } catch (err) {
       return { pricings: [] };
     }
@@ -59,15 +62,17 @@ class PricingRepository extends RepositoryBase {
     const paginationPipeline = this._processPricingPagination(queryParams);
 
     const pricings = await PricingMongoose.aggregate([...aggregator, ...paginationPipeline]);
-    return (
-      pricings[0] || {
-        pricings: [],
-        minPrice: [],
-        maxPrice: [],
-        configurationSpaceSize: [],
-        total: 0,
-      }
-    );
+    const result = pricings[0] || {
+      pricings: [],
+      minPrice: [],
+      maxPrice: [],
+      configurationSpaceSize: [],
+      total: 0,
+    };
+    result.pricings?.forEach((p: any) => {
+      if (p.organization) processFileUris(p.organization, ['avatar']);
+    });
+    return result;
   }
 
   async findOne(
@@ -141,7 +146,13 @@ class PricingRepository extends RepositoryBase {
         return null;
       }
 
-      return pricing[0];
+      const result = pricing[0];
+      if (result.versions) {
+        result.versions.forEach((v: any) => {
+          if (v.organization) processFileUris(v.organization, ['avatar']);
+        });
+      }
+      return result;
     } catch (err) {
       return null;
     }
