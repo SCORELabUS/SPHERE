@@ -247,6 +247,89 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     }));
   }
 
+  // ── Cell rendering helpers (shared by table and mobile card views) ──
+
+  function renderFeatureCell(featureKey: string, planKey: string): React.ReactNode {
+    const feature = features[featureKey];
+    const featureRender = renderFlagOfFeature(feature);
+    const plan = plans[planKey];
+
+    const featureValues = plan.features as Record<string, unknown> | undefined;
+    const featureRaw = featureValues ? featureValues[featureKey] : undefined;
+
+    let rawValue: unknown = undefined;
+    if (featureRaw) {
+      const featureRecord = featureRaw as Record<string, unknown>;
+      rawValue = typeof featureRecord['value'] !== 'undefined' ? featureRecord['value'] : featureRecord['defaultValue'];
+    }
+
+    const providedByAddOn = addOnKeys.some(addOnKey => {
+      const addOn = addOns?.[addOnKey];
+      if (!addOn || !addOn.features?.[featureKey]) return false;
+      return isAddOnAvailableForPlan(addOnKey, planKey);
+    });
+
+    const linkedUsageKeys = usageByFeature[featureKey] ?? [];
+    const singleUsageKey = linkedUsageKeys.length === 1 ? linkedUsageKeys[0] : undefined;
+    const showInlineUsage = typeof singleUsageKey !== 'undefined' &&
+      renderFlagOfUsage(usageLimits?.[singleUsageKey]) === 'AUTO' &&
+      featureRender === 'AUTO' &&
+      !usageShouldRender[singleUsageKey];
+
+    if (showInlineUsage) {
+      const usage = usageLimits?.[singleUsageKey as string];
+      const usageName = usage?.name ?? singleUsageKey;
+      const planUsage = plan.usageLimits
+        ? (plan.usageLimits as Record<string, UsageLimit>)[usageName].value
+        : undefined;
+      const effectiveUsage = hasNonEmptyValue(planUsage) ? planUsage : usage?.defaultValue;
+
+      if (hasNonEmptyValue(effectiveUsage)) {
+        return (
+          <span className="inline-flex items-center justify-center rounded-lg bg-tp-primary px-4 py-1.5 text-sm font-bold leading-none text-tp-on-primary">
+            {formatUsageDisplay(effectiveUsage, usage)}
+          </span>
+        );
+      }
+    }
+
+    if (typeof rawValue === 'boolean' && rawValue) {
+      return <FaCheckCircle className="text-lg text-tp-primary" />;
+    }
+
+    if (typeof rawValue === 'string' || typeof rawValue === 'number') {
+      return (
+        <span className="text-sm font-semibold uppercase tracking-wide text-tp-charcoal">{String(rawValue)}</span>
+      );
+    }
+
+    if (providedByAddOn) {
+      return <span className="text-sm font-semibold text-tp-steel">Add-on</span>;
+    }
+
+    return <FaTimesCircle className="text-lg text-tp-muted" />;
+  }
+
+  function renderUsageCell(usageKey: string, planKey: string): React.ReactNode {
+    const usage = usageLimits?.[usageKey];
+    const plan = plans[planKey];
+
+    const valueFromPlan = plan.usageLimits?.[usage?.name ?? ''];
+    const effectiveUsage = hasNonEmptyValue(valueFromPlan) ? valueFromPlan : usage?.defaultValue;
+
+    if (hasNonEmptyValue(effectiveUsage)) {
+      return (
+        <span className="inline-flex items-center justify-center rounded-full bg-tp-primary px-4 py-1.5 text-sm font-bold leading-none text-tp-on-primary">
+          {formatUsageDisplay(effectiveUsage, usage)}
+        </span>
+      );
+    }
+
+    return <FaTimesCircle className="text-lg text-tp-muted" />;
+  }
+
+  // ── Table rendering (desktop) ──
+
   function renderTable(featureBucket: string[]) {
     const rows = buildRowsForFeatures(featureBucket);
 
@@ -291,7 +374,6 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
             if (row.type === 'feature') {
               const featureKey = row.key;
               const feature = features[featureKey];
-              const featureRender = renderFlagOfFeature(feature);
 
               return (
                 <motion.tr
@@ -308,77 +390,11 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
 
                   {planKeys.map(planKey => {
                     const plan = plans[planKey];
-
                     if (plan.private === true) return(<></>);
-
-                    const featureValues = plan.features as Record<string, unknown> | undefined;
-                    const featureRaw = featureValues ? featureValues[featureKey] : undefined;
-
-                    let rawValue: unknown = undefined;
-                    if (featureRaw) {
-                      const featureRecord = featureRaw as Record<string, unknown>;
-                      rawValue = typeof featureRecord['value'] !== 'undefined' ? featureRecord['value'] : featureRecord['defaultValue'];
-                    }
-
-                    const providedByAddOn = addOnKeys.some(addOnKey => {
-                      const addOn = addOns?.[addOnKey];
-                      if (!addOn || !addOn.features?.[featureKey]) return false;
-                      return isAddOnAvailableForPlan(addOnKey, planKey);
-                    });
-
-                    const linkedUsageKeys = usageByFeature[featureKey] ?? [];
-                    const singleUsageKey = linkedUsageKeys.length === 1 ? linkedUsageKeys[0] : undefined;
-                    const showInlineUsage = typeof singleUsageKey !== 'undefined' &&
-                      renderFlagOfUsage(usageLimits?.[singleUsageKey]) === 'AUTO' &&
-                      featureRender === 'AUTO' &&
-                      !usageShouldRender[singleUsageKey];
-
-                    if (showInlineUsage) {
-                      const usage = usageLimits?.[singleUsageKey as string];
-                      const usageName = usage?.name ?? singleUsageKey;
-                      const planUsage = plan.usageLimits
-                        ? (plan.usageLimits as Record<string, UsageLimit>)[usageName].value
-                        : undefined;
-                      const effectiveUsage = hasNonEmptyValue(planUsage) ? planUsage : usage?.defaultValue;
-
-                      if (hasNonEmptyValue(effectiveUsage)) {
-                        return (
-                          <td key={planKey} className="py-5 text-center align-middle">
-                            <span className="inline-flex items-center justify-center rounded-lg bg-tp-primary px-5 py-2 text-sm font-bold leading-none text-tp-on-primary">
-                              {formatUsageDisplay(effectiveUsage, usage)}
-                            </span>
-                          </td>
-                        );
-                      }
-                    }
-
-                    if (typeof rawValue === 'boolean' && rawValue) {
-                      return (
-                        <td key={planKey} className="py-5 text-center align-middle">
-                          <FaCheckCircle className="mx-auto text-lg text-tp-primary" />
-                        </td>
-                      );
-                    }
-
-                    if (typeof rawValue === 'string' || typeof rawValue === 'number') {
-                      return (
-                        <td key={planKey} className="py-5 text-center align-middle">
-                          <span className="text-sm font-semibold uppercase tracking-wide text-tp-charcoal">{String(rawValue)}</span>
-                        </td>
-                      );
-                    }
-
-                    if (providedByAddOn) {
-                      return (
-                        <td key={planKey} className="py-5 text-center align-middle">
-                          <span className="text-sm font-semibold text-tp-steel">Add-on</span>
-                        </td>
-                      );
-                    }
 
                     return (
                       <td key={planKey} className="py-5 text-center align-middle">
-                        <FaTimesCircle className="mx-auto text-lg text-tp-muted" />
+                        {renderFeatureCell(featureKey, planKey)}
                       </td>
                     );
                   })}
@@ -404,25 +420,11 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
 
                 {planKeys.map(planKey => {
                   const plan = plans[planKey];
-
                   if (plan.private === true) return(<></>);
-
-                  const valueFromPlan = plan.usageLimits?.[usage?.name ?? ''];
-                  const effectiveUsage = hasNonEmptyValue(valueFromPlan) ? valueFromPlan : usage?.defaultValue;
-
-                  if (hasNonEmptyValue(effectiveUsage)) {
-                    return (
-                      <td key={planKey} className="py-5 text-center align-middle">
-                        <span className="inline-flex items-center justify-center rounded-full bg-tp-primary px-5 py-2 text-sm font-bold leading-none text-tp-on-primary">
-                          {formatUsageDisplay(effectiveUsage, usage)}
-                        </span>
-                      </td>
-                    );
-                  }
 
                   return (
                     <td key={planKey} className="py-5 text-center align-middle">
-                      <FaTimesCircle className="mx-auto text-lg text-tp-muted" />
+                      {renderUsageCell(usageKey, planKey)}
                     </td>
                   );
                 })}
@@ -435,52 +437,177 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     );
   }
 
+  // ── Mobile card rendering ──
+
+  function renderMobilePlanCard(planKey: string, index: number) {
+    const plan = plans[planKey];
+    if (plan.private === true) return null;
+
+    const planName = plan.name ?? camelToTitle(planKey);
+    const [a, b] = PALETTE[index % PALETTE.length];
+    const rows = buildRowsForFeatures([...untaggedFeatureKeys, ...sortedTags.flatMap(t => tagToFeatureKeys[t])]);
+
+    const featureRows = rows.filter(r => r.type === 'feature');
+    const usageRows = rows.filter(r => r.type === 'usageLimit');
+
+    return (
+      <div key={planKey} className="overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+        <div
+          className="flex flex-col items-center justify-center px-4 py-6 text-center text-tp-on-primary"
+          style={{ background: `linear-gradient(135deg, ${a}, ${b})` }}
+        >
+          <p className="text-xl font-bold tracking-wide">{String(planName).toUpperCase()}</p>
+          <p className="mt-1 text-lg font-semibold">
+            {plan.price === 0
+              ? 'FREE'
+              : `${formatMoneyDisplay(plan.price)}${typeof plan.price === 'number' ? (currency ?? '') : ''}`}
+          </p>
+          {typeof plan.unit === 'string' && (
+            <p className="text-sm opacity-90">{plan.unit}</p>
+          )}
+        </div>
+
+        <div className="divide-y divide-tp-hairline-soft">
+          {featureRows.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="min-w-0 flex-1 text-sm font-bold text-tp-charcoal">
+                {camelToTitle(features[row.key].name) ?? camelToTitle(row.key)}
+              </span>
+              <span className="flex shrink-0 items-center justify-center">
+                {renderFeatureCell(row.key, planKey)}
+              </span>
+            </div>
+          ))}
+          {usageRows.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="min-w-0 flex-1 text-sm font-bold text-tp-charcoal">
+                {camelToTitle(usageLimits?.[row.key]?.name ?? row.key)}
+              </span>
+              <span className="flex shrink-0 items-center justify-center">
+                {renderUsageCell(row.key, planKey)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderMobileCards() {
+    const publicPlanKeys = planKeys.filter(k => plans[k].private !== true);
+
+    return (
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {publicPlanKeys.map((planKey, index) => renderMobilePlanCard(planKey, index))}
+      </div>
+    );
+  }
+
+  // ── Main render ──
+
   return (
-    <div className="mt-8 w-full overflow-x-auto">
-      {renderTable(untaggedFeatureKeys)}
+    <div className="mt-8 w-full">
+      {/* Desktop: table view */}
+      <div className="hidden overflow-x-auto md:block">
+        {renderTable(untaggedFeatureKeys)}
 
-      {sortedTags.map((tag, index) => {
-        const open = isTagOpen(tag, index);
-        const tagPanelId = `tag-panel-${tag.replace(/\s+/g, '-').toLowerCase()}`;
+        {sortedTags.map((tag, index) => {
+          const open = isTagOpen(tag, index);
+          const tagPanelId = `tag-panel-${tag.replace(/\s+/g, '-').toLowerCase()}`;
 
-        return (
-          <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
-            <button
-              type="button"
-              onClick={() => toggleTag(tag, index)}
-              className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline-soft"
-              aria-expanded={open}
-              aria-controls={tagPanelId}
-            >
-              <span>{tag}</span>
-              <motion.span
-                initial={false}
-                animate={{ rotate: open ? 180 : 0 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="inline-flex text-tp-steel"
-                aria-hidden
+          return (
+            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+              <button
+                type="button"
+                onClick={() => toggleTag(tag, index)}
+                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline-soft"
+                aria-expanded={open}
+                aria-controls={tagPanelId}
               >
-                <FaChevronDown className="h-4 w-4" />
-              </motion.span>
-            </button>
-
-            <AnimatePresence initial={false}>
-              {open && (
-                <motion.div
-                  id={tagPanelId}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.24, ease: 'easeInOut' }}
-                  className="overflow-hidden"
+                <span>{tag}</span>
+                <motion.span
+                  initial={false}
+                  animate={{ rotate: open ? 180 : 0 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="inline-flex text-tp-steel"
+                  aria-hidden
                 >
-                  <div className="overflow-x-auto border-t border-tp-hairline px-1 pb-3 pt-2">{renderTable(tagToFeatureKeys[tag])}</div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
+                  <FaChevronDown className="h-4 w-4" />
+                </motion.span>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {open && (
+                  <motion.div
+                    id={tagPanelId}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="overflow-x-auto border-t border-tp-hairline px-1 pb-3 pt-2">{renderTable(tagToFeatureKeys[tag])}</div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Mobile: card view */}
+      <div className="block md:hidden">
+        {renderMobileCards()}
+
+        {sortedTags.map((tag, index) => {
+          const open = isTagOpen(tag, index);
+          const tagPanelId = `mobile-tag-panel-${tag.replace(/\s+/g, '-').toLowerCase()}`;
+
+          return (
+            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+              <button
+                type="button"
+                onClick={() => toggleTag(tag, index)}
+                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline-soft"
+                aria-expanded={open}
+                aria-controls={tagPanelId}
+              >
+                <span>{tag}</span>
+                <motion.span
+                  initial={false}
+                  animate={{ rotate: open ? 180 : 0 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="inline-flex text-tp-steel"
+                  aria-hidden
+                >
+                  <FaChevronDown className="h-4 w-4" />
+                </motion.span>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {open && (
+                  <motion.div
+                    id={tagPanelId}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="border-t border-tp-hairline p-3">
+                      <div className="grid grid-cols-1 gap-3">
+                        {planKeys
+                          .filter(k => plans[k].private !== true)
+                          .map((planKey, pi) => renderMobilePlanCard(planKey, pi))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

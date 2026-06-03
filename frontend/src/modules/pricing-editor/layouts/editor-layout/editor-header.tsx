@@ -5,6 +5,8 @@ import { downloadYaml } from '../../services/export.service';
 import { getClearEditorValue } from '../../services/clear.service';
 import { dropdownVariants, transitionFast } from '../../../core/utils/motion-variants';
 import { useRouter } from '../../../core/hooks/useRouter';
+import { ensureSyntaxVersion31 } from '../../services/pricing2yaml';
+import type { EditorMode } from '../../contexts/editorValueContext';
 
 interface Props {
   onShareLink: () => void;
@@ -13,7 +15,7 @@ interface Props {
 
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
-  const { editorValue, setEditorValue } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,13 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
     }
   };
 
+  const handleModeToggle = (mode: EditorMode) => {
+    if (mode === 'visual') {
+      setEditorValue(ensureSyntaxVersion31(editorValue));
+    }
+    setEditorMode(mode);
+  };
+
   return (
     <header className="sticky top-0 z-40 flex h-12 items-center border-b border-white/10 bg-tp-surface-code px-4">
       {/* Left: Logo + back */}
@@ -64,6 +73,34 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         </button>
         <span className="text-white/20">/</span>
         <span className="text-xs text-white/40">Pricing2Yaml Editor</span>
+      </div>
+
+      {/* Center: Mode toggle */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
+          {(['code', 'visual'] as EditorMode[]).map((mode) => {
+            const isActive = editorMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => handleModeToggle(mode)}
+                className="relative cursor-pointer rounded-md px-3 py-1 text-[11px] font-medium transition-colors"
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="editor-mode-bg"
+                    className="absolute inset-0 rounded-md bg-white/15"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className={`relative z-10 ${isActive ? 'text-white' : 'text-white/40 hover:text-white/60'}`}>
+                  {mode === 'code' ? 'Code' : 'Visual'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Right: Action buttons */}
