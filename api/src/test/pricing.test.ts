@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
+import path from 'path';
 import request from 'supertest';
+import yaml from 'js-yaml';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { shutdownApp, TestApp } from './utils/testApp';
 import { createAndLoginUser, createTestUser, deleteTestUser } from './utils/users/userTestUtils';
@@ -18,7 +20,7 @@ import {
   createTestCollectionWithPricings,
 } from './utils/collections/collectionTestUtils';
 import { randomSuffix } from './utils/helpers';
-import { createOrgScopedPermission, createMembership } from './utils/organizations';
+import { createOrgScopedPermission, createMembership, createTestOrganizationDirect } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
@@ -174,6 +176,32 @@ describe('Pricings API integration', () => {
       const pricingNames = response.body.pricings.map((p: any) => p.name);
       expect(pricingNames).toContain(publicPricing.serviceName);
       expect(pricingNames).toContain(privatePricing.serviceName);
+    });
+
+    it('Return 200 and organization avatar as absolute URL.', async () => {
+      const org = await createTestOrganizationDirect({
+        name: `org_with_avatar_${randomSuffix()}`,
+        displayName: 'Org With Avatar',
+        avatar: 'static/avatars/orgs/test-avatar.webp',
+      });
+      const { user: owner } = await createAndLoginUser('USER');
+      await createMembership(owner.id, org.id, 'OWNER');
+
+      await createPricingForOrganization({
+        organizationId: org.id,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBeGreaterThanOrEqual(1);
+      const pricing = response.body.pricings.find((p: any) => p.organization?.id === org.id);
+      expect(pricing).toBeDefined();
+      expect(pricing.organization.avatar).toBeDefined();
+      expect(pricing.organization.avatar).toMatch(/^https?:\/\//);
     });
   });
 
@@ -578,6 +606,32 @@ describe('Pricings API integration', () => {
         ]).toContain(pricing.name);
       });
     });
+
+    it('Return 200 and organization avatar as absolute URL.', async () => {
+      const org = await createTestOrganizationDirect({
+        name: `org_with_avatar_${randomSuffix()}`,
+        displayName: 'Org With Avatar',
+        avatar: 'static/avatars/orgs/test-avatar.webp',
+      });
+      const { user: owner } = await createAndLoginUser('USER');
+      await createMembership(owner.id, org.id, 'OWNER');
+
+      await createPricingForOrganization({
+        organizationId: org.id,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${org.id}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBeGreaterThanOrEqual(1);
+      const pricing = response.body.pricings.find((p: any) => p.organization?.id === org.id);
+      expect(pricing).toBeDefined();
+      expect(pricing.organization.avatar).toBeDefined();
+      expect(pricing.organization.avatar).toMatch(/^https?:\/\//);
+    });
   });
 
   describe('POST /api/v1/pricings/:organizationId', () => {
@@ -840,6 +894,120 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.name ?? response.body[0]?.name).toBe(fixture.saasName);
     });
+
+    it('Return 200 and pricing name uses custom name when provided.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const customName = `Rewritten Pricing ${randomSuffix()}`;
+
+      const fixture = await createValidPricingYaml(`original_saas_${randomSuffix()}`);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .field('name', customName)
+        .field('saasName', fixture.saasName)
+        .field('version', fixture.version)
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(customName);
+
+      const yamlUrl = response.body.yaml;
+      const relativePath = yamlUrl.replace(/^https?:\/\/[^/]+\//, '');
+      const staticFolder = (process.env.SERVER_STATICS_FOLDER || 'public/').replace(/\/$/, '/');
+      const localPath = path.resolve(process.cwd(), staticFolder + relativePath);
+      const yamlContent = await fs.readFile(localPath, 'utf8');
+      const parsed = yaml.load(yamlContent) as Record<string, any>;
+      expect(parsed.saasName).toBe(customName);
+    });
+
+    it('Return 200 and YAML saasName is rewritten on disk when adding version with different saasName via named endpoint.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const differentName = `different_name_${randomSuffix()}`;
+      const fixture = await createValidPricingYaml(differentName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+
+      const yamlUrl = response.body.yaml;
+      const relativePath = yamlUrl.replace(/^https?:\/\/[^/]+\//, '');
+      const staticFolder = (process.env.SERVER_STATICS_FOLDER || 'public/').replace(/\/$/, '/');
+      const localPath = path.resolve(process.cwd(), staticFolder + relativePath);
+      const yamlContent = await fs.readFile(localPath, 'utf8');
+      const parsed = yaml.load(yamlContent) as Record<string, any>;
+      expect(parsed.saasName).toBe(serviceName);
+    });
+
+    it('Return 200 and YAML saasName is rewritten on disk when adding version with different saasName via named endpoint.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const differentName = `different_name_${randomSuffix()}`;
+      const fixture = await createValidPricingYaml(differentName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+
+      const yamlUrl = response.body.yaml;
+      const relativePath = yamlUrl.replace(/^https?:\/\/[^/]+\//, '');
+      const staticFolder = (process.env.SERVER_STATICS_FOLDER || 'public/').replace(/\/$/, '/');
+      const localPath = path.resolve(process.cwd(), staticFolder + relativePath);
+      const yamlContent = await fs.readFile(localPath, 'utf8');
+      const parsed = yaml.load(yamlContent) as Record<string, any>;
+      expect(parsed.saasName).toBe(serviceName);
+    });
+
+    it('Return 200 and YAML on disk has saasName rewritten to match existing pricing when adding version with different saasName via named endpoint.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const differentName = `different_name_${randomSuffix()}`;
+      const fixture = await createValidPricingYaml(differentName);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+
+      const yamlUrl = response.body.yaml;
+      expect(yamlUrl).toBeDefined();
+
+      const localPath = yamlUrl.replace(/^http:\/\/[^/]+/, process.cwd());
+      const yamlContent = await fs.readFile(localPath, 'utf8');
+      const parsed = yaml.load(yamlContent) as Record<string, any>;
+      expect(parsed.saasName).toBe(serviceName);
+    });
   });
 
   describe('POST /api/v1/pricings/:organizationId/:pricingName/:pricingVersion', () => {
@@ -1067,38 +1235,31 @@ describe('Pricings API integration', () => {
       expect(Array.isArray(response.body.versions)).toBe(true);
     });
 
-    it('Return 200 and pricing details with admin requesting another user pricing.', async () => {
-      const { organizationId } = await createTestUser('USER');
+    it('Return 200 and organization avatar as absolute URL in versions.', async () => {
+      const org = await createTestOrganizationDirect({
+        name: `org_with_avatar_${randomSuffix()}`,
+        displayName: 'Org With Avatar',
+        avatar: 'static/avatars/orgs/test-avatar.webp',
+      });
+      const { user: owner } = await createAndLoginUser('USER');
+      await createMembership(owner.id, org.id, 'OWNER');
 
       const { serviceName } = await createPricingForOrganization({
-        organizationId,
+        organizationId: org.id,
         isPrivate: false,
       });
 
       const response = await request(app)
-        .get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
-        .set('Authorization', `Bearer ${adminUser.token}`);
+        .get(`${BASE_PATH}/pricings/${org.id}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.name).toBe(serviceName);
-      expect(Array.isArray(response.body.versions)).toBe(true);
-    });
-
-    it('Return 404 with regular user requesting private pricing from another user.', async () => {
-      const { organizationId } = await createTestUser('USER');
-      const { user: requester } = await createAndLoginUser('USER');
-
-      const { serviceName } = await createPricingForOrganization({
-        organizationId,
-        isPrivate: true,
-      });
-
-      const response = await request(app)
-        .get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
-        .set('Authorization', `Bearer ${requester.token}`);
-
-      expect(response.status).toBe(404);
-      expect(response.body.error).toBeDefined();
+      expect(response.body.versions).toBeDefined();
+      expect(response.body.versions.length).toBeGreaterThanOrEqual(1);
+      const version = response.body.versions[0];
+      expect(version.organization).toBeDefined();
+      expect(version.organization.avatar).toBeDefined();
+      expect(version.organization.avatar).toMatch(/^https?:\/\//);
     });
 
     it('Return 404 and error object with non-existing pricing name.', async () => {

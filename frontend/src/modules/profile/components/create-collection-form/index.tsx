@@ -3,6 +3,7 @@ import VisibilityOptions from '../../../pricing/components/visibility-options';
 import CollectionDescriptionInput from '../collection-description-input';
 import PricingSelector from '../pricings-selector';
 import OrganizationSelector from '../../../pricing/components/organization-selector';
+import SlugPreview from '../../../core/components/slug-preview';
 import { usePricingCollectionsApi } from '../../api/pricingCollectionsApi';
 import { useRouter } from '../../../core/hooks/useRouter';
 import FileUpload from '../../../core/components/file-upload-input';
@@ -17,10 +18,6 @@ export type CreateCollectionFormFieldProps = {
 
 export type CreateCollectionFormProps = {
   readonly setShowLoading: (show: boolean) => void;
-}
-
-function generateSlug(name: string): string {
-  return name.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/[\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
 export default function CreateCollectionForm({setShowLoading}: CreateCollectionFormProps) {
@@ -137,7 +134,7 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
         </div>
       </div>
 
-      <p className="text-xs text-tp-steel mt-1">Slug: {generateSlug(collectionName) || '...'}</p>
+      <SlugPreview value={collectionName} />
       <CollectionDescriptionInput
         value={collectionDescription}
         onChange={setCollectionDescription}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Iconify from '../../../../core/components/iconify';
+import SlugPreview from '../../../../core/components/slug-preview';
+import { generateSlug } from '../../../../core/utils/generate-slug';
 import { transitionFast } from '../../../../core/utils/motion-variants';
 import customAlert from '../../../../core/utils/custom-alert';
 import { useOrganizationsApi } from '../../../api/organizationsApi';
@@ -16,12 +18,7 @@ export default function CreateSubOrgModal({ parentId, onClose, onCreated }: Prop
   const [isSaving, setIsSaving] = useState(false);
   const { createOrganization } = useOrganizationsApi();
 
-  const slug = displayName
-    .toLowerCase().trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  const slug = generateSlug(displayName);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,11 +62,7 @@ export default function CreateSubOrgModal({ parentId, onClose, onCreated }: Prop
               maxLength={255}
               className="rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20"
             />
-            {displayName.trim() && (
-              <p className="text-xs text-tp-ink">
-                Identifier: <span className="font-mono text-tp-slate">{slug}</span>
-              </p>
-            )}
+            <SlugPreview value={displayName} />
           </div>
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="cursor-pointer rounded-lg border border-tp-hairline-strong px-4 py-2 text-sm font-medium text-tp-slate transition-colors hover:bg-tp-surface">

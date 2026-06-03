@@ -111,8 +111,12 @@ export default function OrganizationSelector({ value, onChange }: OrganizationSe
               size={20}
             />
           )}
-          <span className={value ? 'text-slate-900' : 'text-slate-400'}>
-            {value ? `${value.displayName} (${value.name})` : 'Select an organization'}
+          <span className={`block overflow-hidden text-ellipsis whitespace-nowrap ${value ? 'text-slate-900' : 'text-slate-400'}`}>
+            {value
+              ? value.displayName.length > 25
+                ? `${value.displayName.slice(0, 22)}...`
+                : value.displayName
+              : 'Select an organization'}
           </span>
         </div>
         <div className="flex items-center gap-1">

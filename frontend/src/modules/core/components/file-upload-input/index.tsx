@@ -13,6 +13,7 @@ export default function FileUpload({
   isDragActiveText,
   isNotDragActiveText,
   accept,
+  disabled,
 }: {
   onSubmit: (file: File) => void;
   submitButtonText?: string;
@@ -20,6 +21,7 @@ export default function FileUpload({
   isDragActiveText?: string;
   isNotDragActiveText?: string;
   accept?: Accept;
+  disabled?: boolean;
 }) {
   const [file, setFile] = useState<File | null>(null);
 
@@ -101,7 +103,7 @@ export default function FileUpload({
           </ul>
         )}
       </div>
-      <ActionButton text={submitButtonText ?? 'Submit file'} onClick={handleSubmit} disabled={!file} className={`mt-5 font-bold ${submitButtonWidth ? 'w-auto' : 'w-full'}`}/>
+      <ActionButton text={submitButtonText ?? 'Submit file'} onClick={handleSubmit} disabled={!file || disabled} className={`mt-5 font-bold ${submitButtonWidth ? 'w-auto' : 'w-full'}`}/>
     </div>
   );
 }

@@ -150,11 +150,12 @@ export default function OrganizationDetailPage() {
         setInvitations(invitationsData);
 
         if (userRole === 'MEMBER') {
+          const MEMBER_LIST_LIMIT = 500;
           const [accessiblePricingsResult, allOrgPricingsResult, accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
             getUserAccessiblePricings().catch(() => ({ pricings: [], total: 0 })),
-            getOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
+            getOrgPricings(organizationId, { limit: String(MEMBER_LIST_LIMIT) }).catch(() => ({ pricings: [], total: 0 })),
             getUserAccessibleCollections().catch(() => ({ collections: [], total: 0 })),
-            getOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
+            getOrgCollections(organizationId, { limit: String(MEMBER_LIST_LIMIT) }).catch(() => ({ collections: [], total: 0 })),
           ]);
 
           const pricingNames = new Set(

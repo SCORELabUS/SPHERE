@@ -4,16 +4,8 @@ import { useRouter } from '../../../core/hooks/useRouter';
 import { useOrganization } from '../../hooks/useOrganization';
 import customAlert from '../../../core/utils/custom-alert';
 import OrgAvatar from '../../../core/components/org-avatar';
-
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+import SlugPreview from '../../../core/components/slug-preview';
+import { generateSlug } from '../../../core/utils/generate-slug';
 
 export default function CreateOrganizationPage() {
   const [orgName, setOrgName] = useState('');
@@ -66,11 +58,7 @@ export default function CreateOrganizationPage() {
             maxLength={255}
             className="rounded-md border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm outline-none focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20"
           />
-          {orgName.trim() && (
-            <p className="text-xs text-sphere-grey-500">
-              Slug: <span className="font-mono text-sphere-grey-700">{slug}</span>
-            </p>
-          )}
+          <SlugPreview value={orgName} />
         </div>
 
         <div className="flex flex-col gap-1">

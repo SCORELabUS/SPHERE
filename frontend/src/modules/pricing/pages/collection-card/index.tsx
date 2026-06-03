@@ -54,7 +54,7 @@ export default function CollectionCardPage() {
   const [tab, setTab] = useState<Tab>('pricings');
   const [sortAsc, setSortAsc] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [permissions, setPermissions] = useState<CollectionPermissions>({ GET: true, PUT: false, DELETE: false });
+  const [permissions, setPermissions] = useState<CollectionPermissions>({ GET: false, PUT: false, DELETE: false });
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
 
   const [pricings, setPricings] = useState<PricingEntry[]>([]);
@@ -69,7 +69,12 @@ export default function CollectionCardPage() {
     if (!organizationId || !collectionSlug) return;
     setIsLoadingCollection(true);
     getCollectionByOwnerAndName(organizationId, collectionSlug)
-      .then(data => setCollection(data))
+      .then(data => {
+        setCollection(data);
+        getCollectionPermissions(organizationId, collectionSlug)
+          .then(perms => setPermissions(perms))
+          .catch(() => {});
+      })
       .catch(() => {})
       .finally(() => setIsLoadingCollection(false));
   }, [organizationId, collectionSlug]);

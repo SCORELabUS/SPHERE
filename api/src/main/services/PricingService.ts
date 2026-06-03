@@ -19,6 +19,9 @@ import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
 import UserService from './UserService';
 import PermissionService from './PermissionService';
+import fs from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -222,14 +225,17 @@ class PricingService {
     organizationId: string,
     isPrivate: boolean,
     reqUser: LeanUser,
-    collectionId?: string
+    collectionId?: string,
+    name?: string
   ) {
     return this._createPricingVersion(
       pricingFile,
       organizationId,
       isPrivate,
       reqUser,
-      collectionId
+      collectionId,
+      undefined,
+      name
     );
   }
 
@@ -257,7 +263,8 @@ class PricingService {
     isPrivate: boolean,
     reqUser: LeanUser,
     collectionId?: string,
-    overrideSlug?: string
+    overrideSlug?: string,
+    name?: string
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -272,13 +279,13 @@ class PricingService {
         reqUser.role === 'ADMIN'
       );
 
-      const uploadedPricing: Pricing = retrievePricingFromPath(
-        typeof pricingFile === 'string' ? pricingFile : pricingFile.path
-      );
+      const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
 
       const lookupSlug = overrideSlug
         ? generateSlug(overrideSlug)
-        : generateSlug(uploadedPricing.saasName);
+        : name
+          ? generateSlug(name)
+          : generateSlug(retrievePricingFromPath(filePath).saasName);
 
       const previousPricing = await this.pricingRepository.findOne(
         lookupSlug,
@@ -340,7 +347,16 @@ class PricingService {
 
       const yamlPath = normalizedPath.slice(staticIndex);
 
-      const pricingName = isAddingVersion ? previousPricing.name : uploadedPricing.saasName;
+      let pricingName: string;
+      if (isAddingVersion) {
+        pricingName = previousPricing.name;
+      } else if (name) {
+        pricingName = name;
+      } else {
+        pricingName = retrievePricingFromPath(filePath).saasName;
+      }
+
+      const uploadedPricing: Pricing = retrievePricingFromPath(filePath);
 
       let pricingSlug: string;
       if (isAddingVersion) {
@@ -367,6 +383,18 @@ class PricingService {
       };
 
       const pricing = await this.pricingRepository.create([pricingData]);
+
+      if (pricingName !== uploadedPricing.saasName) {
+        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+        const finalYamlPath = path.resolve(staticFolder, yamlPath);
+        const yamlContent = fs.readFileSync(filePath, 'utf8');
+        const yamlData = yaml.load(yamlContent) as Record<string, any>;
+        if (yamlData && typeof yamlData === 'object') {
+          yamlData['saasName'] = pricingName;
+          fs.mkdirSync(path.dirname(finalYamlPath), { recursive: true });
+          fs.writeFileSync(finalYamlPath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+        }
+      }
 
       processFileUris(pricing[0], ['yaml']);
 
