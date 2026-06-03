@@ -165,7 +165,7 @@ export default function CardPage() {
 
   const [versions, setVersions] = useState<VersionData[]>([]);
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
-  const [pricing, setPricing] = useState<Pricing | null>(null);
+  const [pricing, setPricing] = useState<Pricing & {name?: string} | null>(null);
   const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -182,6 +182,7 @@ export default function CardPage() {
   const [visibility, setVisibility] = useState('Public');
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Fetch org display name
   useEffect(() => {
@@ -237,7 +238,7 @@ export default function CardPage() {
       orgId: organizationId,
       orgName: organizationId,
     });
-  }, [slug, organizationId, authUser.isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-dependencies
+  }, [slug, organizationId, authUser.isAuthenticated]);
 
   // Fetch YAML when version changes
   useEffect(() => {
@@ -530,20 +531,31 @@ export default function CardPage() {
           ))}
         </motion.div>
 
-        {/* Tabs — select on mobile, tabs on desktop */}
+        {/* Tabs — pills on mobile, tabs on desktop */}
         <div className="mb-6 border-b border-tp-hairline-soft">
-          {/* Mobile: select dropdown */}
-          <select
-            value={tab}
-            onChange={e => setTab(e.target.value as Tab)}
-            className="mb-2 w-full cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink focus:border-tp-primary focus:outline-none md:hidden"
-          >
-            <option value="overview">Overview</option>
-            <option value="analytics">Analytics</option>
-            <option value="config-space">Configuration Space</option>
-            <option value="versions">Versions</option>
-            {showSettingsTab && <option value="settings">Settings</option>}
-          </select>
+          {/* Mobile: scrollable pill selector */}
+          <div className="mb-2 flex gap-2 overflow-x-auto pb-2 md:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+            {([
+              ['overview', 'Overview'],
+              ['analytics', 'Analytics'],
+              ['config-space', 'Config Space'],
+              ['versions', 'Versions'],
+              ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
+            ] as const).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setTab(k)}
+                className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                  tab === k
+                    ? 'bg-tp-primary text-tp-on-primary shadow-sm'
+                    : 'bg-tp-surface text-tp-steel hover:bg-tp-hairline-soft hover:text-tp-ink'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
           {/* Desktop: tab bar */}
           <div className="hidden gap-1 md:flex">
             {([
@@ -566,17 +578,102 @@ export default function CardPage() {
           {tab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
               {isPrivateNoAccess ? <PrivateAccessFallback /> : (
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+              <>
+              {/* Toggle sidebar button */}
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(p => !p)}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+                >
+                  <svg className={`h-4 w-4 transition-transform duration-300 ${sidebarOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+                  </svg>
+                  {sidebarOpen ? 'Hide details' : 'Show details'}
+                </button>
+              </div>
+
+              {/* Desktop: inline sidebar */}
+              <div className="hidden flex-col gap-6 md:flex md:flex-row">
+                <motion.div
+                  className="min-w-0 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4"
+                  animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                >
+                  {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
+                    : pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={handleApplyVariables} />
+                    : <div className="flex h-64 items-center justify-center text-sm text-tp-steel">Could not load pricing preview</div>}
+                </motion.div>
+
+                <AnimatePresence initial={false}>
+                  {sidebarOpen && (
+                    <motion.div
+                      key="sidebar-desktop"
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: 360, opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="w-[360px] space-y-4">
+                        {aSafe && <PricingTree analytics={aSafe} />}
+                        {yamlText && <YamlSourcePanel yamlText={yamlText} />}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Mobile: full-width renderer + modal for details */}
+              <div className="md:hidden">
                 <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
                   {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
                     : pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={handleApplyVariables} />
                     : <div className="flex h-64 items-center justify-center text-sm text-tp-steel">Could not load pricing preview</div>}
                 </div>
-                <div className="space-y-4">
-                  {aSafe && <PricingTree analytics={aSafe} />}
-                  {yamlText && <YamlSourcePanel yamlText={yamlText} />}
-                </div>
               </div>
+
+              {/* Mobile details modal */}
+              <AnimatePresence>
+                {sidebarOpen && (
+                  <motion.div
+                    key="sidebar-mobile"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 md:hidden"
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <motion.div
+                      initial={{ y: '100%', opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: '100%', opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                      className="max-h-[85vh] w-[90vw] max-w-2xl overflow-y-auto rounded-2xl bg-tp-canvas p-5 shadow-elevation-4"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-tp-ink">Details</h3>
+                        <button
+                          type="button"
+                          onClick={() => setSidebarOpen(false)}
+                          className="cursor-pointer rounded-full p-1 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        {aSafe && <PricingTree analytics={aSafe} />}
+                        {yamlText && <YamlSourcePanel yamlText={yamlText} />}
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              </>
               )}
             </motion.div>
           )}
