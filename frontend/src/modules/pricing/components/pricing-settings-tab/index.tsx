@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import VisibilityOptions from '../visibility-options';
 import Iconify from '../../../core/components/iconify';
 import type { VersionData } from '../../types/card';
@@ -6,8 +7,10 @@ import type { EntityPermissions } from '../../../organization/types/permissions'
 interface PricingSettingsTabProps {
   entityPermissions: EntityPermissions | null;
   visibility: string;
+  pricingName: string;
   currentVersion: VersionData | null;
   onVisibilityChange: () => void;
+  onRename: (newName: string) => void;
   onDeleteCurrentVersion: () => void;
   onDeletePricing: () => void;
 }
@@ -15,15 +18,50 @@ interface PricingSettingsTabProps {
 export default function PricingSettingsTab({
   entityPermissions,
   visibility,
+  pricingName,
   currentVersion,
   onVisibilityChange,
+  onRename,
   onDeleteCurrentVersion,
   onDeletePricing,
 }: PricingSettingsTabProps) {
+  const [nameValue, setNameValue] = useState(pricingName);
+
+  useEffect(() => {
+    setNameValue(pricingName);
+  }, [pricingName]);
+
+  function handleRename() {
+    const newName = nameValue.trim();
+    if (!newName || newName === pricingName) return;
+    onRename(newName);
+  }
+
   return (
     <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-5">
       {entityPermissions?.PUT && (
         <div>
+          <h3 className="mb-4 text-sm font-medium text-tp-ink">General</h3>
+
+          <div className="mb-6">
+            <label className="mb-1.5 block text-[11px] font-medium text-tp-steel">Name</label>
+            <div className="flex items-center gap-3">
+              <input
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                className="flex-1 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary"
+              />
+              <button
+                type="button"
+                onClick={handleRename}
+                disabled={!nameValue.trim() || nameValue === pricingName}
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-4 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-default disabled:opacity-40"
+              >
+                Rename
+              </button>
+            </div>
+          </div>
+
           <h3 className="mb-2 text-sm font-medium text-tp-ink">Visibility</h3>
           <div className="pl-4">
             <VisibilityOptions value={visibility} onChange={onVisibilityChange} />

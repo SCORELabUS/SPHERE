@@ -7,6 +7,7 @@ import { dropdownVariants, transitionFast } from '../../../core/utils/motion-var
 import { useRouter } from '../../../core/hooks/useRouter';
 import { ensureSyntaxVersion31 } from '../../services/pricing2yaml';
 import type { EditorMode } from '../../contexts/editorValueContext';
+import ConfirmModal from '../../../core/components/confirm-modal';
 
 interface Props {
   onShareLink: () => void;
@@ -15,12 +16,14 @@ interface Props {
 
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
-  const { editorValue, setEditorValue, editorMode, setEditorMode } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [originalValue, setOriginalValue] = useState('');
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const [pendingMode, setPendingMode] = useState<EditorMode | null>(null);
 
   useEffect(() => {
     if (originalValue === '' && editorValue) {
@@ -54,13 +57,40 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
   };
 
   const handleModeToggle = (mode: EditorMode) => {
+    if (mode === editorMode) return;
+    if (editorMode === 'visual' && isDirty) {
+      setPendingMode(mode);
+      setShowUnsavedConfirm(true);
+      return;
+    }
     if (mode === 'visual') {
       setEditorValue(ensureSyntaxVersion31(editorValue));
     }
     setEditorMode(mode);
   };
 
+  const handleConfirmSave = () => {
+    saveDraft();
+    if (pendingMode === 'visual') {
+      setEditorValue(ensureSyntaxVersion31(editorValue));
+    }
+    setEditorMode(pendingMode!);
+    setShowUnsavedConfirm(false);
+    setPendingMode(null);
+  };
+
+  const handleConfirmDiscard = () => {
+    setIsDirty(false);
+    if (pendingMode === 'visual') {
+      setEditorValue(ensureSyntaxVersion31(editorValue));
+    }
+    setEditorMode(pendingMode!);
+    setShowUnsavedConfirm(false);
+    setPendingMode(null);
+  };
+
   return (
+    <>
     <header className="sticky top-0 z-40 flex h-12 items-center border-b border-white/10 bg-tp-surface-code px-4">
       {/* Left: Logo + back */}
       <div className="flex items-center gap-3">
@@ -96,6 +126,9 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
                 )}
                 <span className={`relative z-10 ${isActive ? 'text-white' : 'text-white/40 hover:text-white/60'}`}>
                   {mode === 'code' ? 'Code' : 'Visual'}
+                  {mode === 'visual' && isDirty && (
+                    <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />
+                  )}
                 </span>
               </button>
             );
@@ -213,5 +246,18 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         </button>
       </div>
     </header>
+
+      <AnimatePresence>
+        {showUnsavedConfirm && (
+          <ConfirmModal
+            message="You have unsaved changes in the visual editor. If you switch to code view without saving, your changes will be lost."
+            onConfirm={handleConfirmSave}
+            onCancel={handleConfirmDiscard}
+            confirmLabel="Save changes"
+            cancelLabel="Discard changes"
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }

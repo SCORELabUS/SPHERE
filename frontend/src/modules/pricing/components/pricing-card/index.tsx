@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
 import OrgAvatar from '../../../core/components/org-avatar';
 import { getCurrency } from '../stats';
+import { IoMdAddCircleOutline } from "react-icons/io";
 
 interface PricingEntry {
   name: string;
@@ -21,7 +22,7 @@ interface PricingEntry {
 
 export interface MenuItem {
   label: string;
-  icon?: 'trash' | 'link';
+  icon?: 'trash' | 'link' | 'plus';
   onClick: (e: React.MouseEvent) => void;
   variant?: 'danger' | 'default';
 }
@@ -135,6 +136,9 @@ export default function PricingCard({ data, showMenu = false, menuItems = [] }: 
                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-4.18a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.374" />
                       </svg>
+                    )}
+                    {item.icon === 'plus' && (
+                      <IoMdAddCircleOutline fill="currentColor" />
                     )}
                     {item.label}
                   </button>

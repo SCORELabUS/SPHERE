@@ -294,7 +294,7 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     }
 
     if (typeof rawValue === 'boolean' && rawValue) {
-      return <FaCheckCircle className="text-lg text-tp-primary" />;
+      return <FaCheckCircle className="mx-auto text-lg text-tp-primary" />;
     }
 
     if (typeof rawValue === 'string' || typeof rawValue === 'number') {
@@ -307,7 +307,7 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
       return <span className="text-sm font-semibold text-tp-steel">Add-on</span>;
     }
 
-    return <FaTimesCircle className="text-lg text-tp-muted" />;
+    return <FaTimesCircle className="mx-auto text-lg text-tp-muted" />;
   }
 
   function renderUsageCell(usageKey: string, planKey: string): React.ReactNode {
@@ -325,7 +325,7 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
       );
     }
 
-    return <FaTimesCircle className="text-lg text-tp-muted" />;
+    return <FaTimesCircle className="mx-auto text-lg text-tp-muted" />;
   }
 
   // ── Table rendering (desktop) ──

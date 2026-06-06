@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import EditorHeader from './editor-header';
 import Main from '../main';
@@ -9,6 +9,8 @@ import FileUpload from '../../../core/components/file-upload-input';
 import customAlert from '../../../core/utils/custom-alert';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
 import { v4 as uuidv4 } from 'uuid';
+import { serializeDraftToYaml } from '../../services/pricing2yaml';
+import type { PricingDraft } from '../../services/pricing2yaml';
 
 export default function EditorLayout({ children }: { children?: React.ReactNode }) {
   const [sharedLinkModalOpen, setSharedLinkModalOpen] = useState(false);
@@ -16,8 +18,19 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   const [editorValue, setEditorValue] = useState<string>('');
   const [editorMode, setEditorMode] = useState<EditorMode>('code');
   const [tabValue, setTabValue] = useState(0);
+  const [isDirty, setIsDirty] = useState(false);
+  const [pendingVisualDraft, setPendingVisualDraft] = useState<PricingDraft | null>(null);
 
   const { setInCache } = useCacheApi();
+
+  const saveDraft = useCallback(() => {
+    if (pendingVisualDraft) {
+      const newYaml = serializeDraftToYaml(pendingVisualDraft);
+      setEditorValue(newYaml);
+      setIsDirty(false);
+      setPendingVisualDraft(null);
+    }
+  }, [pendingVisualDraft, setEditorValue]);
 
   const renderSharedLink = () => {
     setSharedLinkModalOpen(true);
@@ -66,7 +79,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   };
 
   return (
-    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode }}>
+    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft }}>
       <div className="flex h-dvh flex-col bg-tp-surface-code">
         <EditorHeader onShareLink={renderSharedLink} onImport={renderYamlImport} />
         <Main>{children}</Main>

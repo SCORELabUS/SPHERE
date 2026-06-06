@@ -1,24 +1,31 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
-import { FaPlus, FaTrash, FaPencil, FaXmark, FaGripVertical } from 'react-icons/fa6';
-import { createSwapy, type Swapy } from 'swapy';
-import { Pricing, Plan, Feature, UsageLimit } from 'pricing4ts';
+import { FaPlus, FaTrash, FaPencil, FaXmark, FaGripVertical, FaFloppyDisk, FaEye, FaEyeSlash } from 'react-icons/fa6';
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, horizontalListSortingStrategy, verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { UsageLimit } from 'pricing4ts';
 import { camelToTitle } from '../pricing-renderer/shared/stringUtils';
 import { formatUsageDisplay } from '../pricing-renderer/shared/value-helpers';
 import PALETTE from '../pricing-renderer/shared/planPalette';
 import {
   parseDraftFromYaml,
-  serializeDraftToYaml,
   toggleFeatureValue,
   setCellValue,
   updatePlanProps,
+  updateRenderMode,
   addPlan,
   removePlan,
   renamePlan,
   ensureSyntaxVersion31,
 } from '../../services/pricing2yaml';
-import type { PricingDraft } from '../../services/pricing2yaml';
+import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit } from '../../services/pricing2yaml';
 
 const CURRENCIES: Record<string, string> = {
   USD: '$', EUR: '€', GBP: '£', JPY: '¥', AUD: 'A$', CAD: 'C$',
@@ -31,10 +38,14 @@ const FEATURE_TYPES = ['INFORMATION', 'INTEGRATION', 'DOMAIN', 'AUTOMATION', 'MA
 const VALUE_TYPES = ['BOOLEAN', 'TEXT', 'NUMERIC'] as const;
 const USAGE_LIMIT_TYPES = ['RENEWABLE', 'NON_RENEWABLE'] as const;
 
+const LABEL_WIDTH = 200;
+const TRAILING_WIDTH = 60;
+
 interface VisualPricingEditorProps {
-  pricing: Pricing;
   yaml: string;
-  onYamlChange: (yaml: string) => void;
+  isDirty: boolean;
+  onDraftChange: (draft: PricingDraft) => void;
+  onSave: () => void;
 }
 
 /* ─── Inline editing for headers (dark bg) ─── */
@@ -75,7 +86,7 @@ function HeaderInlineEdit({
   );
 }
 
-/* ─── Inline editing for body cells (light bg, fixed width) ─── */
+/* ─── Inline editing for body cells (light bg) ─── */
 function CellInlineEdit({
   value, onSave, className, numeric,
 }: {
@@ -107,86 +118,87 @@ function CellInlineEdit({
         if (e.key === 'Escape') { setDraft(value); setEditing(false); }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-center text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
-      style={{ width: `${Math.max(draft.length, 3)}ch` }}
+      className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-center text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
     />
   );
 }
 
-/* ─── Add-row button between rows ─── */
-function AddRowTrigger({ onAddFeature, onAddUsageLimit }: { onAddFeature: () => void; onAddUsageLimit: () => void }) {
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+/* ─── Inline name editing (alphanumeric only) ─── */
+function NameInlineEdit({
+  value, onSave, className,
+}: {
+  value: string; onSave: (newKey: string) => void; className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!showMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMenu]);
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
+  useEffect(() => { setDraft(value); }, [value]);
+
+  if (!editing) {
+    return (
+      <span role="button" tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
+        className={`cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 ${className ?? ''}`}
+      >{camelToTitle(value)}</span>
+    );
+  }
 
   return (
-    <tr className="group/addrow h-0">
-      <td colSpan={999} className="relative p-0">
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center opacity-0 transition-opacity group-hover/addrow:opacity-100 z-10">
-          <div className="relative" ref={menuRef}>
-            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} type="button"
-              onClick={() => setShowMenu(!showMenu)}
-              className="cursor-pointer flex items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm transition-colors hover:border-orange-400 hover:bg-orange-50 hover:text-orange-600 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-orange-500 dark:hover:bg-orange-950 dark:hover:text-orange-400"
-            ><FaPlus className="h-2 w-2" /> Add</motion.button>
-            <AnimatePresence>
-              {showMenu && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                  className="absolute left-1/2 top-full z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800"
-                >
-                  <button type="button" onClick={() => { onAddFeature(); setShowMenu(false); }}
-                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-                  ><FaPlus className="h-2 w-2 text-indigo-500" /> Feature</button>
-                  <button type="button" onClick={() => { onAddUsageLimit(); setShowMenu(false); }}
-                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-slate-700 transition-colors hover:bg-emerald-50 dark:text-slate-300 dark:hover:bg-emerald-950"
-                  ><FaPlus className="h-2 w-2 text-emerald-500" /> Usage limit</button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-        <div className="h-px w-full bg-transparent transition-colors group-hover/addrow:bg-orange-200 dark:group-hover/addrow:bg-orange-800" />
-      </td>
-    </tr>
+    <input ref={inputRef} type="text" value={draft}
+      onChange={(e) => { const v = e.target.value.replace(/[^a-zA-Z0-9]/g, ''); setDraft(v); }}
+      onBlur={() => { setEditing(false); if (draft && draft !== value) onSave(draft); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { setEditing(false); if (draft && draft !== value) onSave(draft); }
+        if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
+    />
   );
 }
 
-/* ─── Inline name input row ─── */
-function InlineNameInput({
-  inputRef, value, onChange, onConfirm, onCancel, placeholder,
-}: {
-  inputRef: React.Ref<HTMLInputElement>;
-  value: string;
-  onChange: (v: string) => void; onConfirm: () => void; onCancel: () => void; placeholder: string;
-}) {
+/* ─── Add-row trigger between rows ─── */
+function AddRowTrigger({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-      <td className="border-r border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Name:</span>
-      </td>
-      <td colSpan={999} className="border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex items-center gap-2">
-          <input ref={inputRef} value={value} onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); if (e.key === 'Escape') onCancel(); }}
-            placeholder={placeholder}
-            className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-          />
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={onConfirm}
-            className="cursor-pointer rounded-md bg-indigo-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-600"
-          >Add</motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={onCancel}
-            className="cursor-pointer rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300"
-          >Cancel</motion.button>
+    <div className="group/addrow relative h-8 w-full cursor-pointer" onClick={onAdd}>
+      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center">
+        <div className="flex w-full items-center opacity-0 transition-opacity group-hover/addrow:opacity-100">
+          <div className="h-px flex-1 bg-orange-200 dark:bg-orange-800 transition-colors group-hover/addrow:bg-orange-400" />
+          <span className="shrink-0 mx-2 rounded-full border border-dashed border-orange-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-500 shadow-sm dark:border-orange-600 dark:bg-slate-900 dark:text-orange-400">
+            {label}
+          </span>
+          <div className="h-px flex-1 bg-orange-200 dark:bg-orange-800 transition-colors group-hover/addrow:bg-orange-400" />
         </div>
-      </td>
-    </motion.tr>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Inline name input for new rows ─── */
+function CreatingNameInput({ initialKey, onConfirm, onCancel }: {
+  initialKey: string; onConfirm: (newKey: string) => void; onCancel: () => void;
+}) {
+  const [name, setName] = useState(initialKey);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <input ref={inputRef} value={name}
+      onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+      onBlur={() => { const k = name.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k && k !== initialKey) onConfirm(k); else onCancel(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { const k = name.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k) onConfirm(k); else onCancel(); }
+        if (e.key === 'Escape') onCancel();
+      }}
+      className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
+    />
   );
 }
 
@@ -228,7 +240,7 @@ const inputCls = "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-
 
 /* ─── Plan side panel ─── */
 function PlanSidePanel({ planKey, plan, currency, onClose, onSave }: {
-  planKey: string; plan: Plan; currency: string;
+  planKey: string; plan: DraftPlan; currency: string;
   onClose: () => void; onSave: (key: string, updates: Partial<{ description: string; price: number | string; unit: string }>) => void;
 }) {
   const [name, setName] = useState(planKey);
@@ -263,14 +275,12 @@ function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave, onCon
   const [name, setName] = useState(entityKey);
   const [description, setDescription] = useState(entity.description ?? '');
 
-  // Feature fields
   const f = isFeature ? entity as DraftFeature : null;
   const [valueType, setValueType] = useState(f?.valueType ?? 'BOOLEAN');
   const [defaultValue, setDefaultValue] = useState(String(f?.defaultValue ?? ''));
   const [featureType, setFeatureType] = useState(f?.type ?? 'DOMAIN');
   const [expression, setExpression] = useState(f?.expression ?? '');
 
-  // Usage limit fields
   const u = !isFeature ? entity as DraftUsageLimit : null;
   const [ulValueType, setUlValueType] = useState(u?.valueType ?? 'NUMERIC');
   const [ulDefault, setUlDefault] = useState(String(u?.defaultValue ?? '0'));
@@ -295,7 +305,6 @@ function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave, onCon
         <Field label="Key"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></Field>
         <Field label="Description"><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputCls} /></Field>
 
-        {/* Convert toggle */}
         <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800">
           <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Convert to:</p>
           <div className="flex gap-2">
@@ -352,622 +361,6 @@ function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave, onCon
   );
 }
 
-/* ════════════════════════════════════════════════════════════════════ */
-/* ─── Main Visual Editor ─── */
-/* ════════════════════════════════════════════════════════════════════ */
-export default function VisualPricingEditor({ pricing, yaml, onYamlChange }: VisualPricingEditorProps) {
-  const [draft, setDraft] = useState<PricingDraft>(() => parseDraftFromYaml(ensureSyntaxVersion31(yaml)));
-  const [hoveredCol, setHoveredCol] = useState<number | null>(null);
-  const [hoveredDivider, setHoveredDivider] = useState<number | null>(null);
-
-  // Plan editing
-  const [addingPlanAfter, setAddingPlanAfter] = useState<number | null>(null);
-  const [newPlanName, setNewPlanName] = useState('');
-  const newPlanInputRef = useRef<HTMLInputElement>(null);
-  const [editingPlan, setEditingPlan] = useState<string | null>(null);
-
-  // Feature editing
-  const [addingFeatureAfter, setAddingFeatureAfter] = useState<number | null>(null);
-  const [newFeatureName, setNewFeatureName] = useState('');
-  const newFeatureInputRef = useRef<HTMLInputElement>(null);
-  const [editingFeature, setEditingFeature] = useState<string | null>(null);
-
-  // Usage limit creation panel
-  const [creatingUsageLimit, setCreatingUsageLimit] = useState(false);
-
-  // Reorderable keys (local override for DnD)
-  const [planOrder, setPlanOrder] = useState<string[] | null>(null);
-  const [featureOrder, setFeatureOrder] = useState<string[] | null>(null);
-
-  const planKeys = useMemo(() => {
-    const base = Object.keys(pricing.plans ?? {});
-    if (planOrder) return planOrder.filter(k => base.includes(k)).concat(base.filter(k => !planOrder.includes(k)));
-    return base;
-  }, [pricing.plans, planOrder]);
-
-  const featureKeys = useMemo(() => {
-    const base = Object.keys(pricing.features ?? {});
-    if (featureOrder) return featureOrder.filter(k => base.includes(k)).concat(base.filter(k => !featureOrder.includes(k)));
-    return base;
-  }, [pricing.features, featureOrder]);
-
-  const usageLimitKeys = useMemo(() => Object.keys(pricing.usageLimits ?? {}), [pricing.usageLimits]);
-
-  const featureMap = useMemo(() => {
-    const m: Record<string, Feature> = {};
-    for (const [k, v] of Object.entries(pricing.features ?? {})) m[k] = v;
-    return m;
-  }, [pricing.features]);
-
-  const usageLimitMap = useMemo(() => {
-    const m: Record<string, UsageLimit> = {};
-    for (const [k, v] of Object.entries(pricing.usageLimits ?? {})) m[k] = v;
-    return m;
-  }, [pricing.usageLimits]);
-
-  const usageByFeature = useMemo(() => {
-    const m: Record<string, string[]> = {};
-    for (const [uk, u] of Object.entries(pricing.usageLimits ?? {})) {
-      for (const fk of (u as UsageLimit).linkedFeatures ?? []) {
-        m[fk] = m[fk] ?? [];
-        if (!m[fk].includes(uk)) m[fk].push(uk);
-      }
-    }
-    return m;
-  }, [pricing.usageLimits]);
-
-  const resolvedCurrency = pricing.currency in CURRENCIES ? CURRENCIES[pricing.currency] : pricing.currency ?? '';
-
-  /* ── Swapy refs ── */
-  const planSwapyRef = useRef<Swapy | null>(null);
-  const planSlotRef = useRef<HTMLDivElement>(null);
-  const featureSwapyRef = useRef<Swapy | null>(null);
-  const featureSlotRef = useRef<HTMLDivElement>(null);
-
-  /* ── Mutations ── */
-  const applyMutation = useCallback((mutated: PricingDraft) => {
-    setDraft(mutated);
-    onYamlChange(serializeDraftToYaml(mutated));
-  }, [onYamlChange]);
-
-  const handleToggleFeature = useCallback((planKey: string, featureKey: string) => {
-    applyMutation(toggleFeatureValue(draft, planKey, featureKey));
-  }, [draft, applyMutation]);
-
-  const handleSetCellValue = useCallback((planKey: string, cellType: 'feature' | 'usageLimit', cellKey: string, value: string | number | boolean) => {
-    applyMutation(setCellValue(draft, planKey, cellType, cellKey, value));
-  }, [draft, applyMutation]);
-
-  const handlePlanPriceChange = useCallback((planKey: string, priceStr: string) => {
-    const price = priceStr === '' ? 0 : Number(priceStr);
-    if (!Number.isNaN(price)) applyMutation(updatePlanProps(draft, planKey, { price }));
-  }, [draft, applyMutation]);
-
-  const handlePlanUnitChange = useCallback((planKey: string, unit: string) => {
-    applyMutation(updatePlanProps(draft, planKey, { unit }));
-  }, [draft, applyMutation]);
-
-  /* ── Plan operations ── */
-  const handleAddPlan = useCallback((afterIdx: number) => {
-    setAddingPlanAfter(afterIdx);
-    setNewPlanName('');
-    setTimeout(() => newPlanInputRef.current?.focus(), 50);
-  }, []);
-
-  const confirmAddPlan = useCallback(() => {
-    const name = newPlanName.trim();
-    if (!name || draft.plans[name]) { setAddingPlanAfter(null); return; }
-    const afterKey = addingPlanAfter !== null && addingPlanAfter >= 0 ? planKeys[addingPlanAfter] : undefined;
-    applyMutation(addPlan(draft, name, afterKey));
-    setAddingPlanAfter(null);
-    setNewPlanName('');
-  }, [newPlanName, draft, addingPlanAfter, planKeys, applyMutation]);
-
-  const handleRemovePlan = useCallback((planKey: string) => {
-    applyMutation(removePlan(draft, planKey));
-  }, [draft, applyMutation]);
-
-  /* ── Feature operations ── */
-  const handleAddFeature = useCallback((afterIdx: number, type: 'feature' | 'usageLimit' = 'feature') => {
-    if (type === 'feature') {
-      setAddingFeatureAfter(afterIdx);
-      setNewFeatureName('');
-      setTimeout(() => newFeatureInputRef.current?.focus(), 50);
-    } else {
-      // Open usage limit creation side panel
-      setCreatingUsageLimit(true);
-    }
-  }, []);
-
-  const confirmAddFeature = useCallback(() => {
-    const name = newFeatureName.trim().replace(/\s+/g, '');
-    if (!name || draft.features[name]) { setAddingFeatureAfter(null); return; }
-    const newFeatures: Record<string, PricingDraft['features'][string]> = {};
-    const keys = Object.keys(draft.features);
-    for (let i = 0; i <= keys.length; i++) {
-      if (i === addingFeatureAfter! + 1) newFeatures[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN' };
-      if (i < keys.length) newFeatures[keys[i]] = draft.features[keys[i]];
-    }
-    const mutated = { ...draft, features: newFeatures };
-    for (const plan of Object.values(mutated.plans)) {
-      if (plan.features !== null && plan.features !== undefined) {
-        plan.features[name] = { value: false };
-      }
-    }
-    applyMutation(mutated);
-    setAddingFeatureAfter(null);
-    setNewFeatureName('');
-  }, [newFeatureName, draft, addingFeatureAfter, applyMutation]);
-
-  const handleRemoveFeature = useCallback((featureKey: string) => {
-    const mutated = structuredClone(draft);
-    delete mutated.features[featureKey];
-    for (const plan of Object.values(mutated.plans)) {
-      if (plan.features) delete plan.features[featureKey];
-    }
-    if (mutated.usageLimits) {
-      for (const ul of Object.values(mutated.usageLimits)) {
-        if (ul.linkedFeatures) ul.linkedFeatures = ul.linkedFeatures.filter(f => f !== featureKey);
-      }
-    }
-    applyMutation(mutated);
-  }, [draft, applyMutation]);
-
-  const handleConvertEntity = useCallback((key: string, toType: 'feature' | 'usageLimit') => {
-    const mutated = structuredClone(draft);
-    if (toType === 'usageLimit' && mutated.features[key]) {
-      const f = mutated.features[key];
-      if (!mutated.usageLimits) mutated.usageLimits = {};
-      mutated.usageLimits[key] = {
-        description: f.description, valueType: f.valueType === 'BOOLEAN' ? 'NUMERIC' : f.valueType as 'NUMERIC' | 'TEXT',
-        defaultValue: f.valueType === 'BOOLEAN' ? 0 : (f.defaultValue as string | number),
-        unit: 'unit', type: 'RENEWABLE', linkedFeatures: [key],
-      };
-      delete mutated.features[key];
-      for (const plan of Object.values(mutated.plans)) {
-        if (plan.features) delete plan.features[key];
-        if (plan.usageLimits !== null && plan.usageLimits !== undefined) plan.usageLimits[key] = { value: 0 };
-      }
-    } else if (toType === 'feature' && mutated.usageLimits?.[key]) {
-      const u = mutated.usageLimits[key];
-      mutated.features[key] = {
-        description: u.description, valueType: u.valueType === 'NUMERIC' ? 'BOOLEAN' : u.valueType as 'BOOLEAN' | 'TEXT',
-        defaultValue: u.valueType === 'NUMERIC' ? false : (u.defaultValue as string | boolean),
-        type: 'DOMAIN',
-      };
-      delete mutated.usageLimits[key];
-      for (const plan of Object.values(mutated.plans)) {
-        if (plan.features) plan.features[key] = { value: false };
-        if (plan.usageLimits) delete plan.usageLimits[key];
-      }
-    }
-    applyMutation(mutated);
-  }, [draft, applyMutation]);
-
-  const handleSaveEntity = useCallback((key: string, updates: Record<string, unknown>) => {
-    const mutated = structuredClone(draft);
-    if (mutated.features[key]) {
-      Object.assign(mutated.features[key], updates);
-      // Rename key if name changed
-      const newName = updates.name as string | undefined;
-      if (newName && newName !== key && !mutated.features[newName]) {
-        mutated.features[newName] = mutated.features[key];
-        delete mutated.features[key];
-        for (const plan of Object.values(mutated.plans)) {
-          if (plan.features?.[key]) { plan.features[newName] = plan.features[key]; delete plan.features[key]; }
-        }
-      }
-    } else if (mutated.usageLimits?.[key]) {
-      Object.assign(mutated.usageLimits[key], updates);
-    }
-    applyMutation(mutated);
-  }, [draft, applyMutation]);
-
-  /* ── Swapy setup ── */
-  useEffect(() => {
-    if (!planSlotRef.current) return;
-    if (planSwapyRef.current) planSwapyRef.current.destroy();
-    planSwapyRef.current = createSwapy(planSlotRef.current, {
-      animation: 'spring', continuousMode: false, manualSwap: false, swapMode: 'hover', autoScrollOnDrag: false,
-    });
-    planSwapyRef.current.onSwapEnd((event) => {
-      const map = event.data.map;
-      const newOrder: string[] = [];
-      map.forEach((itemId) => { if (itemId) newOrder.push(itemId); });
-      if (newOrder.length === planKeys.length) {
-        setPlanOrder(newOrder);
-        // Persist to draft
-        const reordered: Record<string, PricingDraft['plans'][string]> = {};
-        for (const k of newOrder) reordered[k] = draft.plans[k];
-        applyMutation({ ...draft, plans: reordered });
-      }
-    });
-    return () => { planSwapyRef.current?.destroy(); planSwapyRef.current = null; };
-  }, [planKeys.length, draft.plans]);
-
-  useEffect(() => {
-    if (!featureSlotRef.current) return;
-    if (featureSwapyRef.current) featureSwapyRef.current.destroy();
-    featureSwapyRef.current = createSwapy(featureSlotRef.current, {
-      animation: 'spring', continuousMode: false, manualSwap: false, swapMode: 'hover', autoScrollOnDrag: false,
-    });
-    featureSwapyRef.current.onSwapEnd((event) => {
-      const map = event.data.map;
-      const newOrder: string[] = [];
-      map.forEach((itemId) => { if (itemId) newOrder.push(itemId); });
-      if (newOrder.length === featureKeys.length) {
-        setFeatureOrder(newOrder);
-        const reordered: Record<string, PricingDraft['features'][string]> = {};
-        for (const k of newOrder) reordered[k] = draft.features[k];
-        applyMutation({ ...draft, features: reordered });
-      }
-    });
-    return () => { featureSwapyRef.current?.destroy(); featureSwapyRef.current = null; };
-  }, [featureKeys.length, draft.features]);
-
-  useEffect(() => {
-    const p = parseDraftFromYaml(ensureSyntaxVersion31(yaml));
-    setDraft(p);
-  }, [yaml]);
-
-  const editingPlanData = editingPlan ? (pricing.plans?.[editingPlan] ?? {}) as Plan : null;
-  const editingFeatureData = editingFeature ? (draft.features[editingFeature] ?? draft.usageLimits?.[editingFeature]) : null;
-  const editingFeatureIsFeature = editingFeature ? editingFeature in draft.features : false;
-
-  return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80"
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{draft.saasName}</span>
-          {draft.currency && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">{draft.currency}</span>}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <span>{planKeys.length} plans</span>
-          <span className="text-slate-300 dark:text-slate-600">|</span>
-          <span>{featureKeys.length} features</span>
-          {usageLimitKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{usageLimitKeys.length} limits</span></>}
-        </div>
-      </motion.div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }} className="mx-auto max-w-7xl">
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="w-[200px] min-w-[160px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800" />
-                  {/* Draggable plan columns */}
-                  <div ref={planSlotRef} className="contents">
-                    {planKeys.map((planKey, index) => {
-                      const plan = (pricing.plans?.[planKey] ?? {}) as Plan;
-                      if (plan.private) return null;
-                      const [a, b] = PALETTE[index % PALETTE.length];
-
-                      return (
-                        <div key={planKey} data-swapy-slot={planKey} className="contents">
-                          <div data-swapy-item={planKey} className="contents">
-                            <th
-                              className="group relative border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
-                              style={{ background: 'transparent' }}
-                              onMouseEnter={() => setHoveredCol(index)}
-                              onMouseLeave={() => setHoveredCol(null)}
-                            >
-                              <div className="absolute inset-0 rounded-t-lg" style={{ background: `linear-gradient(135deg, ${a}, ${b})` }} />
-                              <div className="relative flex flex-col items-center py-4 text-center">
-                                {/* Drag handle */}
-                                <div className="absolute left-1 top-2 cursor-grab text-white/40 hover:text-white/80 active:cursor-grabbing" data-swapy-drag-handle={planKey}>
-                                  <FaGripVertical className="h-3 w-3" />
-                                </div>
-                                {/* Plan name */}
-                                <div className="relative">
-                                  <span className="cursor-pointer rounded px-2 py-0.5 text-white transition-colors hover:bg-white/20">
-                                    {plan.name?.toUpperCase() ?? planKey}
-                                  </span>
-                                </div>
-                                {/* Price */}
-                                <div className="mt-1">
-                                  {plan.price === 0 ? (
-                                    <span className="text-base font-bold text-white/90">FREE</span>
-                                  ) : (
-                                    <span className="flex items-center text-base font-bold text-white">
-                                      <HeaderInlineEdit value={String(plan.price)} onSave={(v) => handlePlanPriceChange(planKey, v)} className="!text-base !font-bold !text-white" numeric selectOnFocus />
-                                      <span className="ml-0.5 text-sm font-normal text-white/70">{resolvedCurrency}</span>
-                                    </span>
-                                  )}
-                                </div>
-                                {plan.unit && <div className="mt-0.5"><HeaderInlineEdit value={plan.unit} onSave={(v) => handlePlanUnitChange(planKey, v)} className="!text-xs !text-white/70" /></div>}
-                              </div>
-                              {/* Actions */}
-                              {hoveredCol === index && (
-                                <div className="absolute right-1 top-1 z-10 flex gap-0.5">
-                                  <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
-                                    onClick={() => setEditingPlan(planKey)}
-                                    className="cursor-pointer rounded-md bg-white/20 p-1 text-white/70 backdrop-blur-sm transition-colors hover:bg-white/30 hover:text-white"
-                                    title="Edit plan details"><FaPencil className="h-2.5 w-2.5" /></motion.button>
-                                  {planKeys.length > 1 && (
-                                    <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
-                                      onClick={() => handleRemovePlan(planKey)}
-                                      className="cursor-pointer rounded-md bg-red-500/20 p-1 text-red-200 backdrop-blur-sm transition-colors hover:bg-red-500/40 hover:text-red-100"
-                                      title="Remove plan"><FaTrash className="h-2.5 w-2.5" /></motion.button>
-                                  )}
-                                </div>
-                              )}
-                              {/* Divider hover zone */}
-                              {index < planKeys.length - 1 && (
-                                <div className="absolute right-0 top-0 z-20 h-full w-3 cursor-col-resize"
-                                  onMouseEnter={() => setHoveredDivider(index)} onMouseLeave={() => setHoveredDivider(null)}
-                                  onClick={() => handleAddPlan(index)}
-                                >
-                                  <AnimatePresence>
-                                    {hoveredDivider === index && (
-                                      <motion.div initial={{ opacity: 0, scaleY: 0.5 }} animate={{ opacity: 1, scaleY: 1 }} exit={{ opacity: 0, scaleY: 0.5 }} transition={FAST_SPRING}
-                                        className="absolute inset-y-0 -left-2 flex items-center justify-center"
-                                      >
-                                        <div className="absolute inset-y-0 w-1 rounded-full bg-[#fa520f]" />
-                                        <div className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#fa520f] text-white shadow-lg"><FaPlus className="h-2.5 w-2.5" /></div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              )}
-                            </th>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Add plan at end */}
-                  <th className="w-[60px] border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
-                    <div className="flex h-full items-center justify-center py-4">
-                      <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} type="button"
-                        onClick={() => handleAddPlan(planKeys.length - 1)}
-                        className="cursor-pointer rounded-full bg-slate-100 p-2 text-slate-400 transition-colors hover:bg-orange-100 hover:text-[#fa520f] dark:bg-slate-700 dark:text-slate-500 dark:hover:bg-orange-950 dark:hover:text-orange-400"
-                        title="Add plan"><FaPlus className="h-3.5 w-3.5" /></motion.button>
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {/* Add-row trigger BEFORE first feature */}
-                <AddRowTrigger
-                  onAddFeature={() => handleAddFeature(-1)}
-                  onAddUsageLimit={() => handleAddFeature(-1, 'usageLimit')}
-                />
-
-                {/* Swapy container for feature rows */}
-                <div ref={featureSlotRef} className="contents">
-                {featureKeys.map((featureKey, fIdx) => {
-                    const feature = featureMap[featureKey];
-                    if (!feature || feature.render === 'disabled') return null;
-                    const linkedUsageKeys = usageByFeature[featureKey] ?? [];
-                    const showInlineUsage = feature.render !== 'enabled' && linkedUsageKeys.length === 1 && (usageLimitMap[linkedUsageKeys[0]]?.render ?? 'auto') === 'auto';
-
-                    return (
-                      <div key={featureKey} data-swapy-slot={featureKey} className="contents">
-                        <div data-swapy-item={featureKey} className="contents">
-                          <motion.tr layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                            transition={{ delay: 0.02 * fIdx, duration: 0.25 }}
-                            className="group border-b border-slate-100 dark:border-slate-800"
-                          >
-                            <td className="relative border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                              <div className="flex items-center gap-1.5">
-                                <div className="cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing" data-swapy-drag-handle={featureKey}>
-                                  <FaGripVertical className="h-3 w-3" />
-                                </div>
-                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                  {camelToTitle(feature.name ?? featureKey)}
-                                </span>
-                                {showInlineUsage && linkedUsageKeys[0] && (
-                                  <span className="text-xs text-slate-400 dark:text-slate-500">({usageLimitMap[linkedUsageKeys[0]]?.unit ?? ''})</span>
-                                )}
-                              </div>
-                              {/* Edit / delete buttons */}
-                              <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                                <button type="button" onClick={() => setEditingFeature(featureKey)}
-                                  className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
-                                  <FaPencil className="h-2.5 w-2.5" />
-                                </button>
-                                <button type="button" onClick={() => handleRemoveFeature(featureKey)}
-                                  className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-red-500" title="Remove">
-                                  <FaTrash className="h-2.5 w-2.5" />
-                                </button>
-                              </div>
-                            </td>
-
-                            {planKeys.map((planKey, pIdx) => {
-                              const plan = (pricing.plans?.[planKey] ?? {}) as Plan;
-                              if (plan.private) return null;
-                              const featureValue = (plan.features as Record<string, { value: unknown }> | undefined)?.[featureKey]?.value;
-                              const globalDefault = feature.defaultValue;
-                              const effectiveValue = featureValue ?? globalDefault;
-                              const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
-
-                              if (typeof effectiveValue === 'boolean') {
-                                return (
-                                  <td key={planKey} className={`border-r border-slate-100 px-2 py-3 text-center align-middle dark:border-slate-800 ${toneClass}`}>
-                                    <motion.div className="flex cursor-pointer items-center justify-center"
-                                      onClick={() => handleToggleFeature(planKey, featureKey)}
-                                      whileTap={{ scale: 0.8 }} transition={FAST_SPRING}
-                                    >
-                                      <AnimatePresence mode="wait">
-                                        {effectiveValue ? (
-                                          <motion.div key="on" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>
-                                            <FaCheckCircle className="text-lg text-emerald-500" />
-                                          </motion.div>
-                                        ) : (
-                                          <motion.div key="off" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>
-                                            <FaTimesCircle className="text-lg text-slate-300 dark:text-slate-600" />
-                                          </motion.div>
-                                        )}
-                                      </AnimatePresence>
-                                    </motion.div>
-                                  </td>
-                                );
-                              }
-
-                              if (showInlineUsage && linkedUsageKeys[0]) {
-                                const usage = usageLimitMap[linkedUsageKeys[0]];
-                                const usageValue = (plan.usageLimits as Record<string, { value: unknown }> | undefined)?.[linkedUsageKeys[0]]?.value;
-                                const effectiveUsage = usageValue ?? usage?.defaultValue;
-                                if (effectiveUsage !== undefined && effectiveUsage !== null && effectiveUsage !== 0 && effectiveUsage !== '') {
-                                  return (
-                                    <td key={planKey} className={`border-r border-slate-100 px-2 py-3 text-center align-middle dark:border-slate-800 ${toneClass}`}>
-                                      <span className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white">
-                                        {formatUsageDisplay(effectiveUsage, usage)}
-                                      </span>
-                                    </td>
-                                  );
-                                }
-                              }
-
-                              const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== '' ? String(effectiveValue) : '';
-                              const isNumeric = typeof effectiveValue === 'number' || feature.valueType === 'NUMERIC';
-
-                              return (
-                                <td key={planKey} className={`border-r border-slate-100 px-2 py-3 text-center align-middle dark:border-slate-800 ${toneClass}`}>
-                                  {strVal ? (
-                                    <CellInlineEdit value={strVal} numeric={isNumeric}
-                                      onSave={(v) => { const p = isNumeric ? (v === '' ? 0 : Number(v)) : v; handleSetCellValue(planKey, 'feature', featureKey, Number.isNaN(p) ? v : p); }}
-                                      className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300"
-                                    />
-                                  ) : (
-                                    <FaTimesCircle className="mx-auto text-slate-300 dark:text-slate-600" />
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td className="bg-slate-50 dark:bg-slate-800" />
-                          </motion.tr>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Add-row trigger after last feature */}
-                <AddRowTrigger onAddFeature={() => handleAddFeature(featureKeys.length - 1)} onAddUsageLimit={() => handleAddFeature(featureKeys.length - 1, 'usageLimit')} />
-
-                {/* Usage limit rows (separate, non-embedded) */}
-                <AnimatePresence mode="popLayout">
-                  {usageLimitKeys.filter(uk => {
-                    const u = usageLimitMap[uk];
-                    if (!u) return false;
-                    if (u.render === 'disabled') return false;
-                    if (u.render === 'enabled') return true;
-                    const linked = u.linkedFeatures ?? [];
-                    if (linked.length > 1) return true;
-                    return false;
-                  }).map((usageKey, uIdx) => {
-                    const usage = usageLimitMap[usageKey];
-                    if (!usage) return null;
-
-                    return (
-                      <motion.tr key={`usage-${usageKey}`} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                        transition={{ delay: 0.02 * uIdx, duration: 0.25 }}
-                        className="group border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="relative border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{camelToTitle(usage.name ?? usageKey)}</span>
-                            <span className="text-xs text-slate-400 dark:text-slate-500">({usage.unit})</span>
-                          </div>
-                          <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                            <button type="button" onClick={() => setEditingFeature(usageKey)}
-                              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
-                              <FaPencil className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        </td>
-                        {planKeys.map((planKey, pIdx) => {
-                          const plan = (pricing.plans?.[planKey] ?? {}) as Plan;
-                          if (plan.private) return null;
-                          const usageValue = (plan.usageLimits as Record<string, { value: unknown }> | undefined)?.[usageKey]?.value;
-                          const effectiveValue = usageValue ?? usage.defaultValue;
-                          const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
-                          const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== 0 ? String(effectiveValue) : '';
-                          return (
-                            <td key={planKey} className={`border-r border-slate-100 px-2 py-3 text-center align-middle dark:border-slate-800 ${toneClass}`}>
-                              {strVal ? (
-                                <span className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white">
-                                  {formatUsageDisplay(effectiveValue, usage)}
-                                </span>
-                              ) : (
-                                <FaTimesCircle className="mx-auto text-slate-300 dark:text-slate-600" />
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="bg-slate-50 dark:bg-slate-800" />
-                      </motion.tr>
-                    );
-                  })}
-                </AnimatePresence>
-
-                {/* Inline forms */}
-                <AnimatePresence>
-                  {addingPlanAfter !== null && (
-                    <InlineNameInput inputRef={newPlanInputRef} value={newPlanName} onChange={setNewPlanName}
-                      onConfirm={confirmAddPlan} onCancel={() => setAddingPlanAfter(null)} placeholder="Plan name..." />
-                  )}
-                  {addingFeatureAfter !== null && (
-                    <InlineNameInput inputRef={newFeatureInputRef} value={newFeatureName} onChange={setNewFeatureName}
-                      onConfirm={confirmAddFeature} onCancel={() => setAddingFeatureAfter(null)} placeholder="Feature key (camelCase)..." />
-                  )}
-                </AnimatePresence>
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Side panels */}
-      <AnimatePresence>
-        {editingPlan && editingPlanData && (
-          <PlanSidePanel planKey={editingPlan} plan={editingPlanData} currency={resolvedCurrency}
-            onClose={() => setEditingPlan(null)}
-            onSave={(key, updates) => { applyMutation(updatePlanProps(draft, editingPlan, updates)); if (key !== editingPlan) { applyMutation(renamePlan(draft, editingPlan, key)); } setEditingPlan(null); }}
-          />
-        )}
-        {editingFeature && editingFeatureData && (
-          <FeatureSidePanel entityKey={editingFeature} entity={editingFeatureData} isFeature={editingFeatureIsFeature}
-            onClose={() => setEditingFeature(null)}
-            onSave={handleSaveEntity}
-            onConvert={handleConvertEntity}
-          />
-        )}
-        {creatingUsageLimit && (
-          <UsageLimitSidePanel featureKeys={featureKeys}
-            onClose={() => setCreatingUsageLimit(false)}
-            onSave={(data) => {
-              const mutated = structuredClone(draft);
-              if (!mutated.usageLimits) mutated.usageLimits = {};
-              mutated.usageLimits[data.name] = {
-                description: '', valueType: 'NUMERIC', defaultValue: data.defaultValue,
-                unit: data.unit, type: data.type, linkedFeatures: [data.linkedFeature],
-              };
-              for (const plan of Object.values(mutated.plans)) {
-                if (plan.usageLimits !== null && plan.usageLimits !== undefined) {
-                  plan.usageLimits[data.name] = { value: data.defaultValue };
-                }
-              }
-              applyMutation(mutated);
-              setCreatingUsageLimit(false);
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-type DraftFeature = PricingDraft['features'][string];
-type DraftUsageLimit = NonNullable<PricingDraft['usageLimits']>[string];
-
 /* ─── Usage limit creation side panel ─── */
 function UsageLimitSidePanel({ featureKeys, onClose, onSave }: {
   featureKeys: string[];
@@ -1020,5 +413,825 @@ function UsageLimitSidePanel({ featureKeys, onClose, onSave }: {
         </Field>
       </div>
     </SidePanel>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════ */
+/* ─── Sortable Plan Header Cell ─── */
+/* ════════════════════════════════════════════════════════════════════ */
+function SortablePlanHeader({
+  planKey, index, plan, currency, isHovered, onHover, onEdit, onRemove, onPriceChange, onUnitChange, canRemove,
+}: {
+  planKey: string; index: number; plan: DraftPlan; currency: string;
+  isHovered: boolean; onHover: (hovered: boolean) => void;
+  onEdit: () => void; onRemove: () => void;
+  onPriceChange: (v: string) => void; onUnitChange: (v: string) => void;
+  canRemove: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: planKey });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  const [a, b] = PALETTE[index % PALETTE.length];
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className="group relative shrink-0 grow border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+    >
+      <div className="absolute inset-0 rounded-t-lg" style={{ background: `linear-gradient(135deg, ${a}, ${b})` }} />
+      <div className="relative flex flex-col items-center py-4 text-center">
+        <div {...listeners} className="absolute left-1 top-2 cursor-grab text-white/40 hover:text-white/80 active:cursor-grabbing">
+          <FaGripVertical className="h-3 w-3" />
+        </div>
+        <div className="relative">
+          <span className="cursor-pointer rounded px-2 py-0.5 text-white transition-colors hover:bg-white/20">
+            {planKey.toUpperCase()}
+          </span>
+        </div>
+        <div className="mt-1">
+          {plan.price === 0 ? (
+            <span className="text-base font-bold text-white/90">FREE</span>
+          ) : (
+            <span className="flex items-center text-base font-bold text-white">
+              <HeaderInlineEdit value={String(plan.price)} onSave={onPriceChange} className="!text-base !font-bold !text-white" numeric selectOnFocus />
+              <span className="ml-0.5 text-sm font-normal text-white/70">{currency}</span>
+            </span>
+          )}
+        </div>
+        {plan.unit && <div className="mt-0.5"><HeaderInlineEdit value={plan.unit} onSave={onUnitChange} className="!text-xs !text-white/70" /></div>}
+      </div>
+      {isHovered && (
+        <div className="absolute right-1 top-1 z-10 flex gap-0.5">
+          <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
+            onClick={onEdit}
+            className="cursor-pointer rounded-md bg-white/20 p-1 text-white/70 backdrop-blur-sm transition-colors hover:bg-white/30 hover:text-white"
+            title="Edit plan details"><FaPencil className="h-2.5 w-2.5" /></motion.button>
+          {canRemove && (
+            <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
+              onClick={onRemove}
+              className="cursor-pointer rounded-md bg-red-500/20 p-1 text-red-200 backdrop-blur-sm transition-colors hover:bg-red-500/40 hover:text-red-100"
+              title="Remove plan"><FaTrash className="h-2.5 w-2.5" /></motion.button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════ */
+/* ─── Sortable Feature Row ─── */
+/* ════════════════════════════════════════════════════════════════════ */
+function SortableFeatureRow({
+  featureKey, feature, planKeys, draft,
+  onToggle, onSetCellValue, onEdit, onRemove, onToggleRender, onRename,
+  isCreating, onCreatingConfirm, onCreatingCancel,
+}: {
+  featureKey: string; feature: DraftFeature;
+  planKeys: string[]; draft: PricingDraft;
+  onToggle: (planKey: string, featureKey: string) => void;
+  onSetCellValue: (planKey: string, cellType: 'feature' | 'usageLimit', cellKey: string, value: string | number | boolean) => void;
+  onEdit: () => void; onRemove: () => void;
+  onToggleRender: (entityType: 'feature' | 'usageLimit', key: string) => void;
+  onRename: (oldKey: string, newKey: string) => void;
+  isCreating?: boolean;
+  onCreatingConfirm?: (newKey: string) => void;
+  onCreatingCancel?: () => void;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: featureKey });
+  const [creatingName, setCreatingName] = useState(featureKey);
+  const creatingInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isCreating && creatingInputRef.current) {
+      creatingInputRef.current.focus();
+      creatingInputRef.current.select();
+    }
+  }, [isCreating]);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  const isDisabled = feature.render === 'disabled';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group"
+    >
+      <div className={`flex ${isDisabled ? 'opacity-[0.6]' : ''}`} style={{ width: '100%' }}>
+        {/* Label cell */}
+        <div className="relative flex shrink-0 items-center gap-1.5 border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
+          style={{ width: LABEL_WIDTH }}>
+          {isCreating ? (
+            <input ref={creatingInputRef} value={creatingName}
+              onChange={(e) => setCreatingName(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+              onBlur={() => { const k = creatingName.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k && k !== featureKey) onCreatingConfirm?.(k); else onCreatingCancel?.(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { const k = creatingName.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k) onCreatingConfirm?.(k); else onCreatingCancel?.(); }
+                if (e.key === 'Escape') onCreatingCancel?.();
+              }}
+              className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
+            />
+          ) : (
+            <>
+              <div {...listeners} className="cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+                <FaGripVertical className="h-3 w-3" />
+              </div>
+              <NameInlineEdit value={featureKey} onSave={(newKey) => onRename(featureKey, newKey)}
+                className="text-sm font-semibold text-slate-700 dark:text-slate-300" />
+            </>
+          )}
+          <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button type="button" onClick={() => onToggleRender('feature', featureKey)}
+              className={`cursor-pointer rounded p-0.5 transition-colors ${isDisabled ? 'text-slate-300 hover:text-amber-500' : 'text-amber-500 hover:text-slate-400'}`}
+              title={isDisabled ? 'Show row' : 'Hide row'}>
+              {isDisabled ? <FaEyeSlash className="h-2.5 w-2.5" /> : <FaEye className="h-2.5 w-2.5" />}
+            </button>
+            <button type="button" onClick={onEdit}
+              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
+              <FaPencil className="h-2.5 w-2.5" />
+            </button>
+            <button type="button" onClick={onRemove}
+              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-red-500" title="Remove">
+              <FaTrash className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Value cells */}
+        {planKeys.map((planKey, pIdx) => {
+          const plan = draft.plans[planKey];
+          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] border-b border-r border-slate-100 dark:border-slate-800" />;
+          const featureValue = (plan?.features as Record<string, { value: unknown }> | undefined)?.[featureKey]?.value;
+          const globalDefault = feature.defaultValue;
+          const effectiveValue = featureValue ?? globalDefault;
+          const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
+
+          if (typeof effectiveValue === 'boolean') {
+            return (
+              <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+                <motion.div className="flex cursor-pointer items-center justify-center"
+                  onClick={() => onToggle(planKey, featureKey)}
+                  whileTap={{ scale: 0.8 }} transition={FAST_SPRING}
+                >
+                  <AnimatePresence mode="wait">
+                    {effectiveValue ? (
+                      <motion.div key="on" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>
+                        <FaCheckCircle className="text-lg text-emerald-500" />
+                      </motion.div>
+                    ) : (
+                      <motion.div key="off" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>
+                        <FaTimesCircle className="text-lg text-slate-300 dark:text-slate-600" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </div>
+            );
+          }
+
+          const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== '' ? String(effectiveValue) : '';
+          const isNumeric = typeof effectiveValue === 'number' || feature.valueType === 'NUMERIC';
+
+          return (
+            <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+              {strVal ? (
+                <CellInlineEdit value={strVal} numeric={isNumeric}
+                  onSave={(v) => { const p = isNumeric ? (v === '' ? 0 : Number(v)) : v; onSetCellValue(planKey, 'feature', featureKey, Number.isNaN(p) ? v : p); }}
+                  className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300"
+                />
+              ) : (
+                <FaTimesCircle className="text-slate-300 dark:text-slate-600" />
+              )}
+            </div>
+          );
+        })}
+
+        {/* Empty trailing cell */}
+        <div className="shrink-0 border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800" style={{ width: TRAILING_WIDTH }} />
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════ */
+/* ─── Sortable Usage Limit Row ─── */
+/* ════════════════════════════════════════════════════════════════════ */
+function SortableUsageLimitRow({
+  usageKey, usage, planKeys, draft,
+  onToggleRender, onEdit, onRename,
+  isCreating, onCreatingConfirm, onCreatingCancel,
+}: {
+  usageKey: string; usage: DraftUsageLimit;
+  planKeys: string[]; draft: PricingDraft;
+  onToggleRender: (entityType: 'feature' | 'usageLimit', key: string) => void;
+  onEdit: () => void;
+  onRename: (oldKey: string, newKey: string) => void;
+  isCreating?: boolean;
+  onCreatingConfirm?: (newKey: string) => void;
+  onCreatingCancel?: () => void;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: usageKey });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  const isDisabled = usage.render === 'disabled';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group"
+    >
+      <div className={`flex ${isDisabled ? 'opacity-[0.6]' : ''}`} style={{ width: '100%' }}>
+        {/* Label */}
+        <div className="relative flex shrink-0 items-center gap-1.5 border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
+          style={{ width: LABEL_WIDTH }}>
+          {isCreating ? (
+            <CreatingNameInput
+              initialKey={usageKey}
+              onConfirm={onCreatingConfirm!}
+              onCancel={onCreatingCancel!}
+            />
+          ) : (
+            <>
+              <div {...listeners} className="cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+                <FaGripVertical className="h-3 w-3" />
+              </div>
+              <NameInlineEdit value={usageKey} onSave={(newKey) => onRename(usageKey, newKey)}
+                className="text-sm font-semibold text-slate-700 dark:text-slate-300" />
+              <span className="text-xs text-slate-400 dark:text-slate-500">({usage.unit})</span>
+            </>
+          )}
+          <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button type="button" onClick={() => onToggleRender('usageLimit', usageKey)}
+              className={`cursor-pointer rounded p-0.5 transition-colors ${isDisabled ? 'text-slate-300 hover:text-amber-500' : 'text-amber-500 hover:text-slate-400'}`}
+              title={isDisabled ? 'Show row' : 'Hide row'}>
+              {isDisabled ? <FaEyeSlash className="h-2.5 w-2.5" /> : <FaEye className="h-2.5 w-2.5" />}
+            </button>
+            <button type="button" onClick={onEdit}
+              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
+              <FaPencil className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        </div>
+        {/* Values */}
+        {planKeys.map((planKey, pIdx) => {
+          const plan = draft.plans[planKey];
+          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] border-b border-r border-slate-100 dark:border-slate-800" />;
+          const usageValue = (plan?.usageLimits as Record<string, { value: unknown }> | undefined)?.[usageKey]?.value;
+          const effectiveValue = usageValue ?? usage.defaultValue;
+          const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
+          const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== 0 ? String(effectiveValue) : '';
+          return (
+            <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+              {strVal ? (
+                <span className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white">
+                  {formatUsageDisplay(effectiveValue, usage as unknown as UsageLimit)}
+                </span>
+              ) : (
+                <FaTimesCircle className="text-slate-300 dark:text-slate-600" />
+              )}
+            </div>
+          );
+        })}
+        <div className="shrink-0 border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800" style={{ width: TRAILING_WIDTH }} />
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════ */
+/* ─── Main Visual Editor ─── */
+/* ════════════════════════════════════════════════════════════════════ */
+export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSave }: VisualPricingEditorProps) {
+  const [draft, setDraft] = useState<PricingDraft>(() => parseDraftFromYaml(ensureSyntaxVersion31(yaml)));
+  const [hoveredCol, setHoveredCol] = useState<number | null>(null);
+
+  // Plan editing
+  const [editingPlan, setEditingPlan] = useState<string | null>(null);
+
+  // Feature / Usage limit editing
+  const [editingFeature, setEditingFeature] = useState<string | null>(null);
+  const [creatingRowKey, setCreatingRowKey] = useState<string | null>(null);
+
+  // Usage limit creation panel (for side panel fallback)
+  const [creatingUsageLimit, setCreatingUsageLimit] = useState(false);
+
+  // Reorderable keys
+  const [planOrder, setPlanOrder] = useState<string[] | null>(null);
+  const [featureOrder, setFeatureOrder] = useState<string[] | null>(null);
+  const [usageLimitOrder, setUsageLimitOrder] = useState<string[] | null>(null);
+
+  const planKeys = useMemo(() => {
+    const base = Object.keys(draft.plans ?? {});
+    if (planOrder) return planOrder.filter(k => base.includes(k)).concat(base.filter(k => !planOrder.includes(k)));
+    return base;
+  }, [draft.plans, planOrder]);
+
+  const featureKeys = useMemo(() => {
+    const base = Object.keys(draft.features ?? {});
+    if (featureOrder) return featureOrder.filter(k => base.includes(k)).concat(base.filter(k => !featureOrder.includes(k)));
+    return base;
+  }, [draft.features, featureOrder]);
+
+  const usageLimitKeys = useMemo(() => {
+    const base = Object.keys(draft.usageLimits ?? {});
+    if (usageLimitOrder) return usageLimitOrder.filter(k => base.includes(k)).concat(base.filter(k => !usageLimitOrder.includes(k)));
+    return base;
+  }, [draft.usageLimits, usageLimitOrder]);
+
+  const featureMap = useMemo(() => {
+    const m: Record<string, DraftFeature> = {};
+    for (const [k, v] of Object.entries(draft.features ?? {})) m[k] = v;
+    return m;
+  }, [draft.features]);
+
+  const usageLimitMap = useMemo(() => {
+    const m: Record<string, DraftUsageLimit> = {};
+    for (const [k, v] of Object.entries(draft.usageLimits ?? {})) m[k] = v;
+    return m;
+  }, [draft.usageLimits]);
+
+  const resolvedCurrency = draft.currency && draft.currency in CURRENCIES ? CURRENCIES[draft.currency] : draft.currency ?? '';
+
+  const visiblePlanKeys = useMemo(() => planKeys.filter(pk => !draft.plans[pk]?.private), [planKeys, draft.plans]);
+
+  /* ── dnd-kit sensors ── */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  /* ── Mutations ── */
+  const applyMutation = useCallback((mutated: PricingDraft) => {
+    setDraft(mutated);
+    onDraftChange(mutated);
+  }, [onDraftChange]);
+
+  const handleToggleFeature = useCallback((planKey: string, featureKey: string) => {
+    applyMutation(toggleFeatureValue(draft, planKey, featureKey));
+  }, [draft, applyMutation]);
+
+  const handleSetCellValue = useCallback((planKey: string, cellType: 'feature' | 'usageLimit', cellKey: string, value: string | number | boolean) => {
+    applyMutation(setCellValue(draft, planKey, cellType, cellKey, value));
+  }, [draft, applyMutation]);
+
+  const handlePlanPriceChange = useCallback((planKey: string, priceStr: string) => {
+    const price = priceStr === '' ? 0 : Number(priceStr);
+    if (!Number.isNaN(price)) applyMutation(updatePlanProps(draft, planKey, { price }));
+  }, [draft, applyMutation]);
+
+  const handlePlanUnitChange = useCallback((planKey: string, unit: string) => {
+    applyMutation(updatePlanProps(draft, planKey, { unit }));
+  }, [draft, applyMutation]);
+
+  const handleToggleRender = useCallback((entityType: 'feature' | 'usageLimit', key: string) => {
+    const entity = entityType === 'feature' ? draft.features[key] : draft.usageLimits?.[key];
+    if (!entity) return;
+    const current = entity.render ?? 'auto';
+    const next = current === 'disabled' ? 'enabled' : current === 'enabled' ? 'auto' : 'disabled';
+    applyMutation(updateRenderMode(draft, entityType, key, next));
+  }, [draft, applyMutation]);
+
+  const handleRename = useCallback((entityType: 'feature' | 'usageLimit', oldKey: string, newKey: string) => {
+    if (oldKey === newKey || !newKey) return;
+    const mutated = structuredClone(draft);
+    if (entityType === 'feature') {
+      if (mutated.features[newKey]) return;
+      mutated.features[newKey] = mutated.features[oldKey];
+      delete mutated.features[oldKey];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.features?.[oldKey]) { plan.features[newKey] = plan.features[oldKey]; delete plan.features[oldKey]; }
+      }
+      if (mutated.usageLimits) {
+        for (const ul of Object.values(mutated.usageLimits)) {
+          if (ul.linkedFeatures) ul.linkedFeatures = ul.linkedFeatures.map(f => f === oldKey ? newKey : f);
+        }
+      }
+    } else {
+      if (!mutated.usageLimits) return;
+      if (mutated.usageLimits[newKey]) return;
+      mutated.usageLimits[newKey] = mutated.usageLimits[oldKey];
+      delete mutated.usageLimits[oldKey];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.usageLimits?.[oldKey]) { plan.usageLimits[newKey] = plan.usageLimits[oldKey]; delete plan.usageLimits[oldKey]; }
+      }
+    }
+    applyMutation(mutated);
+  }, [draft, applyMutation]);
+
+  /* ── Helper: next available name ── */
+  const getNextName = useCallback((prefix: string, existingKeys: string[]) => {
+    let i = 1;
+    while (existingKeys.includes(`${prefix}${i}`)) i++;
+    return `${prefix}${i}`;
+  }, []);
+
+  /* ── Plan operations ── */
+  const handleAddPlan = useCallback(() => {
+    const name = getNextName('plan', Object.keys(draft.plans));
+    applyMutation(addPlan(draft, name));
+  }, [draft, applyMutation, getNextName]);
+
+  const handleRemovePlan = useCallback((planKey: string) => {
+    applyMutation(removePlan(draft, planKey));
+  }, [draft, applyMutation]);
+
+  /* ── Feature operations ── */
+  const handleAddFeature = useCallback(() => {
+    const name = getNextName('feature', Object.keys(draft.features));
+    const mutated = structuredClone(draft);
+    mutated.features[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN' };
+    for (const plan of Object.values(mutated.plans)) {
+      if (plan.features !== null && plan.features !== undefined) {
+        plan.features[name] = { value: false };
+      }
+    }
+    applyMutation(mutated);
+    setCreatingRowKey(name);
+  }, [draft, applyMutation, getNextName]);
+
+  const handleAddUsageLimitInline = useCallback(() => {
+    const name = getNextName('usageLimit', Object.keys(draft.usageLimits ?? {}));
+    const mutated = structuredClone(draft);
+    if (!mutated.usageLimits) mutated.usageLimits = {};
+    mutated.usageLimits[name] = {
+      description: '', valueType: 'NUMERIC', defaultValue: 0,
+      unit: 'unit', type: 'RENEWABLE', linkedFeatures: [],
+    };
+    for (const plan of Object.values(mutated.plans)) {
+      if (plan.usageLimits !== null && plan.usageLimits !== undefined) {
+        plan.usageLimits[name] = { value: 0 };
+      }
+    }
+    applyMutation(mutated);
+    setCreatingRowKey(name);
+  }, [draft, applyMutation, getNextName]);
+
+  const handleCreatingConfirm = useCallback((newKey: string) => {
+    if (!creatingRowKey) return;
+    if (newKey !== creatingRowKey && !draft.features[newKey] && !(draft.usageLimits ?? {})[newKey]) {
+      const isFeature = creatingRowKey in draft.features;
+      const mutated = structuredClone(draft);
+      if (isFeature) {
+        mutated.features[newKey] = mutated.features[creatingRowKey];
+        delete mutated.features[creatingRowKey];
+        for (const plan of Object.values(mutated.plans)) {
+          if (plan.features?.[creatingRowKey]) { plan.features[newKey] = plan.features[creatingRowKey]; delete plan.features[creatingRowKey]; }
+        }
+      } else {
+        if (!mutated.usageLimits) mutated.usageLimits = {};
+        mutated.usageLimits[newKey] = mutated.usageLimits[creatingRowKey];
+        delete mutated.usageLimits[creatingRowKey];
+        for (const plan of Object.values(mutated.plans)) {
+          if (plan.usageLimits?.[creatingRowKey]) { plan.usageLimits[newKey] = plan.usageLimits[creatingRowKey]; delete plan.usageLimits[creatingRowKey]; }
+        }
+      }
+      applyMutation(mutated);
+    }
+    setCreatingRowKey(null);
+  }, [creatingRowKey, draft, applyMutation]);
+
+  const handleCreatingCancel = useCallback(() => {
+    if (!creatingRowKey) return;
+    const isFeature = creatingRowKey in draft.features;
+    const mutated = structuredClone(draft);
+    if (isFeature) {
+      delete mutated.features[creatingRowKey];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.features) delete plan.features[creatingRowKey];
+      }
+    } else {
+      if (mutated.usageLimits) delete mutated.usageLimits[creatingRowKey];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.usageLimits) delete plan.usageLimits[creatingRowKey];
+      }
+    }
+    applyMutation(mutated);
+    setCreatingRowKey(null);
+  }, [creatingRowKey, draft, applyMutation]);
+
+  const handleRemoveFeature = useCallback((featureKey: string) => {
+    const mutated = structuredClone(draft);
+    delete mutated.features[featureKey];
+    for (const plan of Object.values(mutated.plans)) {
+      if (plan.features) delete plan.features[featureKey];
+    }
+    if (mutated.usageLimits) {
+      for (const ul of Object.values(mutated.usageLimits)) {
+        if (ul.linkedFeatures) ul.linkedFeatures = ul.linkedFeatures.filter(f => f !== featureKey);
+      }
+    }
+    applyMutation(mutated);
+  }, [draft, applyMutation]);
+
+  const handleConvertEntity = useCallback((key: string, toType: 'feature' | 'usageLimit') => {
+    const mutated = structuredClone(draft);
+    if (toType === 'usageLimit' && mutated.features[key]) {
+      const f = mutated.features[key];
+      if (!mutated.usageLimits) mutated.usageLimits = {};
+      mutated.usageLimits[key] = {
+        description: f.description, valueType: f.valueType === 'BOOLEAN' ? 'NUMERIC' : f.valueType as 'NUMERIC' | 'TEXT',
+        defaultValue: f.valueType === 'BOOLEAN' ? 0 : (f.defaultValue as string | number),
+        unit: 'unit', type: 'RENEWABLE', linkedFeatures: [key],
+      };
+      delete mutated.features[key];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.features) delete plan.features[key];
+        if (plan.usageLimits !== null && plan.usageLimits !== undefined) plan.usageLimits[key] = { value: 0 };
+      }
+    } else if (toType === 'feature' && mutated.usageLimits?.[key]) {
+      const u = mutated.usageLimits[key];
+      mutated.features[key] = {
+        description: u.description, valueType: u.valueType === 'NUMERIC' ? 'BOOLEAN' : u.valueType as 'BOOLEAN' | 'TEXT',
+        defaultValue: u.valueType === 'NUMERIC' ? false : (u.defaultValue as string | boolean),
+        type: 'DOMAIN',
+      };
+      delete mutated.usageLimits[key];
+      for (const plan of Object.values(mutated.plans)) {
+        if (plan.features) plan.features[key] = { value: false };
+        if (plan.usageLimits) delete plan.usageLimits[key];
+      }
+    }
+    applyMutation(mutated);
+  }, [draft, applyMutation]);
+
+  const handleSaveEntity = useCallback((key: string, updates: Record<string, unknown>) => {
+    const mutated = structuredClone(draft);
+    if (mutated.features[key]) {
+      Object.assign(mutated.features[key], updates);
+      const newName = updates.name as string | undefined;
+      if (newName && newName !== key && !mutated.features[newName]) {
+        mutated.features[newName] = mutated.features[key];
+        delete mutated.features[key];
+        for (const plan of Object.values(mutated.plans)) {
+          if (plan.features?.[key]) { plan.features[newName] = plan.features[key]; delete plan.features[key]; }
+        }
+      }
+    } else if (mutated.usageLimits?.[key]) {
+      Object.assign(mutated.usageLimits[key], updates);
+    }
+    applyMutation(mutated);
+  }, [draft, applyMutation]);
+
+  /* ── DnD handlers ── */
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    // Plan column reorder
+    if (planKeys.includes(activeId) && planKeys.includes(overId)) {
+      const oldIndex = planKeys.indexOf(activeId);
+      const newIndex = planKeys.indexOf(overId);
+      const newOrder = arrayMove(planKeys, oldIndex, newIndex);
+      setPlanOrder(newOrder);
+      const reordered: Record<string, PricingDraft['plans'][string]> = {};
+      for (const k of newOrder) reordered[k] = draft.plans[k];
+      applyMutation({ ...draft, plans: reordered });
+      return;
+    }
+
+    // Feature row reorder
+    if (featureKeys.includes(activeId) && featureKeys.includes(overId)) {
+      const oldIndex = featureKeys.indexOf(activeId);
+      const newIndex = featureKeys.indexOf(overId);
+      const newOrder = arrayMove(featureKeys, oldIndex, newIndex);
+      setFeatureOrder(newOrder);
+      const reordered: Record<string, PricingDraft['features'][string]> = {};
+      for (const k of newOrder) reordered[k] = draft.features[k];
+      applyMutation({ ...draft, features: reordered });
+      return;
+    }
+
+    // Usage limit row reorder
+    if (usageLimitKeys.includes(activeId) && usageLimitKeys.includes(overId)) {
+      const oldIndex = usageLimitKeys.indexOf(activeId);
+      const newIndex = usageLimitKeys.indexOf(overId);
+      const newOrder = arrayMove(usageLimitKeys, oldIndex, newIndex);
+      setUsageLimitOrder(newOrder);
+      const reordered: Record<string, DraftUsageLimit> = {};
+      for (const k of newOrder) reordered[k] = draft.usageLimits![k];
+      applyMutation({ ...draft, usageLimits: reordered });
+    }
+  }, [planKeys, featureKeys, usageLimitKeys, draft, applyMutation]);
+
+  /* ── Keyboard shortcut ── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (isDirty) onSave();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDirty, onSave]);
+
+  const editingPlanData = editingPlan ? draft.plans[editingPlan] ?? null : null;
+  const editingFeatureData = editingFeature ? (draft.features[editingFeature] ?? draft.usageLimits?.[editingFeature]) : null;
+  const editingFeatureIsFeature = editingFeature ? editingFeature in draft.features : false;
+
+  return (
+    <div className="flex h-full w-full flex-col overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{draft.saasName}</span>
+          {draft.currency && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">{draft.currency}</span>}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>{visiblePlanKeys.length} plans</span>
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+          <span>{featureKeys.length} features</span>
+          {usageLimitKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{usageLimitKeys.length} limits</span></>}
+          <motion.button
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            type="button" onClick={onSave} disabled={!isDirty}
+            className={`ml-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              isDirty ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700'
+                : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+            }`}
+            title="Save changes (Ctrl+S)"
+          >
+            <FaFloppyDisk className="h-3 w-3" /> Save
+          </motion.button>
+        </div>
+      </motion.div>
+
+      {/* Grid table */}
+      <div className="flex-[0.9] overflow-auto p-4 sm:p-6">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }} className="mx-auto flex h-full max-w-7xl flex-col">
+          <div className="overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              {/* Header row */}
+              <div className="flex shrink-0 border-b border-slate-200 dark:border-slate-700" style={{ minWidth: 'min-content' }}>
+                {/* Corner cell */}
+                <div className="shrink-0 border-r border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800" style={{ width: LABEL_WIDTH }} />
+
+                {/* Plan headers */}
+                <SortableContext items={visiblePlanKeys} strategy={horizontalListSortingStrategy}>
+                  {visiblePlanKeys.map((planKey, index) => (
+                    <SortablePlanHeader
+                      key={planKey}
+                      planKey={planKey}
+                      index={index}
+                      plan={draft.plans[planKey]}
+                      currency={resolvedCurrency}
+                      isHovered={hoveredCol === index}
+                      onHover={(h) => setHoveredCol(h ? index : null)}
+                      onEdit={() => setEditingPlan(planKey)}
+                      onRemove={() => handleRemovePlan(planKey)}
+                      onPriceChange={(v) => handlePlanPriceChange(planKey, v)}
+                      onUnitChange={(v) => handlePlanUnitChange(planKey, v)}
+                      canRemove={visiblePlanKeys.length > 1}
+                    />
+                  ))}
+                </SortableContext>
+
+                {/* Add plan button */}
+                <div className="flex shrink-0 items-center justify-center border-b border-slate-200 bg-slate-50 py-4 dark:border-slate-700 dark:bg-slate-800" style={{ width: TRAILING_WIDTH }}>
+                  <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} type="button"
+                    onClick={() => handleAddPlan()}
+                    className="cursor-pointer rounded-full bg-slate-100 p-2 text-slate-400 transition-colors hover:bg-orange-100 hover:text-[#fa520f] dark:bg-slate-700 dark:text-slate-500 dark:hover:bg-orange-950 dark:hover:text-orange-400"
+                    title="Add plan"><FaPlus className="h-3.5 w-3.5" /></motion.button>
+                </div>
+              </div>
+
+              {/* Body — flex-based for proper DnD alignment */}
+              <div className="flex flex-col" style={{ minWidth: 'min-content' }}>
+
+                {/* ── Features section ── */}
+                <div className="flex shrink-0 items-center border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Features</span>
+                </div>
+                <AddRowTrigger label="Add feature" onAdd={handleAddFeature} />
+                <SortableContext items={featureKeys} strategy={verticalListSortingStrategy}>
+                  {featureKeys.map((featureKey) => {
+                    const feature = featureMap[featureKey];
+                    if (!feature) return null;
+                    return (
+                      <Fragment key={featureKey}>
+                        <SortableFeatureRow
+                          featureKey={featureKey}
+                          feature={feature}
+                          planKeys={visiblePlanKeys}
+                          draft={draft}
+                          onToggle={handleToggleFeature}
+                          onSetCellValue={handleSetCellValue}
+                          onEdit={() => setEditingFeature(featureKey)}
+                          onRemove={() => handleRemoveFeature(featureKey)}
+                          onToggleRender={handleToggleRender}
+                          onRename={(oldKey, newKey) => handleRename('feature', oldKey, newKey)}
+                          isCreating={creatingRowKey === featureKey}
+                          onCreatingConfirm={handleCreatingConfirm}
+                          onCreatingCancel={handleCreatingCancel}
+                        />
+                        <AddRowTrigger label="Add feature" onAdd={handleAddFeature} />
+                      </Fragment>
+                    );
+                  })}
+                </SortableContext>
+
+                {/* ── Usage Limits section ── */}
+                <div className="flex shrink-0 items-center border-b border-t border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Usage Limits</span>
+                </div>
+                <AddRowTrigger label="Add usage limit" onAdd={handleAddUsageLimitInline} />
+                <SortableContext items={usageLimitKeys} strategy={verticalListSortingStrategy}>
+                  {usageLimitKeys.map((usageKey) => {
+                    const usage = usageLimitMap[usageKey];
+                    if (!usage) return null;
+                    return (
+                      <Fragment key={usageKey}>
+                        <SortableUsageLimitRow
+                          usageKey={usageKey}
+                          usage={usage}
+                          planKeys={visiblePlanKeys}
+                          draft={draft}
+                          onToggleRender={handleToggleRender}
+                          onEdit={() => setEditingFeature(usageKey)}
+                          onRename={(oldKey, newKey) => handleRename('usageLimit', oldKey, newKey)}
+                          isCreating={creatingRowKey === usageKey}
+                          onCreatingConfirm={handleCreatingConfirm}
+                          onCreatingCancel={handleCreatingCancel}
+                        />
+                        <AddRowTrigger label="Add usage limit" onAdd={handleAddUsageLimitInline} />
+                      </Fragment>
+                    );
+                  })}
+                </SortableContext>
+              </div>
+
+              {/* No DragOverlay — useSortable transform provides the visual feedback */}
+            </DndContext>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Side panels */}
+      <AnimatePresence>
+        {editingPlan && editingPlanData && (
+          <PlanSidePanel planKey={editingPlan} plan={editingPlanData} currency={resolvedCurrency}
+            onClose={() => setEditingPlan(null)}
+            onSave={(key, updates) => { applyMutation(updatePlanProps(draft, editingPlan, updates)); if (key !== editingPlan) { applyMutation(renamePlan(draft, editingPlan, key)); } setEditingPlan(null); }}
+          />
+        )}
+        {editingFeature && editingFeatureData && (
+          <FeatureSidePanel entityKey={editingFeature} entity={editingFeatureData} isFeature={editingFeatureIsFeature}
+            onClose={() => setEditingFeature(null)}
+            onSave={handleSaveEntity}
+            onConvert={handleConvertEntity}
+          />
+        )}
+        {creatingUsageLimit && (
+          <UsageLimitSidePanel featureKeys={featureKeys}
+            onClose={() => setCreatingUsageLimit(false)}
+            onSave={(data) => {
+              const mutated = structuredClone(draft);
+              if (!mutated.usageLimits) mutated.usageLimits = {};
+              mutated.usageLimits[data.name] = {
+                description: '', valueType: 'NUMERIC', defaultValue: data.defaultValue,
+                unit: data.unit, type: data.type, linkedFeatures: [data.linkedFeature],
+              };
+              for (const plan of Object.values(mutated.plans)) {
+                if (plan.usageLimits !== null && plan.usageLimits !== undefined) {
+                  plan.usageLimits[data.name] = { value: data.defaultValue };
+                }
+              }
+              applyMutation(mutated);
+              setCreatingUsageLimit(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

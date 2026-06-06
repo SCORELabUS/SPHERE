@@ -16,6 +16,7 @@ import { parseEncodedYamlToStringYaml } from '../../services/export.service';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 import EditorSkeleton from '../../../core/components/skeletons/editor-skeleton';
+import type { PricingDraft } from '../../services/pricing2yaml';
 
 type SyntaxVersion = '3.0' | '3.1';
 
@@ -46,7 +47,7 @@ export default function EditorPage() {
   const [selectedSyntaxVersion, setSelectedSyntaxVersion] = useState<SyntaxVersion>('3.0');
 
   const { mode } = useMode();
-  const { editorValue, setEditorValue, editorMode } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft } = useEditorValue();
   const {getFromCache} = useCacheApi();
 
   const timeoutRef = useRef<any>(null);
@@ -209,9 +210,10 @@ export default function EditorPage() {
     }
   }
 
-  const handleVisualYamlChange = useCallback((newYaml: string) => {
-    setEditorValue(newYaml);
-  }, [setEditorValue]);
+  const handleVisualDraftChange = useCallback((draft: PricingDraft) => {
+    setPendingVisualDraft(draft);
+    setIsDirty(true);
+  }, [setPendingVisualDraft, setIsDirty]);
 
   return (
     <>
@@ -231,9 +233,10 @@ export default function EditorPage() {
           >
             {pricing ? (
               <VisualPricingEditor
-                pricing={pricing}
                 yaml={editorValue}
-                onYamlChange={handleVisualYamlChange}
+                isDirty={isDirty}
+                onDraftChange={handleVisualDraftChange}
+                onSave={saveDraft}
               />
             ) : (
               <EditorSkeleton />

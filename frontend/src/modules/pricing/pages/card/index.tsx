@@ -237,6 +237,31 @@ export default function CardPage() {
       .catch(() => {});
   };
 
+  const handleRename = (newName: string) => {
+    if (!slug) return;
+    customConfirm(
+      `Are you sure you want to rename this pricing to "${newName}"? You'll be redirected to the new URL.`,
+      { danger: false }
+    ).then(() => {
+      updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName })
+        .then((data: any) => {
+          if (data?.error) {
+            customAlert(`Error: ${data.error}`, 'error');
+            return;
+          }
+          const newSlug = data?.slug ?? slug;
+          setPricingName(newName);
+          customAlert('Pricing renamed successfully', 'success');
+          if (newSlug !== slug) {
+            router.push(`/pricings/${organizationId}/${newSlug}${collectionSlug ? `?collectionSlug=${collectionSlug}` : ''}`);
+          }
+        })
+        .catch((error: Error) => {
+          customAlert(`Error: ${error.message}`, 'error');
+        });
+    }).catch(() => {});
+  };
+
   const handleDeleteCurrentVersion = () => {
     if (!slug || !currentVersion) return;
     customConfirm(`Are you sure you want to delete version ${currentVersion.version}? This action is irreversible.`, { danger: true })
@@ -593,8 +618,10 @@ export default function CardPage() {
               <PricingSettingsTab
                 entityPermissions={entityPermissions}
                 visibility={visibility}
+                pricingName={pricingName}
                 currentVersion={currentVersion}
                 onVisibilityChange={handleVisibilityChange}
+                onRename={handleRename}
                 onDeleteCurrentVersion={handleDeleteCurrentVersion}
                 onDeletePricing={handleDeletePricing}
               />
