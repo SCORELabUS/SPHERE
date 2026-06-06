@@ -1481,6 +1481,108 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(404);
       expect(response.body.error).toBeDefined();
     });
+
+    it('Return 200 and updated name/slug when owner renames pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const newName = `Renamed_${randomSuffix()}`;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: newName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(newName);
+      expect(response.body.slug).toBeDefined();
+      expect(response.body.versions.length).toBeGreaterThanOrEqual(1);
+
+      const getResponse = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${response.body.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.name).toBe(newName);
+    });
+
+    it('Return 200 and deduplicated slug when rename target collides with existing pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName: existingName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const { serviceName: pricingToRename } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${pricingToRename}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: existingName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(existingName);
+      expect(response.body.slug).toBeDefined();
+
+      const expectedSlug = existingName.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
+      expect(response.body.slug).not.toBe(expectedSlug);
+      expect(response.body.slug).toMatch(new RegExp(`^${expectedSlug}-`));
+    });
+
+    it('Return 200 and all versions updated when renaming pricing with multiple versions.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+      await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      const newName = `MultiVersion_${randomSuffix()}`;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: newName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(newName);
+      expect(response.body.versions.length).toBe(2);
+
+      const getResponse = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${response.body.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.name).toBe(newName);
+      expect(getResponse.body.versions.length).toBe(2);
+    });
+
+    it('Return 200 and slug unchanged when name is not provided.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ url: 'https://example.com/updated' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(serviceName);
+    });
   });
 
   describe('DELETE /api/v1/pricings/:organizationId/:pricingName', () => {

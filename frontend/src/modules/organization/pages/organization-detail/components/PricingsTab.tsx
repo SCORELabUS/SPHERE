@@ -93,7 +93,7 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
                 const menuItems: MenuItem[] = showMenu
                   ? [{
                       label: 'Add to collection',
-                      icon: 'link',
+                      icon: 'plus',
                       onClick: () => setAddToCollectionPricing(pricing),
                     }]
                   : [];

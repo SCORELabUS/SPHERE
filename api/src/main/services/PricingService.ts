@@ -508,11 +508,19 @@ class PricingService {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
     }
 
+    if (data.name) {
+      const baseSlug = generateSlug(data.name);
+      data.slug = await deduplicateSlug(baseSlug, async (slug) => {
+        return this.pricingRepository.findExistingSlug(slug, effectiveOrgId);
+      });
+    }
+
     for (const pricingVersion of pricing.versions) {
       await this.pricingRepository.update(pricingVersion.id, data);
     }
 
-    const updatedPricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
+    const effectiveSlug = data.slug || pricingSlug;
+    const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,
     });
