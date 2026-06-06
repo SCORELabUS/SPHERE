@@ -105,7 +105,15 @@ class PricingCollectionService {
       ...queryParams,
       limit: queryParams?.limit ?? 10,
       offset: queryParams?.offset ?? 0,
-      ...(permissions.isGlobalAdmin ? {} : { organizationIds: userOrganizationsIds }),
+      ...(permissions.isGlobalAdmin
+        ? queryParams?.organizationIds
+          ? { organizationIds: queryParams.organizationIds }
+          : {}
+        : {
+            organizationIds: queryParams?.organizationIds
+              ? queryParams.organizationIds.filter((id: string) => userOrganizationsIds.includes(id))
+              : userOrganizationsIds,
+          }),
     };
     const collections = await this.pricingCollectionRepository.findAll(
       enhancedQueryParams,

@@ -1417,6 +1417,13 @@ paths:
 
         **Supported Filters**: `name`, `organizationIds`, `sortBy`, `sort`.
 
+        The `organizationIds` query parameter accepts a comma-separated list of
+        organization IDs. For non-admin users, only organization IDs the user
+        belongs to are considered; IDs of organizations the user is not a member
+        of are silently ignored. For global admins, the filter is applied as
+        provided. When omitted, collections from all accessible organizations are
+        returned.
+
       tags:
         - User Access
       security:
@@ -5909,7 +5916,7 @@ components:
       name: organizationIds
       in: query
       required: false
-      description: Comma-separated list of organization IDs to filter pricings by (only pricings that belong to these organizations will be included in the results)
+      description: Comma-separated list of organization IDs to filter by. Non-admin users can only filter by organizations they belong to; non-member organization IDs are ignored. When omitted, results include all accessible organizations.
       schema:
         type: string
         example: "68050bd09890322c57842f6f,68050bd09890322c57842f70"

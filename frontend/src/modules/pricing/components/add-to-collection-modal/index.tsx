@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { usePricingCollectionsApi } from '../../../profile/api/pricingCollectionsApi';
 import { usePricingsApi } from '../../api/pricingsApi';
 import customAlert from '../../../core/utils/custom-alert';
+import { useParams } from 'react-router-dom';
 
 interface Collection {
   id: string;
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded, onClose }: Props) {
+  const { organizationId } = useParams<{ organizationId: string }>();
   const { getPermissionBasedUserCollections } = usePricingCollectionsApi();
   const { addPricingToCollection } = usePricingsApi();
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -27,11 +29,11 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
   const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
-    getPermissionBasedUserCollections()
+    getPermissionBasedUserCollections({ organizationIds: organizationId! })
       .then(data => setCollections(data.collections ?? []))
       .catch(() => setCollections([]))
       .finally(() => setIsLoading(false));
-  }, [getPermissionBasedUserCollections]);
+  }, [getPermissionBasedUserCollections, organizationId]);
 
   const filtered = collections.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
@@ -41,7 +43,7 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
     if (isAdding) return;
     setIsAdding(true);
     try {
-      await addPricingToCollection(pricingSlug, collection.id);
+      await addPricingToCollection(organizationId!, pricingSlug, collection.id);
       customAlert(`"${pricingName}" added to "${collection.name}"`, 'success');
       onAdded();
     } catch {

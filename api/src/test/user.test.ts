@@ -6,7 +6,10 @@ import { createTestUser, createAndLoginUser, deleteTestUser } from './utils/user
 import {
   createTestOrganizationDirect,
   createMembership,
+  createEntityScopedPermission,
 } from './utils/organizations/organizationTestUtils';
+import { createTestCollection } from './utils/collections/collectionTestUtils';
+import { randomSuffix } from './utils/helpers';
 import { LeanUser } from '../main/types/models/User';
 import { BASE_PATH, TEST_PASSWORD } from './utils/config/variables';
 import testContainer from './utils/config/testContainer';
@@ -1353,6 +1356,398 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
         .send({ avatarBgColor: '#000000', avatarFgColor: '#ffffff' });
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/v1/users/me/collections - organizationIds filtering', () => {
+    it('Return 200 and collections from all user organizations when no organizationIds param is provided.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      const col1 = await createTestCollection({ _organizationId: org1, name: `Col1_${randomSuffix()}` });
+      const col2 = await createTestCollection({ _organizationId: org2, name: `Col2_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBeGreaterThanOrEqual(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(col1.name);
+      expect(names).toContain(col2.name);
+    });
+
+    it('Return 200 and only collections from the specified organization when organizationIds contains a single org.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      await createTestCollection({ _organizationId: org1, name: `Org1Col_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `Org2Col_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org2}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].organization.id).toBe(org2);
+    });
+
+    it('Return 200 and only collections from the specified organizations when organizationIds contains multiple orgs.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+      const { organizationId: org3 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+      await createMembership(user.id, org3, 'MEMBER');
+
+      await createTestCollection({ _organizationId: org1, name: `O1_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `O2_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org3, name: `O3_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org1},${org2}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      const orgIds = response.body.collections.map((c: any) => c.organization.id);
+      expect(orgIds).not.toContain(org3);
+      expect(orgIds).toContain(org1);
+      expect(orgIds).toContain(org2);
+    });
+
+    it('Return 200 and empty collections when organizationIds contains an org the user does not belong to.', async () => {
+      const { user } = await createAndLoginUser('USER');
+      const { organizationId: foreignOrg } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: foreignOrg, name: `Foreign_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${foreignOrg}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(0);
+      expect(response.body.total).toBe(0);
+    });
+
+    it('Return 200 and only public collections from specified org when MEMBER has no explicit permissions on private collections.', async () => {
+      const { organizationId: org } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, org, 'MEMBER');
+
+      const publicCol = await createTestCollection({
+        _organizationId: org,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+      await createTestCollection({
+        _organizationId: org,
+        name: `Private_${randomSuffix()}`,
+        private: true,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].name).toBe(publicCol.name);
+    });
+
+    it('Return 200 and private collection when MEMBER has explicit GET permission via entity-scoped permission.', async () => {
+      const { organizationId: org } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, org, 'MEMBER');
+
+      const privateCol = await createTestCollection({
+        _organizationId: org,
+        name: `Private_${randomSuffix()}`,
+        private: true,
+      });
+      await createTestCollection({
+        _organizationId: org,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+
+      await createEntityScopedPermission(member.id, org, privateCol.id, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(privateCol.name);
+    });
+
+    it('Return 200 and all collections (public + private) when OWNER filters by own organization.', async () => {
+      const { user, organizationId: org } = await createAndLoginUser('USER');
+
+      const publicCol = await createTestCollection({
+        _organizationId: org,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+      const privateCol = await createTestCollection({
+        _organizationId: org,
+        name: `Private_${randomSuffix()}`,
+        private: true,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(publicCol.name);
+      expect(names).toContain(privateCol.name);
+    });
+
+    it('Return 200 and all collections (public + private) when ADMIN of an org filters by that org.', async () => {
+      const { organizationId: org } = await createTestUser('USER');
+      const { user: admin } = await createAndLoginUser('USER');
+
+      await createMembership(admin.id, org, 'ADMIN');
+
+      await createTestCollection({
+        _organizationId: org,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+      await createTestCollection({
+        _organizationId: org,
+        name: `Private_${randomSuffix()}`,
+        private: true,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}`)
+        .set('Authorization', `Bearer ${admin.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+    });
+
+    it('Return 200 and only public collections from org where user is MEMBER, plus all from org where user is OWNER.', async () => {
+      const { user, organizationId: ownerOrg } = await createAndLoginUser('USER');
+      const { organizationId: memberOrg } = await createTestUser('USER');
+
+      await createMembership(user.id, memberOrg, 'MEMBER');
+
+      await createTestCollection({ _organizationId: ownerOrg, name: `OwnerPub_${randomSuffix()}`, private: false });
+      await createTestCollection({ _organizationId: ownerOrg, name: `OwnerPriv_${randomSuffix()}`, private: true });
+      await createTestCollection({ _organizationId: memberOrg, name: `MemberPub_${randomSuffix()}`, private: false });
+      await createTestCollection({ _organizationId: memberOrg, name: `MemberPriv_${randomSuffix()}`, private: true });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(3);
+
+      const ownerCols = response.body.collections.filter((c: any) => c.organization.id === ownerOrg);
+      expect(ownerCols.length).toBe(2);
+
+      const memberCols = response.body.collections.filter((c: any) => c.organization.id === memberOrg);
+      expect(memberCols.length).toBe(1);
+    });
+
+    it('Return 200 and empty list when organizationIds is a valid but non-member org id.', async () => {
+      const { user } = await createAndLoginUser('USER');
+      const { organizationId: otherOrg } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: otherOrg, name: `Other_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${otherOrg}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(0);
+    });
+
+    it('Return 200 and correct total count when filtering by organizationIds.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      await createTestCollection({ _organizationId: org1, name: `C1_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org1, name: `C2_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `C3_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org1}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(2);
+      expect(response.body.collections.length).toBe(2);
+    });
+
+    it('Return 200 and combine organizationIds with name filter.', async () => {
+      const { user, organizationId: org1 } = await createAndLoginUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createMembership(user.id, org2, 'MEMBER');
+
+      const target = await createTestCollection({
+        _organizationId: org1,
+        name: `UniqueName_${randomSuffix()}`,
+      });
+      await createTestCollection({ _organizationId: org1, name: `Other_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `UniqueName_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org1}&name=${encodeURIComponent(target.name)}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].name).toBe(target.name);
+    });
+
+    it('Return 200 and filter collections by organizationIds for global admin.', async () => {
+      const { organizationId: org1 } = await createTestUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: org1, name: `Admin1_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `Admin2_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org1}`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].organization.id).toBe(org1);
+    });
+
+    it('Return 200 and all collections for global admin when no organizationIds filter.', async () => {
+      const { organizationId: org1 } = await createTestUser('USER');
+      const { organizationId: org2 } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: org1, name: `AdminAll1_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: org2, name: `AdminAll2_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('Return 200 and MEMBER private collections with GET permission are excluded when filtering a different org.', async () => {
+      const { organizationId: orgA } = await createTestUser('USER');
+      const { organizationId: orgB } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, orgA, 'MEMBER');
+      await createMembership(member.id, orgB, 'MEMBER');
+
+      const privateColA = await createTestCollection({
+        _organizationId: orgA,
+        name: `PrivA_${randomSuffix()}`,
+        private: true,
+      });
+      await createTestCollection({
+        _organizationId: orgB,
+        name: `PubB_${randomSuffix()}`,
+        private: false,
+      });
+
+      await createEntityScopedPermission(member.id, orgA, privateColA.id, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${orgB}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].organization.id).toBe(orgB);
+    });
+
+    it('Return 200 and respect pagination when using organizationIds filter.', async () => {
+      const { user, organizationId: org } = await createAndLoginUser('USER');
+
+      for (let i = 0; i < 5; i++) {
+        await createTestCollection({ _organizationId: org, name: `Pag_${randomSuffix()}` });
+      }
+
+      const page1 = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}&limit=2&offset=0`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(page1.status).toBe(200);
+      expect(page1.body.collections.length).toBe(2);
+      expect(page1.body.total).toBe(5);
+
+      const page2 = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${org}&limit=2&offset=2`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(page2.status).toBe(200);
+      expect(page2.body.collections.length).toBe(2);
+
+      const page1Ids = page1.body.collections.map((c: any) => c.id);
+      const page2Ids = page2.body.collections.map((c: any) => c.id);
+      expect(page1Ids.every((id: string) => !page2Ids.includes(id))).toBe(true);
+    });
+
+    it('Return 200 and ignore organizationIds for non-member orgs (intersection).', async () => {
+      const { user, organizationId: memberOrg } = await createAndLoginUser('USER');
+      const { organizationId: nonMemberOrg } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: memberOrg, name: `Member_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: nonMemberOrg, name: `NonMember_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${nonMemberOrg}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(0);
+    });
+
+    it('Return 200 and only use valid orgs from organizationIds intersection.', async () => {
+      const { user, organizationId: memberOrg } = await createAndLoginUser('USER');
+      const { organizationId: nonMemberOrg } = await createTestUser('USER');
+
+      await createTestCollection({ _organizationId: memberOrg, name: `Valid_${randomSuffix()}` });
+      await createTestCollection({ _organizationId: nonMemberOrg, name: `Invalid_${randomSuffix()}` });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${memberOrg},${nonMemberOrg}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].organization.id).toBe(memberOrg);
     });
   });
 });
