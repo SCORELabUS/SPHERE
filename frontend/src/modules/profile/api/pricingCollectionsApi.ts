@@ -150,8 +150,8 @@ export function usePricingCollectionsApi() {
       });
   }, [fetchWithInterceptor, token, username]);
 
-  const getCollectionByOwnerAndName = useCallback(async (ownerId: string, collectionSlug: string) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${ownerId}/${collectionSlug}`, {
+  const getCollectionByOrganizationAndSlug = useCallback(async (organizationId: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}`, {
       method: 'GET',
       headers: basicHeaders,
     })
@@ -168,8 +168,8 @@ export function usePricingCollectionsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const downloadCollection = useCallback(async (owner: string, collectionSlug: string) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${owner}/${collectionSlug}/download`, {
+  const downloadCollection = useCallback(async (organizationId: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}/download`, {
       method: 'GET',
       headers: basicHeaders,
     })
@@ -239,7 +239,7 @@ export function usePricingCollectionsApi() {
     getPermissionBasedUserCollections,
     createCollection,
     createBulkCollection,
-    getCollectionByOwnerAndName,
+    getCollectionByOrganizationAndSlug,
     getCollections,
     downloadCollection,
     getCollectionPermissions,
@@ -250,7 +250,7 @@ export function usePricingCollectionsApi() {
     getPermissionBasedUserCollections,
     createCollection,
     createBulkCollection,
-    getCollectionByOwnerAndName,
+    getCollectionByOrganizationAndSlug,
     getCollections,
     downloadCollection,
     getCollectionPermissions,

@@ -80,7 +80,7 @@ class PricingRepository extends RepositoryBase {
     organizationId: string,
     queryParams: {
       collectionId?: string;
-      collectionSlug?: string;
+      collection?: string;
       version?: string;
       includePrivate?: boolean;
       organizationId?: string;
@@ -92,55 +92,37 @@ class PricingRepository extends RepositoryBase {
       : { private: false }; // only include public
 
     try {
-      let pricing;
       const organizationMatch = { _organizationId: new mongoose.Types.ObjectId(organizationId) };
 
-      if (queryParams?.collectionSlug) {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: { ...visibilityMatch, ...organizationMatch },
-          },
-          ...getPricingBySlugOrganizationAndVersionAggregator(
-            slug,
-            organizationId,
-            queryParams.version
-          ),
-          {
-            $match: {
-              'collection.slug': queryParams.collectionSlug,
-            },
-          },
-        ]);
-      } else if (queryParams?.collectionId) {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: {
-              ...visibilityMatch,
-              ...organizationMatch,
+      const pipeline = [
+        {
+          $match: {
+            ...visibilityMatch,
+            ...organizationMatch,
+            ...(queryParams?.collectionId && {
               _collectionId: queryParams.collectionId,
-            },
+            }),
           },
-          ...getPricingBySlugOrganizationAndVersionAggregator(
-            slug,
-            organizationId,
-            queryParams.version
-          ),
-        ]);
-      } else {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: {
-              ...visibilityMatch,
-              ...organizationMatch,
-            },
-          },
-          ...getPricingBySlugOrganizationAndVersionAggregator(
-            slug,
-            organizationId,
-            queryParams.version
-          ),
-        ]);
-      }
+        },
+        ...getPricingBySlugOrganizationAndVersionAggregator(
+          slug,
+
+          organizationId,
+
+          queryParams.version
+        ),
+        ...(queryParams?.collection
+          ? [
+              {
+                $match: {
+                  'collection.slug': queryParams.collection,
+                },
+              },
+            ]
+          : []),
+      ];
+
+      const pricing = await PricingMongoose.aggregate(pipeline);
 
       if (!pricing || pricing.length === 0) {
         return null;
@@ -232,7 +214,7 @@ class PricingRepository extends RepositoryBase {
     return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
   }
 
-  async updateAnalytics(pricingId: string, analytics: PricingAnalytics, ...args: any) {
+  async updateAnalytics(pricingId: string, analytics: PricingAnalytics) {
     const pricing = await PricingMongoose.findOne({ _id: pricingId });
     if (!pricing) {
       return null;
@@ -257,10 +239,10 @@ class PricingRepository extends RepositoryBase {
     return result.modifiedCount === pricingsToUpdate.length;
   }
 
-  async addPricingToCollection(pricingName: string, organizationId: string, collectionId: string) {
+  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string) {
     return await PricingMongoose.updateMany(
       {
-        name: pricingName,
+        slug: pricingSlug,
         _organizationId: new mongoose.Types.ObjectId(organizationId),
       },
       {
@@ -271,14 +253,14 @@ class PricingRepository extends RepositoryBase {
 
   async addPricingsToCollection(collectionId: string, organizationId: string, pricings: string[]) {
     const result = await PricingMongoose.updateMany(
-      { name: { $in: pricings }, _organizationId: new mongoose.Types.ObjectId(organizationId) },
+      { slug: { $in: pricings }, _organizationId: new mongoose.Types.ObjectId(organizationId) },
       { $set: { _collectionId: collectionId } }
     );
 
     return result.modifiedCount === pricings.length;
   }
 
-  async update(id: string, data: any, ...args: any) {
+  async update(id: string, data: any) {
     const pricing = await PricingMongoose.findOne({ _id: id });
     if (!pricing) {
       return null;
@@ -290,10 +272,10 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject();
   }
 
-  async removePricingFromCollection(pricingName: string, organizationId: string) {
+  async removePricingFromCollection(pricingSlug: string, organizationId: string) {
     return await PricingMongoose.updateMany(
       {
-        name: pricingName,
+        slug: pricingSlug,
         _organizationId: new mongoose.Types.ObjectId(organizationId),
       },
       {

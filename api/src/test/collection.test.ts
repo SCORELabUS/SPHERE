@@ -16,6 +16,7 @@ import { LeanUser } from '../main/types/models/User';
 import { createMembership, createOrgScopedPermission } from './utils/organizations';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
+import { generateSlug } from '../main/utils/slug-manager';
 
 dotenv.config();
 
@@ -829,7 +830,7 @@ describe('Pricing Collections API integration', () => {
     it('returns 200 and removes a pricing from the collection for its owner', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
-      const pricingToRemove = await createPricingForOrganization({ organizationId });
+      const pricingToRemove = await createPricingForOrganization({ organizationId, serviceName: 'My Test Pricing' });
       const pricingToKeep = await createPricingForOrganization({ organizationId });
 
       const createdCollection = await createTestCollectionWithPricings(
@@ -837,9 +838,10 @@ describe('Pricing Collections API integration', () => {
         [pricingToRemove.serviceName, pricingToKeep.serviceName]
       );
 
+      const pricingSlug = generateSlug(pricingToRemove.serviceName);
       const res = await request(app)
         .delete(
-          `${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(createdCollection.slug)}/pricings/${encodeURIComponent(pricingToRemove.serviceName)}`
+          `${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(createdCollection.slug)}/pricings/${encodeURIComponent(pricingSlug)}`
         )
         .set('Authorization', `Bearer ${owner.token}`);
 

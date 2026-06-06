@@ -46,7 +46,7 @@ const fmtY = (v: number) => { if (!Number.isFinite(v)) return ''; return Math.ab
 export default function CollectionCardPage() {
   const { organizationId, collectionSlug } = useParams<{ organizationId: string; collectionSlug: string }>();
   const router = useRouter();
-  const { getCollectionByOwnerAndName, downloadCollection, getCollectionPermissions } = usePricingCollectionsApi();
+  const { getCollectionByOrganizationAndSlug, downloadCollection, getCollectionPermissions } = usePricingCollectionsApi();
   const { getPricings, removePricingFromCollection } = usePricingsApi();
   const { authUser } = useAuth();
   const { addRecentCollection } = useRecentItems();
@@ -70,7 +70,7 @@ export default function CollectionCardPage() {
   useEffect(() => {
     if (!organizationId || !collectionSlug) return;
     setIsLoadingCollection(true);
-    getCollectionByOwnerAndName(organizationId, collectionSlug)
+    getCollectionByOrganizationAndSlug(organizationId, collectionSlug)
       .then(data => {
         setCollection(data);
         getCollectionPermissions(organizationId, collectionSlug)
@@ -104,7 +104,7 @@ export default function CollectionCardPage() {
     setIsLoadingPricings(true);
     try {
       const filters: Record<string, string | number> = {
-        collectionSlug: collection?.slug || collectionSlug,
+        collection: collection?.slug || collectionSlug,
         limit: PRICINGS_PER_PAGE,
         offset: (pricingsPage - 1) * PRICINGS_PER_PAGE,
         sortBy: 'name',

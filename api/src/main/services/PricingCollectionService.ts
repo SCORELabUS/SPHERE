@@ -517,7 +517,7 @@ class PricingCollectionService {
   }
 
   async removePricingFromCollection(
-    pricingName: string,
+    pricingSlug: string,
     organizationId: string,
     collectionSlug: string,
     reqUser?: LeanUser
@@ -538,8 +538,8 @@ class PricingCollectionService {
         }
       }
 
-      const pricing = await this.pricingRepository.findOne(pricingName, organizationId, {
-        collectionSlug,
+      const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
+        collection: collectionSlug,
       });
 
       if (!pricing) {
@@ -548,7 +548,7 @@ class PricingCollectionService {
         );
       }
 
-      await this.pricingRepository.removePricingFromCollection(pricingName, organizationId);
+      await this.pricingRepository.removePricingFromCollection(pricingSlug, organizationId);
       if (pricing.versions[0]._collectionId) {
         await this.updateCollectionAnalytics(pricing.versions[0]._collectionId);
       } else {

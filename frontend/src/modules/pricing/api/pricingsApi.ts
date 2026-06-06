@@ -69,7 +69,7 @@ export function usePricingsApi() {
   const getPricingBySlug = useCallback(async (slug: string, organizationId: string, collectionSlug: string | null) => {
     return fetch(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
-        collectionSlug && collectionSlug !== 'undefined' ? `?collectionSlug=${collectionSlug}` : ''
+        collectionSlug && collectionSlug !== 'undefined' ? `?collection=${collectionSlug}` : ''
       }`,
       {
         method: 'GET',
@@ -232,7 +232,7 @@ export function usePricingsApi() {
 
    
   const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collectionSlug=${collectionSlug}`, {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collection=${collectionSlug}`, {
       method: 'PUT',
       headers: basicHeaders,
       body: JSON.stringify(pricingData),
@@ -314,7 +314,7 @@ export function usePricingsApi() {
   const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
-        collectionSlug ? `?collectionSlug=${collectionSlug}` : ''
+        collectionSlug ? `?collection=${collectionSlug}` : ''
       }`,
       {
         method: 'DELETE',

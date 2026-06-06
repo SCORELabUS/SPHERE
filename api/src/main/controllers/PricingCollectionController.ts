@@ -236,7 +236,7 @@ class PricingCollectionController {
   async removePricingFromCollection(req: any, res: any) {
     try {
       await this.pricingCollectionService.removePricingFromCollection(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.params.collectionSlug,
         req.user
