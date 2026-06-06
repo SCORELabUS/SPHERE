@@ -152,6 +152,34 @@ describe('Pricings API integration', () => {
       expect(response.body.pricings.length).toBe(1);
       expect(response.body.pricings[0].name).toBe(publicPricing.serviceName);
     });
+    
+    it('Return 200 and only pricings within collection.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const pricingInCollection = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId },
+        [pricingInCollection.serviceName]
+      );
+
+      const response = await request(app).get(
+        `${BASE_PATH}/pricings?collection=${encodeURIComponent(collection.slug || '')}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].name).toBe(pricingInCollection.serviceName);
+    });
 
     it('Return 200 and all pricings if ADMIN make the request.', async () => {
       const { organizationId } = await createTestUser('USER');
