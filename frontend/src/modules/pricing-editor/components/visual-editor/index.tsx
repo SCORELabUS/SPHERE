@@ -80,8 +80,7 @@ function HeaderInlineEdit({
         if (e.key === 'Escape') { setDraft(value); setEditing(false); }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="rounded bg-white/20 px-1 py-0.5 text-center text-sm font-semibold text-white outline-none ring-1 ring-white/30"
-      style={{ width: `${Math.max(draft.length, 3)}ch` }}
+      className="rounded bg-white/20 px-2 py-1 text-center text-sm font-semibold text-white outline-none ring-1 ring-white/30 min-w-[60px]"
     />
   );
 }
@@ -123,54 +122,64 @@ function CellInlineEdit({
   );
 }
 
-/* ─── Inline name editing (alphanumeric only) ─── */
+/* ─── Inline name editing (title display, camelCase on save) ─── */
 function NameInlineEdit({
-  value, onSave, className,
+  value, onSave, className, light,
 }: {
-  value: string; onSave: (newKey: string) => void; className?: string;
+  value: string; onSave: (newKey: string) => void; className?: string; light?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [draft, setDraft] = useState(camelToTitle(value));
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
-  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => { setDraft(camelToTitle(value)); }, [value]);
+
+  const toCamelCase = (s: string) => {
+    const trimmed = s.trim().replace(/[^a-zA-Z0-9\s]/g, '');
+    if (!trimmed) return '';
+    return trimmed.replace(/\s+(.)/g, (_, c: string) => c.toUpperCase()).replace(/^\s*/, '').replace(/^./, c => c.toLowerCase());
+  };
 
   if (!editing) {
     return (
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className={`cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 ${className ?? ''}`}
+        className={`cursor-pointer rounded px-1 py-0.5 transition-colors ${light ? 'hover:bg-white/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'} ${className ?? ''}`}
       >{camelToTitle(value)}</span>
     );
   }
 
   return (
     <input ref={inputRef} type="text" value={draft}
-      onChange={(e) => { const v = e.target.value.replace(/[^a-zA-Z0-9]/g, ''); setDraft(v); }}
-      onBlur={() => { setEditing(false); if (draft && draft !== value) onSave(draft); }}
+      onChange={(e) => setDraft(e.target.value.replace(/[^a-zA-Z0-9\s]/g, ''))}
+      onBlur={() => { setEditing(false); const k = toCamelCase(draft); if (k && k !== value) onSave(k); }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { setEditing(false); if (draft && draft !== value) onSave(draft); }
-        if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+        if (e.key === 'Enter') { setEditing(false); const k = toCamelCase(draft); if (k && k !== value) onSave(k); }
+        if (e.key === 'Escape') { setDraft(camelToTitle(value)); setEditing(false); }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
+      className={`w-full rounded border px-1.5 py-0.5 text-sm font-semibold outline-none ring-2 ${
+        light
+          ? 'border-white/30 bg-white/20 text-white ring-white/20'
+          : 'border-indigo-300 bg-white text-slate-900 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white'
+      }`}
     />
   );
 }
 
-/* ─── Add-row trigger between rows ─── */
+/* ─── Add-row trigger between rows (absolute over border) ─── */
 function AddRowTrigger({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <div className="group/addrow relative h-8 w-full cursor-pointer" onClick={onAdd}>
-      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center">
-        <div className="flex w-full items-center opacity-0 transition-opacity group-hover/addrow:opacity-100">
-          <div className="h-px flex-1 bg-orange-200 dark:bg-orange-800 transition-colors group-hover/addrow:bg-orange-400" />
+    <div className="group/addrow relative h-0 w-full" onClick={onAdd}>
+      <div className="absolute inset-x-0 top-0 z-10 flex -translate-y-1/2 items-center justify-center opacity-0 transition-opacity group-hover/addrow:opacity-100">
+        <div className="flex w-full items-center">
+          <div className="h-px flex-1 bg-orange-300 dark:bg-orange-700" />
           <span className="shrink-0 mx-2 rounded-full border border-dashed border-orange-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-500 shadow-sm dark:border-orange-600 dark:bg-slate-900 dark:text-orange-400">
             {label}
           </span>
-          <div className="h-px flex-1 bg-orange-200 dark:bg-orange-800 transition-colors group-hover/addrow:bg-orange-400" />
+          <div className="h-px flex-1 bg-orange-300 dark:bg-orange-700" />
         </div>
       </div>
     </div>
@@ -184,6 +193,12 @@ function CreatingNameInput({ initialKey, onConfirm, onCancel }: {
   const [name, setName] = useState(initialKey);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const toCamelCase = (s: string) => {
+    const trimmed = s.trim().replace(/[^a-zA-Z0-9\s]/g, '');
+    if (!trimmed) return '';
+    return trimmed.replace(/\s+(.)/g, (_, c: string) => c.toUpperCase()).replace(/^\s*/, '').replace(/^./, c => c.toLowerCase());
+  };
+
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
@@ -191,10 +206,10 @@ function CreatingNameInput({ initialKey, onConfirm, onCancel }: {
 
   return (
     <input ref={inputRef} value={name}
-      onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-      onBlur={() => { const k = name.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k && k !== initialKey) onConfirm(k); else onCancel(); }}
+      onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9\s]/g, ''))}
+      onBlur={() => { const k = toCamelCase(name); if (k && k !== initialKey) onConfirm(k); else onCancel(); }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { const k = name.trim().replace(/[^a-zA-Z0-9]/g, ''); if (k) onConfirm(k); else onCancel(); }
+        if (e.key === 'Enter') { const k = toCamelCase(name); if (k) onConfirm(k); else onCancel(); }
         if (e.key === 'Escape') onCancel();
       }}
       className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
@@ -420,12 +435,13 @@ function UsageLimitSidePanel({ featureKeys, onClose, onSave }: {
 /* ─── Sortable Plan Header Cell ─── */
 /* ════════════════════════════════════════════════════════════════════ */
 function SortablePlanHeader({
-  planKey, index, plan, currency, isHovered, onHover, onEdit, onRemove, onPriceChange, onUnitChange, canRemove,
+  planKey, index, plan, currency, isHovered, onHover, onEdit, onRemove, onPriceChange, onUnitChange, onRename, canRemove,
 }: {
   planKey: string; index: number; plan: DraftPlan; currency: string;
   isHovered: boolean; onHover: (hovered: boolean) => void;
   onEdit: () => void; onRemove: () => void;
   onPriceChange: (v: string) => void; onUnitChange: (v: string) => void;
+  onRename: (oldKey: string, newKey: string) => void;
   canRemove: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: planKey });
@@ -453,9 +469,8 @@ function SortablePlanHeader({
           <FaGripVertical className="h-3 w-3" />
         </div>
         <div className="relative">
-          <span className="cursor-pointer rounded px-2 py-0.5 text-white transition-colors hover:bg-white/20">
-            {planKey.toUpperCase()}
-          </span>
+          <NameInlineEdit value={planKey} onSave={(newKey) => onRename(planKey, newKey)} light
+            className="!text-white rounded px-2 py-0.5" />
         </div>
         <div className="mt-1">
           {plan.price === 0 ? (
@@ -532,7 +547,7 @@ function SortableFeatureRow({
       style={style}
       className="group"
     >
-      <div className={`flex ${isDisabled ? 'opacity-[0.6]' : ''}`} style={{ width: '100%' }}>
+      <div className={`flex ${isDisabled ? 'opacity-[0.4]' : ''}`} style={{ width: '100%' }}>
         {/* Label cell */}
         <div className="relative flex shrink-0 items-center gap-1.5 border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
           style={{ width: LABEL_WIDTH }}>
@@ -661,7 +676,7 @@ function SortableUsageLimitRow({
       style={style}
       className="group"
     >
-      <div className={`flex ${isDisabled ? 'opacity-[0.6]' : ''}`} style={{ width: '100%' }}>
+      <div className={`flex ${isDisabled ? 'opacity-[0.4]' : ''}`} style={{ width: '100%' }}>
         {/* Label */}
         <div className="relative flex shrink-0 items-center gap-1.5 border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
           style={{ width: LABEL_WIDTH }}>
@@ -812,7 +827,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     applyMutation(updateRenderMode(draft, entityType, key, next));
   }, [draft, applyMutation]);
 
-  const handleRename = useCallback((entityType: 'feature' | 'usageLimit', oldKey: string, newKey: string) => {
+  const handleRename = useCallback((entityType: 'feature' | 'usageLimit' | 'plan', oldKey: string, newKey: string) => {
     if (oldKey === newKey || !newKey) return;
     const mutated = structuredClone(draft);
     if (entityType === 'feature') {
@@ -827,13 +842,22 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
           if (ul.linkedFeatures) ul.linkedFeatures = ul.linkedFeatures.map(f => f === oldKey ? newKey : f);
         }
       }
-    } else {
+    } else if (entityType === 'usageLimit') {
       if (!mutated.usageLimits) return;
       if (mutated.usageLimits[newKey]) return;
       mutated.usageLimits[newKey] = mutated.usageLimits[oldKey];
       delete mutated.usageLimits[oldKey];
       for (const plan of Object.values(mutated.plans)) {
         if (plan.usageLimits?.[oldKey]) { plan.usageLimits[newKey] = plan.usageLimits[oldKey]; delete plan.usageLimits[oldKey]; }
+      }
+    } else {
+      if (mutated.plans[newKey]) return;
+      mutated.plans[newKey] = mutated.plans[oldKey];
+      delete mutated.plans[oldKey];
+      if (mutated.addOns) {
+        for (const ao of Object.values(mutated.addOns)) {
+          if (ao.availableFor) ao.availableFor = ao.availableFor.map(p => p === oldKey ? newKey : p);
+        }
       }
     }
     applyMutation(mutated);
@@ -1111,6 +1135,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                       onRemove={() => handleRemovePlan(planKey)}
                       onPriceChange={(v) => handlePlanPriceChange(planKey, v)}
                       onUnitChange={(v) => handlePlanUnitChange(planKey, v)}
+                      onRename={(oldKey, newKey) => handleRename('plan', oldKey, newKey)}
                       canRemove={visiblePlanKeys.length > 1}
                     />
                   ))}
