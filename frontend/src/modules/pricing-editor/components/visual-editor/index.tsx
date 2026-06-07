@@ -22,6 +22,7 @@ import {
   updateRenderMode,
   addPlan,
   removePlan,
+  removeUsageLimit,
   renamePlan,
   ensureSyntaxVersion31,
 } from '../../services/pricing2yaml';
@@ -160,7 +161,7 @@ function NameInlineEdit({
         if (e.key === 'Escape') { setDraft(camelToTitle(value)); setEditing(false); }
       }}
       onClick={(e) => e.stopPropagation()}
-      className={`w-full rounded border px-1.5 py-0.5 text-sm font-semibold outline-none ring-2 ${
+      className={`w-full rounded border px-1.5 py-0.5 text-sm font-semibold text-center outline-none ring-2 ${
         light
           ? 'border-white/30 bg-white/20 text-white ring-white/20'
           : 'border-indigo-300 bg-white text-slate-900 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white'
@@ -172,11 +173,11 @@ function NameInlineEdit({
 /* ─── Add-row trigger between rows (absolute over border) ─── */
 function AddRowTrigger({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <div className="group/addrow relative h-0 w-full" onClick={onAdd}>
+    <div className="group/addrow relative h-0 w-full cursor-pointer" onClick={onAdd}>
       <div className="absolute inset-x-0 top-0 z-10 flex -translate-y-1/2 items-center justify-center opacity-0 transition-opacity group-hover/addrow:opacity-100">
         <div className="flex w-full items-center">
           <div className="h-px flex-1 bg-orange-300 dark:bg-orange-700" />
-          <span className="shrink-0 mx-2 rounded-full border border-dashed border-orange-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-500 shadow-sm dark:border-orange-600 dark:bg-slate-900 dark:text-orange-400">
+          <span className="shrink-0 mx-2 cursor-pointer rounded-full border border-dashed border-orange-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-500 shadow-sm dark:border-orange-600 dark:bg-slate-900 dark:text-orange-400">
             {label}
           </span>
           <div className="h-px flex-1 bg-orange-300 dark:bg-orange-700" />
@@ -459,7 +460,7 @@ function SortablePlanHeader({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="group relative shrink-0 grow border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
+      className="group relative shrink-0 grow min-w-[140px] overflow-hidden overflow-hidden border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
@@ -470,17 +471,13 @@ function SortablePlanHeader({
         </div>
         <div className="relative">
           <NameInlineEdit value={planKey} onSave={(newKey) => onRename(planKey, newKey)} light
-            className="!text-white rounded px-2 py-0.5" />
+            className="!text-white !font-bold !uppercase tracking-wide rounded px-2 py-0.5" />
         </div>
-        <div className="mt-1">
-          {plan.price === 0 ? (
-            <span className="text-base font-bold text-white/90">FREE</span>
-          ) : (
-            <span className="flex items-center text-base font-bold text-white">
-              <HeaderInlineEdit value={String(plan.price)} onSave={onPriceChange} className="!text-base !font-bold !text-white" numeric selectOnFocus />
-              <span className="ml-0.5 text-sm font-normal text-white/70">{currency}</span>
-            </span>
-          )}
+        <div className="mt-1 flex items-center justify-center">
+          <span className="flex items-center text-base font-bold text-white">
+            <HeaderInlineEdit value={String(plan.price)} onSave={onPriceChange} className="!text-base !font-bold !text-white" numeric selectOnFocus />
+            <span className="ml-0.5 text-sm font-normal text-white/70">{currency}</span>
+          </span>
         </div>
         {plan.unit && <div className="mt-0.5"><HeaderInlineEdit value={plan.unit} onSave={onUnitChange} className="!text-xs !text-white/70" /></div>}
       </div>
@@ -590,7 +587,7 @@ function SortableFeatureRow({
         {/* Value cells */}
         {planKeys.map((planKey, pIdx) => {
           const plan = draft.plans[planKey];
-          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] border-b border-r border-slate-100 dark:border-slate-800" />;
+          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
           const featureValue = (plan?.features as Record<string, { value: unknown }> | undefined)?.[featureKey]?.value;
           const globalDefault = feature.defaultValue;
           const effectiveValue = featureValue ?? globalDefault;
@@ -598,7 +595,7 @@ function SortableFeatureRow({
 
           if (typeof effectiveValue === 'boolean') {
             return (
-              <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+              <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
                 <motion.div className="flex cursor-pointer items-center justify-center"
                   onClick={() => onToggle(planKey, featureKey)}
                   whileTap={{ scale: 0.8 }} transition={FAST_SPRING}
@@ -623,7 +620,7 @@ function SortableFeatureRow({
           const isNumeric = typeof effectiveValue === 'number' || feature.valueType === 'NUMERIC';
 
           return (
-            <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+            <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
               {strVal ? (
                 <CellInlineEdit value={strVal} numeric={isNumeric}
                   onSave={(v) => { const p = isNumeric ? (v === '' ? 0 : Number(v)) : v; onSetCellValue(planKey, 'feature', featureKey, Number.isNaN(p) ? v : p); }}
@@ -648,13 +645,13 @@ function SortableFeatureRow({
 /* ════════════════════════════════════════════════════════════════════ */
 function SortableUsageLimitRow({
   usageKey, usage, planKeys, draft,
-  onToggleRender, onEdit, onRename,
+  onToggleRender, onEdit, onRemove, onRename,
   isCreating, onCreatingConfirm, onCreatingCancel,
 }: {
   usageKey: string; usage: DraftUsageLimit;
   planKeys: string[]; draft: PricingDraft;
   onToggleRender: (entityType: 'feature' | 'usageLimit', key: string) => void;
-  onEdit: () => void;
+  onEdit: () => void; onRemove: () => void;
   onRename: (oldKey: string, newKey: string) => void;
   isCreating?: boolean;
   onCreatingConfirm?: (newKey: string) => void;
@@ -706,18 +703,22 @@ function SortableUsageLimitRow({
               className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
               <FaPencil className="h-2.5 w-2.5" />
             </button>
+            <button type="button" onClick={onRemove}
+              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-red-500" title="Remove">
+              <FaTrash className="h-2.5 w-2.5" />
+            </button>
           </div>
         </div>
         {/* Values */}
         {planKeys.map((planKey, pIdx) => {
           const plan = draft.plans[planKey];
-          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] border-b border-r border-slate-100 dark:border-slate-800" />;
+          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
           const usageValue = (plan?.usageLimits as Record<string, { value: unknown }> | undefined)?.[usageKey]?.value;
           const effectiveValue = usageValue ?? usage.defaultValue;
           const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
           const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== 0 ? String(effectiveValue) : '';
           return (
-            <div key={planKey} className={`flex grow min-w-[140px] items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+            <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
               {strVal ? (
                 <span className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white">
                   {formatUsageDisplay(effectiveValue, usage as unknown as UsageLimit)}
@@ -852,8 +853,12 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       }
     } else {
       if (mutated.plans[newKey]) return;
-      mutated.plans[newKey] = mutated.plans[oldKey];
-      delete mutated.plans[oldKey];
+      // Preserve key order
+      const newPlans: Record<string, DraftPlan> = {};
+      for (const k of Object.keys(mutated.plans)) {
+        newPlans[k === oldKey ? newKey : k] = mutated.plans[k];
+      }
+      mutated.plans = newPlans;
       if (mutated.addOns) {
         for (const ao of Object.values(mutated.addOns)) {
           if (ao.availableFor) ao.availableFor = ao.availableFor.map(p => p === oldKey ? newKey : p);
@@ -881,10 +886,18 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   }, [draft, applyMutation]);
 
   /* ── Feature operations ── */
-  const handleAddFeature = useCallback(() => {
+  const handleAddFeature = useCallback((afterIndex?: number) => {
     const name = getNextName('feature', Object.keys(draft.features));
     const mutated = structuredClone(draft);
-    mutated.features[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN' };
+    // Insert at specific position
+    const newFeatures: Record<string, PricingDraft['features'][string]> = {};
+    const keys = Object.keys(mutated.features);
+    const insertAt = afterIndex !== undefined ? afterIndex + 1 : keys.length;
+    for (let i = 0; i <= keys.length; i++) {
+      if (i === insertAt) newFeatures[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN' };
+      if (i < keys.length) newFeatures[keys[i]] = mutated.features[keys[i]];
+    }
+    mutated.features = newFeatures;
     for (const plan of Object.values(mutated.plans)) {
       if (plan.features !== null && plan.features !== undefined) {
         plan.features[name] = { value: false };
@@ -894,14 +907,22 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     setCreatingRowKey(name);
   }, [draft, applyMutation, getNextName]);
 
-  const handleAddUsageLimitInline = useCallback(() => {
+  const handleAddUsageLimitInline = useCallback((afterIndex?: number) => {
     const name = getNextName('usageLimit', Object.keys(draft.usageLimits ?? {}));
     const mutated = structuredClone(draft);
     if (!mutated.usageLimits) mutated.usageLimits = {};
-    mutated.usageLimits[name] = {
-      description: '', valueType: 'NUMERIC', defaultValue: 0,
-      unit: 'unit', type: 'RENEWABLE', linkedFeatures: [],
-    };
+    // Insert at specific position
+    const newUsageLimits: Record<string, DraftUsageLimit> = {};
+    const keys = Object.keys(mutated.usageLimits);
+    const insertAt = afterIndex !== undefined ? afterIndex + 1 : keys.length;
+    for (let i = 0; i <= keys.length; i++) {
+      if (i === insertAt) newUsageLimits[name] = {
+        description: '', valueType: 'NUMERIC', defaultValue: 0,
+        unit: 'unit', type: 'RENEWABLE', linkedFeatures: [],
+      };
+      if (i < keys.length) newUsageLimits[keys[i]] = mutated.usageLimits[keys[i]];
+    }
+    mutated.usageLimits = newUsageLimits;
     for (const plan of Object.values(mutated.plans)) {
       if (plan.usageLimits !== null && plan.usageLimits !== undefined) {
         plan.usageLimits[name] = { value: 0 };
@@ -917,15 +938,23 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       const isFeature = creatingRowKey in draft.features;
       const mutated = structuredClone(draft);
       if (isFeature) {
-        mutated.features[newKey] = mutated.features[creatingRowKey];
-        delete mutated.features[creatingRowKey];
+        // Preserve key order
+        const newFeatures: Record<string, PricingDraft['features'][string]> = {};
+        for (const k of Object.keys(mutated.features)) {
+          newFeatures[k === creatingRowKey ? newKey : k] = mutated.features[k];
+        }
+        mutated.features = newFeatures;
         for (const plan of Object.values(mutated.plans)) {
           if (plan.features?.[creatingRowKey]) { plan.features[newKey] = plan.features[creatingRowKey]; delete plan.features[creatingRowKey]; }
         }
       } else {
         if (!mutated.usageLimits) mutated.usageLimits = {};
-        mutated.usageLimits[newKey] = mutated.usageLimits[creatingRowKey];
-        delete mutated.usageLimits[creatingRowKey];
+        // Preserve key order
+        const newUsageLimits: Record<string, DraftUsageLimit> = {};
+        for (const k of Object.keys(mutated.usageLimits)) {
+          newUsageLimits[k === creatingRowKey ? newKey : k] = mutated.usageLimits[k];
+        }
+        mutated.usageLimits = newUsageLimits;
         for (const plan of Object.values(mutated.plans)) {
           if (plan.usageLimits?.[creatingRowKey]) { plan.usageLimits[newKey] = plan.usageLimits[creatingRowKey]; delete plan.usageLimits[creatingRowKey]; }
         }
@@ -966,6 +995,10 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       }
     }
     applyMutation(mutated);
+  }, [draft, applyMutation]);
+
+  const handleRemoveUsageLimit = useCallback((limitKey: string) => {
+    applyMutation(removeUsageLimit(draft, limitKey));
   }, [draft, applyMutation]);
 
   const handleConvertEntity = useCallback((key: string, toType: 'feature' | 'usageLimit') => {
@@ -1157,9 +1190,9 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                 <div className="flex shrink-0 items-center border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Features</span>
                 </div>
-                <AddRowTrigger label="Add feature" onAdd={handleAddFeature} />
+                <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(-1)} />
                 <SortableContext items={featureKeys} strategy={verticalListSortingStrategy}>
-                  {featureKeys.map((featureKey) => {
+                  {featureKeys.map((featureKey, fIdx) => {
                     const feature = featureMap[featureKey];
                     if (!feature) return null;
                     return (
@@ -1179,7 +1212,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                           onCreatingConfirm={handleCreatingConfirm}
                           onCreatingCancel={handleCreatingCancel}
                         />
-                        <AddRowTrigger label="Add feature" onAdd={handleAddFeature} />
+                        <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(fIdx)} />
                       </Fragment>
                     );
                   })}
@@ -1189,9 +1222,9 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                 <div className="flex shrink-0 items-center border-b border-t border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Usage Limits</span>
                 </div>
-                <AddRowTrigger label="Add usage limit" onAdd={handleAddUsageLimitInline} />
+                <AddRowTrigger label="Add usage limit" onAdd={() => handleAddUsageLimitInline(-1)} />
                 <SortableContext items={usageLimitKeys} strategy={verticalListSortingStrategy}>
-                  {usageLimitKeys.map((usageKey) => {
+                  {usageLimitKeys.map((usageKey, uIdx) => {
                     const usage = usageLimitMap[usageKey];
                     if (!usage) return null;
                     return (
@@ -1203,12 +1236,13 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                           draft={draft}
                           onToggleRender={handleToggleRender}
                           onEdit={() => setEditingFeature(usageKey)}
+                          onRemove={() => handleRemoveUsageLimit(usageKey)}
                           onRename={(oldKey, newKey) => handleRename('usageLimit', oldKey, newKey)}
                           isCreating={creatingRowKey === usageKey}
                           onCreatingConfirm={handleCreatingConfirm}
                           onCreatingCancel={handleCreatingCancel}
                         />
-                        <AddRowTrigger label="Add usage limit" onAdd={handleAddUsageLimitInline} />
+                        <AddRowTrigger label="Add usage limit" onAdd={() => handleAddUsageLimitInline(uIdx)} />
                       </Fragment>
                     );
                   })}
