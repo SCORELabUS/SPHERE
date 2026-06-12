@@ -1,5 +1,6 @@
 import { TestCollection } from '../../types/Collections';
 import PricingCollectionMongoose, { generateSlug } from '../../../main/repositories/mongoose/models/PricingCollectionMongoose';
+import { generateSlug as generatePricingSlug } from '../../../main/utils/slug-manager';
 import testContainer from '../config/testContainer';
 import { createTestUser } from '../users/userTestUtils';
 import request from 'supertest';
@@ -14,9 +15,11 @@ export const createTestCollectionWithPricings = async (params: TestCollectionDat
     private: params.private || false,
   };
 
+  const pricingSlugs = pricings.map(name => generatePricingSlug(name));
+
   const payload = {
     ...collectionData,
-    pricings,
+    pricings: pricingSlugs,
   };
 
   const organizationId = params._organizationId || (await createTestUser("USER")).organizationId;

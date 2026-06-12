@@ -65,6 +65,12 @@ export const createPricingForOrganization = async (params: {
     .field('version', version)
     .attach('yaml', fixture.filePath);
 
+  if (response.status !== 200) {
+    throw new Error(
+      `Pricing creation failed with status ${response.status}: ${JSON.stringify(response.body)}`
+    );
+  }
+
   testContainer.resolve('pricingsToDelete').add(response.body.id);
 
   return { response, serviceName, version, id: response.body.id };
