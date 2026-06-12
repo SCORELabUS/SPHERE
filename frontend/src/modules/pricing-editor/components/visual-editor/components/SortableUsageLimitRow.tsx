@@ -1,17 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FaTimesCircle } from 'react-icons/fa';
 import { FaTrash, FaPencil, FaGripVertical, FaEye, FaEyeSlash } from 'react-icons/fa6';
 import { UsageLimit } from 'pricing4ts';
-import { formatUsageDisplay } from '../../pricing-renderer/shared/value-helpers';
 import { NameInlineEdit } from './NameInlineEdit';
 import { CreatingNameInput } from './CreatingNameInput';
+import { UsageValueCell } from './UsageValueCell';
 import { LABEL_WIDTH, TRAILING_WIDTH } from '../utils/constants';
 import type { PricingDraft, DraftUsageLimit } from '../../../services/pricing2yaml';
 
 export function SortableUsageLimitRow({
   usageKey, usage, planKeys, draft,
-  onToggleRender, onEdit, onRemove, onRename,
+  onToggleRender, onEdit, onRemove, onRename, onSetCellValue,
   isCreating, onCreatingConfirm, onCreatingCancel,
 }: {
   usageKey: string; usage: DraftUsageLimit;
@@ -19,6 +18,7 @@ export function SortableUsageLimitRow({
   onToggleRender: (entityType: 'feature' | 'usageLimit', key: string) => void;
   onEdit: () => void; onRemove: () => void;
   onRename: (oldKey: string, newKey: string) => void;
+  onSetCellValue: (planKey: string, cellType: 'feature' | 'usageLimit', cellKey: string, value: string | number | boolean) => void;
   isCreating?: boolean;
   onCreatingConfirm?: (newKey: string) => void;
   onCreatingCancel?: () => void;
@@ -82,16 +82,10 @@ export function SortableUsageLimitRow({
           const usageValue = (plan?.usageLimits as Record<string, { value: unknown }> | undefined)?.[usageKey]?.value;
           const effectiveValue = usageValue ?? usage.defaultValue;
           const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
-          const strVal = effectiveValue !== undefined && effectiveValue !== null && effectiveValue !== 0 ? String(effectiveValue) : '';
           return (
             <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
-              {strVal ? (
-                <span className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white">
-                  {formatUsageDisplay(effectiveValue, usage as unknown as UsageLimit)}
-                </span>
-              ) : (
-                <FaTimesCircle className="text-slate-300 dark:text-slate-600" />
-              )}
+              <UsageValueCell value={effectiveValue as string | number | boolean} usage={usage as unknown as UsageLimit}
+                onSave={(v) => onSetCellValue(planKey, 'usageLimit', usageKey, v)} />
             </div>
           );
         })}

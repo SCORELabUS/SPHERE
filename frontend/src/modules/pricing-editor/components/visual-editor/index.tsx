@@ -9,7 +9,7 @@ import {
   SortableContext, horizontalListSortingStrategy, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import {
-  parseDraftFromYaml, toggleFeatureValue, setCellValue, updatePlanProps, updateRenderMode,
+  parseDraftFromYaml, toggleFeatureValue, setCellValue, updatePlanProps, updateRenderMode, updateField,
   addPlan, removePlan, removeUsageLimit, ensureSyntaxVersion31,
 } from '../../services/pricing2yaml';
 import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit } from '../../services/pricing2yaml';
@@ -17,6 +17,7 @@ import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit } from '../
 import { SortablePlanHeader } from './components/SortablePlanHeader';
 import { SortableFeatureRow } from './components/SortableFeatureRow';
 import { SortableUsageLimitRow } from './components/SortableUsageLimitRow';
+import { CellInlineEdit } from './components/CellInlineEdit';
 import { AddRowTrigger } from './components/AddRowTrigger';
 import { PlanSidePanel } from './components/PlanSidePanel';
 import { FeatureSidePanel } from './components/FeatureSidePanel';
@@ -103,6 +104,15 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
 
   const handlePlanUnitChange = useCallback((planKey: string, unit: string) => {
     applyMutation(updatePlanProps(draft, planKey, { unit }));
+  }, [draft, applyMutation]);
+
+  const handleSaasNameChange = useCallback((name: string) => {
+    if (name && name !== draft.saasName) applyMutation(updateField(draft, 'saasName', name));
+  }, [draft, applyMutation]);
+
+  const handleCurrencyChange = useCallback((currency: string) => {
+    const v = currency.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+    if (v !== draft.currency) applyMutation(updateField(draft, 'currency', v));
   }, [draft, applyMutation]);
 
   const handleToggleRender = useCallback((entityType: 'feature' | 'usageLimit', key: string) => {
@@ -357,8 +367,10 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
         className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80"
       >
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{draft.saasName}</span>
-          {draft.currency && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">{draft.currency}</span>}
+          <CellInlineEdit value={draft.saasName} onSave={handleSaasNameChange}
+            className="!text-lg !font-bold !tracking-tight !text-slate-900 dark:!text-white" />
+          <CellInlineEdit value={draft.currency ?? ''} onSave={handleCurrencyChange}
+            className="!rounded-full !bg-slate-100 !px-2.5 !py-0.5 !text-xs !font-medium !text-slate-600 dark:!bg-slate-800 dark:!text-slate-400" />
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <span>{visiblePlanKeys.length} plans</span>
@@ -440,6 +452,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                           onToggleRender={handleToggleRender} onEdit={() => setEditingFeature(usageKey)}
                           onRemove={() => handleRemoveUsageLimit(usageKey)}
                           onRename={(ok, nk) => handleRename('usageLimit', ok, nk)}
+                          onSetCellValue={handleSetCellValue}
                           isCreating={creatingRowKey === usageKey} onCreatingConfirm={handleCreatingConfirm} onCreatingCancel={handleCreatingCancel} />
                         <AddRowTrigger label="Add usage limit" onAdd={() => handleAddUsageLimitInline(uIdx)} />
                       </Fragment>
