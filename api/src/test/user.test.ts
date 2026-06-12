@@ -174,6 +174,36 @@ describe('Users API integration', () => {
       expect(user.email).toBeDefined();
       expect(user.role).toBeDefined();
     });
+
+    it('Return 200 with q search excluding ADMIN users for USER role.', async () => {
+      const adminSuffix = `admintest_${Date.now()}`;
+      const userSuffix = `normaltest_${Date.now()}`;
+      await createTestUser('ADMIN', adminSuffix);
+      await createTestUser('USER', userSuffix);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users?q=${adminSuffix.substring(0, 10)}`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      const usernames = response.body.map((u: any) => u.username);
+      expect(usernames).not.toContain(adminSuffix);
+    });
+
+    it('Return 200 with q search including ADMIN users for ADMIN role.', async () => {
+      const adminSuffix = `admintest_${Date.now()}`;
+      await createTestUser('ADMIN', adminSuffix);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users?q=${adminSuffix.substring(0, 10)}`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      const usernames = response.body.map((u: any) => u.username);
+      expect(usernames).toContain(adminSuffix);
+    });
   });
 
   describe('GET /api/users/me', () => {
