@@ -11,7 +11,7 @@ const SPRING_MODAL = { type: 'spring' as const, stiffness: 400, damping: 30 };
 const SPRING_SOFT = { type: 'spring' as const, stiffness: 300, damping: 24 };
 const TAB_CONTENT_VARIANTS = {
   initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] as const } },
   exit: { opacity: 0, y: -6, transition: { duration: 0.15 } },
 };
 
@@ -200,7 +200,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] as const }}
                       className="overflow-hidden"
                     >
                       <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-tp-ink">Active invitations</p>
@@ -281,7 +281,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] as const }}
                       className="mb-4 overflow-hidden"
                     >
                       <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-tp-ink">
