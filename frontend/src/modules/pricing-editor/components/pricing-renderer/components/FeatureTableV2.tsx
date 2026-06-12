@@ -30,6 +30,13 @@ function hasNonEmptyValue(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === 'string') return value.trim() !== '';
   if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    for (const key of ['value', 'amount', 'quantity', 'defaultValue', 'max', 'limit', 'count']) {
+      if (typeof obj[key] === 'number') return obj[key] !== 0;
+      if (typeof obj[key] === 'string') return (obj[key] as string).trim() !== '';
+    }
+  }
   return true;
 }
 
@@ -298,6 +305,9 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     }
 
     if (typeof rawValue === 'string' || typeof rawValue === 'number') {
+      if (typeof rawValue === 'number' && rawValue === 0) {
+        return <FaTimesCircle className="mx-auto text-lg text-tp-muted" />;
+      }
       return (
         <span className="text-sm font-semibold uppercase tracking-wide text-tp-charcoal">{String(rawValue)}</span>
       );
