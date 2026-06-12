@@ -519,6 +519,28 @@ class PricingService {
       await this.pricingRepository.update(pricingVersion.id, data);
     }
 
+    if (data.name) {
+      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+      const processedPaths = new Set<string>();
+
+      for (const pricingVersion of pricing.versions) {
+        const yamlRelativePath = pricingVersion.yaml;
+        if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
+
+        processedPaths.add(yamlRelativePath);
+        const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+
+        if (!fs.existsSync(absolutePath)) continue;
+
+        const yamlContent = fs.readFileSync(absolutePath, 'utf8');
+        const yamlData = yaml.load(yamlContent) as Record<string, any>;
+        if (yamlData && typeof yamlData === 'object') {
+          yamlData['saasName'] = data.name;
+          fs.writeFileSync(absolutePath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+        }
+      }
+    }
+
     const effectiveSlug = data.slug || pricingSlug;
     const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
       ...queryParams,

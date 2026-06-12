@@ -1583,6 +1583,97 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.name).toBe(serviceName);
     });
+
+    it('Return 200 and YAML saasName updated when owner renames pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const newName = `YamlRename_${randomSuffix()}`;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: newName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(newName);
+
+      const yamlRelativePath = response.body.versions[0].yaml;
+      expect(yamlRelativePath).toBeDefined();
+
+      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+      const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+      const yamlContent = await fs.readFile(absolutePath, 'utf8');
+      const yamlData = yaml.load(yamlContent) as Record<string, any>;
+
+      expect(yamlData['saasName']).toBe(newName);
+    });
+
+    it('Return 200 and all YAML saasNames updated when renaming pricing with multiple versions.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      const fixture = await createValidPricingYaml(serviceName);
+      await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+
+      const newName = `MultiYaml_${randomSuffix()}`;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: newName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(newName);
+      expect(response.body.versions.length).toBe(2);
+
+      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+      const processedPaths = new Set<string>();
+
+      for (const version of response.body.versions) {
+        const yamlRelativePath = version.yaml;
+        expect(yamlRelativePath).toBeDefined();
+
+        if (processedPaths.has(yamlRelativePath)) continue;
+        processedPaths.add(yamlRelativePath);
+
+        const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+        const yamlContent = await fs.readFile(absolutePath, 'utf8');
+        const yamlData = yaml.load(yamlContent) as Record<string, any>;
+
+        expect(yamlData['saasName']).toBe(newName);
+      }
+    });
+
+    it('Return 200 and no error when renaming pricing with missing YAML file.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const { serviceName, id } = await createPricingForOrganization({
+        organizationId,
+      });
+
+      await PricingMongoose.findByIdAndUpdate(id, { yaml: 'static/pricings/nonexistent/file.yml' });
+
+      const newName = `MissingYaml_${randomSuffix()}`;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: newName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(newName);
+    });
   });
 
   describe('DELETE /api/v1/pricings/:organizationId/:pricingName', () => {
