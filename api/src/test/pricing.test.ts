@@ -1838,7 +1838,7 @@ describe('Pricings API integration', () => {
       await createPricingForOrganization({ organizationId, isPrivate: true });
 
       const response = await request(app)
-        .get(`${BASE_PATH}/users/me/pricings`)
+        .get(`${BASE_PATH}/users/me/pricings?limit=100`)
         .set('Authorization', `Bearer ${adminUser.token}`);
 
       expect(response.status).toBe(200);

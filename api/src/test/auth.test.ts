@@ -274,7 +274,7 @@ describe('Auth Middleware - Integration Tests', () => {
     await createMembership(memberUser.id, ownerOrg.id, 'MEMBER');
 
     pricingFixture = await createPricingForOrganization({
-      organizationId: ownerUser.organizationId,
+      organizationId: ownerOrg._id.toString(),
       serviceName: `auth_pricing_${randomSuffix()}`,
     });
 
