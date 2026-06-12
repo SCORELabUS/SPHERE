@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePricingsApi } from '../../api/pricingsApi';
-import customAlert from '../../../core/utils/custom-alert';
 import BanterLoader from '../../../core/components/loaders/banter-loader';
 
 export interface Configuration {
@@ -35,6 +34,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   const [allConfigs, setAllConfigs] = useState<IndexedConfiguration[]>([]);
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('All plans');
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   useEffect(() => {
     let canceled = false;
     idRef.current = 0;
-    setAllConfigs([]); setTotalSize(0); setShowAllFeat(false); setVisibleCount(BATCH);
+    setAllConfigs([]); setTotalSize(0); setShowAllFeat(false); setVisibleCount(BATCH); setLoadError(null);
     const load = async () => {
       try {
         const all: IndexedConfiguration[] = [];
@@ -80,7 +80,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
           else offset += PAGE_SIZE;
         }
         if (!canceled) { setAllConfigs(all); if (total === 0) setTotalSize(all.length); }
-      } catch (e) { if (!canceled) customAlert(`Error: ${e}`, 'error'); }
+      } catch { if (!canceled) setLoadError('The configuration space could not be loaded. This may happen when the pricing is too complex. Try simplifying the pricing structure or reducing the number of plans, add-ons, features, or usage limits.'); }
       finally { if (!canceled) setLoading(false); }
     };
     load();
@@ -106,6 +106,14 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   }, [filtered.length, hasMore, loading]);
 
   if (loading) return <div className="mt-10 flex justify-center"><BanterLoader /></div>;
+
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+      <svg className="mb-3 h-10 w-10 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+      <p className="text-sm font-medium text-tp-ink">Could not load configuration space</p>
+      <p className="mt-1 w-full max-w-125 text-xs text-tp-steel">{loadError}</p>
+    </div>
+  );
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4">

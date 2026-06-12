@@ -50,10 +50,10 @@ export default function InboxPage() {
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
       await markAsRead(notification.id);
-    }
 
-    if (notification.kind === 'OrganizationInvitation' && notification.data?.invitationCode) {
-      navigate(`/orgs/join/${notification.data.invitationCode}`);
+      if (notification.kind === 'OrganizationInvitation' && notification.data?.invitationCode) {
+        navigate(`/orgs/join/${notification.data.invitationCode}`);
+      }
     }
   };
 
@@ -130,8 +130,8 @@ export default function InboxPage() {
               <button
                 key={notification.id}
                 onClick={() => handleNotificationClick(notification)}
-                className={`flex w-full cursor-pointer items-start gap-4 p-4 text-left transition-colors hover:bg-tp-surface ${
-                  !notification.read ? 'bg-tp-surface/50' : ''
+                className={`flex w-full items-start gap-4 p-4 text-left transition-colors ${
+                  notification.read ? 'cursor-default' : 'cursor-pointer hover:bg-tp-surface bg-tp-surface/50'
                 }`}
               >
                 <div
