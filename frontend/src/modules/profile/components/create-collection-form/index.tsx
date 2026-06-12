@@ -1,35 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import VisibilityOptions from '../../../pricing/components/visibility-options';
 import CollectionDescriptionInput from '../collection-description-input';
 import PricingSelector from '../pricings-selector';
 import OrganizationSelector from '../../../pricing/components/organization-selector';
 import SlugPreview from '../../../core/components/slug-preview';
+import BlockAlert from '../../../core/components/block-alert';
 import { usePricingCollectionsApi } from '../../api/pricingCollectionsApi';
 import { useRouter } from '../../../core/hooks/useRouter';
 import FileUpload from '../../../core/components/file-upload-input';
 import customAlert from '../../../core/utils/custom-alert';
 import customConfirm from '../../../core/utils/custom-confirm';
-import { Organization } from '../../../organization/api/organizationsApi';
+import { Organization, useOrganizationsApi } from '../../../organization/api/organizationsApi';
+import { useAuth } from '../../../auth/hooks/useAuth';
+import ActionButton from '../../../core/components/action-button';
 
 export type CreateCollectionFormFieldProps = {
   value: string;
   onChange: (value: string) => void;
-}
+};
 
 export type CreateCollectionFormProps = {
   readonly setShowLoading: (show: boolean) => void;
-}
+};
 
-export default function CreateCollectionForm({setShowLoading}: CreateCollectionFormProps) {
+export default function CreateCollectionForm({ setShowLoading }: CreateCollectionFormProps) {
   const [collectionName, setCollectionName] = useState('');
   const [collectionDescription, setCollectionDescription] = useState('');
   const [visibility, setVisibility] = useState('Public');
   const [selectedPricings, setSelectedPricings] = useState<string[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [canCreate, setCanCreate] = useState(true);
+  const [dismissedPermissionError, setDismissedPermissionError] = useState(false);
 
   const { createCollection, createBulkCollection, deleteCollection } = usePricingCollectionsApi();
+  const { getOrgPermissions } = useOrganizationsApi();
+  const { authUser } = useAuth();
   const router = useRouter();
+  const prevOrgIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const orgId = selectedOrg?.id ?? null;
+    if (orgId !== prevOrgIdRef.current) {
+      prevOrgIdRef.current = orgId;
+      setDismissedPermissionError(false);
+    }
+
+    if (!selectedOrg) {
+      setCanCreate(true);
+      return;
+    }
+
+    if (authUser.user?.role === 'ADMIN' || selectedOrg.role === 'OWNER' || selectedOrg.role === 'ADMIN') {
+      setCanCreate(true);
+      return;
+    }
+
+    getOrgPermissions(selectedOrg.id, 'collection')
+      .then(permissions => {
+        const orgScoped = permissions.find(
+          p => p.entitySlug === null && p._userId === authUser.user?.id
+        );
+        setCanCreate(orgScoped?.permissions.CREATE ?? false);
+      })
+      .catch(() => setCanCreate(false));
+  }, [selectedOrg, authUser.user?.id, authUser.user?.role, getOrgPermissions]);
 
   const handleSubmit = (file?: File | null) => {
     if (!selectedOrg) {
@@ -39,7 +74,7 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
 
     const fileToUpload = file instanceof File ? file : null;
 
-  if (!fileToUpload) {
+    if (!fileToUpload) {
       const collectionToCreate = {
         name: collectionName,
         description: collectionDescription,
@@ -49,7 +84,7 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
 
       createCollection(collectionToCreate, selectedOrg.id)
         .then(() => {
-          router.push('/collections');
+          router.push('/me/collections');
         })
         .catch(error => {
           // If API returned an Error with status 409, show duplicate alert and keep form
@@ -85,20 +120,26 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
     }
   };
 
-
-  function handleBulkSuccess(data: { pricingsWithErrors?: Array<{ name: string; error: string }>} ) {
+  function handleBulkSuccess(data: {
+    pricingsWithErrors?: Array<{ name: string; error: string }>;
+  }) {
     if (data.pricingsWithErrors && data.pricingsWithErrors.length > 0) {
-      customConfirm(`Some pricings could not be added to the collection due to errors: ${data.pricingsWithErrors.map((p: {name: string, error: string}) => p.name).join(' | ')}. Do you still want to save the collection and add them again manually?`, { danger: false }).then(() => {
-        router.push('/collections');
-      }).catch(() => {
-        if (selectedOrg) {
-          deleteCollection(selectedOrg.id, collectionName, true).then(() => {
-            router.push('/collections');
-          });
-        }
-      });
+      customConfirm(
+        `Some pricings could not be added to the collection due to errors: ${data.pricingsWithErrors.map((p: { name: string; error: string }) => p.name).join(' | ')}. Do you still want to save the collection and add them again manually?`,
+        { danger: false }
+      )
+        .then(() => {
+          router.push('/me/collections');
+        })
+        .catch(() => {
+          if (selectedOrg) {
+            deleteCollection(selectedOrg.id, collectionName, true).then(() => {
+              router.push('/me/collections');
+            });
+          }
+        });
     } else {
-      router.push('/collections');
+      router.push('/me/collections');
     }
   }
 
@@ -117,9 +158,7 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
           <OrganizationSelector value={selectedOrg} onChange={setSelectedOrg} />
         </div>
 
-        <div className="text-4xl text-slate-400">
-          /
-        </div>
+        <div className="text-4xl text-slate-400">/</div>
 
         <div className="relative flex-2">
           <label className="absolute -top-8 left-0 block text-base text-slate-700">
@@ -135,6 +174,11 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
       </div>
 
       <SlugPreview value={collectionName} />
+      {selectedOrg && !canCreate && !dismissedPermissionError && (
+        <BlockAlert variant="error" onDismiss={() => setDismissedPermissionError(true)}>
+          You don't have permission to create a collection in this organization. Please contact an administrator to grant the necessary permissions.
+        </BlockAlert>
+      )}
       <CollectionDescriptionInput
         value={collectionDescription}
         onChange={setCollectionDescription}
@@ -144,14 +188,14 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
         <div className="flex gap-2">
           <button
             type="button"
-            className={`rounded-t-md px-4 py-2 ${tabValue === 0 ? 'bg-tp-primary text-white' : 'bg-slate-100 text-slate-700'}`}
+            className={`cursor-pointer rounded-t-md px-4 py-2 ${tabValue === 0 ? 'bg-tp-primary text-white' : 'bg-slate-100 text-slate-700'}`}
             onClick={() => setTabValue(0)}
           >
             Select unassigned pricings
           </button>
           <button
             type="button"
-            className={`rounded-t-md px-4 py-2 ${tabValue === 1 ? 'bg-tp-primary text-white' : 'bg-slate-100 text-slate-700'}`}
+            className={`cursor-pointer rounded-t-md px-4 py-2 ${tabValue === 1 ? 'bg-tp-primary text-white' : 'bg-slate-100 text-slate-700'}`}
             onClick={() => setTabValue(1)}
           >
             Upload collection
@@ -162,24 +206,26 @@ export default function CreateCollectionForm({setShowLoading}: CreateCollectionF
         <>
           <PricingSelector value={selectedPricings} onChange={setSelectedPricings} />{' '}
           <div className="flex items-center justify-center">
-            <button
-              type="button"
-              className="mt-5 w-100 rounded-xl bg-tp-primary px-5 py-2 text-base font-bold text-white"
-              onClick={handleAddCollectionClick}
-                >
-              Add Collection
-            </button>
+            <ActionButton 
+              text='Add Collection' 
+              onClick={handleAddCollectionClick} 
+              disabled={!canCreate} 
+              className={`mt-5 mb-12 rounded-md px-5 py-2 text-base font-bold cursor-pointer disabled:cursor-not-allowed disabled:bg-tp-primary/50 ${canCreate ? 'bg-tp-primary text-white' : 'bg-slate-200 text-slate-500'}`}/>
           </div>
         </>
       ) : (
-        <FileUpload
-          onSubmit={handleSubmit}
-          submitButtonText="Add Collection"
-          submitButtonWidth={400}
-          isDragActiveText="Drop a .zip file containing all the pricings of the collection"
-          isNotDragActiveText="Drag and drop a .zip file containing all the pricings of the collection"
-          accept={{ 'application/zip': ['.zip'] }}
-        />
+        <>
+          <FileUpload
+            onSubmit={handleSubmit}
+            submitButtonText="Add Collection"
+            submitButtonWidth={400}
+            isDragActiveText="Drop a .zip file containing all the pricings of the collection"
+            isNotDragActiveText="Drag and drop a .zip file containing all the pricings of the collection"
+            accept={{ 'application/zip': ['.zip'] }}
+            disabled={!canCreate}
+          />
+          <div className="mb-12" />
+        </>
       )}
     </form>
   );

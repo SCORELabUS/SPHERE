@@ -13,7 +13,7 @@ export default function VisibilityOptions({ value, onChange }: VisibilityOptions
           value="Public"
           checked={value === 'Public'}
           onChange={(e) => onChange(e.target.value)}
-          className="h-4 w-4"
+          className="h-4 w-4 cursor-pointer"
         />
         Public
       </label>
@@ -24,7 +24,7 @@ export default function VisibilityOptions({ value, onChange }: VisibilityOptions
           value="Private"
           checked={value === 'Private'}
           onChange={(e) => onChange(e.target.value)}
-          className="h-4 w-4"
+          className="h-4 w-4 cursor-pointer"
         />
         Private
       </label>

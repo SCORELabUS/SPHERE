@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import VisibilityOptions from '../visibility-options';
 import FileUpload from '../../../core/components/file-upload-input';
 import OrganizationSelector from '../organization-selector';
 import SlugPreview from '../../../core/components/slug-preview';
+import BlockAlert from '../../../core/components/block-alert';
 import { usePricingsApi } from '../../api/pricingsApi';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { retrievePricingFromYaml } from 'pricing4ts';
@@ -17,13 +18,21 @@ export default function CreatePricingForm() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [canCreate, setCanCreate] = useState(true);
+  const [dismissedPermissionError, setDismissedPermissionError] = useState(false);
 
   const { createPricing } = usePricingsApi();
   const { getOrgPermissions } = useOrganizationsApi();
   const { authUser } = useAuth();
   const router = useRouter();
+  const prevOrgIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const orgId = selectedOrg?.id ?? null;
+    if (orgId !== prevOrgIdRef.current) {
+      prevOrgIdRef.current = orgId;
+      setDismissedPermissionError(false);
+    }
+
     if (!selectedOrg) {
       setCanCreate(true);
       return;
@@ -122,10 +131,10 @@ export default function CreatePricingForm() {
         </div>
       </div>
 
-      {selectedOrg && !canCreate && (
-        <p className="text-sm text-red-600">
+      {selectedOrg && !canCreate && !dismissedPermissionError && (
+        <BlockAlert variant="error" onDismiss={() => setDismissedPermissionError(true)}>
           You don't have permission to create a pricing in this organization. Please contact an administrator to grant the necessary permissions.
-        </p>
+        </BlockAlert>
       )}
 
       <VisibilityOptions value={visibility} onChange={setVisibility} />
