@@ -36,7 +36,8 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
     getOrgPermissions(orgId, 'pricing')
       .then(perms => setPricingPermissions(perms))
       .catch(() => setPricingPermissions([]));
-  }, [orgId, authUser.isAuthenticated, getOrgPermissions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, authUser.isAuthenticated]);
 
   const hasPutPermission = (pricingSlug: string) => {
     if (myRole === 'OWNER' || myRole === 'ADMIN') return true;
