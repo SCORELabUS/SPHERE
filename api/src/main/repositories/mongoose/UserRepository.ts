@@ -38,10 +38,10 @@ class UserRepository extends RepositoryBase {
             $options: 'i',
           };
         }
+      }
 
-        if (filter.role) {
-          mongoFilter.role = filter.role;
-        }
+      if (filter.role) {
+        mongoFilter.role = filter.role;
       }
 
       const query = UserMongoose.find(mongoFilter)
