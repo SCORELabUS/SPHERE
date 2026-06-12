@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FaFloppyDisk, FaPlus } from 'react-icons/fa6';
 import {
-  DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  DndContext, closestCenter, rectIntersection, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
-import type { DragEndEvent } from '@dnd-kit/core';
+import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core';
 import {
   SortableContext, horizontalListSortingStrategy, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
@@ -18,7 +18,7 @@ import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit, DraftAddOn
 import { SortablePlanHeader } from './components/SortablePlanHeader';
 import { SortableFeatureRow } from './components/SortableFeatureRow';
 import { SortableUsageLimitRow } from './components/SortableUsageLimitRow';
-import { SortableAddOnRow } from './components/SortableAddOnRow';
+import { AddOnCard } from './components/AddOnCard';
 import { CellInlineEdit } from './components/CellInlineEdit';
 import { AddRowTrigger } from './components/AddRowTrigger';
 import { PlanSidePanel } from './components/PlanSidePanel';
@@ -48,6 +48,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   const [featureOrder, setFeatureOrder] = useState<string[] | null>(null);
   const [usageLimitOrder, setUsageLimitOrder] = useState<string[] | null>(null);
   const [addOnOrder, setAddOnOrder] = useState<string[] | null>(null);
+  const [activeAddOnId, setActiveAddOnId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -93,6 +94,12 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
 
   const resolvedCurrency = draft.currency && draft.currency in CURRENCIES ? CURRENCIES[draft.currency] : draft.currency ?? '';
   const visiblePlanKeys = useMemo(() => planKeys.filter(pk => !draft.plans[pk]?.private), [planKeys, draft.plans]);
+
+  const planIndexMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    planKeys.forEach((pk, i) => { m[pk] = i; });
+    return m;
+  }, [planKeys]);
 
   /* ── Mutations ── */
   const applyMutation = useCallback((mutated: PricingDraft) => {
@@ -345,22 +352,37 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     applyMutation(toggleAddOnAvailableFor(draft, addOnKey, planKey));
   }, [draft, applyMutation]);
 
-  const handleAddOnCreatingConfirm = useCallback((newKey: string) => {
-    if (!creatingRowKey) return;
-    if (newKey !== creatingRowKey && !(draft.addOns ?? {})[newKey]) {
-      applyMutation(renameAddOn(draft, creatingRowKey, newKey));
-    }
-    setCreatingRowKey(null);
-  }, [creatingRowKey, draft, applyMutation]);
-
-  const handleAddOnCreatingCancel = useCallback(() => {
-    if (!creatingRowKey) return;
-    applyMutation(removeAddOn(draft, creatingRowKey));
-    setCreatingRowKey(null);
-  }, [creatingRowKey, draft, applyMutation]);
+  const handleUpdateAddOn = useCallback((addOnKey: string, updates: Partial<DraftAddOn>) => {
+    applyMutation(updateAddOnProps(draft, addOnKey, updates));
+  }, [draft, applyMutation]);
 
   /* ── DnD ── */
+  const handleDragStart = useCallback((event: { active: { id: string | number } }) => {
+    const id = String(event.active.id);
+    if (addOnKeys.includes(id)) setActiveAddOnId(id);
+  }, [addOnKeys]);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    if (addOnKeys.includes(activeId) && addOnKeys.includes(overId)) {
+      const oldIndex = addOnKeys.indexOf(activeId);
+      const newIndex = addOnKeys.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const newOrder = arrayMove(addOnKeys, oldIndex, newIndex);
+      setAddOnOrder(newOrder);
+      const reordered: Record<string, DraftAddOn> = {};
+      for (const k of newOrder) reordered[k] = draft.addOns![k];
+      applyMutation({ ...draft, addOns: reordered });
+    }
+  }, [addOnKeys, draft, applyMutation]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveAddOnId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const activeId = String(active.id);
@@ -421,9 +443,9 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       >
         <div className="flex items-center gap-3">
           <CellInlineEdit value={draft.saasName} onSave={handleSaasNameChange}
-            className="!text-lg !font-bold !tracking-tight !text-slate-900 dark:!text-white" />
+            className="text-lg! font-bold! tracking-tight! text-slate-900! dark:text-white!" />
           <CellInlineEdit value={draft.currency ?? ''} onSave={handleCurrencyChange}
-            className="!rounded-full !bg-slate-100 !px-2.5 !py-0.5 !text-xs !font-medium !text-slate-600 dark:!bg-slate-800 dark:!text-slate-400" />
+            className="rounded-full! bg-slate-100! px-2.5! py-0.5! text-xs! font-medium! text-slate-600! dark:bg-slate-800! dark:text-slate-400!" />
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <span>{visiblePlanKeys.length} plans</span>
@@ -441,12 +463,12 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       </motion.div>
 
       {/* Table */}
-      <div className="flex-[0.9] overflow-auto p-4 sm:p-6">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }} className="mx-auto flex h-full max-w-7xl flex-col">
-          <div className="overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex-1 p-4 sm:p-6">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }} className="mx-auto max-w-7xl">
+          <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               {/* Header row */}
-              <div className="flex shrink-0 border-b border-slate-200 dark:border-slate-700" style={{ minWidth: 'min-content' }}>
+              <div className="sticky top-0 z-20 flex shrink-0 border-b border-slate-200 dark:border-slate-700" style={{ minWidth: 'min-content' }}>
                 <div className="shrink-0 border-r border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800" style={{ width: LABEL_WIDTH }} />
                 <SortableContext items={visiblePlanKeys} strategy={horizontalListSortingStrategy}>
                   {visiblePlanKeys.map((planKey, index) => (
@@ -513,42 +535,63 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                     );
                   })}
                 </SortableContext>
-
-                {/* Add-ons section */}
-                <div className="flex shrink-0 items-center border-b border-t border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Add-Ons</span>
-                </div>
-                <AddRowTrigger label="Add add-on" onAdd={() => handleAddAddOn()} />
-                <SortableContext items={addOnKeys} strategy={verticalListSortingStrategy}>
-                  {addOnKeys.map((addOnKey, aIdx) => {
-                    const addOn = (draft.addOns ?? {})[addOnKey];
-                    if (!addOn) return null;
-                    return (
-                      <Fragment key={addOnKey}>
-                        <SortableAddOnRow addOnKey={addOnKey} addOn={addOn} planKeys={visiblePlanKeys} draft={draft} currency={resolvedCurrency}
-                          onToggleAvailableFor={(pk) => handleToggleAddOnAvailableFor(addOnKey, pk)}
-                          onEdit={() => setEditingAddOn(addOnKey)} onRemove={() => handleRemoveAddOn(addOnKey)}
-                          onRename={handleAddOnRename}
-                          isCreating={creatingRowKey === addOnKey} onCreatingConfirm={handleAddOnCreatingConfirm} onCreatingCancel={handleAddOnCreatingCancel} />
-                        <AddRowTrigger label="Add add-on" onAdd={() => {
-                          const name = getNextName('addOn', Object.keys(draft.addOns ?? {}));
-                          const mutated = addAddOn(draft, name);
-                          const keys = Object.keys(mutated.addOns ?? {});
-                          const insertAt = aIdx + 1;
-                          const newKeys = [...keys.slice(0, insertAt), name, ...keys.slice(insertAt)];
-                          const reordered: Record<string, DraftAddOn> = {};
-                          for (const k of newKeys) reordered[k] = mutated.addOns![k];
-                          applyMutation({ ...mutated, addOns: reordered });
-                          setCreatingRowKey(name);
-                        }} />
-                      </Fragment>
-                    );
-                  })}
-                </SortableContext>
               </div>
             </DndContext>
           </div>
         </motion.div>
+
+        {/* Add-ons grid (separate from table) */}
+        {addOnKeys.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2, ease: 'easeOut' }} className="mx-auto mt-4 max-w-7xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Add-Ons</h3>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{addOnKeys.length}</span>
+              </div>
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={handleAddAddOn}
+                className="cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-indigo-500 dark:hover:text-indigo-400">
+                <FaPlus className="h-3 w-3" /> Add add-on
+              </motion.button>
+            </div>
+            <DndContext sensors={sensors} collisionDetection={rectIntersection}
+              onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+              <SortableContext items={addOnKeys} strategy={verticalListSortingStrategy}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {addOnKeys.map(addOnKey => {
+                    const addOn = (draft.addOns ?? {})[addOnKey];
+                    if (!addOn) return null;
+                    return (
+                      <AddOnCard key={addOnKey} addOnKey={addOnKey} addOn={addOn}
+                        planKeys={visiblePlanKeys} planIndexMap={planIndexMap} currency={resolvedCurrency}
+                        featureMap={featureMap} usageLimitMap={usageLimitMap}
+                        isDragging={activeAddOnId === addOnKey}
+                        onEdit={() => setEditingAddOn(addOnKey)} onRemove={() => handleRemoveAddOn(addOnKey)}
+                        onRename={handleAddOnRename}
+                        onToggleAvailableFor={(pk) => handleToggleAddOnAvailableFor(addOnKey, pk)}
+                        onUpdate={(updates) => handleUpdateAddOn(addOnKey, updates)} />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeAddOnId ? (() => {
+                  const addOn = (draft.addOns ?? {})[activeAddOnId];
+                  if (!addOn) return null;
+                  return (
+                    <AddOnCard addOnKey={activeAddOnId} addOn={addOn}
+                      planKeys={visiblePlanKeys} planIndexMap={planIndexMap} currency={resolvedCurrency}
+                      featureMap={featureMap} usageLimitMap={usageLimitMap}
+                      isOverlay
+                      onEdit={() => {}} onRemove={() => {}}
+                      onRename={() => {}}
+                      onToggleAvailableFor={() => {}}
+                      onUpdate={() => {}} />
+                  );
+                })() : null}
+              </DragOverlay>
+            </DndContext>
+          </motion.div>
+        )}
       </div>
 
       {/* Side panels */}
