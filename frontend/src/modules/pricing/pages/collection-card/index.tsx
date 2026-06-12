@@ -42,6 +42,7 @@ const PRICINGS_PER_PAGE = 12;
 const axisTick = { fill: '#4a4a4a', fontSize: 11 };
 const compactNum = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const fmtY = (v: number) => { if (!Number.isFinite(v)) return ''; return Math.abs(v) >= 1000 ? compactNum.format(v) : String(v); };
+const fmtTooltip = (v: number) => Number.isFinite(v) ? Number(v.toFixed(2)).toString() : String(v);
 
 export default function CollectionCardPage() {
   const { organizationId, collectionSlug } = useParams<{ organizationId: string; collectionSlug: string }>();
@@ -181,13 +182,26 @@ export default function CollectionCardPage() {
   const chartData = useMemo(() => {
     if (!filteredEvolution) return [];
     const len = filteredEvolution.configSpace.dates.length;
-    return Array.from({ length: len }, (_, i) => ({
+    const data = Array.from({ length: len }, (_, i) => ({
       date: new Date(filteredEvolution.configSpace.dates[i]).toLocaleDateString(),
       configSpace: filteredEvolution.configSpace.values[i] ?? 0,
       plans: filteredEvolution.plans.values[i] ?? 0,
       features: filteredEvolution.features.values[i] ?? 0,
       addOns: filteredEvolution.addOns.values[i] ?? 0,
     }));
+    if (len > 0) {
+      const firstDate = new Date(filteredEvolution.configSpace.dates[0]);
+      const zeroDate = new Date(firstDate);
+      zeroDate.setHours(zeroDate.getHours() - 24);
+      data.unshift({
+        date: zeroDate.toLocaleDateString(),
+        configSpace: 0,
+        plans: 0,
+        features: 0,
+        addOns: 0,
+      });
+    }
+    return data;
   }, [filteredEvolution]);
 
   const avgPrices = useMemo(() => {
@@ -398,7 +412,7 @@ export default function CollectionCardPage() {
                               <CartesianGrid strokeDasharray="3 3" stroke="#ededed" />
                               <XAxis dataKey="date" tick={axisTick} />
                               <YAxis tick={axisTick} tickFormatter={fmtY} width={50} domain={['auto', 'auto']} />
-                              <Tooltip />
+                              <Tooltip formatter={(v: number) => fmtTooltip(v)} isAnimationActive={false} />
                               <Line type="monotone" dataKey={k} stroke={color} strokeWidth={2} dot={{ r: 2 }} />
                             </LineChart>
                           </ResponsiveContainer>

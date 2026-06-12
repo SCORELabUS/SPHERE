@@ -32,7 +32,7 @@ import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
   const [searchParams] = useSearchParams();
-  const collectionSlug = searchParams.get('collectionSlug');
+  const collectionSlug = searchParams.get('collection');
   const router = useRouter();
   const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
@@ -56,6 +56,7 @@ export default function CardPage() {
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
   const [visibility, setVisibility] = useState('Public');
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
+  const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -67,11 +68,13 @@ export default function CardPage() {
   }, [organizationId]);
 
   useEffect(() => {
+    console.log(collectionSlug);
     if (!slug || !organizationId) return;
     setIsLoading(true);
     getPricingBySlug(slug, organizationId, collectionSlug)
       .then(async (data) => {
         setPricingName(data.name ?? slug);
+        setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
@@ -173,8 +176,9 @@ export default function CardPage() {
     return list;
   }, [versions, dateFrom, dateTo]);
 
-  const chartData = useMemo(() =>
-    filteredVersions.slice().reverse().map(v => ({
+  const chartData = useMemo(() => {
+    const entries = filteredVersions.slice().reverse();
+    const data = entries.map(v => ({
       date: new Date(v.createdAt).toLocaleDateString(),
       minPrice: v.analytics?.minSubscriptionPrice ?? 0,
       maxPrice: v.analytics?.maxSubscriptionPrice ?? 0,
@@ -184,7 +188,25 @@ export default function CardPage() {
       features: v.analytics?.numberOfFeatures ?? 0,
       addOns: v.analytics?.numberOfAddOns ?? 0,
       usageLimits: v.analytics?.numberOfUsageLimits ?? 0,
-    })), [filteredVersions]);
+    }));
+    if (entries.length > 0) {
+      const firstDate = new Date(entries[0].createdAt);
+      const zeroDate = new Date(firstDate);
+      zeroDate.setHours(zeroDate.getHours() - 24);
+      data.unshift({
+        date: zeroDate.toLocaleDateString(),
+        minPrice: 0,
+        maxPrice: 0,
+        avgPrice: 0,
+        configs: 0,
+        plans: 0,
+        features: 0,
+        addOns: 0,
+        usageLimits: 0,
+      });
+    }
+    return data;
+  }, [filteredVersions]);
 
   const a = currentVersion?.analytics ?? null;
   const aSafe = a ? Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === 'number' ? v : 0])) as unknown as TreeAnalytics : null;
@@ -384,7 +406,7 @@ export default function CardPage() {
               {orgDisplayName || 'Organization'}
             </button>
             <span>/</span>
-            {collectionSlug && <><button type="button" onClick={() => router.push('/collections')} className="cursor-pointer hover:text-tp-ink">{collectionSlug}</button><span>/</span></>}
+            {collectionSlug && <><button type="button" onClick={() => router.push(`/collections/${organizationId}/${collectionSlug}`)} className="cursor-pointer hover:text-tp-ink">{collectionName || collectionSlug}</button><span>/</span></>}
             <span className="text-tp-ink">{pricingName}</span>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
