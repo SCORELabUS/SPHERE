@@ -44,7 +44,7 @@ function replaceSyntaxVersionInYaml(yaml: string, version: SyntaxVersion): strin
 export default function EditorPage() {
   const [pricing, setPricing] = useState<Pricing>();
   const [errors, setErrors] = useState<string[]>([]);
-  const [selectedSyntaxVersion, setSelectedSyntaxVersion] = useState<SyntaxVersion>('3.0');
+  const [selectedSyntaxVersion, setSelectedSyntaxVersion] = useState<SyntaxVersion>('3.1');
 
   const { mode } = useMode();
   const { editorValue, setEditorValue, editorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft } = useEditorValue();
@@ -252,38 +252,6 @@ export default function EditorPage() {
             className="grid h-full w-full gap-4 bg-slate-300 lg:grid-cols-2"
           >
             <div className="relative h-full min-h-0">
-              <div className="pointer-events-none absolute right-4 top-4 z-20">
-                <div className="pointer-events-auto inline-flex items-center rounded-xl border border-slate-300 bg-white/90 p-1 shadow-md backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90">
-                  {(['3.0', '3.1'] as SyntaxVersion[]).map((version) => {
-                    const isSelected = selectedSyntaxVersion === version;
-
-                    return (
-                      <button
-                        key={version}
-                        type="button"
-                        onClick={() => handleSyntaxVersionChange(version)}
-                        className="relative cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-1 dark:text-slate-200 dark:hover:text-white"
-                      >
-                        {isSelected && (
-                          <motion.span
-                            layoutId="syntax-version-active"
-                            className="absolute inset-0 rounded-lg bg-sky-100 dark:bg-sky-900/60"
-                            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                          />
-                        )}
-                        <span className="relative z-10 inline-flex items-center gap-1.5">
-                          {version}
-                          {version === '3.1' && (
-                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-400/20 dark:text-amber-300">
-                              beta
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
               <Editor
                 height="100%"
                 defaultLanguage="yaml"

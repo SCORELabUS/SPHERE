@@ -126,6 +126,11 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
                 )}
                 <span className={`relative z-10 ${isActive ? 'text-white' : 'text-white/40 hover:text-white/60'}`}>
                   {mode === 'code' ? 'Code' : 'Visual'}
+                  {mode === 'visual' && (
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">
+                      beta
+                    </span>
+                  )}
                   {mode === 'visual' && isDirty && (
                     <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />
                   )}

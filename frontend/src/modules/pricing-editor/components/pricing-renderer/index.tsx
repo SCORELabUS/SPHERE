@@ -1,6 +1,6 @@
 import { PricingProps } from './types.d';
 import FeatureTableV2 from './components/FeatureTableV2';
-import PricingCard from './components/pricing-card';
+// import PricingCard from './components/pricing-card';
 const CURRENCIES = {
   USD: '$',
   EUR: '€',
@@ -32,7 +32,7 @@ export function PricingRenderer({
   return (
     <section className="py-6 sm:py-8">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        <PricingCard pricing={pricing} />
+        {/* <PricingCard pricing={pricing} /> */}
 
         {Object.keys(pricing.variables).length > 0 && (
           <>
