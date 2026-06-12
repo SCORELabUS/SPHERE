@@ -41,7 +41,7 @@ export function SortableUsageLimitRow({
     >
       <div className={`flex ${isDisabled ? 'opacity-[0.4]' : ''}`} style={{ width: '100%' }}>
         {/* Label */}
-        <div className="relative flex shrink-0 items-center gap-1.5 border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
+        <div className="relative flex shrink-0 items-center gap-1.5 overflow-hidden border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
           style={{ width: LABEL_WIDTH }}>
           {isCreating ? (
             <CreatingNameInput
@@ -51,12 +51,14 @@ export function SortableUsageLimitRow({
             />
           ) : (
             <>
-              <div {...listeners} className="cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+              <div {...listeners} className="shrink-0 cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
                 <FaGripVertical className="h-3 w-3" />
               </div>
-              <NameInlineEdit value={usageKey} onSave={(newKey) => onRename(usageKey, newKey)}
-                className="text-sm font-semibold text-slate-700 dark:text-slate-300" />
-              <span className="text-xs text-slate-400 dark:text-slate-500">({usage.unit})</span>
+              <div className="min-w-0 flex-1 truncate">
+                <NameInlineEdit value={usageKey} onSave={(newKey) => onRename(usageKey, newKey)}
+                  className="text-sm font-semibold text-slate-700 dark:text-slate-300" />
+                <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">({usage.unit})</span>
+              </div>
             </>
           )}
           <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

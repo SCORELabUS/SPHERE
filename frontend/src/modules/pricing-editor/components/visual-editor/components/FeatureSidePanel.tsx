@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { SidePanel, Field } from './SidePanel';
 import { INPUT_CLS, FEATURE_TYPES, VALUE_TYPES, USAGE_LIMIT_TYPES } from '../utils/constants';
+import { FeatureMultiSelect } from './FeatureMultiSelect';
 import type { DraftFeature, DraftUsageLimit } from '../../../services/pricing2yaml';
 
-export function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave, onConvert }: {
-  entityKey: string; entity: DraftFeature | DraftUsageLimit; isFeature: boolean;
+export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, onClose, onSave, onConvert }: {
+  entityKey: string; entity: DraftFeature | DraftUsageLimit; isFeature: boolean; featureKeys: string[];
   onClose: () => void;
   onSave: (key: string, updates: Record<string, unknown>) => void;
   onConvert: (key: string, toType: 'feature' | 'usageLimit') => void;
@@ -23,6 +24,7 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave
   const [ulDefault, setUlDefault] = useState(String(u?.defaultValue ?? '0'));
   const [unit, setUnit] = useState(u?.unit ?? '');
   const [ulType, setUlType] = useState<'RENEWABLE' | 'NON_RENEWABLE'>(u?.type ?? 'RENEWABLE');
+  const [linkedFeatures, setLinkedFeatures] = useState<string[]>(u?.linkedFeatures ?? []);
 
   return (
     <SidePanel title={isFeature ? 'Edit Feature' : 'Edit Usage Limit'} onClose={onClose} footer={
@@ -32,7 +34,7 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave
           if (isFeature) {
             onSave(name, { description, valueType, defaultValue: valueType === 'BOOLEAN' ? defaultValue === 'true' : valueType === 'NUMERIC' ? Number(defaultValue) || 0 : defaultValue, type: featureType, expression: expression || undefined });
           } else {
-            onSave(name, { description, valueType: ulValueType, defaultValue: ulValueType === 'NUMERIC' ? Number(ulDefault) || 0 : ulDefault, unit, type: ulType });
+            onSave(name, { description, valueType: ulValueType, defaultValue: ulValueType === 'NUMERIC' ? Number(ulDefault) || 0 : ulDefault, unit, type: ulType, linkedFeatures });
           }
           onClose();
         }} className="cursor-pointer flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">Save</button>
@@ -90,6 +92,13 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, onClose, onSave
               <select value={ulType} onChange={(e) => setUlType(e.target.value as typeof ulType)} className={INPUT_CLS}>
                 {USAGE_LIMIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
+            </Field>
+            <Field label="Linked Features">
+              <FeatureMultiSelect
+                availableFeatures={featureKeys}
+                selectedFeatures={linkedFeatures}
+                onChange={setLinkedFeatures}
+              />
             </Field>
           </>
         )}

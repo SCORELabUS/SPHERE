@@ -17,7 +17,7 @@ export function HeaderInlineEdit({
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className={`cursor-pointer rounded px-1 transition-colors hover:bg-white/20 ${className ?? ''}`}
+        className={`cursor-pointer truncate rounded px-1 transition-colors hover:bg-white/20 ${className ?? ''}`}
       >{value || <span className="italic text-white/30">empty</span>}</span>
     );
   }

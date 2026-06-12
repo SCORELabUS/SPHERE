@@ -19,7 +19,7 @@ export function NameInlineEdit({
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className={`cursor-pointer rounded px-1 py-0.5 transition-colors ${light ? 'hover:bg-white/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'} ${className ?? ''}`}
+        className={`cursor-pointer truncate rounded px-1 py-0.5 transition-colors ${light ? 'hover:bg-white/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'} ${className ?? ''}`}
       >{camelToTitle(value)}</span>
     );
   }

@@ -203,3 +203,109 @@ export function removeUsageLimit(d: PricingDraft, limitKey: string): PricingDraf
   }
   return result;
 }
+
+/* ── Add-on mutations ── */
+
+export function addAddOn(d: PricingDraft, newKey: string): PricingDraft {
+  const result = structuredClone(d);
+  if (!result.addOns) result.addOns = {};
+  const unit = result.plans && Object.values(result.plans).length > 0
+    ? Object.values(result.plans)[0].unit ?? 'user/month'
+    : 'user/month';
+  result.addOns[newKey] = {
+    description: '',
+    price: 0,
+    unit,
+    availableFor: Object.keys(result.plans),
+    subscriptionConstraints: { min: 1, max: 1, step: 1 },
+  };
+  return result;
+}
+
+export function removeAddOn(d: PricingDraft, addOnKey: string): PricingDraft {
+  const result = structuredClone(d);
+  if (result.addOns) {
+    delete result.addOns[addOnKey];
+    for (const ao of Object.values(result.addOns)) {
+      if (ao.dependsOn) ao.dependsOn = ao.dependsOn.filter(d => d !== addOnKey);
+      if (ao.excludes) ao.excludes = ao.excludes.filter(e => e !== addOnKey);
+    }
+  }
+  return result;
+}
+
+export function renameAddOn(d: PricingDraft, oldKey: string, newKey: string): PricingDraft {
+  if (oldKey === newKey) return d;
+  const result = structuredClone(d);
+  if (!result.addOns?.[oldKey]) return result;
+  if (result.addOns[newKey]) return result;
+  const addOn = result.addOns[oldKey];
+  delete result.addOns[oldKey];
+  result.addOns = { ...result.addOns, [newKey]: addOn };
+  for (const ao of Object.values(result.addOns)) {
+    if (ao.dependsOn) ao.dependsOn = ao.dependsOn.map(d => d === oldKey ? newKey : d);
+    if (ao.excludes) ao.excludes = ao.excludes.map(e => e === oldKey ? newKey : e);
+  }
+  return result;
+}
+
+export function updateAddOnProps(
+  d: PricingDraft,
+  addOnKey: string,
+  updates: Partial<import('./types').DraftAddOn>
+): PricingDraft {
+  const result = structuredClone(d);
+  if (!result.addOns?.[addOnKey]) return result;
+  Object.assign(result.addOns[addOnKey], updates);
+  return result;
+}
+
+export function toggleAddOnAvailableFor(
+  d: PricingDraft,
+  addOnKey: string,
+  planKey: string
+): PricingDraft {
+  const result = structuredClone(d);
+  const ao = result.addOns?.[addOnKey];
+  if (!ao) return result;
+  if (!ao.availableFor) ao.availableFor = Object.keys(result.plans);
+  const idx = ao.availableFor.indexOf(planKey);
+  if (idx >= 0) {
+    ao.availableFor.splice(idx, 1);
+  } else {
+    ao.availableFor.push(planKey);
+  }
+  return result;
+}
+
+export function setAddOnCellValue(
+  d: PricingDraft,
+  addOnKey: string,
+  cellType: 'feature' | 'usageLimit' | 'usageLimitsExtension',
+  cellKey: string,
+  value: string | number | boolean
+): PricingDraft {
+  const result = structuredClone(d);
+  const ao = result.addOns?.[addOnKey];
+  if (!ao) return result;
+
+  let container: Record<string, { value: string | number | boolean }> | undefined;
+  if (cellType === 'feature') {
+    if (!ao.features) ao.features = {};
+    container = ao.features;
+  } else if (cellType === 'usageLimit') {
+    if (!ao.usageLimits) ao.usageLimits = {};
+    container = ao.usageLimits;
+  } else {
+    if (!ao.usageLimitsExtensions) ao.usageLimitsExtensions = {};
+    container = ao.usageLimitsExtensions;
+  }
+
+  if (container[cellKey]) {
+    container[cellKey].value = value;
+  } else {
+    container[cellKey] = { value };
+  }
+
+  return result;
+}

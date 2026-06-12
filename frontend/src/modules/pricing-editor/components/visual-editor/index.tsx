@@ -11,17 +11,20 @@ import {
 import {
   parseDraftFromYaml, toggleFeatureValue, setCellValue, updatePlanProps, updateRenderMode, updateField,
   addPlan, removePlan, removeUsageLimit, ensureSyntaxVersion31,
+  addAddOn, removeAddOn, renameAddOn, updateAddOnProps, toggleAddOnAvailableFor,
 } from '../../services/pricing2yaml';
-import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit } from '../../services/pricing2yaml';
+import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit, DraftAddOn } from '../../services/pricing2yaml';
 
 import { SortablePlanHeader } from './components/SortablePlanHeader';
 import { SortableFeatureRow } from './components/SortableFeatureRow';
 import { SortableUsageLimitRow } from './components/SortableUsageLimitRow';
+import { SortableAddOnRow } from './components/SortableAddOnRow';
 import { CellInlineEdit } from './components/CellInlineEdit';
 import { AddRowTrigger } from './components/AddRowTrigger';
 import { PlanSidePanel } from './components/PlanSidePanel';
 import { FeatureSidePanel } from './components/FeatureSidePanel';
 import { UsageLimitSidePanel } from './components/UsageLimitSidePanel';
+import { AddOnSidePanel } from './components/AddOnSidePanel';
 import { CURRENCIES, LABEL_WIDTH, TRAILING_WIDTH } from './utils/constants';
 import { getNextName } from './utils/names';
 
@@ -37,12 +40,14 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [editingFeature, setEditingFeature] = useState<string | null>(null);
+  const [editingAddOn, setEditingAddOn] = useState<string | null>(null);
   const [creatingRowKey, setCreatingRowKey] = useState<string | null>(null);
   const [creatingUsageLimit, setCreatingUsageLimit] = useState(false);
 
   const [planOrder, setPlanOrder] = useState<string[] | null>(null);
   const [featureOrder, setFeatureOrder] = useState<string[] | null>(null);
   const [usageLimitOrder, setUsageLimitOrder] = useState<string[] | null>(null);
+  const [addOnOrder, setAddOnOrder] = useState<string[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -67,6 +72,12 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     if (usageLimitOrder) return usageLimitOrder.filter(k => base.includes(k)).concat(base.filter(k => !usageLimitOrder.includes(k)));
     return base;
   }, [draft.usageLimits, usageLimitOrder]);
+
+  const addOnKeys = useMemo(() => {
+    const base = Object.keys(draft.addOns ?? {});
+    if (addOnOrder) return addOnOrder.filter(k => base.includes(k)).concat(base.filter(k => !addOnOrder.includes(k)));
+    return base;
+  }, [draft.addOns, addOnOrder]);
 
   const featureMap = useMemo(() => {
     const m: Record<string, DraftFeature> = {};
@@ -314,6 +325,40 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     applyMutation(mutated);
   }, [draft, applyMutation]);
 
+  /* ── Add-on operations ── */
+  const handleAddAddOn = useCallback(() => {
+    const name = getNextName('addOn', Object.keys(draft.addOns ?? {}));
+    applyMutation(addAddOn(draft, name));
+    setCreatingRowKey(name);
+  }, [draft, applyMutation]);
+
+  const handleRemoveAddOn = useCallback((addOnKey: string) => {
+    applyMutation(removeAddOn(draft, addOnKey));
+  }, [draft, applyMutation]);
+
+  const handleAddOnRename = useCallback((oldKey: string, newKey: string) => {
+    if (oldKey === newKey || !newKey) return;
+    applyMutation(renameAddOn(draft, oldKey, newKey));
+  }, [draft, applyMutation]);
+
+  const handleToggleAddOnAvailableFor = useCallback((addOnKey: string, planKey: string) => {
+    applyMutation(toggleAddOnAvailableFor(draft, addOnKey, planKey));
+  }, [draft, applyMutation]);
+
+  const handleAddOnCreatingConfirm = useCallback((newKey: string) => {
+    if (!creatingRowKey) return;
+    if (newKey !== creatingRowKey && !(draft.addOns ?? {})[newKey]) {
+      applyMutation(renameAddOn(draft, creatingRowKey, newKey));
+    }
+    setCreatingRowKey(null);
+  }, [creatingRowKey, draft, applyMutation]);
+
+  const handleAddOnCreatingCancel = useCallback(() => {
+    if (!creatingRowKey) return;
+    applyMutation(removeAddOn(draft, creatingRowKey));
+    setCreatingRowKey(null);
+  }, [creatingRowKey, draft, applyMutation]);
+
   /* ── DnD ── */
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -343,8 +388,16 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       const reordered: Record<string, DraftUsageLimit> = {};
       for (const k of newOrder) reordered[k] = draft.usageLimits![k];
       applyMutation({ ...draft, usageLimits: reordered });
+      return;
     }
-  }, [planKeys, featureKeys, usageLimitKeys, draft, applyMutation]);
+    if (addOnKeys.includes(activeId) && addOnKeys.includes(overId)) {
+      const newOrder = arrayMove(addOnKeys, addOnKeys.indexOf(activeId), addOnKeys.indexOf(overId));
+      setAddOnOrder(newOrder);
+      const reordered: Record<string, DraftAddOn> = {};
+      for (const k of newOrder) reordered[k] = draft.addOns![k];
+      applyMutation({ ...draft, addOns: reordered });
+    }
+  }, [planKeys, featureKeys, usageLimitKeys, addOnKeys, draft, applyMutation]);
 
   /* ── Keyboard shortcut ── */
   useEffect(() => {
@@ -377,9 +430,10 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
           <span className="text-slate-300 dark:text-slate-600">|</span>
           <span>{featureKeys.length} features</span>
           {usageLimitKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{usageLimitKeys.length} limits</span></>}
+          {addOnKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{addOnKeys.length} add-ons</span></>}
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
             type="button" onClick={onSave} disabled={!isDirty}
-            className={`ml-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`ml-3 cursor-pointer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               isDirty ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
             }`} title="Save changes (Ctrl+S)"
           ><FaFloppyDisk className="h-3 w-3" /> Save</motion.button>
@@ -459,6 +513,38 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                     );
                   })}
                 </SortableContext>
+
+                {/* Add-ons section */}
+                <div className="flex shrink-0 items-center border-b border-t border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Add-Ons</span>
+                </div>
+                <AddRowTrigger label="Add add-on" onAdd={() => handleAddAddOn()} />
+                <SortableContext items={addOnKeys} strategy={verticalListSortingStrategy}>
+                  {addOnKeys.map((addOnKey, aIdx) => {
+                    const addOn = (draft.addOns ?? {})[addOnKey];
+                    if (!addOn) return null;
+                    return (
+                      <Fragment key={addOnKey}>
+                        <SortableAddOnRow addOnKey={addOnKey} addOn={addOn} planKeys={visiblePlanKeys} draft={draft} currency={resolvedCurrency}
+                          onToggleAvailableFor={(pk) => handleToggleAddOnAvailableFor(addOnKey, pk)}
+                          onEdit={() => setEditingAddOn(addOnKey)} onRemove={() => handleRemoveAddOn(addOnKey)}
+                          onRename={handleAddOnRename}
+                          isCreating={creatingRowKey === addOnKey} onCreatingConfirm={handleAddOnCreatingConfirm} onCreatingCancel={handleAddOnCreatingCancel} />
+                        <AddRowTrigger label="Add add-on" onAdd={() => {
+                          const name = getNextName('addOn', Object.keys(draft.addOns ?? {}));
+                          const mutated = addAddOn(draft, name);
+                          const keys = Object.keys(mutated.addOns ?? {});
+                          const insertAt = aIdx + 1;
+                          const newKeys = [...keys.slice(0, insertAt), name, ...keys.slice(insertAt)];
+                          const reordered: Record<string, DraftAddOn> = {};
+                          for (const k of newKeys) reordered[k] = mutated.addOns![k];
+                          applyMutation({ ...mutated, addOns: reordered });
+                          setCreatingRowKey(name);
+                        }} />
+                      </Fragment>
+                    );
+                  })}
+                </SortableContext>
               </div>
             </DndContext>
           </div>
@@ -473,7 +559,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
             onSave={(key, updates) => { applyMutation(updatePlanProps(draft, editingPlan, updates)); if (key !== editingPlan) { handleRename('plan', editingPlan, key); } setEditingPlan(null); }} />
         )}
         {editingFeature && editingFeatureData && (
-          <FeatureSidePanel entityKey={editingFeature} entity={editingFeatureData} isFeature={editingFeatureIsFeature}
+          <FeatureSidePanel entityKey={editingFeature} entity={editingFeatureData} isFeature={editingFeatureIsFeature} featureKeys={featureKeys}
             onClose={() => setEditingFeature(null)} onSave={handleSaveEntity} onConvert={handleConvertEntity} />
         )}
         {creatingUsageLimit && (
@@ -486,6 +572,23 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
               applyMutation(mutated);
               setCreatingUsageLimit(false);
             }} />
+        )}
+        {editingAddOn && (draft.addOns ?? {})[editingAddOn] && (
+          <AddOnSidePanel
+            addOnKey={editingAddOn}
+            addOn={draft.addOns![editingAddOn]}
+            planKeys={visiblePlanKeys}
+            addOnKeys={addOnKeys}
+            featureKeys={featureKeys}
+            usageLimitKeys={usageLimitKeys}
+            currency={resolvedCurrency}
+            onClose={() => setEditingAddOn(null)}
+            onSave={(key, updates) => {
+              applyMutation(updateAddOnProps(draft, editingAddOn, updates));
+              if (key !== editingAddOn) handleAddOnRename(editingAddOn, key);
+              setEditingAddOn(null);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

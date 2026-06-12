@@ -31,7 +31,7 @@ export function CellInlineEdit({
         if (e.key === 'Escape') { setDraft(value); setEditing(false); }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="w-full rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-center text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
+      className="rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-center text-sm font-semibold text-slate-900 outline-none ring-2 ring-indigo-500/20 min-w-[50px] max-w-[120px] dark:border-indigo-600 dark:bg-slate-800 dark:text-white"
     />
   );
 }

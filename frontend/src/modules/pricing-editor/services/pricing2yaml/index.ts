@@ -14,6 +14,12 @@ import {
   removeFeature,
   addUsageLimit,
   removeUsageLimit,
+  addAddOn,
+  removeAddOn,
+  renameAddOn,
+  updateAddOnProps,
+  toggleAddOnAvailableFor,
+  setAddOnCellValue,
 } from './mutations';
 
 export type { PricingDraft, DraftFeature, DraftUsageLimit, DraftPlan, DraftAddOn };
@@ -31,6 +37,12 @@ export {
   removeFeature,
   addUsageLimit,
   removeUsageLimit,
+  addAddOn,
+  removeAddOn,
+  renameAddOn,
+  updateAddOnProps,
+  toggleAddOnAvailableFor,
+  setAddOnCellValue,
 };
 
 export function ensureSyntaxVersion31(yamlStr: string): string {

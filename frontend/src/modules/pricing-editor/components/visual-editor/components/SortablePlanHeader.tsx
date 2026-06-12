@@ -37,21 +37,21 @@ export function SortablePlanHeader({
       onMouseLeave={() => onHover(false)}
     >
       <div className="absolute inset-0 rounded-t-lg" style={{ background: `linear-gradient(135deg, ${a}, ${b})` }} />
-      <div className="relative flex flex-col items-center py-4 text-center">
+      <div className="relative flex flex-col items-center overflow-hidden py-4 text-center">
         <div {...listeners} className="absolute left-1 top-2 cursor-grab text-white/40 hover:text-white/80 active:cursor-grabbing">
           <FaGripVertical className="h-3 w-3" />
         </div>
-        <div className="relative">
+        <div className="w-full truncate px-5">
           <NameInlineEdit value={planKey} onSave={(newKey) => onRename(planKey, newKey)} light
             className="!text-white !font-bold !uppercase tracking-wide rounded px-2 py-0.5" />
         </div>
-        <div className="mt-1 flex items-center justify-center">
-          <span className="flex items-center text-base font-bold text-white">
+        <div className="mt-1 flex w-full items-center justify-center truncate px-2">
+          <span className="flex items-center truncate text-base font-bold text-white">
             <HeaderInlineEdit value={String(plan.price)} onSave={onPriceChange} className="!text-base !font-bold !text-white" numeric selectOnFocus />
-            <span className="ml-0.5 text-sm font-normal text-white/70">{currency}</span>
+            <span className="ml-0.5 shrink-0 text-sm font-normal text-white/70">{currency}</span>
           </span>
         </div>
-        {plan.unit && <div className="mt-0.5"><HeaderInlineEdit value={plan.unit} onSave={onUnitChange} className="!text-xs !text-white/70" /></div>}
+        {plan.unit && <div className="mt-0.5 w-full truncate px-2"><HeaderInlineEdit value={plan.unit} onSave={onUnitChange} className="!text-xs !text-white/70" /></div>}
       </div>
       {isHovered && (
         <div className="absolute right-1 top-1 z-10 flex gap-0.5">
