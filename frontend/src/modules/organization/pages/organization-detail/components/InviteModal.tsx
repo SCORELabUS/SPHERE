@@ -154,7 +154,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
                       <select
                         value={expiresInDays}
                         onChange={(e) => setExpiresInDays(Number(e.target.value))}
-                        className="cursor-pointer appearance-none rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 pr-8 text-sm text-tp-ink outline-none transition-all duration-200 focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/10"
+                        className="cursor-pointer w-full appearance-none rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 pr-8 text-sm text-tp-ink outline-none transition-all duration-200 focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/10"
                       >
                         <option value={1}>1 day</option>
                         <option value={3}>3 days</option>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Iconify from '../../../core/components/iconify';
 import { useAuth } from '../../../auth/hooks/useAuth';
 
@@ -35,43 +36,63 @@ export default function UserSearchInput({
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedUsersRef = useRef(selectedUsers);
+  const fetchRef = useRef<ReturnType<typeof useAuth>['fetchWithInterceptor']>(null!);
+  const tokenRef = useRef<string | null | undefined>(undefined);
   const { fetchWithInterceptor, authUser } = useAuth();
 
-  const searchUsers = useCallback(
-    async (searchQuery: string) => {
-      if (searchQuery.length < MIN_CHARS) {
-        setResults([]);
-        return;
-      }
+  selectedUsersRef.current = selectedUsers;
+  fetchRef.current = fetchWithInterceptor;
+  tokenRef.current = authUser?.token;
 
-      setIsSearching(true);
-      try {
-        const response = await fetchWithInterceptor(`${BASE_URL}/users?q=${encodeURIComponent(searchQuery)}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authUser?.token}`,
-          },
-        });
+  const updateDropdownPosition = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: `${rect.bottom + 4}px`,
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+        zIndex: 9999,
+      });
+    }
+  }, []);
 
-        if (response.ok) {
-          const data = await response.json();
-          // Filter out already selected users
-          const filtered = data.filter((user: UserSearchResult) => !selectedUsers.some((u) => u.id === user.id));
-          setResults(filtered);
-        }
-      } catch (err) {
-        console.error('Failed to search users:', err);
-      } finally {
-        setIsSearching(false);
+  const searchUsers = useCallback(async (searchQuery: string) => {
+    if (searchQuery.length < MIN_CHARS) {
+      setResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await fetchRef.current(`${BASE_URL}/users?q=${encodeURIComponent(searchQuery)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenRef.current}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const filtered = data.filter(
+          (user: UserSearchResult) => !selectedUsersRef.current.some((u) => u.id === user.id)
+        );
+        setResults(filtered);
+        setHighlightedIndex(0);
       }
-    },
-    [fetchWithInterceptor, authUser?.token, selectedUsers]
-  );
+    } catch (err) {
+      console.error('Failed to search users:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -104,6 +125,12 @@ export default function UserSearchInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+    }
+  }, [isOpen, updateDropdownPosition]);
+
   const handleSelect = (user: UserSearchResult) => {
     if (!selectedUsers.some((u) => u.id === user.id)) {
       onUsersChange([...selectedUsers, user]);
@@ -111,6 +138,7 @@ export default function UserSearchInput({
     setQuery('');
     setResults([]);
     setIsOpen(false);
+    setHighlightedIndex(0);
     inputRef.current?.focus();
   };
 
@@ -121,17 +149,55 @@ export default function UserSearchInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      if (!isOpen && results.length > 0) {
+        setIsOpen(true);
+      }
       setHighlightedIndex((prev) => Math.min(prev + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightedIndex((prev) => Math.max(prev - 1, -1));
-    } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+      setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
       e.preventDefault();
-      handleSelect(results[highlightedIndex]);
+      if (results.length > 0) {
+        const indexToSelect = highlightedIndex >= 0 ? highlightedIndex : 0;
+        handleSelect(results[indexToSelect]);
+      }
     } else if (e.key === 'Backspace' && query === '' && selectedUsers.length > 0) {
       handleRemove(selectedUsers[selectedUsers.length - 1].id);
     }
   };
+
+  const dropdownContent =
+    isOpen && results.length > 0 ? (
+      <div style={dropdownStyle} className="max-h-60 overflow-y-auto rounded-lg border border-tp-hairline bg-tp-canvas py-1 shadow-elevation-4">
+        {results.map((user, index) => (
+          <button
+            key={user.id}
+            type="button"
+            onClick={() => handleSelect(user)}
+            onMouseEnter={() => setHighlightedIndex(index)}
+            className={`flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors ${
+              index === highlightedIndex ? 'bg-tp-surface' : ''
+            }`}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-tp-primary/10 text-xs font-medium text-tp-primary">
+              {user.firstName.charAt(0)}
+              {user.lastName.charAt(0)}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-tp-ink">
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="text-xs text-tp-steel">@{user.username}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    ) : isOpen && query.length >= MIN_CHARS && !isSearching && results.length === 0 ? (
+      <div style={dropdownStyle} className="w-full rounded-lg border border-tp-hairline bg-tp-canvas py-4 text-center shadow-elevation-4">
+        <p className="text-sm text-tp-steel">No users found</p>
+      </div>
+    ) : null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -159,7 +225,6 @@ export default function UserSearchInput({
           onChange={(e) => {
             setQuery(e.target.value);
             setIsOpen(true);
-            setHighlightedIndex(-1);
           }}
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
@@ -175,37 +240,7 @@ export default function UserSearchInput({
         )}
       </div>
 
-      {isOpen && results.length > 0 && (
-        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-tp-hairline bg-tp-canvas py-1 shadow-elevation-4">
-          {results.map((user, index) => (
-            <button
-              key={user.id}
-              type="button"
-              onClick={() => handleSelect(user)}
-              className={`flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors ${
-                index === highlightedIndex ? 'bg-tp-surface' : 'hover:bg-tp-surface'
-              }`}
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-tp-primary/10 text-xs font-medium text-tp-primary">
-                {user.firstName.charAt(0)}
-                {user.lastName.charAt(0)}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-tp-ink">
-                  {user.firstName} {user.lastName}
-                </p>
-                <p className="text-xs text-tp-steel">@{user.username}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {isOpen && query.length >= MIN_CHARS && !isSearching && results.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-tp-hairline bg-tp-canvas py-4 text-center shadow-elevation-4">
-          <p className="text-sm text-tp-steel">No users found</p>
-        </div>
-      )}
+      {dropdownContent && createPortal(dropdownContent, document.body)}
     </div>
   );
 }
