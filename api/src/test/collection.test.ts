@@ -876,7 +876,7 @@ describe('Pricing Collections API integration', () => {
   });
 
   describe('DELETE /api/v1/collections/:organizationId/:collectionName', () => {
-    it('Return 204 and allows owner to delete own collection', async () => {
+    it('Return 200 and allows owner to delete own collection', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
       const collection = await createTestCollection({ _organizationId: organizationId });
@@ -885,10 +885,10 @@ describe('Pricing Collections API integration', () => {
         .delete(`${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(collection.slug)}`)
         .set('Authorization', `Bearer ${owner.token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
     });
     
-    it('Return 204 and allows ADMIN to delete any collection', async () => {
+    it('Return 200 and allows ADMIN to delete any collection', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 
       const collection = await createTestCollection({ _organizationId: organizationId });
@@ -897,10 +897,10 @@ describe('Pricing Collections API integration', () => {
         .delete(`${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(collection.slug)}`)
         .set('Authorization', `Bearer ${adminUser.token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
     });
     
-    it('Return 204 and also remove all pricings when deleting a collection', async () => {
+    it('Return 200 and also remove all pricings when deleting a collection', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
       const testPricing1 = await createPricingForOrganization({ organizationId: organizationId });
@@ -912,7 +912,8 @@ describe('Pricing Collections API integration', () => {
         .delete(`${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(collection.slug)}?cascade=true`)
         .set('Authorization', `Bearer ${adminUser.token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Successfully deleted.');
       // the pricings that belonged to the collection should also be deleted
       const resGet1 = await request(app)
         .get(`${BASE_PATH}/pricings/${organizationId}/${testPricing1.serviceName}`)
@@ -922,6 +923,23 @@ describe('Pricing Collections API integration', () => {
         .get(`${BASE_PATH}/pricings/${organizationId}/${testPricing2.serviceName}`)
         .set('Authorization', `Bearer ${adminUser.token}`);
       expect(resGet2.status).toBe(404);
+    });
+
+    it('Return 200 when deleting an empty collection with cascade=true', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const collection = await createTestCollection({ _organizationId: organizationId });
+
+      const res = await request(app)
+        .delete(`${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(collection.slug)}?cascade=true`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Successfully deleted.');
+
+      const resGet = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}/${encodeURIComponent(collection.slug)}`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+      expect(resGet.status).toBe(404);
     });
 
     it('returns 403 when USER tries to delete another user collection', async () => {
@@ -1208,7 +1226,7 @@ describe('Pricing Collections API integration', () => {
         .delete(`${BASE_PATH}/collections/${organizationId}/${slug}`)
         .set('Authorization', `Bearer ${member.token}`);
 
-      expect(deleteResponse.status).toBe(204);
+      expect(deleteResponse.status).toBe(200);
     });
   });
 });

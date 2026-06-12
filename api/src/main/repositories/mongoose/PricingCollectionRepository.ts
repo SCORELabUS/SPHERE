@@ -240,7 +240,7 @@ class PricingCollectionRepository extends RepositoryBase {
     const resultCollections = await PricingCollectionMongoose.deleteOne({
       _id: new mongoose.Types.ObjectId(id),
     });
-    return resultCollections?.deletedCount === 1 && resultPricings?.deletedCount > 0;
+    return resultCollections?.deletedCount === 1;
   }
 
   _processCollectionQueryParams(queryParams: CollectionIndexQueryParams): {

@@ -226,7 +226,7 @@ class PricingCollectionController {
         req.user
       );
       const message = result ? 'Successfully deleted.' : 'Could not delete collection.';
-      res.status(204).json({ message: message });
+      res.status(200).json({ message: message });
     } catch (err: any) {
       const {status, message} = handleError(err);
       res.status(status).send({ error: message });
