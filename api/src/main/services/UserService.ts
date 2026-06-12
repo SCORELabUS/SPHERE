@@ -35,6 +35,12 @@ class UserService {
     // When using q with non-ADMIN user, limit results and project only public fields
     const isSearch = !!queryParams.q;
     const shouldExcludeSensitive = isSearch && userRole !== 'ADMIN';
+
+    // When a non-ADMIN user searches, automatically exclude admin users
+    if (isSearch && userRole !== 'ADMIN' && !filter.role) {
+      filter.role = 'USER' as any;
+    }
+
     const projection: Record<string, 0 | 1> | undefined = shouldExcludeSensitive
       ? { password: 0, email: 0, role: 0, phone: 0, token: 0, tokenExpiration: 0, apiKeys: 0, createdAt: 0, updatedAt: 0 }
       : undefined;
