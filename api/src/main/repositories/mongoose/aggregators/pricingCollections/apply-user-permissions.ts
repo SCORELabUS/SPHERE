@@ -14,8 +14,8 @@ export function considerUserCollectionPermissionsAggregator(permissions: OrgUser
             ? [{ $expr: { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] } }]
             : []),
 
-          // El ID de la colección está en las colecciones permitidas
-          { 'id': { $in: permissions.collections } },
+          // El slug de la colección está en las colecciones permitidas
+          { 'slug': { $in: permissions.collections } },
 
           // La colección es pública
           { private: false }

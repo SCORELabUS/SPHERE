@@ -509,7 +509,7 @@ describe('Pricing Collections API integration', () => {
         private: true,
       });
 
-      await createEntityScopedPermission(member.id, organizationId, privateCollection.id, 'collection', {
+      await createEntityScopedPermission(member.id, organizationId, privateCollection.slug, 'collection', {
         GET: true,
         PUT: false,
         DELETE: false,
@@ -1227,6 +1227,49 @@ describe('Pricing Collections API integration', () => {
         .set('Authorization', `Bearer ${member.token}`);
 
       expect(deleteResponse.status).toBe(200);
+    });
+
+    it('Return 201 and auto-grant full permissions when MEMBER creates a collection via bulk upload', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createOrgScopedPermission(member.id, organizationId, 'collection', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+
+      const { zipPath, tempPaths } = await createBulkZipFixture();
+      generatedFilesToDelete.add(zipPath);
+
+      const res = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/bulk`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('name', `BulkCollection_${randomSuffix()}`)
+        .field('description', 'Collection created from bulk upload')
+        .field('private', 'false')
+        .attach('zip', zipPath);
+
+      expect(res.status).toBe(201);
+
+      const slug = res.body.collection.slug;
+      const permission = await EntityPermissionMongoose.findOne({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'collection',
+        entitySlug: slug,
+      });
+
+      expect(permission).toBeDefined();
+      expect((permission!.permissions as any).GET).toBe(true);
+      expect((permission!.permissions as any).PUT).toBe(true);
+      expect((permission!.permissions as any).DELETE).toBe(true);
+      expect((permission!.permissions as any).CREATE).toBe(true);
+
+      await removeTempPaths(tempPaths);
     });
   });
 });

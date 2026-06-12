@@ -288,6 +288,20 @@ class PricingCollectionService {
       // Create collection and keep reference so we only attempt cleanup if it was created
       collection = await this.pricingCollectionRepository.create(newCollectionData);
 
+      if (orgRole === 'MEMBER') {
+        try {
+          await this.permissionService.grantEntityPermission(
+            reqUser.id,
+            organizationId,
+            'collection',
+            newCollectionData.slug,
+            { GET: true, PUT: true, DELETE: true, CREATE: true }
+          );
+        } catch {
+          // Permission grant failure should not block collection creation
+        }
+      }
+
       const pricingDatas = [];
       const pricingsWithErrors = [];
       for (const pricing of extractedFiles) {
