@@ -570,7 +570,7 @@ class PricingCollectionService {
   }
 
   _computeCollectionAnalytics(collection: RetrievedCollection) {
-    const collectionPricings = collection.pricings?.[0]?.pricings ?? [];
+    const collectionPricings = collection.pricings ?? [];
     const numberOfPricings = collectionPricings.length;
     if (collectionPricings.length === 0) {
       return {
