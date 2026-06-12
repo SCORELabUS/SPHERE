@@ -33,7 +33,7 @@ export function getCollectionsAggregator(
     },
   });
 
-  pipeline.push(...addNumberOfPricingsAggregator());
+  pipeline.push(...addNumberOfPricingsAggregator(permissions));
   pipeline.push(...addOrganizationToCollectionAggregator());
   pipeline.push(...filteringAggregator);
 

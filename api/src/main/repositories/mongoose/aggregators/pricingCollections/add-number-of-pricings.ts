@@ -1,8 +1,9 @@
+import { OrgUserPermissionsContext } from '../../../../types/policies';
 import { getAllPricingsFromCollection } from '../get-pricings-from-collection';
 
-export function addNumberOfPricingsAggregator() {
+export function addNumberOfPricingsAggregator(permissions?: OrgUserPermissionsContext) {
   return [
-    ...getAllPricingsFromCollection(),
+    ...getAllPricingsFromCollection(permissions),
     {
       $addFields: {
         numberOfPricings: { $size: '$data.pricings' },

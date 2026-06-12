@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import Skeleton from 'react-loading-skeleton';
 import { usePricingCollectionsApi } from '../../../profile/api/pricingCollectionsApi';
 import { usePricingsApi } from '../../api/pricingsApi';
-import { getPublicOrganization } from '../../../organization/api/organizationsApi';
+import { getPublicOrganization, useOrganizationsApi } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import PricingCard, { type MenuItem } from '../../components/pricing-card';
@@ -48,8 +48,12 @@ export default function CollectionCardPage() {
   const router = useRouter();
   const { getCollectionByOrganizationAndSlug, downloadCollection, getCollectionPermissions } = usePricingCollectionsApi();
   const { getPricings, removePricingFromCollection } = usePricingsApi();
+  const { getOrgPricings } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentCollection } = useRecentItems();
+
+  const getOrgPricingsRef = useRef(getOrgPricings);
+  getOrgPricingsRef.current = getOrgPricings;
 
   const [collection, setCollection] = useState<Collection | null>(null);
   const [isLoadingCollection, setIsLoadingCollection] = useState(true);
@@ -103,14 +107,16 @@ export default function CollectionCardPage() {
     if (!collectionSlug) return;
     setIsLoadingPricings(true);
     try {
-      const filters: Record<string, string | number> = {
+      const filters: Record<string, string> = {
         collection: collection?.slug || collectionSlug,
-        limit: PRICINGS_PER_PAGE,
-        offset: (pricingsPage - 1) * PRICINGS_PER_PAGE,
+        limit: String(PRICINGS_PER_PAGE),
+        offset: String((pricingsPage - 1) * PRICINGS_PER_PAGE),
         sortBy: 'name',
         sort: sortAsc ? 'asc' : 'desc',
       };
-      const data = await getPricings(filters as Record<string, string>);
+      const data = authUser.isAuthenticated && organizationId
+        ? await getOrgPricingsRef.current(organizationId, filters)
+        : await getPricings(filters);
       setPricings(data.pricings ?? []);
       setPricingsTotal(data.total ?? 0);
     } catch {
@@ -118,7 +124,7 @@ export default function CollectionCardPage() {
     } finally {
       setIsLoadingPricings(false);
     }
-  }, [collection, collectionSlug, pricingsPage, sortAsc]);
+  }, [collection, collectionSlug, pricingsPage, sortAsc, authUser.isAuthenticated, organizationId, getPricings]);
 
   useEffect(() => {
     fetchPricings();

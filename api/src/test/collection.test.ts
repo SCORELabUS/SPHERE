@@ -275,6 +275,119 @@ describe('Pricing Collections API integration', () => {
     });
   });
 
+  describe('GET /api/v1/collections/:organizationId - numberOfPricings respects permissions', () => {
+    it('counts only public pricings for unauthenticated requests', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const publicPricing = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privatePricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'Mixed Collection' },
+        [publicPricing.serviceName, privatePricing.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].numberOfPricings).toBe(1);
+    });
+
+    it('counts all pricings for OWNER of the organization', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const publicPricing = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privatePricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'Mixed Collection' },
+        [publicPricing.serviceName, privatePricing.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].numberOfPricings).toBe(2);
+    });
+
+    it('counts all pricings for MEMBER with entity-scoped GET permission on the collection', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicPricing = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privatePricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const collection = await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'Mixed Collection' },
+        [publicPricing.serviceName, privatePricing.serviceName]
+      );
+
+      await createEntityScopedPermission(member.id, organizationId, collection.slug, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].numberOfPricings).toBe(2);
+    });
+
+    it('counts only public pricings for non-member user', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const publicPricing = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privatePricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'Mixed Collection' },
+        [publicPricing.serviceName, privatePricing.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      const collection = response.body.collections.find((c: any) => c.name === 'Mixed Collection');
+      expect(collection).toBeDefined();
+      expect(collection.numberOfPricings).toBe(1);
+    });
+
+    it('counts all pricings for ADMIN user', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const publicPricing = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privatePricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      await createTestCollectionWithPricings(
+        { _organizationId: organizationId, name: 'Mixed Collection' },
+        [publicPricing.serviceName, privatePricing.serviceName]
+      );
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${adminUser.token}`);
+
+      expect(response.status).toBe(200);
+      const collection = response.body.collections.find((c: any) => c.name === 'Mixed Collection');
+      expect(collection).toBeDefined();
+      expect(collection.numberOfPricings).toBe(2);
+    });
+  });
+
   describe('GET /api/v1/users/me/collections', () => {
     it('returns 401 with missing Authorization header', async () => {
       const response = await request(app).get(`${BASE_PATH}/users/me/collections`);
