@@ -2436,7 +2436,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-    
+
     put:
       summary: Update pricing version
       description: |
@@ -3076,52 +3076,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /collections/{organizationId}/pricings:
-    post:
-      summary: Add pricing to collection.
-      description: |
-        Adds a pricing to a collection of the user performing the request.
-
-        **Authentication**: User API Key
-      
-      tags:
-        - Pricings
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                pricingName:
-                  $ref: '#/components/schemas/Name'
-                collectionId:
-                  type: string
-                  description: ID of the collection to add the pricing to
-      responses:
-        '200':
-          description: Operation Completed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Pricing added to collection successfully
-        '403':
-          description: Insufficient permissions
-        '404':
-          description: Pricing or collection not found
-        default:
-          description: Unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /collections/{organizationId}/{collectionSlug}:
     get:
       summary: Get collection details.
@@ -3153,6 +3107,56 @@ paths:
           description: Insufficient permissions
         '404':
           description: User or collection not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add pricing to collection.
+      description: |
+        Adds a pricing to a collection of the user performing the request.
+
+        **Authentication**: User API Key
+
+        **Permission**: 
+        - USER: can add pricings to their own collections.
+        - ADMIN: can add pricings to any collection.
+
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/CollectionSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pricingSlug:
+                  type: string
+                  description: Slug of the pricing to add to the collection
+      responses:
+        '200':
+          description: Operation Completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Pricing added to collection successfully
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Pricing or collection not found
         default:
           description: Unexpected error
           content:

@@ -48,7 +48,7 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
     if (isAdding) return;
     setIsAdding(true);
     try {
-      await addPricingToCollection(organizationId!, pricingSlug, collection.id);
+      await addPricingToCollection(organizationId!, pricingSlug, collection.slug);
       customAlert(`"${pricingName}" added to "${collection.name}"`, 'success');
       onAdded();
     } catch {

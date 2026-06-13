@@ -211,11 +211,11 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, token]);
 
-  const addPricingToCollection = useCallback(async (organizationId: string, pricingSlug: string, collectionId: string) => {
-    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${organizationId}/pricings`, {
+  const addPricingToCollection = useCallback(async (organizationId: string, pricingSlug: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${organizationId}/${collectionSlug}`, {
       method: 'POST',
       headers: basicHeaders,
-      body: JSON.stringify({ pricingSlug, collectionId }),
+      body: JSON.stringify({ pricingSlug }),
     })
       .then(response => {
         if (!response.ok) {

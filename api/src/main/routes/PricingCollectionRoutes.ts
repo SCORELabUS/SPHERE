@@ -30,12 +30,9 @@ const loadFileRoutes = function (app: express.Application) {
     .post(upload, pricingCollectionController.bulkCreate);
   
   app
-    .route(baseUrl + '/collections/:organizationId/pricings')
-    .post(upload, pricingCollectionController.addPricingToCollection);
-
-  app
     .route(baseUrl + '/collections/:organizationId/:collectionSlug')
     .get(pricingCollectionController.show)
+    .post(pricingCollectionController.addPricingToCollection)
     .put(
       PricingCollectionValidator.update,
       handleValidation,

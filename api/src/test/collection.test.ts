@@ -681,7 +681,7 @@ describe('Pricing Collections API integration', () => {
     });
   });
 
-  describe('POST /api/v1/collections/:organizationId/pricings', () => {
+  describe('POST /api/v1/collections/:organizationId/:collectionSlug', () => {
     it('Return 200 and success message when adding own pricing to a valid collection.', async () => {
       const { user: owner, organizationId} = await createAndLoginUser('USER');
 
@@ -694,9 +694,9 @@ describe('Pricing Collections API integration', () => {
       });
 
       const response = await request(app)
-        .post(`${BASE_PATH}/collections/${organizationId}/pricings`)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
         .set('Authorization', `Bearer ${owner.token}`)
-        .send({ pricingName: serviceName, collectionId: collection.id });
+        .send({ pricingSlug: serviceName });
 
       expect(response.status).toBe(200);
       expect(response.body.message).toBeDefined();
@@ -708,18 +708,21 @@ describe('Pricing Collections API integration', () => {
       const collection = await createCollectionForOrganization(organizationId);
 
       const response = await request(app)
-        .post(`${BASE_PATH}/collections/${organizationId}/pricings`)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
         .set('Authorization', `Bearer ${owner.token}`)
-        .send({ pricingName: `nonexistent_${randomSuffix()}`, collectionId: collection.id });
+        .send({ pricingSlug: `nonexistent_${randomSuffix()}` });
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBeDefined();
     });
 
     it('Return 401 and error object with missing Authorization header.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const collection = await createCollectionForOrganization(organizationId);
+
       const response = await request(app)
-        .post(`${BASE_PATH}/collections/${testUser.username}/pricings`)
-        .send({ pricingName: 'any-pricing', collectionId: '507f1f77bcf86cd799439011' });
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .send({ pricingSlug: 'any-pricing' });
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();

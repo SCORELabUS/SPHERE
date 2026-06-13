@@ -435,14 +435,19 @@ class PricingService {
   }
 
   async addPricingToCollection(
-    pricingName: string,
+    pricingSlug: string,
     organizationId: string,
-    collectionId: string,
-    queryParams: { collectionSlug?: string } = {}
+    collectionSlug: string,
+    reqUser?: LeanUser
   ) {
     try {
-      const pricing = await this.pricingRepository.findOne(pricingName, organizationId, {
-        ...queryParams,
+      const collection = await this.pricingCollectionService.show(
+        organizationId,
+        collectionSlug,
+        reqUser
+      );
+
+      const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         includePrivate: true,
       });
       if (!pricing) {
@@ -452,11 +457,11 @@ class PricingService {
       }
 
       await this.pricingRepository.addPricingToCollection(
-        pricingName,
+        pricingSlug,
         organizationId,
-        collectionId
+        collection.id
       );
-      await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
+      await this.pricingCollectionService.updateCollectionAnalytics(collection.id);
 
       return true;
     } catch (err) {

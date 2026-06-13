@@ -172,14 +172,11 @@ class PricingCollectionController {
 
   async addPricingToCollection(req: any, res: any) {
     try {
-
-      const queryParams = req.query;
-
       const result = await this.pricingService.addPricingToCollection(
-        req.body.pricingName,
-        req.org.id,
-        req.body.collectionId,
-        queryParams
+        req.body.pricingSlug,
+        req.params.organizationId,
+        req.params.collectionSlug,
+        req.user
       );
 
       if (!result) {
