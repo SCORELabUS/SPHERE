@@ -4,6 +4,7 @@ import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { dropdownVariants, transitionFast } from '../../../core/utils/motion-variants';
 import Avatar from '../../../core/components/avatar';
+import { FaKey } from "react-icons/fa";
 import Iconify from '../../../core/components/iconify';
 import { useNotificationsContext } from '../../../notification/hooks/useNotificationsContext';
 
@@ -61,6 +62,14 @@ export default function UserMenu() {
       },
     },
     {
+      label: 'API Keys',
+      icon: <FaKey className="h-4 w-4" />,
+      onClick: () => {
+        router.push('/me/api-keys');
+        setIsOpen(false);
+      },
+    },
+    {
       label: 'Settings',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -70,14 +79,6 @@ export default function UserMenu() {
       ),
       onClick: () => {
         router.push('/me/settings');
-        setIsOpen(false);
-      },
-    },
-    {
-      label: 'API Keys',
-      icon: <Iconify icon="mdi:key" className="h-4 w-4" />,
-      onClick: () => {
-        router.push('/me/api-keys');
         setIsOpen(false);
       },
     },
