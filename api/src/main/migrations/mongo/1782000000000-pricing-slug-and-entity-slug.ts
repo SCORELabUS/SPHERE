@@ -23,7 +23,7 @@ export async function up(db: mongoose.Connection) {
   if (pricingsWithoutOrg > 0 || pricingsWithNullOrg > 0) {
     throw new Error(
       `Cannot run slug migration: ${pricingsWithoutOrg + pricingsWithNullOrg} pricings missing _organizationId. ` +
-      `Run migration 1783000000000-migrate-production-to-organizations first.`
+      `Run migration 1781500000000-migrate-production-to-organizations first.`
     );
   }
 

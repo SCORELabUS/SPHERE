@@ -7,7 +7,7 @@ export async function up(connection: Connection): Promise<void> {
   const orgsCollection = connection.collection('organizations');
 
   // Check if organizations exist. If not, skip this migration —
-  // the composite migration (1783000000000) will handle org creation
+  // the composite migration (1781500000000) will handle org creation
   // and data conversion.
   const orgCount = await orgsCollection.countDocuments();
   if (orgCount === 0) {
