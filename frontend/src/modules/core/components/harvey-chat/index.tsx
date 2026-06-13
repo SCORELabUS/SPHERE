@@ -129,16 +129,19 @@ export default function HarveyChat({
 
 function buildWelcomeMessage(pricingName: string | null): string {
   if (pricingName) {
-    return (
-      `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
-      `I'm here to help you with questions about the **${pricingName}** pricing. Feel free to ask anything — ` +
-      `pricing structure, plan comparisons, feature analysis, or optimization suggestions.\n\n` +
-      `Here are some questions you might find useful:`
-    );
+  //   return (
+  //     `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
+  //     `I'm here to help you with questions about the **${pricingName}** pricing. Feel free to ask anything — ` +
+  //     `pricing structure, plan comparisons, feature analysis, or optimization suggestions.\n\n` +
+  //     `Here are some questions you might find useful:`
+  //   );
   }
   return (
-    `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
-    `I'm here to help you with any pricing questions. Ask me about subscriptions, ` +
-    `plan comparisons, feature analysis, or optimization strategies.`
+    `👋 Hey there!\n\n` +
+    `I’m still learning a few tricks. My chat capabilities are currently under development and will be available in the next SPHERE release.\n\n` +
+    `Stay tuned — I’ll be ready to help very soon! 🚀`
+    // `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
+    // `I'm here to help you with any pricing questions. Ask me about subscriptions, ` +
+    // `plan comparisons, feature analysis, or optimization strategies.`
   );
 }
