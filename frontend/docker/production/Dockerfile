@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm globally
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Copy package.json and ./pnpm-lock.yaml to the container
 COPY ./package.json .
