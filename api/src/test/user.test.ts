@@ -1509,7 +1509,7 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
         private: false,
       });
 
-      await createEntityScopedPermission(member.id, org, privateCol.id, 'collection', {
+      await createEntityScopedPermission(member.id, org, privateCol.slug, 'collection', {
         GET: true,
         PUT: false,
         DELETE: false,
