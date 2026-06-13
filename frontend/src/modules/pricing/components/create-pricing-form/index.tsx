@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import VisibilityOptions from '../visibility-options';
 import FileUpload from '../../../core/components/file-upload-input';
 import OrganizationSelector from '../organization-selector';
@@ -25,6 +26,8 @@ export default function CreatePricingForm() {
   const { authUser } = useAuth();
   const router = useRouter();
   const prevOrgIdRef = useRef<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const initialOrgId = searchParams.get('orgId') ?? undefined;
 
   useEffect(() => {
     const orgId = selectedOrg?.id ?? null;
@@ -88,13 +91,25 @@ export default function CreatePricingForm() {
 
   return (
     <form className="flex flex-col gap-3">
+      {initialOrgId && (
+        <button
+          type="button"
+          onClick={() => router.push(`/orgs/${initialOrgId}`)}
+          className="mb-2 inline-flex w-fit cursor-pointer items-center gap-1.5 text-sm text-tp-steel transition-colors hover:text-tp-ink"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to organization
+        </button>
+      )}
       <h2 className="mb-5 text-center text-2xl font-bold">
         Upload a pricing to SPHERE
       </h2>
 
       <div className="flex items-start gap-3">
         <div className="flex-1">
-          <OrganizationSelector value={selectedOrg} onChange={setSelectedOrg} />
+          <OrganizationSelector value={selectedOrg} onChange={setSelectedOrg} initialOrgId={initialOrgId} />
         </div>
 
         <div className="pt-7 text-2xl text-slate-400">

@@ -6,6 +6,7 @@ import OrgAvatar from '../../../core/components/org-avatar';
 interface OrganizationSelectorProps {
   value: Organization | null;
   onChange: (org: Organization | null) => void;
+  initialOrgId?: string;
 }
 
 function flattenOrganizations(orgs: Organization[]): Organization[] {
@@ -18,7 +19,7 @@ function flattenOrganizations(orgs: Organization[]): Organization[] {
   }, []);
 }
 
-export default function OrganizationSelector({ value, onChange }: OrganizationSelectorProps) {
+export default function OrganizationSelector({ value, onChange, initialOrgId }: OrganizationSelectorProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
@@ -26,7 +27,7 @@ export default function OrganizationSelector({ value, onChange }: OrganizationSe
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { authUser } = useAuth();
-  const { getMyOrganizations } = useOrganizationsApi();
+  const { getMyOrganizations, getOrganization } = useOrganizationsApi();
 
   useEffect(() => {
     if (!authUser.isAuthenticated || authUser.isLoading) return;
@@ -40,6 +41,18 @@ export default function OrganizationSelector({ value, onChange }: OrganizationSe
       .catch(() => setOrganizations([]))
       .finally(() => setIsLoading(false));
   }, [authUser.isAuthenticated, authUser.isLoading]);
+
+  useEffect(() => {
+    if (!initialOrgId || value) return;
+
+    getOrganization(initialOrgId)
+      .then(org => {
+        onChange(org);
+      })
+      .catch(() => {
+        // Si falla, no hacemos nada - el usuario deberá seleccionar manualmente
+      });
+  }, [initialOrgId, value, getOrganization, onChange]);
 
   useEffect(() => {
     if (!isOpen) return;

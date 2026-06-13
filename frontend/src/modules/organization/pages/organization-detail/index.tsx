@@ -711,6 +711,7 @@ export default function OrganizationDetailPage() {
               showOnlyUnlinked={showOnlyUnlinked}
               orgId={organizationId ?? ''}
               myRole={myRole}
+              isPublicView={isPublicView}
               onPageChange={setPricingPage}
               onSearchChange={setPricingSearch}
               onToggleUnlinked={setShowOnlyUnlinked}
@@ -724,6 +725,9 @@ export default function OrganizationDetailPage() {
               collectionsTotal={collectionsTotal}
               collectionPage={collectionPage}
               collectionSearch={collectionSearch}
+              orgId={organizationId ?? ''}
+              myRole={myRole}
+              isPublicView={isPublicView}
               onPageChange={setCollectionPage}
               onSearchChange={setCollectionSearch}
             />

@@ -6,6 +6,7 @@ import { transitionDefault } from '../../../../core/utils/motion-variants';
 import { OrgPricing, OrgRole, useOrganizationsApi } from '../../../api/organizationsApi';
 import type { EntityPermission } from '../../../types/permissions';
 import { useAuth } from '../../../../auth/hooks/useAuth';
+import { useRouter } from '../../../../core/hooks/useRouter';
 import PricingCard, { type MenuItem } from '../../../../pricing/components/pricing-card';
 import AddToCollectionModal from '../../../../pricing/components/add-to-collection-modal';
 import Pagination from '../../../../pricing/components/pagination';
@@ -19,17 +20,20 @@ interface Props {
   showOnlyUnlinked: boolean;
   orgId: string;
   myRole: OrgRole | null;
+  isPublicView: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
   onToggleUnlinked: (value: boolean) => void;
   onPricingAdded?: () => void;
 }
 
-export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, showOnlyUnlinked, orgId, myRole, onPageChange, onSearchChange, onToggleUnlinked, onPricingAdded }: Props) {
+export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pricingSearch, showOnlyUnlinked, orgId, myRole, isPublicView, onPageChange, onSearchChange, onToggleUnlinked, onPricingAdded }: Props) {
   const { authUser } = useAuth();
   const { getOrgPermissions } = useOrganizationsApi();
+  const router = useRouter();
   const [pricingPermissions, setPricingPermissions] = useState<EntityPermission[]>([]);
   const [addToCollectionPricing, setAddToCollectionPricing] = useState<OrgPricing | null>(null);
+  const [canCreatePricing, setCanCreatePricing] = useState(false);
 
   useEffect(() => {
     if (!authUser.isAuthenticated || !orgId) return;
@@ -38,6 +42,37 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
       .catch(() => setPricingPermissions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, authUser.isAuthenticated]);
+
+  useEffect(() => {
+    if (isPublicView) {
+      setCanCreatePricing(false);
+      return;
+    }
+
+    if (myRole === 'OWNER' || myRole === 'ADMIN') {
+      setCanCreatePricing(true);
+      return;
+    }
+
+    if (authUser.user?.role === 'ADMIN') {
+      setCanCreatePricing(true);
+      return;
+    }
+
+    if (!orgId || !authUser.user?.id) {
+      setCanCreatePricing(false);
+      return;
+    }
+
+    getOrgPermissions(orgId, 'pricing')
+      .then(permissions => {
+        const orgScoped = permissions.find(
+          p => p.entitySlug === null && p._userId === authUser.user?.id
+        );
+        setCanCreatePricing(orgScoped?.permissions.CREATE ?? false);
+      })
+      .catch(() => setCanCreatePricing(false));
+  }, [orgId, myRole, isPublicView, authUser.user?.id, authUser.user?.role, getOrgPermissions]);
 
   const hasPutPermission = (pricingSlug: string) => {
     if (myRole === 'OWNER' || myRole === 'ADMIN') return true;
@@ -60,23 +95,37 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
             <h2 className="font-display text-lg text-tp-ink">Pricings</h2>
             <p className="text-xs text-tp-steel">Pricings owned by this organization.</p>
           </div>
-          <div className="flex flex-col gap-2 sm:w-64">
-            <input
-              type="text"
-              value={pricingSearch}
-              onChange={(e) => { onSearchChange(e.target.value); onPageChange(1); }}
-              placeholder="Search pricings..."
-              className="h-9 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-sm text-tp-ink placeholder-tp-muted transition-colors focus:border-tp-primary focus:outline-none"
-            />
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-tp-steel">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex flex-col gap-2 sm:w-64">
               <input
-                type="checkbox"
-                checked={showOnlyUnlinked}
-                onChange={(e) => { onToggleUnlinked(e.target.checked); onPageChange(1); }}
-                className="h-3.5 w-3.5 rounded border-tp-input-border text-tp-primary focus:ring-tp-primary"
+                type="text"
+                value={pricingSearch}
+                onChange={(e) => { onSearchChange(e.target.value); onPageChange(1); }}
+                placeholder="Search pricings..."
+                className="h-9 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-sm text-tp-ink placeholder-tp-muted transition-colors focus:border-tp-primary focus:outline-none"
               />
-              Only unlinked pricings
-            </label>
+              <label className="relative flex cursor-pointer items-center gap-2 text-xs text-tp-steel">
+                <input
+                  type="checkbox"
+                  checked={showOnlyUnlinked}
+                  onChange={(e) => { onToggleUnlinked(e.target.checked); onPageChange(1); }}
+                  className="h-3.5 w-3.5 rounded border-tp-input-border text-tp-primary focus:ring-tp-primary"
+                />
+                Only unlinked pricings
+              </label>
+            </div>
+            {canCreatePricing && (
+              <button
+                type="button"
+                onClick={() => router.push(`/pricings/new?orgId=${orgId}`)}
+                className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-tp-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-tp-primary/90"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            )}
           </div>
         </div>
 
