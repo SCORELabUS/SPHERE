@@ -6,7 +6,7 @@ export default function FlagGrid({ data }: Readonly<{ data: string[] }>) {
       {data.map((item) => (
         <div
           key={uuidv4()}
-          className="rounded-md border border-sphere-primary-700 px-5 py-2 text-sphere-primary-700 transition-all duration-300 hover:cursor-pointer hover:bg-sphere-primary-700 hover:font-bold hover:text-white"
+          className="rounded-md border border-tp-primary px-5 py-2 text-tp-ink transition-all duration-300 hover:cursor-pointer hover:bg-tp-primary hover:font-bold hover:text-white"
         >
           {item}
         </div>

@@ -1,5 +1,6 @@
 import UserMongoose from "../../main/repositories/mongoose/models/UserMongoose";
 import { TEST_PASSWORD } from "./config/variables";
+import { generateJwtToken } from "../../main/utils/users/helpers";
 
 export const randomSuffix = () => Math.random().toString(36).substring(2, 10);
 
@@ -12,16 +13,18 @@ export const createGlobalAdminUser = async () => {
     firstName: 'Admin',
     lastName: 'User',
     email: `admin_${randomSuffix()}@test.com`,
-    token: 'c5b77bc3ea8a2903fd38be45227903da58c72bbf',
-    tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-    avatar: `${process.env.AVATARS_FOLDER}/default-avatar.png`,
+    tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    avatar: `${process.env.SERVER_STATICS_FOLDER || 'public/'}${process.env.AVATARS_FOLDER || 'static/avatars/users'}/default-avatar.png`,
   };
 
   const createdAdmin = new UserMongoose(adminUserData);
   const savedAdmin = await createdAdmin.save();
+  const id = savedAdmin._id.toString();
+  const token = generateJwtToken({ id, username: adminUserData.username, role: adminUserData.role });
   return {
     ...adminUserData,
-    id: savedAdmin._id.toString(),
+    id,
+    token,
   };
 };
 
@@ -33,16 +36,18 @@ export const createGlobalTestUser = async () => {
     firstName: 'John',
     lastName: 'Doe',
     email: `test_user_${randomSuffix()}@test.com`,
-    token: '8f83882593eae31d5b8d449aaecffb9707367292',
-    tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-    avatar: `${process.env.AVATARS_FOLDER}/default-avatar.png`,
+    tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    avatar: `${process.env.SERVER_STATICS_FOLDER || 'public/'}${process.env.AVATARS_FOLDER || 'static/avatars/users'}/default-avatar.png`,
   };
 
   const createdTestUser = new UserMongoose(testUserData);
   const savedTestUser = await createdTestUser.save();
+  const id = savedTestUser._id.toString();
+  const token = generateJwtToken({ id, username: testUserData.username, role: testUserData.role });
   // Ensure the test user is not deleted during cleanup
   return {
     ...testUserData,
-    id: savedTestUser._id.toString(),
+    id,
+    token,
   };
 };

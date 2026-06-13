@@ -2,7 +2,6 @@ export type PricingIndexQueryParams = {
   name?: string;
   sortBy?: SortByType;
   sort?: 'asc' | 'desc';
-  includePrivate?: boolean;
   subscriptions?: {
     min: number;
     max: number;
@@ -16,9 +15,8 @@ export type PricingIndexQueryParams = {
     max: number;
   };
   selectedOrganizations?: string[];
-  collectionName?: string;
-  organizationId?: string;
-  includePricingsInCollection: boolean;
+  collection?: string;
+  excludePricingsInCollection?: boolean;
   limit: number;
   offset: number;
 }

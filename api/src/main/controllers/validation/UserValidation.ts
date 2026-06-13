@@ -52,12 +52,11 @@ const create = [
     .custom(value => !/\s/.test(value))
     .withMessage('No spaces are allowed in the password'),
   check('phone')
-    .exists()
-    .withMessage('A phone must be specified in order to create the user')
+    .optional()
     .isString()
     .withMessage('The field phone must be a string')
-    .isLength({ min: 1, max: 255 })
-    .withMessage('The phone must have between 1 and 255 characters long')
+    .isLength({ min: 0, max: 255 })
+    .withMessage('The phone must have between 0 and 255 characters long')
     .trim(),
   check('address')
     .optional()

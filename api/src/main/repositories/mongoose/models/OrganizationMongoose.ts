@@ -5,7 +5,7 @@ const organizationSchema = new Schema(
     name: { type: String, required: true, unique: true },
     displayName: { type: String, required: true },
     description: { type: String, required: false, default: null },
-    avatar: { type: String, required: false, default: `${process.env.ORG_AVATARS_FOLDER}/default-org.webp` },
+    avatar: { type: String, required: false, default: null },
     _parentId: {
       type: Schema.Types.ObjectId,
       ref: 'Organization',

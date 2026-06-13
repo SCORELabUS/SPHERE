@@ -30,12 +30,9 @@ const loadFileRoutes = function (app: express.Application) {
     .post(upload, pricingCollectionController.bulkCreate);
   
   app
-    .route(baseUrl + '/collections/:organizationId/pricings')
-    .post(upload, pricingCollectionController.addPricingToCollection);
-
-  app
-    .route(baseUrl + '/collections/:organizationId/:collectionName')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug')
     .get(pricingCollectionController.show)
+    .post(pricingCollectionController.addPricingToCollection)
     .put(
       PricingCollectionValidator.update,
       handleValidation,
@@ -44,11 +41,11 @@ const loadFileRoutes = function (app: express.Application) {
     .delete(pricingCollectionController.destroy);
 
   app
-    .route(baseUrl + '/collections/:organizationId/:collectionName/download')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug/download')
     .get(pricingCollectionController.downloadCollection);
 
   app
-    .route(baseUrl + '/collections/:organizationId/:collectionName/pricings/:pricingName')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug/pricings/:pricingSlug')
     .delete(pricingCollectionController.removePricingFromCollection);
 };
 

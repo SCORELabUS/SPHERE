@@ -14,8 +14,9 @@ class PricingCollectionController {
     this.pricingCollectionService = container.resolve('pricingCollectionService');
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
-    this.show = this.show.bind(this);
     this.indexByOrganizationId = this.indexByOrganizationId.bind(this);
+    this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
+    this.show = this.show.bind(this);
     this.downloadCollection = this.downloadCollection.bind(this);
     this.create = this.create.bind(this);
     this.bulkCreate = this.bulkCreate.bind(this);
@@ -24,10 +25,7 @@ class PricingCollectionController {
     this.update = this.update.bind(this);
     this.destroy = this.destroy.bind(this);
     this.removePricingFromCollection = this.removePricingFromCollection.bind(this);
-    this.createInOrganization = this.createInOrganization.bind(this);
-    this.updateInOrganization = this.updateInOrganization.bind(this);
-    this.destroyInOrganization = this.destroyInOrganization.bind(this);
-    this.removePricingFromCollectionInOrganization = this.removePricingFromCollectionInOrganization.bind(this);
+
   }
 
   async index(req: any, res: any) {
@@ -43,11 +41,24 @@ class PricingCollectionController {
     }
   }
 
+  async indexByAuthenticatedUser(req: any, res: any) {
+    try {
+          const queryParams: CollectionIndexQueryParams = this._transformIndexQueryParams(req.query);
+          const targetUserUsername = req.params.username === 'me' ? req.user.username : req.params.username;
+
+          const pricings = await this.pricingCollectionService.indexByUser(targetUserUsername, req.user, queryParams);
+          res.json(pricings);
+        } catch (err: any) {
+          const {status, message} = handleError(err);
+          res.status(status).send({ error: message });
+        }
+  }
+
   async show(req: any, res: any) {
     try {
       const collection = await this.pricingCollectionService.show(
         req.params.organizationId,
-        req.params.collectionName,
+        req.params.collectionSlug,
         req.user
       );
       res.json(collection);
@@ -59,7 +70,8 @@ class PricingCollectionController {
 
   async indexByOrganizationId(req: any, res: any) {
     try {
-      const collections = await this.pricingCollectionService.index({ organizationIds: [req.params.organizationId]}, req.user);
+      const queryParams: CollectionIndexQueryParams = this._transformIndexQueryParams(req.query);
+      const collections = await this.pricingCollectionService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
       res.json(collections);
     } catch (err: any) {
       const {status, message} = handleError(err);
@@ -69,11 +81,11 @@ class PricingCollectionController {
 
   async downloadCollection(req: any, res: any) {
     try {
-      const collectionName = req.params.collectionName;
+      const collectionSlug = req.params.collectionSlug;
       const organizationId = req.params.organizationId;
       const collection = await this.pricingCollectionService.show(
         organizationId,
-        collectionName,
+        collectionSlug,
         req.user
       );
       const pricings = await this.pricingService.indexByCollection(collection.id);
@@ -84,7 +96,7 @@ class PricingCollectionController {
         return;
       }
 
-      const zipFileName = `${collectionName}.zip`;
+      const zipFileName = `${collectionSlug}.zip`;
       res.setHeader('Content-Disposition', `attachment; filename=${zipFileName}`);
       res.setHeader('Content-Type', 'application/zip');
 
@@ -160,14 +172,11 @@ class PricingCollectionController {
 
   async addPricingToCollection(req: any, res: any) {
     try {
-
-      const queryParams = req.query;
-
       const result = await this.pricingService.addPricingToCollection(
-        req.body.pricingName,
-        req.org.id,
-        req.body.collectionId,
-        queryParams
+        req.body.pricingSlug,
+        req.params.organizationId,
+        req.params.collectionSlug,
+        req.user
       );
 
       if (!result) {
@@ -181,33 +190,16 @@ class PricingCollectionController {
     }
   }
 
-  // async generateAnalytics(req: any, res: any) {
-  //   if (req.user.username === req.params.username || req.user.role === 'ADMIN') {
-  //     try {
-  //       await this.pricingCollectionService.generateCollectionAnalytics(
-  //         req.params.collectionName,
-  //         req.params.username
-  //       );
-  //       res.status(200).send({ message: 'Analytics generated successfully.' });
-  //     } catch (err: any) {
-  //       const {status, message} = handleError(err);
-  //       res.status(status).send({ error: message});
-  //     }
-  //   }else{
-  //     res.status(403).send({ error: 'PERMISSION ERROR: This collection is not yours.' });
-  //   }
-  // }
-
   async update(req: any, res: any) {
     try {
       const collection = await this.pricingCollectionService.update(
         req.params.organizationId,
-        req.params.collectionName,
+        req.params.collectionSlug,
         req.body,
         req.user
       );
       await this.pricingService.updatePricingsCollectionName(
-        req.params.collectionName,
+        req.params.collectionSlug,
         collection.name,
         collection.id
       );
@@ -225,13 +217,13 @@ class PricingCollectionController {
 
       const result = await this.pricingCollectionService.destroy(
         req.params.organizationId,
-        req.params.collectionName,
+        req.params.collectionSlug,
         deleteCascade,
         false,
         req.user
       );
       const message = result ? 'Successfully deleted.' : 'Could not delete collection.';
-      res.status(204).json({ message: message });
+      res.status(200).json({ message: message });
     } catch (err: any) {
       const {status, message} = handleError(err);
       res.status(status).send({ error: message });
@@ -241,9 +233,9 @@ class PricingCollectionController {
   async removePricingFromCollection(req: any, res: any) {
     try {
       await this.pricingCollectionService.removePricingFromCollection(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
-        req.params.collectionName,
+        req.params.collectionSlug,
         req.user
       );
       res.json({message: 'Pricing removed from collection successfully.'});
@@ -253,64 +245,7 @@ class PricingCollectionController {
     }
   }
 
-  async createInOrganization(req: any, res: any) {
-    try {
-      const payload = { ...req.body, _organizationId: req.params.organizationId };
-      const collection = await this.pricingCollectionService.create(payload, req.params.organizationId, req.user);
-      res.status(201).json(collection);
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
 
-  async updateInOrganization(req: any, res: any) {
-    try {
-      const collection = await this.pricingCollectionService.update(
-        req.params.organizationId,
-        req.params.collectionName,
-        req.body,
-        req.user
-      );
-      res.json(collection);
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
-
-  async destroyInOrganization(req: any, res: any) {
-    try {
-      const { cascade } = req.query;
-      const deleteCascade = String(cascade).toLowerCase() === 'true';
-      await this.pricingCollectionService.destroy(
-        req.params.organizationId,
-        req.params.collectionName,
-        deleteCascade,
-        false,
-        req.user
-      );
-      res.status(204).json({ message: 'Successfully deleted.' });
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
-
-  async removePricingFromCollectionInOrganization(req: any, res: any) {
-    try {
-      await this.pricingCollectionService.removePricingFromCollection(
-        req.params.pricingName,
-        req.params.organizationId,
-        req.params.collectionName,
-        req.user
-      );
-      res.json({ message: 'Pricing removed from collection successfully.' });
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
-    }
-  }
 
   _transformIndexQueryParams(indexQueryParams: Record<string, string>): CollectionIndexQueryParams {
     const transformedData: CollectionIndexQueryParams = {
@@ -318,11 +253,12 @@ class PricingCollectionController {
       sortBy: indexQueryParams.sortBy,
       sort: indexQueryParams.sort ?? 'asc',
       organizationIds: indexQueryParams.organizationIds ? indexQueryParams.organizationIds.split(',') : undefined,
-      limit: indexQueryParams.limit,
-      offset: indexQueryParams.offset,
+      limit: parseInt(indexQueryParams.limit) || 10,
+      offset: parseInt(indexQueryParams.offset) || 0,
+      writableOnly: indexQueryParams.writableOnly === 'true',
     };
 
-    const optionalFields = ['name', 'sortBy', 'sort', 'organizationIds', 'limit', 'offset'];
+    const optionalFields = ['name', 'sortBy', 'sort', 'organizationIds'] as const;
 
     optionalFields.forEach(field => {
       if (!transformedData[field]) {

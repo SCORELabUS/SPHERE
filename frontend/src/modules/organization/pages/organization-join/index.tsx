@@ -4,27 +4,30 @@ import { useOrganizationsApi, Organization, OrganizationInvitation } from '../..
 import Iconify from '../../../core/components/iconify';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { useAuth } from '../../../auth/hooks/useAuth';
+import OrgJoinSkeleton from '../../../core/components/skeletons/org-join-skeleton';
+import OrgAvatar from '../../../core/components/org-avatar';
 
-function OrgAvatar({
-  org,
-}: {
-  org: { avatar: string | null; displayName: string };
-}) {
-  if (org.avatar) {
-    return (
-      <img
-        src={org.avatar}
-        alt={org.displayName}
-        className="h-20 w-20 rounded-full object-cover"
-      />
-    );
-  }
-  return (
-    <span className="flex h-20 w-20 items-center justify-center rounded-full bg-sphere-primary-800 text-white">
-      <Iconify icon="mdi:domain" width={36} />
-    </span>
-  );
-}
+// function OrgAvatar({
+//   org,
+// }: {
+//   org: { avatar: string | null; displayName: string };
+// }) {
+//   console.log('Org avatar:', org);
+//   if (org.avatar) {
+//     return (
+//       <img
+//         src={org.avatar}
+//         alt={org.displayName}
+//         className="h-20 w-20 rounded-full object-cover"
+//       />
+//     );
+//   }
+//   return (
+//     <span className="flex h-20 w-20 items-center justify-center rounded-full bg-tp-primary text-white">
+//       <Iconify icon="mdi:domain" width={36} />
+//     </span>
+//   );
+// }
 
 export default function OrganizationJoinPage() {
   const { code } = useParams<{ code: string }>();
@@ -41,7 +44,7 @@ export default function OrganizationJoinPage() {
   useEffect(() => {
     if (authUser.isLoading) return;
     if (!authUser.isAuthenticated) {
-      router.push('/login');
+      router.push('/authentication');
       return;
     }
     if (!code) {
@@ -71,16 +74,12 @@ export default function OrganizationJoinPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <span className="text-sphere-grey-500">Loading invitation...</span>
-      </div>
-    );
+    return <OrgJoinSkeleton />;
   }
 
   if (joined && org) {
     return (
-      <div className="mx-auto max-w-md px-4 py-16 text-center">
+      <div className="mx-auto max-w-112 px-4 py-16 text-center">
         <div className="flex flex-col items-center gap-4">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
             <Iconify icon="mdi:check-circle-outline" width={36} />
@@ -92,7 +91,7 @@ export default function OrganizationJoinPage() {
           <button
             type="button"
             onClick={() => router.push('/me/orgs')}
-            className="mt-2 rounded-md bg-sphere-primary-800 px-6 py-2 text-sm font-semibold text-white hover:bg-sphere-primary-700"
+            className="mt-2 cursor-pointer rounded-md bg-tp-primary px-6 py-2 text-sm font-semibold text-white hover:bg-tp-primary"
           >
             Go to My Organizations
           </button>
@@ -103,7 +102,7 @@ export default function OrganizationJoinPage() {
 
   if (error || !org) {
     return (
-      <div className="mx-auto max-w-md px-4 py-16 text-center">
+      <div className="mx-auto max-w-112 px-4 py-16 text-center">
         <div className="flex flex-col items-center gap-4">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-500">
             <Iconify icon="mdi:link-off" width={36} />
@@ -115,7 +114,7 @@ export default function OrganizationJoinPage() {
           <button
             type="button"
             onClick={() => router.push('/me/orgs')}
-            className="mt-2 rounded-md border border-sphere-grey-300 px-5 py-2 text-sm font-semibold text-sphere-grey-700 hover:bg-sphere-grey-100"
+            className="mt-2 cursor-pointer rounded-md border border-sphere-grey-300 px-5 py-2 text-sm font-semibold text-sphere-grey-700 hover:bg-sphere-grey-100"
           >
             Back to Organizations
           </button>
@@ -125,9 +124,9 @@ export default function OrganizationJoinPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
+    <div className="mx-auto max-w-112 px-4 py-16">
       <div className="flex flex-col items-center gap-4 text-center">
-        <OrgAvatar org={org} />
+        <OrgAvatar name={org.displayName} avatar={org.avatar} size={100}/>
         <div>
           <h1 className="text-2xl font-bold text-sphere-grey-800">{org.displayName}</h1>
           <p className="text-sm text-sphere-grey-500">@{org.name}</p>
@@ -151,14 +150,14 @@ export default function OrganizationJoinPage() {
             type="button"
             onClick={handleJoin}
             disabled={isJoining}
-            className="w-full rounded-md bg-sphere-primary-800 py-2.5 text-sm font-semibold text-white hover:bg-sphere-primary-700 disabled:opacity-50"
+            className="w-full cursor-pointer rounded-md bg-tp-primary py-2.5 text-sm font-semibold text-white hover:bg-tp-primary disabled:opacity-50"
           >
             {isJoining ? 'Joining...' : `Join ${org.displayName}`}
           </button>
           <button
             type="button"
             onClick={() => router.push('/me/orgs')}
-            className="w-full rounded-md border border-sphere-grey-300 py-2.5 text-sm font-semibold text-sphere-grey-700 hover:bg-sphere-grey-100"
+            className="w-full cursor-pointer rounded-md border border-sphere-grey-300 py-2.5 text-sm font-semibold text-sphere-grey-700 hover:bg-sphere-grey-100"
           >
             Cancel
           </button>

@@ -68,8 +68,39 @@ export function usePricingCollectionsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders, username]);
 
-  const createCollection = useCallback(async (collection: CollectionToCreate) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${username}`, {
+  const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
+
+  const getPermissionBasedUserCollections = useCallback(async (filters: Record<string, string | number> = {}) => {
+    const filterParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (key === 'limit' || key === 'offset') {
+        filterParams.append(key, String(value));
+        return;
+      }
+      const stringValue = String(value);
+      if (stringValue.trim().length > 0) filterParams.append(key, stringValue);
+    });
+    const qs = filterParams.toString();
+    const url = `${USERS_BASE_PATH}/me/collections${qs ? `?${qs}` : ''}`;
+
+    return fetchWithInterceptor(url, {
+      method: 'GET',
+      headers: basicHeaders,
+    })
+      .then(response => response.json())
+      .then(data => ({
+        ...data,
+        collections: data.collections ?? [],
+      }))
+      .catch(async error => {
+        const body = await (error as Response).json().catch(() => ({}));
+        return Promise.reject(body as Error);
+      });
+  }, [fetchWithInterceptor, basicHeaders]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const createCollection = useCallback(async (collection: CollectionToCreate, organizationId: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}`, {
       method: 'POST',
       headers: basicHeaders,
       body: JSON.stringify(collection),
@@ -89,10 +120,10 @@ export function usePricingCollectionsApi() {
       .catch(error => {
   return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       });
-  }, [fetchWithInterceptor, basicHeaders, username]);
+  }, [fetchWithInterceptor, basicHeaders]);
   
-  const createBulkCollection = useCallback(async (formData: FormData) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${username}/bulk`, {
+  const createBulkCollection = useCallback(async (formData: FormData, organizationId: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/bulk`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -119,8 +150,8 @@ export function usePricingCollectionsApi() {
       });
   }, [fetchWithInterceptor, token, username]);
 
-  const getCollectionByOwnerAndName = useCallback(async (ownerId: string, collectionName: string) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${ownerId}/${collectionName}`, {
+  const getCollectionByOrganizationAndSlug = useCallback(async (organizationId: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}`, {
       method: 'GET',
       headers: basicHeaders,
     })
@@ -137,8 +168,8 @@ export function usePricingCollectionsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const downloadCollection = useCallback(async (owner: string, collectionName: string) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${owner}/${collectionName}/download`, {
+  const downloadCollection = useCallback(async (organizationId: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}/download`, {
       method: 'GET',
       headers: basicHeaders,
     })
@@ -151,7 +182,7 @@ export function usePricingCollectionsApi() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = collectionName + '.zip';
+        a.download = collectionSlug + '.zip';
         a.click();
 
         URL.revokeObjectURL(url);
@@ -164,8 +195,22 @@ export function usePricingCollectionsApi() {
   }, [fetchWithInterceptor, basicHeaders]);
 
    
-  const updateCollection = useCallback(async (collectionName: string, collectionData: any) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${authUser.user!.username}/${collectionName}`, {
+  const getCollectionPermissions = useCallback(async (organizationId: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}/permissions`, {
+      method: 'GET',
+      headers: basicHeaders,
+    })
+      .then(async response => {
+        if (!response.ok) {
+          return { GET: false, PUT: false, DELETE: false };
+        }
+        return response.json();
+      })
+      .catch(() => ({ GET: false, PUT: false, DELETE: false }));
+  }, [fetchWithInterceptor, basicHeaders]);
+   
+  const updateCollection = useCallback(async (organizationId: string, collectionSlug: string, collectionData: any) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}`, {
       method: 'PUT',
       headers: basicHeaders,
       body: JSON.stringify(collectionData),
@@ -175,10 +220,10 @@ export function usePricingCollectionsApi() {
         const body = await (error as Response).json().catch(() => ({}));
         return Promise.reject(body as Error);
       });
-  }, [fetchWithInterceptor, basicHeaders, authUser]);
+  }, [fetchWithInterceptor, basicHeaders]);
 
-  const deleteCollection = useCallback(async (collectionName: string, deleteCascade: boolean) => {
-    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${authUser.user!.username}/${collectionName}?cascade=${deleteCascade}`, {
+  const deleteCollection = useCallback(async (organizationId: string, collectionSlug: string, deleteCascade: boolean) => {
+    return fetchWithInterceptor(`${COLLECTIONS_BASE_PATH}/${organizationId}/${collectionSlug}?cascade=${deleteCascade}`, {
       method: 'DELETE',
       headers: basicHeaders
     })
@@ -187,24 +232,28 @@ export function usePricingCollectionsApi() {
         const body = await (error as Response).json().catch(() => ({}));
         return Promise.reject(body as Error);
       });
-  }, [fetchWithInterceptor, basicHeaders, authUser]);
+  }, [fetchWithInterceptor, basicHeaders]);
 
   return useMemo(() => ({
     getLoggedUserCollections,
+    getPermissionBasedUserCollections,
     createCollection,
     createBulkCollection,
-    getCollectionByOwnerAndName,
+    getCollectionByOrganizationAndSlug,
     getCollections,
     downloadCollection,
+    getCollectionPermissions,
     updateCollection,
     deleteCollection
   }), [
     getLoggedUserCollections,
+    getPermissionBasedUserCollections,
     createCollection,
     createBulkCollection,
-    getCollectionByOwnerAndName,
+    getCollectionByOrganizationAndSlug,
     getCollections,
     downloadCollection,
+    getCollectionPermissions,
     updateCollection,
     deleteCollection,
   ]);

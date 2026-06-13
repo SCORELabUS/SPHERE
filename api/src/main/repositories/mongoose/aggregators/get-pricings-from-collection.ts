@@ -1,8 +1,29 @@
-import { getAllPricingsAggregator } from './get-all-pricings';
+import { OrgUserPermissionsContext } from '../../../../types/policies';
+import { getPricingsAggregator } from './pricings/get-pricings';
 
-export function getAllPricingsFromCollection() {
+export function getAllPricingsFromCollection(permissions?: OrgUserPermissionsContext) {
+  const pricingPermissions = permissions
+    ? { orgRole: permissions.orgRole, pricings: permissions.pricings ?? [], collections: permissions.collections ?? [], isGlobalAdmin: permissions.isGlobalAdmin, adminOrgIds: permissions.adminOrgIds ?? [] }
+    : { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] };
+
   return [
-    lookupForPricingsAggregator,
+    {
+      $lookup: {
+        from: 'pricings',
+        let: { localId: { $toString: '$_id' } },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $eq: ['$_collectionId', '$$localId'],
+              },
+            },
+          },
+          ...getPricingsAggregator(undefined, permissions ? pricingPermissions : undefined, []),
+        ] as any,
+        as: 'pricings',
+      },
+    },
     {
       $set: {
         data: {
@@ -15,22 +36,3 @@ export function getAllPricingsFromCollection() {
     },
   ];
 }
-
-const lookupForPricingsAggregator = {
-  $lookup: {
-    from: 'pricings',
-    let: { localId: { $toString: '$_id' } },
-    pipeline: [
-      {
-        $match: {
-          $expr: {
-            $eq: ['$_collectionId', '$$localId'],
-          },
-        },
-      },
-
-      ...getAllPricingsAggregator([], []),
-    ],
-    as: 'pricings',
-  },
-};

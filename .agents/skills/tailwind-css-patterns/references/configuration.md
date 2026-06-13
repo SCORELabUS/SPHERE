@@ -5,7 +5,6 @@
 Use the `@theme` directive for CSS-based configuration:
 
 ```css
-/* src/styles.css */
 @import "tailwindcss";
 
 @theme {
@@ -95,7 +94,7 @@ export default defineConfig({
 ### Native CSS Custom Properties
 
 ```html
-<div class="bg-[var(--color-brand-500)] text-[var(--color-white)]">
+<div class="bg-(--color-brand-500) text-white">
   Using CSS custom properties directly
 </div>
 ```

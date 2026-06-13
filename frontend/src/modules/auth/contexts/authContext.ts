@@ -1,9 +1,11 @@
 import { createContext } from "react";
 import { AuthUserContext } from "../hooks/useAuth";
 
+type SetAuthUserFn = (prev: AuthUserContext | ((prev: AuthUserContext) => AuthUserContext)) => void;
+
 interface AuthContextInterface {
     authUser: AuthUserContext;
-    setAuthUser: (authUser: AuthUserContext) => void;
+    setAuthUser: SetAuthUserFn;
 }
 
 export const AuthContext = createContext<AuthContextInterface>({

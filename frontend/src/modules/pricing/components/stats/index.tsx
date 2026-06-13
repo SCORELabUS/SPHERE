@@ -1,7 +1,10 @@
 import { Pricing } from "pricing4ts";
 import { AnalyticsDataEntry } from "../../../../assets/data/analytics";
 import { formatDistanceToNow, parseISO } from 'date-fns';
-import { CURRENCIES } from "../../pages/card";
+
+const CURRENCIES: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', INR: '₹',
+};
 
 interface StatsProps {
     currentPricing: AnalyticsDataEntry;

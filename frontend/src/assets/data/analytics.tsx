@@ -43,7 +43,7 @@ export interface AnalyticsDataEntry {
     displayName: string;
     avatar: string;
   };
-  collectionName: string;
+  collection: { id: string; name: string; slug: string };
   private: boolean;
   version: string;
   createdAt: string;

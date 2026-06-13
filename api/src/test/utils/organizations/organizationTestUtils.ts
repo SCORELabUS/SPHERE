@@ -5,9 +5,11 @@ import { BASE_PATH } from '../config/variables';
 import OrganizationMongoose from '../../../main/repositories/mongoose/models/OrganizationMongoose';
 import OrganizationMembershipMongoose from '../../../main/repositories/mongoose/models/OrganizationMembershipMongoose';
 import OrganizationInvitationMongoose from '../../../main/repositories/mongoose/models/OrganizationInvitationMongoose';
+import EntityPermissionMongoose from '../../../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { randomSuffix, createGlobalTestUser } from '../helpers';
 import type { TestApp } from '../testApp';
 import { LeanMembership } from '../../../main/types/models/Organization';
+import { EntityType, EntityPermissions } from '../../../main/types/models/EntityPermission';
 
 export type TestOrganizationData = {
   id: string;
@@ -110,7 +112,7 @@ export const createTestOrganizationDirect = async (
     name,
     displayName,
     description: orgData.description ?? null,
-    avatar: orgData.avatar ?? `${process.env.ORG_AVATARS_FOLDER}/default-org.webp`,
+    avatar: orgData.avatar ?? null,
     isPersonal: orgData.isPersonal ?? false,
     ancestors: orgData.ancestors ?? [],
     _parentId: orgData._parentId ?? null,
@@ -239,4 +241,51 @@ export const cleanupOrganization = async (organizationId: string): Promise<void>
   } catch (error) {
     console.error(`Failed to cleanup organization ${organizationId}:`, error);
   }
+};
+
+/**
+ * Creates an org-scoped EntityPermission (entityId=null) for a user.
+ * Used to grant/revoke CREATE permissions at the organization level.
+ */
+export const createOrgScopedPermission = async (
+  userId: string,
+  organizationId: string,
+  entityType: EntityType,
+  permissions: EntityPermissions
+): Promise<void> => {
+  const permission = new EntityPermissionMongoose({
+    _userId: new mongoose.Types.ObjectId(userId),
+    _organizationId: new mongoose.Types.ObjectId(organizationId),
+    entityType,
+    entitySlug: null,
+    permissions,
+  });
+
+  const saved = await permission.save();
+  if (!saved) {
+    throw new Error('Failed to create org-scoped permission');
+  }
+};
+
+/**
+ * Creates an entity-scoped EntityPermission (entityId=null) for a user.
+ * Used to grant/revoke CREATE permissions at the organization level.
+ */
+export const createEntityScopedPermission = async (
+  userId: string,
+  organizationId: string,
+  entityId: string,
+  entityType: EntityType,
+  permissions: EntityPermissions
+): Promise<void> => {
+  await EntityPermissionMongoose.findOneAndUpdate(
+    {
+      _userId: new mongoose.Types.ObjectId(userId),
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      entityType,
+      entitySlug: entityId,
+    },
+    { $set: { permissions } },
+    { new: true, upsert: true }
+  );
 };

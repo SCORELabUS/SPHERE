@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { EntityPermission, EntityType, SetPermissionPayload } from '../types/permissions';
 
 export const ORGS_BASE_PATH = import.meta.env.VITE_API_URL + '/orgs';
 
@@ -11,9 +12,12 @@ export interface Organization {
   displayName: string;
   description: string | null;
   avatar: string | null;
+  avatarBgColor?: string;
+  avatarFgColor?: string;
   isPersonal: boolean;
   _parentId: string | null;
   ancestors: string[];
+  role?: OrgRole;
   subOrganizations?: Organization[];
   createdAt?: string;
 }
@@ -27,6 +31,8 @@ export interface OrgMemberWithUser {
     username: string;
     email: string;
     avatar: string | null;
+    avatarBgColor?: string;
+    avatarFgColor?: string;
   };
 }
 
@@ -39,6 +45,31 @@ export interface OrganizationInvitation {
   useCount: number;
 }
 
+export interface OrgPricing {
+  id: string;
+  name: string;
+  slug: string;
+  version: string;
+  createdAt: string;
+  currency: string;
+  private: boolean;
+  organization: { id: string; name: string; displayName: string; avatar: string };
+  collection: { id: string; name: string; slug: string } | null;
+  analytics: {
+    configurationSpaceSize: number;
+    minSubscriptionPrice: number;
+    maxSubscriptionPrice: number;
+  };
+}
+
+export interface OrgCollection {
+  id: string;
+  name: string;
+  slug: string;
+  numberOfPricings: number;
+  organization: { id: string; name: string; displayName: string; avatar: string };
+}
+
 export function useOrganizationsApi() {
   const { fetchWithInterceptor, authUser } = useAuth();
   const token = authUser?.token;
@@ -48,8 +79,12 @@ export function useOrganizationsApi() {
     Authorization: `Bearer ${token}`,
   };
 
-  const getMyOrganizations = useCallback(async (): Promise<Organization[]> => {
-    const response = await fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/users/me/orgs`, {
+  const getMyOrganizations = useCallback(async (params?: { limit?: number; offset?: number }): Promise<Organization[] | { items: Organization[]; total: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    const response = await fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/users/me/orgs${query ? `?${query}` : ''}`, {
       method: 'GET',
       headers,
     });
@@ -217,6 +252,102 @@ export function useOrganizationsApi() {
     return children;
   }, [getOrganization]);
 
+  const getOrgPricings = useCallback(async (orgId: string, filters?: Record<string, string>): Promise<{ pricings: OrgPricing[]; total: number }> => {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') params.set(k, v);
+      });
+    }
+    const response = await fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricings/${orgId}?${params.toString()}`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch organization pricings');
+    const data = await response.json();
+    return { pricings: data.pricings ?? [], total: data.total ?? 0 };
+  }, [fetchWithInterceptor, token]);
+
+  const getOrgCollections = useCallback(async (orgId: string, filters?: Record<string, string>): Promise<{ collections: OrgCollection[]; total: number }> => {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') params.set(k, v);
+      });
+    }
+    const qs = params.toString();
+    const response = await fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${orgId}${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch organization collections');
+    const data = await response.json();
+    return { collections: data.collections ?? [], total: data.total ?? 0 };
+  }, [fetchWithInterceptor, token]);
+
+  const getOrgPermissions = useCallback(async (orgId: string, entityType?: EntityType): Promise<EntityPermission[]> => {
+    const url = entityType
+      ? `${ORGS_BASE_PATH}/${orgId}/permissions?entityType=${entityType}`
+      : `${ORGS_BASE_PATH}/${orgId}/permissions`;
+    const response = await fetchWithInterceptor(url, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch permissions');
+    return response.json();
+  }, [fetchWithInterceptor, token]);
+
+  const setOrgPermission = useCallback(async (orgId: string, payload: SetPermissionPayload): Promise<EntityPermission> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/permissions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'Failed to set permission');
+    return body as EntityPermission;
+  }, [fetchWithInterceptor, token]);
+
+  const removeOrgPermission = useCallback(async (orgId: string, permissionId: string): Promise<void> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/permissions/${permissionId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'Failed to remove permission');
+  }, [fetchWithInterceptor, token]);
+
+  const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
+
+  const getUserAccessiblePricings = useCallback(async (limit = 500): Promise<{ pricings: Array<{ name: string; permissions: { GET: boolean }; organization: { id: string; role: string } }>; total: number }> => {
+    const response = await fetchWithInterceptor(`${USERS_BASE_PATH}/me/pricings?limit=${limit}`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch accessible pricings');
+    return response.json();
+  }, [fetchWithInterceptor, token]);
+
+  const getUserAccessibleCollections = useCallback(async (limit = 500): Promise<{ collections: Array<{ name: string; permissions: { GET: boolean }; organization: { id: string; role: string } }>; total: number }> => {
+    const response = await fetchWithInterceptor(`${USERS_BASE_PATH}/me/collections?limit=${limit}`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch accessible collections');
+    return response.json();
+  }, [fetchWithInterceptor, token]);
+
+  const inviteUsers = useCallback(async (orgId: string, userIds: string[]): Promise<OrganizationInvitation> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/invitations/invite-users`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ userIds }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'Failed to invite users');
+    return body as OrganizationInvitation;
+  }, [fetchWithInterceptor, token]);
+
   return {
     getMyOrganizations,
     getOrganization,
@@ -234,5 +365,29 @@ export function useOrganizationsApi() {
     joinViaInvitation,
     lookupUserByUsername,
     getOrgChildren,
+    getOrgPricings,
+    getOrgCollections,
+    getOrgPermissions,
+    setOrgPermission,
+    removeOrgPermission,
+    getUserAccessiblePricings,
+    getUserAccessibleCollections,
+    inviteUsers,
+    getPublicOrganization,
+    getPublicOrgMembers,
   };
+}
+
+const BASE_URL = import.meta.env.VITE_API_URL;
+
+export async function getPublicOrganization(orgId: string): Promise<Organization> {
+  const response = await fetch(`${BASE_URL}/orgs/${orgId}`);
+  if (!response.ok) throw new Error('Organization not found');
+  return response.json();
+}
+
+export async function getPublicOrgMembers(orgId: string): Promise<OrgMemberWithUser[]> {
+  const response = await fetch(`${BASE_URL}/orgs/${orgId}/members`);
+  if (!response.ok) throw new Error('Failed to fetch members');
+  return response.json();
 }

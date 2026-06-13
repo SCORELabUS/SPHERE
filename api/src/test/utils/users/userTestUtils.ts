@@ -5,6 +5,7 @@ import { BASE_PATH, TEST_PASSWORD } from '../config/variables';
 import request from 'supertest';
 import testContainer from '../config/testContainer';
 import { createMembership, createTestOrganizationDirect } from '../organizations';
+import { generateJwtToken } from '../../../main/utils/users/helpers';
 
 // Create a test user directly in the database
 export const createTestUser = async (
@@ -35,7 +36,11 @@ export const createTestUser = async (
 
   testContainer.resolve('usersToDelete').add(username);
 
-  return { user: user.toObject(), organizationId: organization.id };
+  const userObj = user.toObject();
+  // Generate a JWT token for the created user
+  userObj.token = generateJwtToken({ id: userObj.id, username: userObj.username, role: userObj.role });
+
+  return { user: userObj, organizationId: organization.id };
 };
 
 // Delete a test user directly from the database
@@ -57,7 +62,7 @@ export const createAndLoginUser = async (
     });
 
   user.token = userLogin.body.token;
-  user.tokenExpiration = userLogin.body.tokenExpiration;
+  user.tokenExpiration = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   return { user: user as LeanUser & { token: string; tokenExpiration: Date }, organizationId };
 };

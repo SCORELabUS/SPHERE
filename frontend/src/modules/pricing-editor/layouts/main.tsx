@@ -4,7 +4,7 @@ export default function Main({ children, className = '', ...other }: { children:
 
   return (
     <main
-      className={`flex min-h-0 ${className}`}
+      className={`flex flex-1 ${className}`}
       {...other}
     >
       {children}

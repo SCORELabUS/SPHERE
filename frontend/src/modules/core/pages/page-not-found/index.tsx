@@ -11,8 +11,8 @@ export default function NotFoundPage() {
         <title> 404 Page Not Found </title>
       </Helmet>
 
-      <div className="mx-auto max-w-screen-xl px-4">
-        <div className="mx-auto flex min-h-screen max-w-[480px] flex-col items-center justify-center py-12 text-center">
+      <div className="mx-auto max-w-7xl px-4">
+        <div className="mx-auto flex min-h-screen max-w-120 flex-col items-center justify-center py-12 text-center">
           <h1 className="mb-3 text-3xl font-semibold leading-tight text-sphere-grey-900">
             Sorry, page not found!
           </h1>
@@ -22,13 +22,13 @@ export default function NotFoundPage() {
             sure to check your spelling.
           </p>
 
-          <div className="mx-auto mb-16 mt-10 h-[260px] sm:mb-20 sm:mt-20">
+          <div className="mx-auto mb-16 mt-10 h-65 sm:mb-20 sm:mt-20">
             <Logo404 />
           </div>
 
           <RouterLink
             href="/"
-            className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-sphere-primary-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-sphere-primary-800"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-tp-primary px-5 py-3 text-sm font-semibold text-white transition-colors"
           >
             <FiHome className="h-4 w-4" />
             Return to Home

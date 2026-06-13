@@ -6,7 +6,7 @@ export async function up(connection: Connection): Promise<void> {
   const Pricing =
     connection.models.Pricing || connection.model('Pricing', PricingMongoose.schema, 'pricings');
 
-  const result = await Pricing.updateMany({ }, { $set: { private: false } });
+  await Pricing.updateMany({ private: { $exists: false } }, { $set: { private: false } });
 }
 
 export async function down(connection: Connection): Promise<void> {

@@ -1,8 +1,9 @@
-import { useContext, useEffect, useState } from 'react';
-import { OrganizationContext } from '../contexts/organizationContext';
+import { useContext, useEffect, useState, useCallback, useRef } from 'react';
+import OrganizationContext from '../contexts/organizationContext';
 import { Organization, useOrganizationsApi } from '../api/organizationsApi';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { useLocalStorage } from '../../core/hooks/useLocalStorage';
+
+const PER_PAGE = 10;
 
 export const useOrganization = () => {
   return useContext(OrganizationContext);
@@ -10,46 +11,50 @@ export const useOrganization = () => {
 
 export const useOrganizationManager = () => {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [activeOrganization, setActiveOrganizationState] = useState<Organization | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { authUser } = useAuth();
   const { getMyOrganizations } = useOrganizationsApi();
-  const { getItem, setItem, removeItem } = useLocalStorage();
-
-  const setActiveOrganization = (org: Organization) => {
-    setActiveOrganizationState(org);
-    setItem('activeOrgId', org.id);
-  };
+  const getMyOrganizationsRef = useRef(getMyOrganizations);
+  getMyOrganizationsRef.current = getMyOrganizations;
 
   useEffect(() => {
     if (!authUser.isAuthenticated || authUser.isLoading) {
       if (!authUser.isLoading) {
         setOrganizations([]);
-        setActiveOrganizationState(null);
         setIsLoading(false);
-        removeItem('activeOrgId');
       }
       return;
     }
 
     setIsLoading(true);
-    getMyOrganizations()
-      .then(orgs => {
-        setOrganizations(orgs);
-        const savedOrgId = getItem('activeOrgId');
-        const savedOrg = savedOrgId ? orgs.find(o => o.id === savedOrgId) : null;
-        const orgToUse = savedOrg ?? orgs.find(o => o.isPersonal) ?? orgs[0] ?? null;
-        setActiveOrganizationState(orgToUse);
-        if (orgToUse) {
-          setItem('activeOrgId', orgToUse.id);
+    const offset = (page - 1) * PER_PAGE;
+    getMyOrganizationsRef.current({ limit: PER_PAGE, offset })
+      .then((result) => {
+        if (Array.isArray(result)) {
+          setOrganizations(result);
+          setTotalPages(1);
+        } else {
+          setOrganizations(result.items);
+          setTotalPages(Math.max(1, Math.ceil(result.total / PER_PAGE)));
         }
       })
       .catch(() => {
         setOrganizations([]);
-        setActiveOrganizationState(null);
+        setTotalPages(1);
       })
       .finally(() => setIsLoading(false));
-  }, [authUser.isAuthenticated, authUser.isLoading]);
+  }, [authUser.isAuthenticated, authUser.isLoading, page, refreshKey]);
 
-  return { organizations, activeOrganization, setActiveOrganization, isLoading };
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+  }, []);
+
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  return { organizations, isLoading, page, totalPages, setPage: handlePageChange, refresh };
 };

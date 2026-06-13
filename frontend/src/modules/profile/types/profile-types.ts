@@ -12,6 +12,7 @@ export interface CollectionEntry {
 
 export interface PricingEntry {
   name: string,
+  slug: string;
   version: string;
   createdAt: string;
   currency: string;
@@ -22,7 +23,7 @@ export interface PricingEntry {
     avatar: string;
     isPersonal: boolean;
   };
-  collectionName: string
+  collection: { id: string; name: string; slug: string } | null;
 }
 
 export interface CollectionToCreate {

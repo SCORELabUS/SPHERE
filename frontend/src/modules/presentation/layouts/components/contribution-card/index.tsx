@@ -10,7 +10,7 @@ export default function ContributionCard({
   return (
     <div
       onClick={onClick}
-      className="relative h-[400px] max-w-[400px] overflow-hidden rounded-lg p-2 shadow-md transition-shadow duration-300 hover:cursor-pointer hover:shadow-[0_0_10px_2px_rgba(2,62,138,0.5)]"
+      className="relative h-[400px] max-w-[400px] cursor-pointer overflow-hidden rounded-lg p-2 shadow-md transition-shadow duration-300 hover:shadow-[0_0_10px_2px_rgba(2,62,138,0.5)]"
     >
       <div>
         <div className="flex h-[65px] items-center justify-center">

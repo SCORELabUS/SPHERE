@@ -16,7 +16,7 @@ export default function CallToAction({ onNavigate }: { onNavigate: (to: string) 
           built for modern SaaS operators.
         </p>
         <div className="mt-10">
-          <IslandButton label="Start now" onClick={() => onNavigate('/register')} />
+          <IslandButton label="Start now" onClick={() => onNavigate('/authentication?view=register')} />
         </div>
       </div>
     </RevealBlock>

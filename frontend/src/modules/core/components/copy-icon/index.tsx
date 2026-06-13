@@ -21,12 +21,12 @@ export default function CopyToClipboardIcon({ value }: { value: string }) {
       <input
         value={value}
         readOnly
-        className="grow rounded-l-[4px] py-0 pl-2 pr-0 outline-none"
+        className="grow rounded-l-xs py-0 pl-2 pr-0 outline-none"
       />
       <button
         onClick={handleCopy}
         type="button"
-        className={`flex h-10 w-10 min-w-0 items-center justify-center rounded-r-[4px] py-1 text-white ${linkCopied ? 'bg-[#5BE49B]' : 'bg-sphere-primary-800'}`}
+        className={`flex h-10 w-10 min-w-0 cursor-pointer items-center justify-center rounded-r-xs py-1 text-white ${linkCopied ? 'bg-[#5BE49B]' : 'bg-tp-primary'}`}
       >
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
           <rect fill="none"></rect>

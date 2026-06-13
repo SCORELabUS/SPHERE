@@ -63,10 +63,18 @@ export function getProtectedEndpoints(): RoutePermission[] {
 }
 
 /**
- * Gets all public endpoints
+ * Gets all public endpoints (middleware-level).
+ *
+ * /notifications/stream is excluded: it is marked public only so the
+ * middleware lets the request through — the SSE EventSource API cannot
+ * set Authorization headers. The controller authenticates via a
+ * query-parameter token and returns 401 when the token is missing,
+ * which is expected behaviour.
  */
 export function getPublicEndpoints(): RoutePermission[] {
-  return filterEndpoints({ isPublic: true });
+  return filterEndpoints({ isPublic: true }).filter(
+    (ep) => ep.path !== '/notifications/stream'
+  );
 }
 
 /**

@@ -120,18 +120,19 @@ function NumberEditor({
             if (Number.isNaN(n)) return;
             onValueChange(decimalsAllowed ? Number(n.toFixed(2)) : Math.round(n));
           }}
-          className="w-full rounded-xl border border-slate-300 bg-white/70 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+          className="w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
         />
 
-        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white/60 px-4 py-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Base</span>
-          <span className="text-sm font-semibold text-slate-800">{String(original)}</span>
-          <span className="text-slate-300">|</span>
-          <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+        <div className="flex items-center gap-3 rounded-lg border border-tp-hairline bg-tp-surface px-4 py-2.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-tp-steel">Base</span>
+          <span className="text-sm font-semibold text-tp-ink">{String(original)}</span>
+          <span className="text-tp-hairline-strong">|</span>
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-tp-charcoal">
             <input
               type="checkbox"
               checked={decimalsAllowed}
               onChange={(e) => onDecimalsChange(e.target.checked)}
+              className="accent-tp-primary"
             />
             {decimalsAllowed ? '2 decimales' : 'Enteros'}
           </label>
@@ -153,7 +154,7 @@ function NumberEditor({
             onValueChange(decimalsAllowed ? Number(newVal.toFixed(2)) : Math.round(newVal));
           }}
           aria-label={`Range editor for ${variableKey}`}
-          className="w-full accent-cyan-600"
+          className="w-full accent-tp-primary"
         />
       </div>
     </div>
@@ -171,7 +172,7 @@ function CollectionTypeSelector({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as CollectionItemKind)}
-      className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+      className="rounded-lg border border-tp-input-border bg-tp-input-bg px-2 py-1.5 text-xs font-medium text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
     >
       <option value="string">string</option>
       <option value="number">number</option>
@@ -196,7 +197,7 @@ function CollectionValueEditor({
       <select
         value={value === true ? 'true' : 'false'}
         onChange={(e) => onChange(e.target.value === 'true')}
-        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+        className="w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
       >
         <option value="true">true</option>
         <option value="false">false</option>
@@ -205,7 +206,7 @@ function CollectionValueEditor({
   }
 
   if (type === 'null') {
-    return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">null</div>;
+    return <div className="rounded-lg border border-dashed border-tp-hairline-strong bg-tp-surface px-3 py-2 text-xs text-tp-steel">null</div>;
   }
 
   if (type === 'json') {
@@ -213,7 +214,7 @@ function CollectionValueEditor({
       <textarea
         value={toJsonText(value)}
         onChange={(e) => onChange(parseCollectionValue(e.target.value, 'json'))}
-        className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+        className="h-24 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-xs text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
       />
     );
   }
@@ -223,7 +224,7 @@ function CollectionValueEditor({
       type={type === 'number' ? 'number' : 'text'}
       value={type === 'number' ? (typeof value === 'number' ? value : 0) : String(value ?? '')}
       onChange={(e) => onChange(parseCollectionValue(e.target.value, type))}
-      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+      className="w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
     />
   );
 }
@@ -239,12 +240,12 @@ function ArrayEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{value.length} items</div>
+      <div className="flex items-center justify-between rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-tp-steel">{value.length} items</div>
         <button
           type="button"
           onClick={() => onChange([...value, ''])}
-          className="inline-flex items-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+          className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-tp-primary/30 bg-tp-primary/10 px-2.5 py-1.5 text-xs font-semibold text-tp-primary transition-colors hover:bg-tp-primary/20"
         >
           <FaPlus /> Add item
         </button>
@@ -252,7 +253,7 @@ function ArrayEditor({
 
       <div className="space-y-2">
         {value.map((item, idx) => (
-          <div key={`array-item-${idx}`} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[110px_1fr_auto]">
+          <div key={`array-item-${idx}`} className="grid gap-2 rounded-lg border border-tp-hairline bg-tp-canvas p-3 md:grid-cols-[110px_1fr_auto]">
             <CollectionTypeSelector
               value={itemTypes[idx]}
               onChange={(nextType) => {
@@ -275,7 +276,7 @@ function ArrayEditor({
             <button
               type="button"
               onClick={() => onChange(value.filter((_, i) => i !== idx))}
-              className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700 hover:bg-rose-100"
+              className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-red-700 transition-colors hover:bg-red-100"
               aria-label={`Remove item ${idx + 1}`}
             >
               <FaTrash />
@@ -298,8 +299,8 @@ function ObjectEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{entries.length} properties</div>
+      <div className="flex items-center justify-between rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-tp-steel">{entries.length} properties</div>
         <button
           type="button"
           onClick={() => {
@@ -311,7 +312,7 @@ function ObjectEditor({
             }
             onChange({ ...value, [candidate]: '' });
           }}
-          className="inline-flex items-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+          className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-tp-primary/30 bg-tp-primary/10 px-2.5 py-1.5 text-xs font-semibold text-tp-primary transition-colors hover:bg-tp-primary/20"
         >
           <FaPlus /> Add property
         </button>
@@ -321,7 +322,7 @@ function ObjectEditor({
         {entries.map(([key, item]) => {
           const itemType = collectionTypeOf(item);
           return (
-            <div key={key} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_110px_1.7fr_auto]">
+            <div key={key} className="grid gap-2 rounded-lg border border-tp-hairline bg-tp-canvas p-3 md:grid-cols-[1fr_110px_1.7fr_auto]">
               <input
                 type="text"
                 value={key}
@@ -333,7 +334,7 @@ function ObjectEditor({
                   next[nextKey] = item;
                   onChange(next);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+                className="rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
               />
 
               <CollectionTypeSelector
@@ -354,7 +355,7 @@ function ObjectEditor({
                   delete next[key];
                   onChange(next);
                 }}
-                className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700 hover:bg-rose-100"
+                className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-red-700 transition-colors hover:bg-red-100"
                 aria-label={`Remove property ${key}`}
               >
                 <FaTrash />
@@ -420,7 +421,7 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_15%_20%,rgba(0,201,255,0.23),transparent_40%),radial-gradient(circle_at_85%_10%,rgba(14,165,233,0.18),transparent_30%),rgba(2,6,23,0.82)] p-3 backdrop-blur-sm transition ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-tp-ink/80 p-3 backdrop-blur-sm transition ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
       aria-hidden={!open}
     >
       <motion.div
@@ -428,39 +429,36 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16, scale: 0.99 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="max-h-[93vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-cyan-100/30 bg-[linear-gradient(180deg,#f8fdff_0%,#f6faff_42%,#ffffff_100%)] shadow-[0_45px_120px_-35px_rgba(2,132,199,0.55)]"
+        className="max-h-[93vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
       >
-        <div className="relative overflow-hidden border-b border-cyan-100/70 px-5 py-5">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,rgba(34,211,238,0.2),transparent_42%)]" />
-          <div className="relative flex items-start justify-between gap-4">
+        <div className="border-b border-tp-hairline px-5 py-5">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black tracking-tight text-slate-900">Variables Simulator</h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <h2 className="text-xl font-bold tracking-tight text-tp-ink">Variables Simulator</h2>
+              <p className="mt-1 text-sm text-tp-steel">
                 Experiment with different values for the variables defined in this pricing!
               </p>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-800">
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-tp-primary/10 px-3 py-1 text-xs font-semibold text-tp-primary">
                 <FaCircleInfo /> {keys.length} editable variables
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-slate-200 bg-white/80 p-2.5 text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                aria-label="close"
-              >
-                <FaRegCircleXmark />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-lg border border-tp-hairline bg-tp-canvas p-2.5 text-tp-steel transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+              aria-label="close"
+            >
+              <FaRegCircleXmark />
+            </button>
           </div>
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
           {keys.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 py-20 text-center text-slate-500">
-              <div className="text-lg font-semibold">No variables found</div>
-              <div className="text-sm">This pricing does not declare any editable variables.</div>
+            <div className="rounded-2xl border border-dashed border-tp-hairline-strong bg-tp-surface py-20 text-center text-tp-steel">
+              <div className="text-lg font-semibold text-tp-ink">No variables found</div>
+              <div className="text-sm text-tp-steel">This pricing does not declare any editable variables.</div>
             </div>
           ) : (
             <AnimatePresence initial={false} mode="popLayout">
@@ -483,17 +481,17 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                           exit={{ opacity: 0, y: 8 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 28, delay: idx * 0.02 }}
                         >
-                          <div className="rounded-2xl border border-slate-200/90 bg-white/85 p-4 shadow-[0_12px_34px_-24px_rgba(2,132,199,0.8)] backdrop-blur-sm">
+                          <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 shadow-elevation-1">
                             <div className="mb-3 flex items-start justify-between gap-3">
                               <div>
-                                <div className="font-extrabold text-slate-900">{camelToTitle(k)}</div>
-                                <div className="mt-0.5 inline-flex items-center gap-2 text-xs text-slate-500">
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">{kindLabel(kind)}</span>
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">raw: {k}</span>
+                                <div className="font-bold text-tp-ink">{camelToTitle(k)}</div>
+                                <div className="mt-0.5 inline-flex items-center gap-2 text-xs text-tp-steel">
+                                  <span className="rounded-full border border-tp-hairline bg-tp-surface px-2 py-0.5">{kindLabel(kind)}</span>
+                                  <span className="rounded-full border border-tp-hairline bg-tp-surface px-2 py-0.5">raw: {k}</span>
                                 </div>
                               </div>
 
-                              <div className="max-w-[180px] rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-right text-xs font-semibold text-slate-700">
+                              <div className="max-w-45 rounded-lg border border-tp-hairline bg-tp-surface px-2.5 py-1.5 text-right text-xs font-semibold text-tp-charcoal">
                                 {kind === 'boolean'
                                   ? value === true
                                     ? 'True'
@@ -513,16 +511,16 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => setLocal(s => ({ ...s, [k]: value === true ? false : true }))}
                                 aria-pressed={value === true}
-                                className={`group relative flex w-full max-w-[320px] items-center justify-between overflow-hidden rounded-2xl border p-2.5 text-left shadow-[0_10px_30px_-18px_rgba(15,23,42,0.45)] transition ${
+                                className={`group relative flex w-full max-w-80 cursor-pointer items-center justify-between overflow-hidden rounded-xl border p-2.5 text-left shadow-elevation-1 transition ${
                                   value === true
-                                    ? 'border-cyan-200 bg-gradient-to-r from-cyan-500 via-sky-500 to-cyan-600 text-white'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:bg-cyan-50'
+                                    ? 'border-tp-primary bg-tp-primary text-tp-on-primary'
+                                    : 'border-tp-hairline bg-tp-canvas text-tp-charcoal hover:border-tp-primary/40 hover:bg-tp-primary/5'
                                 }`}
                               >
                                 <div className="relative z-10 flex items-center gap-3 px-1.5 py-1">
                                   <div>
                                     <div className="text-sm font-semibold leading-5">{value === true ? 'Enabled' : 'Disabled'}</div>
-                                    <div className={`text-[11px] font-medium ${value === true ? 'text-white/80' : 'text-slate-500'}`}>
+                                    <div className={`text-[11px] font-medium ${value === true ? 'text-tp-on-primary/80' : 'text-tp-steel'}`}>
                                       Click to switch state
                                     </div>
                                   </div>
@@ -531,13 +529,13 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                                 <div className="relative z-10 flex items-center">
                                   <div
                                     className={`relative h-8 w-14 rounded-full p-1 transition ${
-                                      value === true ? 'bg-white/20' : 'bg-slate-200'
+                                      value === true ? 'bg-white/20' : 'bg-tp-hairline'
                                     }`}
                                   >
                                     <motion.span
                                       animate={{ x: value === true ? 24 : 0 }}
                                       transition={{ type: 'spring', stiffness: 700, damping: 35 }}
-                                      className={`block h-6 w-6 rounded-full shadow-md ${value === true ? 'bg-white' : 'bg-slate-500'}`}
+                                      className={`block h-6 w-6 rounded-full shadow-md ${value === true ? 'bg-white' : 'bg-tp-stone'}`}
                                     />
                                   </div>
                                 </div>
@@ -560,19 +558,19 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                                 type="text"
                                 value={String(value ?? '')}
                                 onChange={(e) => setLocal(s => ({ ...s, [k]: e.target.value }))}
-                                className="w-full rounded-xl border border-slate-300 bg-white/80 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+                                className="w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink outline-none transition focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/20"
                               />
                             )}
 
                             {kind === 'null' && (
-                              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                                This variable is currently <span className="font-semibold">null</span>.
+                              <div className="rounded-lg border border-dashed border-tp-hairline-strong bg-tp-surface px-4 py-3 text-sm text-tp-steel">
+                                This variable is currently <span className="font-semibold text-tp-ink">null</span>.
                               </div>
                             )}
 
                             {kind === 'array' && (
                               <div className="space-y-3">
-                                <div className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800">
+                                <div className="inline-flex items-center gap-2 rounded-lg bg-tp-primary/10 px-2.5 py-1 text-xs font-semibold text-tp-primary">
                                   <FaList /> List editor
                                 </div>
                                 <ArrayEditor
@@ -584,7 +582,7 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
 
                             {kind === 'object' && (
                               <div className="space-y-3">
-                                <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                                <div className="inline-flex items-center gap-2 rounded-lg bg-tp-primary/10 px-2.5 py-1 text-xs font-semibold text-tp-primary">
                                   <FaCode /> Object editor
                                 </div>
                                 <ObjectEditor
@@ -595,11 +593,11 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                             )}
 
                             {(kind === 'array' || kind === 'object') && (
-                              <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-600">
+                              <details className="mt-3 rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2">
+                                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-tp-steel">
                                   JSON preview
                                 </summary>
-                                <pre className="mt-2 max-h-52 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-5 text-emerald-200">
+                                <pre className="mt-2 max-h-52 overflow-auto rounded-lg bg-tp-surface-code p-3 text-[11px] leading-5 text-emerald-300">
                                   {toJsonText(value)}
                                 </pre>
                               </details>
@@ -615,11 +613,11 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
           )}
         </div>
 
-        <div className="flex items-center gap-2 border-t border-cyan-100/70 bg-white/80 px-5 py-4">
+        <div className="flex items-center gap-2 border-t border-tp-hairline bg-tp-surface px-5 py-4">
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50"
+            className="cursor-pointer rounded-lg border border-tp-hairline-strong px-4 py-2.5 text-sm font-medium text-tp-charcoal transition-colors hover:bg-tp-surface"
           >
             Reset
           </button>
@@ -627,14 +625,14 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            className="cursor-pointer rounded-lg border border-tp-hairline-strong px-4 py-2.5 text-sm font-medium text-tp-charcoal transition-colors hover:bg-tp-surface"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleApply}
-            className="rounded-xl bg-gradient-to-r from-cyan-600 to-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-cyan-500 hover:to-sky-500"
+            className="cursor-pointer rounded-lg bg-tp-primary px-4 py-2.5 text-sm font-semibold text-tp-on-primary shadow-elevation-1 transition-colors hover:bg-tp-primary-deep"
           >
             <span className="inline-flex items-center gap-2"><FaCalculator /> Test</span>
           </button>

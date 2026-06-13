@@ -3,19 +3,26 @@ import container from '../config/container';
 import OrganizationRepository from '../repositories/mongoose/OrganizationRepository';
 import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
 import OrganizationInvitationRepository from '../repositories/mongoose/OrganizationInvitationRepository';
+import UserRepository from '../repositories/mongoose/UserRepository';
+import NotificationService from './NotificationService';
 import { OrgRole } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
 import { processFileUris } from './FileService';
+import { OrganizationIndexByUserOptions } from '../types/services/Organization';
 
 class OrganizationService {
   private organizationRepository: OrganizationRepository;
   private organizationMembershipRepository: OrganizationMembershipRepository;
   private organizationInvitationRepository: OrganizationInvitationRepository;
+  private notificationService: NotificationService;
+  private userRepository: UserRepository;
 
   constructor() {
     this.organizationRepository = container.resolve('organizationRepository');
     this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
     this.organizationInvitationRepository = container.resolve('organizationInvitationRepository');
+    this.notificationService = container.resolve('notificationService');
+    this.userRepository = container.resolve('userRepository');
   }
 
   async index() {
@@ -24,10 +31,28 @@ class OrganizationService {
     return organizations;
   }
 
-  async indexByUser(userId: string) {
-    const memberships = await this.organizationMembershipRepository.findByUserId(userId);
-    const organizations = memberships.map((m: any) => m.organization);
-    organizations.forEach((org: any) => processFileUris(org, ['avatar']));
+  async indexByUser(userId: string, options: OrganizationIndexByUserOptions) {
+    const result = await this.organizationMembershipRepository.findOrganizationsByUserId(userId, options);
+
+    const organizations = result.items;
+
+    const processOrgs = (orgs: any[]) => {
+      for (const org of orgs) {
+        processFileUris(org, ['avatar']);
+        if (org.subOrganizations?.length) {
+          processOrgs(org.subOrganizations);
+        }
+      }
+    };
+    processOrgs(organizations);
+
+    if (options.pagination && (typeof options.pagination.limit !== 'undefined' || typeof options.pagination.offset !== 'undefined')) {
+      return {
+        items: organizations,
+        total: result.total,
+      };
+    }
+
     return organizations;
   }
   
@@ -54,6 +79,10 @@ class OrganizationService {
       data.ancestors = [...(parent.ancestors ?? []), parent.id ?? parent._id?.toString()];
     }
 
+    if (data.name && !data.isPersonal) {
+      data.name = await this.deduplicateSlug(data.name);
+    }
+
     const organization: any = await this.organizationRepository.create(data);
     const orgId = organization.id ?? organization._id?.toString();
 
@@ -69,6 +98,15 @@ class OrganizationService {
     }
 
     return organization;
+  }
+
+  private async deduplicateSlug(baseSlug: string): Promise<string> {
+    let slug = baseSlug;
+    while (await this.organizationRepository.findExistingSlug(slug)) {
+      const suffix = crypto.randomBytes(5).readUInt32BE(0).toString().slice(0, 10);
+      slug = `${baseSlug}-${suffix}`;
+    }
+    return slug;
   }
 
   private async propagateMembershipsToChild(parentId: string, childId: string) {
@@ -131,7 +169,7 @@ class OrganizationService {
 
     const organization = await this.organizationRepository.create({
       name: user.username.toLowerCase(),
-      displayName: `${user.username} (personal)`,
+      displayName: `${user.username} PERSONAL`,
       description: null,
       avatar: null,
       isPersonal: true,
@@ -176,11 +214,22 @@ class OrganizationService {
   }
 
   async listMembers(organizationId: string, excludeUserId?: string) {
+    const organization = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
     const members = await this.organizationMembershipRepository.findByOrganizationId(organizationId);
 
     if (excludeUserId) {
       return members.filter((m: any) => m._userId !== excludeUserId);
     }
+
+    members.forEach((m: any) => {
+      if (m.user?.avatar) {
+        processFileUris(m.user, ['avatar']);
+      }
+    });
 
     return members;
   }
@@ -273,7 +322,9 @@ class OrganizationService {
       throw new Error('NOT FOUND: Organization membership not found');
     }
 
-    if (membership.role === 'OWNER' && reqUser && reqUser.orgRole !== 'OWNER') {
+    const isSelfRemoval = reqUser && userId === reqUser.id;
+
+    if (!isSelfRemoval && membership.role === 'OWNER' && reqUser && reqUser.orgRole !== 'OWNER') {
       throw new Error('PERMISSION ERROR: Only OWNER users can remove another OWNER from the organization');
     }
 
@@ -304,7 +355,7 @@ class OrganizationService {
     const expiresInDays = options?.expiresInDays ?? 7;
     const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
 
-    return this.organizationInvitationRepository.create({
+    const invitation = await this.organizationInvitationRepository.create({
       _organizationId: organizationId,
       code,
       createdBy: userId,
@@ -312,6 +363,22 @@ class OrganizationService {
       maxUses: options?.maxUses ?? null,
       useCount: 0,
     });
+
+    try {
+      const org = await this.organizationRepository.findById(organizationId);
+      const orgName = org?.displayName || org?.name || 'an organization';
+      await this.notificationService.createNotification({
+        userId,
+        kind: 'System',
+        title: 'Invitation link created',
+        message: `You created an invitation link for "${orgName}"`,
+        data: { organizationId, code, invitationId: String(invitation._id) },
+      });
+    } catch {
+      // Notification creation should not fail the invitation
+    }
+
+    return invitation;
   }
 
   async listInvitations(organizationId: string) {
@@ -366,6 +433,53 @@ class OrganizationService {
     await this.organizationInvitationRepository.incrementUseCount(invitation.id ?? invitation._id?.toString());
 
     return organization;
+  }
+
+  async inviteUsersToOrganization(organizationId: string, invitedUserIds: string[], invitedBy: string) {
+    // Create invitation with maxUses = number of invited users
+    const code = crypto.randomBytes(5).toString('hex');
+    const expiresInDays = 7;
+    const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+
+    const invitation = await this.organizationInvitationRepository.create({
+      _organizationId: organizationId,
+      code,
+      createdBy: invitedBy,
+      expiresAt,
+      maxUses: invitedUserIds.length,
+      useCount: 0,
+    });
+
+    // Get organization name for notifications
+    const org = await this.organizationRepository.findById(organizationId);
+    const orgName = org?.displayName || org?.name || 'an organization';
+
+    // Get inviter name
+    const inviter = await this.userRepository.findById(invitedBy);
+    const inviterName = inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone';
+
+    // Create notification for each invited user
+    for (const userId of invitedUserIds) {
+      try {
+        await this.notificationService.createNotification({
+          userId,
+          kind: 'OrganizationInvitation',
+          title: `You've been invited to join ${orgName}`,
+          message: `${inviterName} has invited you to join "${orgName}". Click to accept the invitation.`,
+          data: {
+            invitationCode: code,
+            organizationId,
+            organizationName: orgName,
+            invitedBy: inviterName,
+            invitedById: invitedBy,
+          },
+        });
+      } catch {
+        // Notification creation should not fail the invitation process
+      }
+    }
+
+    return invitation;
   }
 }
 

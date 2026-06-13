@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 
 export interface LeanPricing {
   name: string;
+  slug?: string;
   _organizationId?: Types.ObjectId | string;
   _collectionId?: Types.ObjectId | string;
 
@@ -60,6 +61,7 @@ export interface PricingAnalytics {
 export interface PricingCollection {
   _id: Types.ObjectId | string;
   name?: string;
+  slug?: string;
 }
 
 export interface PricingOrganization {

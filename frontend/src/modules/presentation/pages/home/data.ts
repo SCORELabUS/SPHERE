@@ -44,14 +44,13 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Pricing2Yaml Editor', to: '/editor' },
       { label: 'HARVEY', to: '/harvey' },
-      { label: 'HARVEY (Playground)', to: '/harvey-play' },
     ],
   },
   {
-    label: 'Pricings',
+    label: 'Explore',
     children: [
       { label: 'Pricings', to: '/pricings' },
-      { label: 'Collections', to: '/pricings/collections' },
+      { label: 'Collections', to: '/collections' },
     ],
   },
   { label: 'Team', to: '/team' },

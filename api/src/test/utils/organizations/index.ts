@@ -5,6 +5,7 @@ export {
   createTestInvitation,
   createOrgWithOwnerAndMembers,
   cleanupOrganization,
+  createOrgScopedPermission,
   type TestOrganizationData,
   type TestMembershipData,
   type TestInvitationData,

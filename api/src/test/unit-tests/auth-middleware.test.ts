@@ -10,7 +10,41 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Response, NextFunction } from 'express';
-import { authenticateTokenMiddleware } from '../../main/middlewares/AuthMiddleware';
+import { authenticationMiddleware } from '../../main/middlewares/AuthenticationMiddleware';
+import { authorizationMiddleware } from '../../main/middlewares/AuthorizationMiddleware';
+
+/** Combined middleware that runs authentication then authorization (like the old single middleware) */
+const authenticateTokenMiddleware = async (req: any, res: any, next: any) => {
+  await new Promise<void>((resolve, reject) => {
+    const originalJson = res.json;
+    let settled = false;
+
+    res.json = function (body: any) {
+      if (!settled) {
+        settled = true;
+        res.json = originalJson;
+      }
+      const result = originalJson.call(res, body);
+      resolve();
+      return result;
+    };
+
+    authenticationMiddleware(req, res, (err?: any) => {
+      if (settled) return;
+      settled = true;
+      res.json = originalJson;
+      if (err) return reject(err);
+      resolve();
+    });
+  }).catch((err) => {
+    next(err);
+    return;
+  });
+
+  if (res.headersSent) return;
+
+  await authorizationMiddleware(req, res, next);
+};
 import {
   createMockRequest,
   createMockResponse,
@@ -44,10 +78,25 @@ vi.mock('../../main/config/container', () => ({
       if (key === 'organizationService') {
         return mockContainer.organizationService;
       }
+      if (key === 'permissionService') {
+        return mockContainer.permissionService;
+      }
       return undefined;
     }),
   },
 }));
+
+// Mock verifyJwtToken for JWT-based auth
+const { mockVerifyJwtToken } = vi.hoisted(() => ({
+  mockVerifyJwtToken: vi.fn(),
+}));
+vi.mock('../../main/utils/users/helpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../main/utils/users/helpers')>();
+  return {
+    ...actual,
+    verifyJwtToken: mockVerifyJwtToken,
+  };
+});
 
 describe('Auth Middleware - Real Execution Tests', () => {
   let mockReq: MutableRequest;
@@ -68,6 +117,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
     // Setup mock repositories and services
     mockUserRepository = {
       findOne: vi.fn(),
+      findById: vi.fn(),
       findByApiKey: vi.fn(),
     };
 
@@ -84,7 +134,15 @@ describe('Auth Middleware - Real Execution Tests', () => {
       userRepository: mockUserRepository,
       organizationRepository: mockOrgRepository,
       organizationService: mockOrgService,
+      permissionService: {
+        hasPermission: vi.fn().mockResolvedValue(true),
+      },
+      pricingRepository: {},
+      pricingCollectionRepository: {},
     };
+
+    // Reset JWT mock
+    mockVerifyJwtToken.mockReset();
   });
 
   afterEach(() => {
@@ -98,7 +156,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
   describe('Bearer Token Authentication', () => {
     it('should authenticate valid Bearer token - CALLS MIDDLEWARE', async () => {
       const user = createMockAdminUser();
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
 
       mockReq = createMockRequest({
         method: 'GET',
@@ -108,13 +167,14 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       await authenticateTokenMiddleware(mockReq as any, mockRes, mockNext);
 
-      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ token: user.token });
+      expect(mockVerifyJwtToken).toHaveBeenCalledWith(user.token);
+      expect(mockUserRepository.findById).toHaveBeenCalledWith(user.id);
       expect((mockReq as any).user).toBeDefined();
       expect((mockReq as any).user.id).toBe(user.id);
     });
 
     it('should reject invalid Bearer token - CALLS MIDDLEWARE', async () => {
-      mockUserRepository.findOne.mockResolvedValue(null);
+      mockVerifyJwtToken.mockImplementation(() => { throw new Error('Invalid token'); });
 
       mockReq = createMockRequest({
         method: 'GET',
@@ -124,31 +184,26 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       await authenticateTokenMiddleware(mockReq as any, mockRes, mockNext);
 
-      expect(mockUserRepository.findOne).toHaveBeenCalled();
+      expect(mockVerifyJwtToken).toHaveBeenCalled();
       expect((mockRes as any).statusCode).toBe(401);
     });
 
     it('should reject expired Bearer token - CALLS MIDDLEWARE', async () => {
-      const user = createMockUserWithExpiredToken();
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockImplementation(() => { throw new Error('Token expired'); });
 
       mockReq = createMockRequest({
         method: 'GET',
         path: '/api/v1/users',
-        headers: buildBearerTokenHeader(user.token!),
+        headers: buildBearerTokenHeader('expired_token_xyz'),
       });
 
       await authenticateTokenMiddleware(mockReq as any, mockRes, mockNext);
 
-      expect(mockUserRepository.findOne).toHaveBeenCalled();
+      expect(mockVerifyJwtToken).toHaveBeenCalled();
       expect((mockRes as any).statusCode).toBe(401);
     });
 
     it('should extract Bearer token correctly from header', async () => {
-      // Este test era redundante (comprobación de split de string).
-      // Para mantener la suite enfocada probamos que, en ausencia de token,
-      // la respuesta en endpoints protegidos sea 401.
-      mockUserRepository.findOne.mockResolvedValue(null);
       mockReq = createMockRequest({
         method: 'GET',
         path: '/api/v1/users',
@@ -169,7 +224,6 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       await authenticateTokenMiddleware(mockReq as any, mockRes, mockNext);
 
-      // Debería permitir acceso
       expect(mockNext).toHaveBeenCalled();
     });
   });
@@ -201,8 +255,10 @@ describe('Auth Middleware - Real Execution Tests', () => {
     });
 
     it('should reject revoked API key - CALLS MIDDLEWARE', async () => {
-      const user = createMockUserWithRevokedApiKey();
-      const apiKey = user.apiKeys[0].key;
+      const user: any = createMockUserWithRevokedApiKey();
+      user.apiKey = user.apiKeys[0];
+      delete user.apiKeys;
+      const apiKey = user.apiKey.key;
       mockUserRepository.findByApiKey.mockResolvedValue(user);
 
       mockReq = createMockRequest({
@@ -217,8 +273,10 @@ describe('Auth Middleware - Real Execution Tests', () => {
     });
 
     it('should reject expired API key - CALLS MIDDLEWARE', async () => {
-      const user = createMockUserWithExpiredApiKey();
-      const apiKey = user.apiKeys[0].key;
+      const user: any = createMockUserWithExpiredApiKey();
+      user.apiKey = user.apiKeys[0];
+      delete user.apiKeys;
+      const apiKey = user.apiKey.key;
       mockUserRepository.findByApiKey.mockResolvedValue(user);
 
       mockReq = createMockRequest({
@@ -296,7 +354,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_child',
+        path: '/api/v1/orgs/org_child/permissions',
         params: { organizationId: 'org_child' },
         headers: buildApiKeyHeader(user.apiKey.key),
       });
@@ -312,13 +370,14 @@ describe('Auth Middleware - Real Execution Tests', () => {
       const user = createMockAdminUser();
       const org = createMockOrganization({ id: 'org_123' });
 
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
       mockOrgRepository.findById.mockResolvedValue(org);
       mockOrgService.getUserOrgRole.mockResolvedValue('OWNER');
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123/members',
+        path: '/api/v1/orgs/org_123/permissions',
         params: {},
         headers: buildBearerTokenHeader(user.token!),
       });
@@ -345,7 +404,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_child',
+        path: '/api/v1/orgs/org_child/permissions',
         params: { organizationId: 'org_child' },
         headers: buildApiKeyHeader(user.apiKey.key),
       });
@@ -414,8 +473,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
     it('ADMIN user should be allowed to POST regardless of membership (global ADMIN bypass)', async () => {
       const admin: any = createMockAdminUser();
-      // No org membership returned
-      mockUserRepository.findOne.mockResolvedValue(admin);
+      mockVerifyJwtToken.mockReturnValue({ id: admin.id, username: admin.username, role: admin.role });
+      mockUserRepository.findById.mockResolvedValue(admin);
       mockOrgRepository.findById.mockResolvedValue({ id: 'org_123', ancestors: [] });
       mockOrgService.getUserOrgRole.mockResolvedValue(null);
 
@@ -434,7 +493,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
     it('token valid but lacks required user role -> 403', async () => {
       const user = createMockRegularUser();
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
 
       mockReq = createMockRequest({
         method: 'PUT',
@@ -479,7 +539,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
     it('should allow GET /pricings with valid token - CALLS MIDDLEWARE', async () => {
       const user = createMockRegularUser();
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
 
       mockReq = createMockRequest({
         method: 'GET',
@@ -502,13 +563,14 @@ describe('Auth Middleware - Real Execution Tests', () => {
       const user = createMockAdminUser();
       const org = createMockOrganization({ id: 'org_123' });
 
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
       mockOrgRepository.findById.mockResolvedValue(org);
       mockOrgService.getUserOrgRole.mockResolvedValue('OWNER');
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123',
+        path: '/api/v1/orgs/org_123/permissions',
         params: { organizationId: 'org_123' },
         headers: buildBearerTokenHeader(user.token!),
       });
@@ -522,13 +584,14 @@ describe('Auth Middleware - Real Execution Tests', () => {
       const user = createMockRegularUser();
       const org = createMockOrganization({ id: 'org_123' });
 
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
       mockOrgRepository.findById.mockResolvedValue(org);
       mockOrgService.getUserOrgRole.mockResolvedValue(null); // User not member
 
       mockReq = createMockRequest({
         method: 'GET',
-        path: '/api/v1/orgs/org_123',
+        path: '/api/v1/orgs/org_123/permissions',
         params: { organizationId: 'org_123' },
         headers: buildBearerTokenHeader(user.token!),
       });
@@ -542,7 +605,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
       const admin = createMockAdminUser();
       const org = createMockOrganization({ id: 'org_123' });
 
-      mockUserRepository.findOne.mockResolvedValue(admin);
+      mockVerifyJwtToken.mockReturnValue({ id: admin.id, username: admin.username, role: admin.role });
+      mockUserRepository.findById.mockResolvedValue(admin);
       mockOrgRepository.findById.mockResolvedValue(org);
       mockOrgService.getUserOrgRole.mockResolvedValue(null);
 
@@ -567,7 +631,8 @@ describe('Auth Middleware - Real Execution Tests', () => {
   describe('Edge Cases - Real Middleware Execution', () => {
     it('should handle both Bearer token and API key in same request', async () => {
       const user = createMockAdminUser();
-      mockUserRepository.findOne.mockResolvedValue(user);
+      mockVerifyJwtToken.mockReturnValue({ id: user.id, username: user.username, role: user.role });
+      mockUserRepository.findById.mockResolvedValue(user);
 
       mockReq = createMockRequest({
         method: 'GET',
@@ -580,7 +645,7 @@ describe('Auth Middleware - Real Execution Tests', () => {
 
       await authenticateTokenMiddleware(mockReq as any, mockRes, mockNext);
 
-      expect(mockUserRepository.findOne).toHaveBeenCalled();
+      expect(mockVerifyJwtToken).toHaveBeenCalled();
       expect((mockReq as any).authType).toBe('token');
     });
 
@@ -597,8 +662,6 @@ describe('Auth Middleware - Real Execution Tests', () => {
     });
 
     it('should handle null/undefined bearer token gracefully', async () => {
-      mockUserRepository.findOne.mockResolvedValue(null);
-
       mockReq = createMockRequest({
         method: 'GET',
         path: '/api/v1/users',

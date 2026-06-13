@@ -39,6 +39,39 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['PUT'],
     allowedUserRoles: ['ADMIN'],
   },
+  // User pricing/collection access queries (before general /users/**)
+  {
+    path: '/users/*/pricings',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/users/*/collections',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  // API Keys management
+  {
+    path: '/users/*/api-keys',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/users/*/api-keys/*',
+    methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/users/*/api-keys/*/revoke',
+    methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  // User settings: /users/me/settings (own settings)
+  {
+    path: '/users/me/settings/**',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
   {
     path: '/users/**',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
@@ -54,6 +87,12 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET', 'PUT'], // Also allow updating pricings through /pricings endpoint for simplicity
     isPublic: true, // Allow public access to list pricings
   },
+  // Pricing entity permissions (before general /pricings/** for GET)
+  {
+    path: '/pricings/*/*/permissions',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
   {
     path: '/pricings/**',
     methods: ['GET'],
@@ -64,16 +103,17 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['POST', 'PUT', 'DELETE', 'PATCH'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
-  {
-    path: '/me/pricings',
-    methods: ['PUT'],
-    allowedUserRoles: ['ADMIN', 'USER'],
-  },
 
   // ============================================
   // Collection Management Routes 
   // ============================================
 
+  // Collection entity permissions
+  {
+    path: '/collections/*/*/permissions',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
   {
     path: '/collections/**',
     methods: ['GET'],
@@ -110,6 +150,36 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET', 'POST'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
+  // Public org read access (unauthenticated users can view org details and members).
+  {
+    path: '/orgs/*/members',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  {
+    path: '/orgs/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  // Entity permission management is OWNER/ADMIN.
+  {
+    path: '/orgs/*/permissions',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN', 'MEMBER'],
+  },
+  {
+    path: '/orgs/*/permissions',
+    methods: ['POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
+  {
+    path: '/orgs/*/permissions/**',
+    methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
   // Everything under /orgs/:organizationId/** requires membership context.
   // Global ADMIN bypasses membership checks.
   {
@@ -124,13 +194,6 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },
-  // Allow members to view org members.
-  {
-    path: '/orgs/*/members',
-    methods: ['GET'],
-    allowedUserRoles: ['ADMIN', 'USER'],
-    allowedOrganizationRoles: ['OWNER', 'ADMIN', 'MEMBER'],
-  },
   // Only OWNER/ADMIN can manage org members.
   {
     path: '/orgs/*/members/**',
@@ -144,6 +207,22 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
+
+  // ============================================
+  // Notification Routes
+  // ============================================
+  // SSE stream endpoint: EventSource cannot set headers, so the token is passed
+  // as a query parameter. The controller handles its own authentication.
+  {
+    path: '/notifications/stream',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  {
+    path: '/notifications/**',
+    methods: ['GET', 'PUT', 'DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
   },
 
   // ============================================

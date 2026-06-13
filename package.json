@@ -4,25 +4,21 @@
   "version": "1.0.0",
   "scripts": {
     "install": "cd frontend && pnpm install && cd ../api && pnpm install",
-    
     "dev": "concurrently \"pnpm run dev:api\" \"pnpm run dev:vite\"",
     "dev:setup": "cd docker/dev && docker compose up -d && pnpm run seed:mongo-local:small",
     "dev:api": "cd api && npx migrate up && npx tsx --tsconfig tsconfig.json --watch src/main/backend.ts",
     "dev:vite": "cd frontend && pnpx vite",
-    
     "test": "pnpm run test:api",
     "test:api": "cd api && npx vitest --run && cd .. && pnpm run seed:mongo-local:small",
-    
     "build": "pnpm run build:frontend && pnpm run build:api",
     "build:api": "cd api && pnpm run build",
     "build:frontend": "cd frontend && vite build",
-    
     "lint": "eslint .",
-    
     "seed:mongo-local:small": "cd api && npx tsx --tsconfig tsconfig.json scripts/seedMongo.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "shadcn": "^4.7.0",
     "wait-on": "^8.0.1"
   }
 }

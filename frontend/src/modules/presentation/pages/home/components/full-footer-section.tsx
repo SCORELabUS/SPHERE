@@ -8,7 +8,7 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
             <h4 className="mt-3 [font-family:'Clash_Display','Geist',sans-serif] text-3xl leading-[0.95] text-white md:text-4xl">
               SaaS Pricing Holistic Evaluation and Regulation Environment
             </h4>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-white/70">
+            <p className="mt-4 max-w-[28rem] text-sm leading-relaxed text-white/70">
               Unified pricing operations for product, growth, and engineering teams building
               resilient monetization systems.
             </p>
@@ -22,21 +22,21 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                   <button
                     type="button"
                     onClick={() => onNavigate('/pricings')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Pricings
                   </button>
                   <button
                     type="button"
-                    onClick={() => onNavigate('/pricings/collections')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    onClick={() => onNavigate('/collections')}
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Collections
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('/editor')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Pricing2Yaml Editor
                   </button>
@@ -49,14 +49,14 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                   <button
                     type="button"
                     onClick={() => onNavigate('/research')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Publications
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('/team')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Team
                   </button>
@@ -64,7 +64,7 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                     href="https://score.us.es"
                     target="_blank"
                     rel="noreferrer"
-                    className="transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     SCORE Lab
                   </a>
@@ -77,7 +77,7 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                   <button
                     type="button"
                     onClick={() => onNavigate('/editor')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     iPricing Editor
                   </button>
@@ -90,21 +90,21 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                         'noopener,noreferrer'
                       )
                     }
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     SPACE
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('/harvey')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     HARVEY
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('/harvey')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     A-MINT
                   </button>
@@ -115,14 +115,14 @@ export default function FullFooterSection({ onNavigate }: { onNavigate: (to: str
                         '_blank',
                         'noopener,noreferrer'
                       )}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     Pricing2Yaml
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('/pricings')}
-                    className="text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
+                    className="cursor-pointer text-left transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-white"
                   >
                     PRIME
                   </button>

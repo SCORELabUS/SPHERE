@@ -6,6 +6,7 @@ export interface PricingCollection {
 
 export interface RetrievedCollection {
   id: string,  
+  slug: string,
   name: string,
     organization: {
         id: string,

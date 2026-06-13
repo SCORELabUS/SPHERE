@@ -22,6 +22,7 @@ class OrganizationController {
     this.revokeInvitation = this.revokeInvitation.bind(this);
     this.previewInvitation = this.previewInvitation.bind(this);
     this.joinViaInvitation = this.joinViaInvitation.bind(this);
+    this.inviteUsers = this.inviteUsers.bind(this);
   }
 
   async index(req: any, res: any) {
@@ -39,8 +40,18 @@ class OrganizationController {
 
   async indexByUser(req: any, res: any) {
     try {
-      const organizations = await this.organizationService.indexByUser(req.user.id);
-      res.json(organizations);
+      const { limit, offset } = req.query;
+      const pagination = (limit !== undefined || offset !== undefined)
+        ? {
+            limit: limit !== undefined ? parseInt(limit as string, 10) : undefined,
+            offset: offset !== undefined ? parseInt(offset as string, 10) : undefined,
+          }
+        : undefined;
+      const result = await this.organizationService.indexByUser(req.user.id, {
+        treeFormat: true,
+        pagination,
+      });
+      res.json(result);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
@@ -185,6 +196,24 @@ class OrganizationController {
     try {
       const organization = await this.organizationService.joinViaInvitation(req.params.code, req.user.id);
       res.json(organization);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async inviteUsers(req: any, res: any) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).send({ error: 'userIds must be a non-empty array' });
+      }
+      const invitation = await this.organizationService.inviteUsersToOrganization(
+        req.params.organizationId,
+        userIds,
+        req.user.id
+      );
+      res.status(201).json(invitation);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

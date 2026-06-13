@@ -18,7 +18,7 @@ export const createMockUser = (overrides?: any): LeanUser => {
     firstName: 'Test',
     lastName: 'User',
     email: `test_${id}@example.com`,
-    avatar: `${process.env.AVATARS_FOLDER}/default-avatar.png`,
+    avatar: `${process.env.SERVER_STATICS_FOLDER || 'public/'}${process.env.AVATARS_FOLDER || 'static/avatars/users'}/default-avatar.png`,
     token: `token_${id}`,
     tokenExpiration: new Date(Date.now() + 24 * 60 * 60 * 1000),
     apiKeys: [],
@@ -63,7 +63,9 @@ export const createMockUserWithExpiredToken = (overrides?: Partial<LeanUser>): L
  */
 export const createMockUserWithApiKey = (overrides?: Partial<LeanUser>): LeanUser => {
   const apiKey: ApiKey = {
+    _id: Math.random().toString(36).substring(7),
     key: `usr_${Math.random().toString(36).substring(2, 15)}`,
+    name: 'Test API Key',
     revoked: false,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     scopes: [
@@ -84,7 +86,9 @@ export const createMockUserWithApiKey = (overrides?: Partial<LeanUser>): LeanUse
  */
 export const createMockUserWithRevokedApiKey = (overrides?: Partial<LeanUser>): LeanUser => {
   const apiKey: ApiKey = {
+    _id: Math.random().toString(36).substring(7),
     key: `usr_${Math.random().toString(36).substring(2, 15)}`,
+    name: 'Revoked API Key',
     revoked: true,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     scopes: [
@@ -105,7 +109,9 @@ export const createMockUserWithRevokedApiKey = (overrides?: Partial<LeanUser>): 
  */
 export const createMockUserWithExpiredApiKey = (overrides?: Partial<LeanUser>): LeanUser => {
   const apiKey: ApiKey = {
+    _id: Math.random().toString(36).substring(7),
     key: `usr_${Math.random().toString(36).substring(2, 15)}`,
+    name: 'Expired API Key',
     revoked: false,
     expiresAt: new Date(Date.now() - 1000), // Expired
     scopes: [
@@ -129,7 +135,9 @@ export const createMockUserWithViewScopeApiKey = (
   overrides?: Partial<LeanUser>
 ): LeanUser => {
   const apiKey: ApiKey = {
+    _id: Math.random().toString(36).substring(7),
     key: `usr_${Math.random().toString(36).substring(2, 15)}`,
+    name: 'View Scope API Key',
     revoked: false,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     scopes: [
@@ -190,7 +198,9 @@ export const createMockOrganization = (overrides?: any) => {
 
 export const createMockApiKey = (organizationId: string, overrides?: Partial<ApiKey>): ApiKey => {
   const apiKey: ApiKey = {
+    _id: overrides?._id || Math.random().toString(36).substring(7),
     key: overrides?.key || `usr_${Math.random().toString(36).substring(2, 15)}`,
+    name: overrides?.name || 'Test API Key',
     revoked: overrides?.revoked || false,
     expiresAt: overrides?.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     scopes: [

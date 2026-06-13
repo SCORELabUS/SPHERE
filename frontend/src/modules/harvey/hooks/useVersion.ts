@@ -4,23 +4,22 @@ import { usePricingsApi } from "../../pricing/api/pricingsApi";
 
 export function usePricingVersions(
   owner: string,
-  name: string,
-  collectionName?: string | null
+  slug: string,
+  collectionSlug?: string | null
 ) {
   const [versions, setVersions] = useState<PricingVersionsResult | undefined>(
     undefined
   );
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<Error | undefined>(undefined);
-  const { getPricingByName } = usePricingsApi()
+  const { getPricingBySlug } = usePricingsApi()
 
   useEffect(() => {
     const makeRequest = async () => {
       try {
         setLoading(true)
-        const data = await getPricingByName(name, owner, collectionName ?? null);
+        const data = await getPricingBySlug(slug, owner, collectionSlug ?? null);
         if ("error" in data) {
-          data.error;
           setError(Error(data.error));
         } else {
           setVersions(data);

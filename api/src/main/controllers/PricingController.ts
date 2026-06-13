@@ -12,9 +12,11 @@ class PricingController {
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
     this.indexByOrganization = this.indexByOrganization.bind(this);
+    this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
     this.show = this.show.bind(this);
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
+    this.createVersion = this.createVersion.bind(this);
     this.update = this.update.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
@@ -24,7 +26,6 @@ class PricingController {
   async index(req: any, res: any) {
     try {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
-      queryParams.includePricingsInCollection = true;
 
       const pricings = await this.pricingService.index(queryParams, req.user);
       res.json(pricings);
@@ -37,9 +38,21 @@ class PricingController {
   async indexByOrganization(req: any, res: any) {
     try {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
-      queryParams.selectedOrganizations = [req.params.organizationId];
 
-      const pricings = await this.pricingService.index(queryParams, req.user);
+      const pricings = await this.pricingService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
+      res.json(pricings);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async indexByAuthenticatedUser(req: any, res: any) {
+    try {
+      const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
+      const targetUserUsername = req.params.username === 'me' ? req.user.username : req.params.username;
+
+      const pricings = await this.pricingService.indexByUser(targetUserUsername, req.user, queryParams);
       res.json(pricings);
     } catch (err: any) {
       const {status, message} = handleError(err);
@@ -51,7 +64,7 @@ class PricingController {
     try {
       const queryParams = req.query;
       const pricing = await this.pricingService.show(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         queryParams
@@ -66,7 +79,7 @@ class PricingController {
   async getConfigurationSpace(req: any, res: any) {
     try {
       const [configurationSpace, configurationSpaceSize] =
-        await this.pricingService.getConfigurationSpace(req.params.organizationId, req.params.pricingName, req.params.pricingVersion, req.user, req.query);
+        await this.pricingService.getConfigurationSpace(req.params.organizationId, req.params.pricingSlug, req.params.pricingVersion, req.user, req.query);
       res.json({
         configurationSpace: configurationSpace,
         configurationSpaceSize: configurationSpaceSize,
@@ -81,9 +94,41 @@ class PricingController {
     try {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
+      const name = req.body.name;
       const pricing = await this.pricingService.create(
         req.file,
         req.params.organizationId,
+        isPrivate,
+        req.user,
+        collectionId,
+        name
+      );
+      res.json(pricing[0]);
+    } catch (err: any) {
+      try {
+        const file = req.file;
+        const directory = path.dirname(file.path);
+        if (fs.readdirSync(directory).length === 1) {
+          fs.rmSync(directory, { recursive: true });
+        } else {
+          fs.rmSync(file.path);
+        }
+        const { status, message } = handleError(err);
+        res.status(status).send({ error: message });
+      } catch (err) {
+        res.status(500).send({ error: (err as Error).message });
+      }
+    }
+  }
+
+  async createVersion(req: any, res: any) {
+    try {
+      const isPrivate = req.body.private === 'true' || req.body.private === true;
+      const collectionId = req.body.collectionId;
+      const pricing = await this.pricingService.createVersion(
+        req.file,
+        req.params.organizationId,
+        req.params.pricingSlug,
         isPrivate,
         req.user,
         collectionId
@@ -111,7 +156,7 @@ class PricingController {
       const queryParams = req.query; 
 
       const pricing = await this.pricingService.update(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         req.body,
@@ -138,7 +183,7 @@ class PricingController {
     try {
       const queryParams = req.query;
       const result = await this.pricingService.destroy(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         queryParams
@@ -157,7 +202,7 @@ class PricingController {
   async destroyVersionByNameAndOrganization(req: any, res: any) {
     try {
       const result = await this.pricingService.destroyVersion(
-        req.params.pricingName,
+        req.params.pricingSlug,
         req.params.pricingVersion,
         req.params.organizationId,
         req.user
@@ -177,8 +222,8 @@ class PricingController {
     indexQueryParams: Record<string, string>
   ): PricingIndexQueryParams {
 
-    if (indexQueryParams['collectionName'] && indexQueryParams['excludePricingsInCollection'] === 'true') {
-      throw new Error('INVALID DATA: `collectionName` and `excludePricingsInCollection` cannot be used together');
+    if (indexQueryParams['collection'] && indexQueryParams['excludePricingsInCollection'] === 'true') {
+      throw new Error('INVALID DATA: `collection` and `excludePricingsInCollection` cannot be used together');
     }
 
     const transformedData: PricingIndexQueryParams = {
@@ -194,14 +239,14 @@ class PricingController {
         max: parseFloat(indexQueryParams['max-minPrice'] as string),
       },
       maxPrice: {
-        min: parseFloat(indexQueryParams['min-maxPrice'] as string),
+        min: parseFloat(indexQueryParams['max-minPrice'] as string),
         max: parseFloat(indexQueryParams['max-maxPrice'] as string),
       },
       selectedOrganizations: indexQueryParams.selectedOrganizations
         ? (indexQueryParams.selectedOrganizations as string).split(',')
         : undefined,
-      collectionName: indexQueryParams.collectionName as string,
-      includePricingsInCollection: indexQueryParams.includePricingsInCollection === 'true',
+      collection: indexQueryParams.collection as string,
+      excludePricingsInCollection: indexQueryParams.excludePricingsInCollection === 'true',
       limit: parseInt(indexQueryParams.limit) || 10,
       offset: parseInt(indexQueryParams.offset) || 0,
     };
@@ -212,13 +257,14 @@ class PricingController {
       'minPrice',
       'maxPrice',
       'selectedOrganizations',
-      'collectionName',
+      'collection',
+      'excludePricingsInCollection',
       'sortBy',
       'sort',
     ] as const;
 
     optionalFields.forEach(field => {
-      if (['name', 'selectedOrganizations', 'sortBy', 'sort', 'collectionName'].includes(field)) {
+      if (['name', 'selectedOrganizations', 'sortBy', 'sort', 'collection', 'excludePricingsInCollection'].includes(field)) {
         if (!transformedData[field]) {
           delete transformedData[field];
         }

@@ -1,7 +1,6 @@
-import './styles.css';
 import { PricingProps } from './types.d';
 import FeatureTableV2 from './components/FeatureTableV2';
-import PricingCard from './components/pricing-card';
+// import PricingCard from './components/pricing-card';
 const CURRENCIES = {
   USD: '$',
   EUR: '€',
@@ -25,21 +24,24 @@ export function PricingRenderer({
 }: Readonly<PricingProps>): JSX.Element {
   const [variablesModalOpen, setVariablesModalOpen] = useState(false);
 
-  // UI billing selector currently disabled in renderer
+  const resolvedCurrency =
+    pricing.currency in CURRENCIES
+      ? CURRENCIES[pricing.currency as keyof typeof CURRENCIES]
+      : pricing.currency;
 
   return (
-    <section className="bg-[#E7E8EC] py-5">
-      <div className="mx-auto w-full max-w-[1320px] px-5">
-        <PricingCard pricing={pricing} />
-
-        {/* Variables editor trigger - placed before features table */}
+    <section className="py-6 sm:py-8">
+      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* <PricingCard pricing={pricing} /> */}
 
         {Object.keys(pricing.variables).length > 0 && (
           <>
-            <div
-              className="mb-2 mt-4 flex justify-end"
-            >
-              <button type="button" className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => setVariablesModalOpen(true)}>
+            <div className="mb-2 mt-4 flex justify-end">
+              <button
+                type="button"
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-4 py-2 text-sm font-semibold text-tp-charcoal transition-colors hover:bg-tp-surface"
+                onClick={() => setVariablesModalOpen(true)}
+              >
                 Open variables simulator
               </button>
             </div>
@@ -59,32 +61,24 @@ export function PricingRenderer({
           features={pricing.features ?? {}}
           usageLimits={pricing.usageLimits ?? {}}
           addOns={pricing.addOns ?? {}}
-          currency={
-            pricing.currency in CURRENCIES
-              ? CURRENCIES[pricing.currency as keyof typeof CURRENCIES]
-              : pricing.currency
-          }
+          currency={resolvedCurrency}
         />
 
         {pricing.addOns && Object.values(pricing.addOns).length > 0 && (
-          <>
-            <div className="pricing-page-title mb-6 mt-14">
-              <h1 className="text-6xl font-extrabold tracking-tight text-slate-900">Add-Ons</h1>
-            </div>
-            <div className="add-ons-container mb-16 flex flex-wrap justify-center gap-8">
+          <div className="mt-12 sm:mt-16">
+            <h2 className="mb-6 text-center text-3xl font-extrabold tracking-tight text-tp-ink sm:text-4xl lg:text-5xl">
+              Add-Ons
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Object.values(pricing.addOns).map(addOn => (
                 <AddOnElement
                   addOn={addOn}
-                  currency={
-                    pricing.currency in CURRENCIES
-                      ? CURRENCIES[pricing.currency as keyof typeof CURRENCIES]
-                      : pricing.currency
-                  }
+                  currency={resolvedCurrency}
                   key={addOn.name}
                 />
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
     </section>

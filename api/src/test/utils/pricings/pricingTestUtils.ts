@@ -50,7 +50,7 @@ export const createPricingForOrganization = async (params: {
   serviceName?: string;
   version?: string;
   isPrivate?: boolean;
-}): Promise<{ response: any; serviceName: string; version: string }> => {
+}): Promise<{ response: any; serviceName: string; version: string; id: string }> => {
   const requestedName = params.serviceName ?? `pricing_${randomSuffix()}`;
   const requestedVersion = params.version;
   const fixture = await createValidPricingYaml(requestedName, requestedVersion);
@@ -65,9 +65,15 @@ export const createPricingForOrganization = async (params: {
     .field('version', version)
     .attach('yaml', fixture.filePath);
 
+  if (response.status !== 200) {
+    throw new Error(
+      `Pricing creation failed with status ${response.status}: ${JSON.stringify(response.body)}`
+    );
+  }
+
   testContainer.resolve('pricingsToDelete').add(response.body.id);
 
-  return { response, serviceName, version };
+  return { response, serviceName, version, id: response.body.id };
 };
 
 export async function generatePricingFile(serviceName?: string, version?: string): Promise<string> {

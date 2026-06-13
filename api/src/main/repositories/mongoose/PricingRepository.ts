@@ -1,23 +1,380 @@
 import RepositoryBase from '../RepositoryBase';
 import PricingMongoose from './models/PricingMongoose';
 import { PricingAnalytics } from '../../types/database/Pricing';
-import { getAllPricingsAggregator } from './aggregators/get-all-pricings';
 import { PricingIndexQueryParams } from '../../types/services/PricingService';
-import mongoose from 'mongoose';
-import { getPricingByNameAndOrganizationAggregator } from './aggregators/get-pricing-by-name-and-organization';
+import mongoose, { PipelineStage } from 'mongoose';
 import { LeanPricing } from '../../types/models/Pricing';
-import { getPricingByNameOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-name-organization-and-version';
+import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-slug-organization-and-version';
+import { OrgUserPermissionsContext } from '../../types/policies';
+import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
+import { generateSlug } from '../../utils/slug-manager';
+import { processFileUris } from '../../services/FileService';
 
 class PricingRepository extends RepositoryBase {
-  async findAll(queryParams: PricingIndexQueryParams, includePrivate: boolean = false) {
-    const filteringAggregators = [];
-    const sortAggregator = [];
+  async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
+    const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
+
+    try {
+      // Build base pipeline and optionally add pagination stages that operate inside aggregation
+      const basePipeline: PipelineStage[] = getPricingsAggregator(
+        undefined,
+        permissions,
+        filteringPipeline,
+        sortPipeline
+      );
+
+      const paginationPipeline = this._processPricingPagination(queryParams);
+
+      const pricings: any = await PricingMongoose.aggregate([
+        ...basePipeline,
+        ...paginationPipeline,
+      ]);
+      const result = pricings[0] || {
+        pricings: [],
+        minPrice: [],
+        maxPrice: [],
+        configurationSpaceSize: [],
+        total: 0,
+      };
+      result.pricings?.forEach((p: any) => {
+        if (p.organization) processFileUris(p.organization, ['avatar']);
+      });
+      return result;
+    } catch (err) {
+      return { pricings: [] };
+    }
+  }
+
+  async findByOrganizationId(
+    organizationId: string,
+    permissions: OrgUserPermissionsContext,
+    queryParams: PricingIndexQueryParams
+  ) {
+    const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
+
+    const aggregator = getPricingsAggregator(
+      organizationId,
+      permissions,
+      filteringPipeline,
+      sortPipeline
+    );
+
+    const paginationPipeline = this._processPricingPagination(queryParams);
+
+    const pricings = await PricingMongoose.aggregate([...aggregator, ...paginationPipeline]);
+    const result = pricings[0] || {
+      pricings: [],
+      minPrice: [],
+      maxPrice: [],
+      configurationSpaceSize: [],
+      total: 0,
+    };
+    result.pricings?.forEach((p: any) => {
+      if (p.organization) processFileUris(p.organization, ['avatar']);
+    });
+    return result;
+  }
+
+  async findOne(
+    slug: string,
+    organizationId: string,
+    queryParams: {
+      collectionId?: string;
+      collection?: string;
+      version?: string;
+      includePrivate?: boolean;
+      organizationId?: string;
+    } = { includePrivate: false }
+  ) {
+    // Filtro de visibilidad
+    const visibilityMatch = queryParams.includePrivate
+      ? {} // include all (public + private)
+      : { private: false }; // only include public
+
+    try {
+      const organizationMatch = { _organizationId: new mongoose.Types.ObjectId(organizationId) };
+
+      const pipeline = [
+        {
+          $match: {
+            ...visibilityMatch,
+            ...organizationMatch,
+            ...(queryParams?.collectionId && {
+              _collectionId: queryParams.collectionId,
+            }),
+          },
+        },
+        ...getPricingBySlugOrganizationAndVersionAggregator(
+          slug,
+
+          organizationId,
+
+          queryParams.version
+        ),
+        ...(queryParams?.collection
+          ? [
+              {
+                $match: {
+                  'collection.slug': queryParams.collection,
+                },
+              },
+            ]
+          : []),
+      ];
+
+      const pricing = await PricingMongoose.aggregate(pipeline);
+
+      if (!pricing || pricing.length === 0) {
+        return null;
+      }
+
+      const result = pricing[0];
+      if (result.versions) {
+        result.versions.forEach((v: any) => {
+          if (v.organization) processFileUris(v.organization, ['avatar']);
+        });
+      }
+      return result;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async findByCollection(collectionId: string) {
+    try {
+      const pricings = await PricingMongoose.find({ _collectionId: collectionId });
+
+      return pricings;
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async findById(id: string): Promise<LeanPricing | null> {
+    const pricing = await PricingMongoose.findOne({ _id: new mongoose.Types.ObjectId(id) });
+    if (!pricing) {
+      return null;
+    }
+
+    return pricing.toObject<LeanPricing>();
+  }
+
+  async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
+    const existing = await PricingMongoose.findOne({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    }).lean();
+    return existing !== null;
+  }
+
+  async findBySlugAndOrganization(
+    slug: string,
+    organizationId: string
+  ): Promise<LeanPricing | null> {
+    const pricing = await PricingMongoose.findOne({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    });
+    if (!pricing) {
+      return null;
+    }
+    return pricing.toObject<LeanPricing>();
+  }
+
+  async create(data: any[]) {
+    data.forEach(item => {
+      if (item._collectionId) {
+        item._collectionId = new mongoose.Types.ObjectId(item._collectionId);
+      }
+
+      if (item._organizationId) {
+        item._organizationId = new mongoose.Types.ObjectId(item._organizationId);
+      }
+
+      if (!item.slug && item.name) {
+        item.slug = generateSlug(item.name);
+      }
+
+      if (
+        item.analytics &&
+        item.analytics.minSubscriptionPrice &&
+        Number.isNaN(item.analytics.minSubscriptionPrice)
+      ) {
+        item.analytics.minSubscriptionPrice = undefined;
+      }
+      if (
+        item.analytics &&
+        item.analytics.minSubscriptionPrice &&
+        Number.isNaN(item.analytics.maxSubscriptionPrice)
+      ) {
+        item.analytics.maxSubscriptionPrice = undefined;
+      }
+    });
+
+    return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
+  }
+
+  async updateAnalytics(pricingId: string, analytics: PricingAnalytics) {
+    const pricing = await PricingMongoose.findOne({ _id: pricingId });
+    if (!pricing) {
+      return null;
+    }
+
+    pricing.set({ analytics: analytics });
+    await pricing.save();
+
+    return pricing.toObject();
+  }
+
+  async updatePricingsCollectionName(pricingsToUpdate: any) {
+    const bulkOps = pricingsToUpdate.map((pricing: any) => ({
+      updateOne: {
+        filter: { _id: pricing._id },
+        update: { $set: { yaml: pricing.yaml } },
+      },
+    }));
+
+    const result = await PricingMongoose.bulkWrite(bulkOps);
+
+    return result.modifiedCount === pricingsToUpdate.length;
+  }
+
+  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string) {
+    return await PricingMongoose.updateMany(
+      {
+        slug: pricingSlug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+      },
+      {
+        $set: { _collectionId: new mongoose.Types.ObjectId(collectionId) },
+      }
+    );
+  }
+
+  async addPricingsToCollection(collectionId: string, organizationId: string, pricings: string[]) {
+    const result = await PricingMongoose.updateMany(
+      { slug: { $in: pricings }, _organizationId: new mongoose.Types.ObjectId(organizationId) },
+      { $set: { _collectionId: collectionId } }
+    );
+
+    return result.modifiedCount === pricings.length;
+  }
+
+  async update(id: string, data: any) {
+    const pricing = await PricingMongoose.findOne({ _id: id });
+    if (!pricing) {
+      return null;
+    }
+
+    pricing.set(data);
+    await pricing.save();
+
+    return pricing.toObject();
+  }
+
+  async removePricingFromCollection(pricingSlug: string, organizationId: string) {
+    return await PricingMongoose.updateMany(
+      {
+        slug: pricingSlug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+      },
+      {
+        $unset: { _collectionId: 1 },
+      }
+    );
+  }
+
+  async removePricingsFromCollection(collectionId: string) {
+    return await PricingMongoose.updateMany(
+      {
+        _collectionId: new mongoose.Types.ObjectId(collectionId),
+      },
+      {
+        $unset: { _collectionId: 1 },
+      }
+    );
+  }
+
+  async destroyBySlugOrganizationAndCollectionId(
+    slug: string,
+    organizationId: string,
+    collectionId?: string
+  ) {
+    if (collectionId) {
+      const result = await PricingMongoose.deleteMany({
+        slug: slug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+        _collectionId: new mongoose.Types.ObjectId(collectionId),
+      });
+      return result.deletedCount >= 1;
+    } else {
+      const result = await PricingMongoose.deleteMany({
+        slug: slug,
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+        _collectionId: { $exists: false },
+      });
+      return result.deletedCount >= 1;
+    }
+  }
+
+  async destroyVersionBySlugAndOrganization(
+    slug: string,
+    version: string,
+    organizationId: string,
+    ...args: any
+  ) {
+    const result = await PricingMongoose.deleteOne({
+      slug: slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      version: version,
+    });
+
+    return result.deletedCount === 1;
+  }
+
+  async destroy(id: string, ...args: any) {
+    const result = await PricingMongoose.deleteOne({ _id: id });
+    return result?.deletedCount === 1;
+  }
+
+  _processPricingQueryParams(queryParams: PricingIndexQueryParams): {
+    filteringPipeline: PipelineStage[];
+    sortPipeline: PipelineStage[];
+  } {
+    const filteringPipeline: PipelineStage[] = [];
+    const sortPipeline: PipelineStage[] = [];
 
     if (Object.keys(queryParams).length > 0) {
-      const { name, subscriptions, minPrice, maxPrice, selectedOrganizations, includePricingsInCollection, sortBy, sort } = queryParams;
+      const {
+        name,
+        subscriptions,
+        minPrice,
+        maxPrice,
+        selectedOrganizations,
+        collection,
+        excludePricingsInCollection,
+        sortBy,
+        sort,
+      } = queryParams;
+
+      if (collection) {
+        filteringPipeline.push({
+          $match: {
+            'collection.slug': collection,
+          },
+        });
+      }
+
+      if (excludePricingsInCollection) {
+        filteringPipeline.push({
+          $match: {
+            _collectionId: null,
+          },
+        });
+      }
 
       if (name) {
-        filteringAggregators.push({
+        filteringPipeline.push({
           $match: {
             name: {
               $regex: name,
@@ -30,7 +387,7 @@ class PricingRepository extends RepositoryBase {
       if (subscriptions) {
         const subscriptionsFilter = subscriptions as { min: number; max: number };
 
-        filteringAggregators.push({
+        filteringPipeline.push({
           $match: {
             'analytics.configurationSpaceSize': {
               $gte: !Number.isNaN(subscriptionsFilter.min) ? subscriptionsFilter.min : 0,
@@ -45,7 +402,7 @@ class PricingRepository extends RepositoryBase {
       if (minPrice) {
         const minPriceFilter = minPrice as { min: number; max: number };
 
-        filteringAggregators.push({
+        filteringPipeline.push({
           $match: {
             'analytics.minSubscriptionPrice': {
               $gte: !Number.isNaN(minPriceFilter.min) ? minPriceFilter.min : 0,
@@ -60,7 +417,7 @@ class PricingRepository extends RepositoryBase {
       if (maxPrice) {
         const maxPriceFilter = maxPrice as { min: number; max: number };
 
-        filteringAggregators.push({
+        filteringPipeline.push({
           $match: {
             'analytics.maxSubscriptionPrice': {
               $gte: !Number.isNaN(maxPriceFilter.min) ? maxPriceFilter.min : 0,
@@ -75,19 +432,11 @@ class PricingRepository extends RepositoryBase {
       if (selectedOrganizations) {
         const selectedOrganizationsFilter = selectedOrganizations as string[];
 
-        filteringAggregators.push({
+        filteringPipeline.push({
           $match: {
             _organizationId: {
               $in: selectedOrganizationsFilter.map(id => new mongoose.Types.ObjectId(id)),
             },
-          },
-        });
-      }
-
-      if (!includePricingsInCollection) {
-        filteringAggregators.push({
-          $match: {
-            _collectionId: { $exists: false },
           },
         });
       }
@@ -122,7 +471,7 @@ class PricingRepository extends RepositoryBase {
             sortParameter = 'analytics.maxSubscriptionPrice';
             break;
         }
-        sortAggregator.push({
+        sortPipeline.push({
           $addFields: {
             pricings: {
               $sortArray: {
@@ -137,327 +486,38 @@ class PricingRepository extends RepositoryBase {
       }
     }
 
-    try {
-      const aggregator = getAllPricingsAggregator(filteringAggregators, sortAggregator);
+    return { filteringPipeline, sortPipeline };
+  }
 
-      // Build base pipeline and optionally add pagination stages that operate inside aggregation
-      const basePipeline: any[] = [
-        ...(includePrivate
-          ? [] // no añadir nada
-          : [{ $match: { private: false } }]), // añadir etapa
-        ...(queryParams.organizationId
-          ? [{ $match: { _organizationId: new mongoose.Types.ObjectId(queryParams.organizationId) } }]
-          : []),
-        ...aggregator,
-        ...(queryParams.collectionName ?
-          [
-            {
-              $match: {
-                collectionName: queryParams.collectionName,
-              },
+  _processPricingPagination(queryParams: PricingIndexQueryParams): PipelineStage[] {
+    let paginationPipeline: PipelineStage[] = [];
+
+    const offset = queryParams.offset;
+    const limit = queryParams.limit;
+
+    // If pagination params present, compute total and slice pricings inside the aggregation for efficiency
+    if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
+      paginationPipeline = [
+        {
+          $addFields: {
+            total: { $size: '$pricings' },
+          },
+        },
+        {
+          $project: {
+            pricings: {
+              $slice: ['$pricings', offset, limit],
             },
-          ] : []
-         ),
+            minPrice: 1,
+            maxPrice: 1,
+            configurationSpaceSize: 1,
+            total: 1,
+          },
+        },
       ];
-
-      const offset = queryParams.offset;
-      const limit = queryParams.limit;
-
-      // If pagination params present, compute total and slice pricings inside the aggregation for efficiency
-      if (typeof offset !== 'undefined' || typeof limit !== 'undefined') {
-        const paginationStages = [
-          {
-            $addFields: {
-              total: { $size: '$pricings' },
-            },
-          },
-          {
-            $project: {
-              pricings: {
-                $slice: ['$pricings', offset, limit] 
-              },
-              minPrice: 1,
-              maxPrice: 1,
-              configurationSpaceSize: 1,
-              total: 1,
-            },
-          },
-        ];
-
-        const pricings = await PricingMongoose.aggregate([...basePipeline, ...paginationStages]);
-        return (
-          pricings[0] || {
-            pricings: [],
-            minPrice: [],
-            maxPrice: [],
-            configurationSpaceSize: [],
-            total: 0,
-          }
-        );
-      }
-
-      // No pagination: return full result (and include total)
-      const pricings = await PricingMongoose.aggregate(basePipeline);
-      const result = pricings[0] || {
-        pricings: [],
-        minPrice: [],
-        maxPrice: [],
-        configurationSpaceSize: [],
-        total: 0,
-      };
-      // ensure total is set
-      if (typeof result.total === 'undefined') {
-        result.total = Array.isArray(result.pricings) ? result.pricings.length : 0;
-      }
-      return result;
-    } catch (err) {
-      return { pricings: [] };
-    }
-  }
-
-  async findOne(
-    name: string,
-    organizationId: string,
-    queryParams: { collectionId?: string, collectionName?: string; version?: string, includePrivate?: boolean; organizationId?: string } = {includePrivate: false}
-  ) {
-    // Filtro de visibilidad
-    const visibilityMatch = queryParams.includePrivate
-      ? {} // include all (public + private)
-      : { private: false }; // only include public
-
-    try {
-      let pricing;
-      const organizationMatch = { _organizationId: new mongoose.Types.ObjectId(organizationId) };
-
-      if (queryParams?.collectionName) {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: { ...visibilityMatch, ...organizationMatch },
-          },
-          ...getPricingByNameOrganizationAndVersionAggregator(name, organizationId, queryParams.version),
-          {
-            $match: {
-              collectionName: queryParams.collectionName,
-            },
-          },
-        ]);
-      } else if (queryParams?.collectionId) {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: {
-              ...visibilityMatch,
-              ...organizationMatch,
-              _collectionId: queryParams.collectionId,
-            },
-          },
-          ...getPricingByNameOrganizationAndVersionAggregator(name, organizationId, queryParams.version),
-        ]);
-      
-      } else {
-        pricing = await PricingMongoose.aggregate([
-          {
-            $match: {
-              ...visibilityMatch,
-              ...organizationMatch,
-            },
-          },
-          ...getPricingByNameOrganizationAndVersionAggregator(name, organizationId, queryParams.version),
-        ]);
-      }
-
-      if (!pricing || pricing.length === 0) {
-        return null;
-      }
-
-      return pricing[0];
-    } catch (err) {
-      return null;
-    }
-  }
-
-  async findAnyByNameAndOrganization(name: string, organizationId: string) {
-    try {
-      const pricing = await PricingMongoose.aggregate(
-        getPricingByNameAndOrganizationAggregator(name, organizationId)
-      );
-      if (!pricing || pricing.length === 0) {
-        return null;
-      }
-
-      return pricing[0];
-    } catch (err) {
-      return null;
-    }
-  }
-
-  async findByCollection(collectionId: string) {
-    try {
-      const pricings = await PricingMongoose.find({ _collectionId: collectionId });
-
-      return pricings;
-    } catch (err) {
-      return [];
-    }
-  }
-
-  async findById(id: string): Promise<LeanPricing | null> {
-    const pricing = await PricingMongoose.findOne({ _id: new mongoose.Types.ObjectId(id) });
-    if (!pricing) {
-      return null;
     }
 
-    return pricing.toObject<LeanPricing>();
-  }
-
-  async create(data: any[]) {
-    data.forEach(item => {
-      if (item._collectionId) {
-        item._collectionId = new mongoose.Types.ObjectId(item._collectionId);
-      }
-
-      if (item._organizationId) {
-        item._organizationId = new mongoose.Types.ObjectId(item._organizationId);
-      }
-
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.minSubscriptionPrice)
-      ) {
-        item.analytics.minSubscriptionPrice = undefined;
-      }
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.maxSubscriptionPrice)
-      ) {
-        item.analytics.maxSubscriptionPrice = undefined;
-      }
-    });
-
-    return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
-  }
-
-  async updateAnalytics(pricingId: string, analytics: PricingAnalytics, ...args: any) {
-    const pricing = await PricingMongoose.findOne({ _id: pricingId });
-    if (!pricing) {
-      return null;
-    }
-
-    pricing.set({ analytics: analytics });
-    await pricing.save();
-
-    return pricing.toObject();
-  }
-
-  async updatePricingsCollectionName(pricingsToUpdate: any) {
-    const bulkOps = pricingsToUpdate.map((pricing: any) => ({
-      updateOne: {
-        filter: { _id: pricing._id },
-        update: { $set: { yaml: pricing.yaml } },
-      },
-    }));
-
-    const result = await PricingMongoose.bulkWrite(bulkOps);
-
-    return result.modifiedCount === pricingsToUpdate.length;
-  }
-
-  async addPricingToCollection(pricingName: string, organizationId: string, collectionId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        name: pricingName,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-      },
-      {
-        $set: { _collectionId: new mongoose.Types.ObjectId(collectionId) },
-      }
-    );
-  }
-
-  async addPricingsToCollection(
-    collectionId: string,
-    organizationId: string,
-    pricings: string[]
-  ) {
-    const result = await PricingMongoose.updateMany(
-      { name: { $in: pricings }, _organizationId: new mongoose.Types.ObjectId(organizationId) },
-      { $set: { _collectionId: collectionId } }
-    );
-
-    return result.modifiedCount === pricings.length;
-  }
-
-  async update(id: string, data: any, ...args: any) {
-    const pricing = await PricingMongoose.findOne({ _id: id });
-    if (!pricing) {
-      return null;
-    }
-
-    pricing.set(data);
-    await pricing.save();
-
-    return pricing.toObject();
-  }
-
-  async removePricingFromCollection(pricingName: string, organizationId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        name: pricingName,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-      },
-      {
-        $unset: { _collectionId: 1 },
-      }
-    );
-  }
-
-  async removePricingsFromCollection(collectionId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        _collectionId: new mongoose.Types.ObjectId(collectionId),
-      },
-      {
-        $unset: { _collectionId: 1 },
-      }
-    );
-  }
-
-  async destroyByNameOrganizationAndCollectionId(name: string, organizationId: string, collectionId?: string) {
-    if (collectionId) {
-      const result = await PricingMongoose.deleteMany({
-        name: name,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-        _collectionId: new mongoose.Types.ObjectId(collectionId),
-      });
-      return result.deletedCount >= 1;
-    } else {
-      const result = await PricingMongoose.deleteMany({
-        name: name,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-        _collectionId: { $exists: false },
-      });
-      return result.deletedCount >= 1;
-    }
-  }
-
-  async destroyVersionByNameAndOrganization(name: string, version: string, organizationId: string, ...args: any) {
-    const result = await PricingMongoose.deleteOne({
-      $expr: {
-        $and: [
-          { $eq: [{ $toLower: '$name' }, name.toLowerCase()] },
-          { $eq: ['$_organizationId', new mongoose.Types.ObjectId(organizationId)] },
-          { $eq: ['$version', version] },
-        ],
-      },
-    });
-
-    return result.deletedCount === 1;
-  }
-
-  async destroy(id: string, ...args: any) {
-    const result = await PricingMongoose.deleteOne({ _id: id });
-    return result?.deletedCount === 1;
+    return paginationPipeline;
   }
 }
 

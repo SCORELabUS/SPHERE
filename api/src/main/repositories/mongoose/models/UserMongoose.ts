@@ -5,13 +5,11 @@ import { generateUserTokenDTO, hashPassword } from '../../../utils/users/helpers
 
 const ApiKeySchema = new Schema(
   {
-    key: { type: String, required: true }, // hash, nunca plaintext
+    key: { type: String, required: true },
     name: { type: String, required: true },
-
     scopes: [
       {
         organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
-
         scope: {
           type: String,
           enum: ['ALL', 'MANAGEMENT', 'VIEW'],
@@ -19,9 +17,47 @@ const ApiKeySchema = new Schema(
         },
       },
     ],
-
     expiresAt: { type: Date, default: null },
     revoked: { type: Boolean, default: false },
+  },
+  { _id: true }
+);
+
+const UserSettingsSchema = new Schema(
+  {
+    phone: { type: String },
+    avatar: { type: String },
+    avatarBgColor: { type: String },
+    avatarFgColor: { type: String },
+    profile: {
+      displayName: { type: String },
+      bio: { type: String },
+      city: { type: String },
+      country: { type: String },
+      dateOfBirth: { type: String },
+    },
+    socialLinks: {
+      linkedin: { type: String },
+      instagram: { type: String },
+      facebook: { type: String },
+      x: { type: String },
+    },
+    notificationPrefs: {
+      type: Map,
+      of: new Schema(
+        {
+          email: { type: Boolean, default: true },
+          inbox: { type: Boolean, default: true },
+        },
+        { _id: false }
+      ),
+      default: () => ({
+        OrganizationInvitation: { email: true, inbox: true },
+        System: { email: true, inbox: true },
+        CollectionShared: { email: true, inbox: true },
+        PricingUpdated: { email: true, inbox: true },
+      }),
+    },
   },
   { _id: false }
 );
@@ -59,8 +95,9 @@ const userSchema = new Schema(
       unique: true,
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address'],
     },
-    avatar: {
-      type: String,
+    settings: {
+      type: UserSettingsSchema,
+      default: () => ({}),
     },
     token: {
       type: String,
@@ -83,7 +120,10 @@ const userSchema = new Schema(
       transform: function (_, resultObject) {
         delete (resultObject as any)._id;
 
-        processFileUris(resultObject, ['avatar']);
+        const settings = (resultObject as any).settings;
+        if (settings?.avatar) {
+          processFileUris(settings, ['avatar']);
+        }
 
         return resultObject;
       },
@@ -93,7 +133,6 @@ const userSchema = new Schema(
 
 userSchema.pre('save', async function (callback) {
   const user = this;
-  // Break out if the password hasn't changed
   if (!user.isModified('password')) return callback();
 
   user.password = await hashPassword(user.password);
@@ -104,8 +143,11 @@ userSchema.pre('save', async function (callback) {
     user.tokenExpiration = tokenDTO.tokenExpiration;
   }
 
-  if (!user.avatar) {
-    user.avatar = 'static/avatars/users/default-avatar.png';
+  if (!user.settings) {
+    user.settings = {} as any;
+  }
+  if (!user.settings.avatar) {
+    user.settings.avatar = '';
   }
 
   callback();
@@ -119,10 +161,30 @@ export interface UserDocument extends Document {
   firstName: string;
   lastName: string;
   email: string;
-  avatar?: string;
+  settings?: {
+    phone?: string;
+    avatar?: string;
+    avatarBgColor?: string;
+    avatarFgColor?: string;
+    profile?: {
+      displayName?: string;
+      bio?: string;
+      city?: string;
+      country?: string;
+      dateOfBirth?: string;
+    };
+    socialLinks?: {
+      linkedin?: string;
+      instagram?: string;
+      facebook?: string;
+      x?: string;
+    };
+    notificationPrefs?: Record<string, { email: boolean; inbox: boolean }>;
+  };
   token?: string;
   tokenExpiration?: Date;
   apiKeys: {
+    _id: string;
     key: string;
     name: string;
     scopes: {

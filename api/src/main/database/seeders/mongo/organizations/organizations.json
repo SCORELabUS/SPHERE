@@ -2,7 +2,7 @@
   {
     "_id": { "$oid": "63f74bf8eeed64058364b600" },
     "name": "sphere",
-    "displayName": "sphere (personal)",
+    "displayName": "sphere PERSONAL",
     "description": "Personal organization for sphere user.",
     "avatar": null,
     "isPersonal": true,

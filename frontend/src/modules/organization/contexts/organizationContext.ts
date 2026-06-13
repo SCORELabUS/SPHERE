@@ -3,14 +3,20 @@ import { Organization } from '../api/organizationsApi';
 
 export interface OrganizationContextInterface {
   organizations: Organization[];
-  activeOrganization: Organization | null;
-  setActiveOrganization: (org: Organization) => void;
   isLoading: boolean;
+  page: number;
+  totalPages: number;
+  setPage: (page: number) => void;
+  refresh: () => void;
 }
 
-export const OrganizationContext = createContext<OrganizationContextInterface>({
+const OrganizationContext = createContext<OrganizationContextInterface>({
   organizations: [],
-  activeOrganization: null,
-  setActiveOrganization: () => {},
   isLoading: true,
+  page: 1,
+  totalPages: 1,
+  setPage: () => {},
+  refresh: () => {},
 });
+
+export default OrganizationContext;
