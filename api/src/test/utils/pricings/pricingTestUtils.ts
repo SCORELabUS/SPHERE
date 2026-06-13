@@ -45,12 +45,12 @@ export const createAndTrackPricingYaml = async (serviceName?: string, version?: 
   return filePath;
 };
 
-export const createPricingForUser = async (params: {
-  username: string;
+export const createPricingForOrganization = async (params: {
+  organizationId: string;
   serviceName?: string;
   version?: string;
   isPrivate?: boolean;
-}): Promise<{ response: any; serviceName: string; version: string }> => {
+}): Promise<{ response: any; serviceName: string; version: string; id: string }> => {
   const requestedName = params.serviceName ?? `pricing_${randomSuffix()}`;
   const requestedVersion = params.version;
   const fixture = await createValidPricingYaml(requestedName, requestedVersion);
@@ -58,16 +58,22 @@ export const createPricingForUser = async (params: {
   const version = fixture.version;
 
   const response = await request(testContainer.resolve('app'))
-    .post(`${BASE_PATH}/pricings/${params.username}`)
+    .post(`${BASE_PATH}/pricings/${params.organizationId}`)
     .set('Authorization', `Bearer ${testContainer.resolve('adminUser').token}`)
     .field('private', String(params.isPrivate ?? false))
     .field('saasName', serviceName)
     .field('version', version)
     .attach('yaml', fixture.filePath);
 
+  if (response.status !== 200) {
+    throw new Error(
+      `Pricing creation failed with status ${response.status}: ${JSON.stringify(response.body)}`
+    );
+  }
+
   testContainer.resolve('pricingsToDelete').add(response.body.id);
 
-  return { response, serviceName, version };
+  return { response, serviceName, version, id: response.body.id };
 };
 
 export async function generatePricingFile(serviceName?: string, version?: string): Promise<string> {

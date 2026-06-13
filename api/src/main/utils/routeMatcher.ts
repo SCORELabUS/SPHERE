@@ -39,15 +39,30 @@ export function matchPath(pattern: string, path: string): boolean {
   const normalizedPattern = normalizePath(pattern);
   const normalizedPath = normalizePath(path);
 
-  // Check if pattern ends with '/**' (matches everything with that prefix)
-  if (normalizedPattern.endsWith('/**')) {
-    const prefix = normalizedPattern.slice(0, -3); // Remove '/**'
-    return normalizedPath === prefix || normalizedPath.startsWith(prefix + '/');
-  }
-
   // Split both pattern and path into segments
   const patternSegments = normalizedPattern.split('/').filter(s => s.length > 0);
   const pathSegments = normalizedPath.split('/').filter(s => s.length > 0);
+
+  // '**' at the end matches the rest of the path (including empty)
+  if (patternSegments[patternSegments.length - 1] === '**') {
+    const prefixLen = patternSegments.length - 1;
+    if (pathSegments.length < prefixLen) {
+      return false;
+    }
+
+    for (let i = 0; i < prefixLen; i++) {
+      const ps = patternSegments[i];
+      const s = pathSegments[i];
+      if (ps === '*') {
+        continue;
+      }
+      if (ps !== s) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   // If lengths don't match and there's no '**', they can't match
   if (patternSegments.length !== pathSegments.length) {

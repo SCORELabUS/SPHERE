@@ -1,8 +1,9 @@
-syntaxVersion: '2.1'
 saasName: Deskera
+syntaxVersion: '3.1'
 version: '2024-07-15'
 createdAt: '2024-07-15'
 currency: USD
+variables: {}
 features:
   estimates:
     description: ''

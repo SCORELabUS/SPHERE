@@ -46,7 +46,7 @@ const transformData = (data: AnalyticsData): OutputData[] => {
       url: null,
       yaml: `${publicYamlPath}/${pricing.yaml_path.split('/').slice(2).join('/')}`,
       analytics: pricing.analytics,
-    }})
+    };})
   );
 };
 

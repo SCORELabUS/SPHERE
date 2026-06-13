@@ -3,24 +3,25 @@
     "$oid": "6787d0facaeb2b25748bc12a"
   },
   "name": "IEEE TSC 2025",
+  "slug": "ieee-tsc-2025",
   "description": "This collection includes the dataset of real-world pricings presented in the paper [PAPER NAME], which has been submitted to the IEEE Transactions on Services Computing journal 2025 paper. Its primary objective is to serve as a replication package for the paper, enabling readers to review and experiment with the results in real time. Additionally, this dataset can serve as a benchmark for future research on pricing strategies in the context of cloud computing.",
-  "_ownerName": "sphere",
+  "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
   "analytics": {
     "evolutionOfPlans": {
-      "dates": [],
-      "values": []
+      "dates": ["2019-05-23", "2020-05-23", "2021-05-23", "2022-05-23", "2023-05-23", "2024-05-23", "2025-05-23"],
+      "values": [3, 3.5, 3.64, 3.68, 3.74, 3.71, 3.9]
     },
     "evolutionOfAddOns": {
-      "dates": [],
-      "values": []
+      "dates": ["2019-05-23", "2020-05-23", "2021-05-23", "2022-05-23", "2023-05-23", "2024-05-23", "2025-05-23"],
+      "values": [0, 0.65, 1.04, 1.39, 1.87, 2.42, 3.13]
     },
     "evolutionOfFeatures": {
-      "dates": [],
-      "values": []
+      "dates": ["2019-05-23", "2020-05-23", "2021-05-23", "2022-05-23", "2023-05-23", "2024-05-23", "2025-05-23"],
+      "values": [5, 30.55, 36.04, 41.42, 48.48, 53.94, 62.97]
     },
     "evolutionOfConfigurationSpaceSize": {
-      "dates": [],
-      "values": []
+      "dates": ["2019-05-23", "2020-05-23", "2021-05-23", "2022-05-23", "2023-05-23", "2024-05-23", "2025-05-23"],
+      "values": [3, 13.65, 14.84, 19.55, 53.35, 151.74, 525.32]
     }
   }
 }

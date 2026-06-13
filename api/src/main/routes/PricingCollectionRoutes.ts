@@ -7,7 +7,6 @@ import path from 'path';
 
 const loadFileRoutes = function (app: express.Application) {
   const pricingCollectionController = new PricingCollectionController();
-  // const pricingController = new PricingController();
 
   const upload = handleCollectionUpload(
     ['zip'],
@@ -22,18 +21,18 @@ const loadFileRoutes = function (app: express.Application) {
     
     
   app
-    .route(baseUrl + '/collections/:username')
-    .get(pricingCollectionController.indexByUsername)
+    .route(baseUrl + '/collections/:organizationId')
+    .get(pricingCollectionController.indexByOrganizationId)
     .post(PricingCollectionValidator.create, handleValidation,pricingCollectionController.create);
     
   app
-    .route(baseUrl + '/collections/:username/bulk')
+    .route(baseUrl + '/collections/:organizationId/bulk')
     .post(upload, pricingCollectionController.bulkCreate);
-
+  
   app
-    .route(baseUrl + '/collections/:username/:collectionName')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug')
     .get(pricingCollectionController.show)
-    // .post(pricingCollectionController.generateAnalytics)
+    .post(pricingCollectionController.addPricingToCollection)
     .put(
       PricingCollectionValidator.update,
       handleValidation,
@@ -42,11 +41,11 @@ const loadFileRoutes = function (app: express.Application) {
     .delete(pricingCollectionController.destroy);
 
   app
-    .route(baseUrl + '/collections/:username/:collectionName/download')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug/download')
     .get(pricingCollectionController.downloadCollection);
 
   app
-    .route(baseUrl + '/collections/:username/:collectionName/pricings/:pricingName')
+    .route(baseUrl + '/collections/:organizationId/:collectionSlug/pricings/:pricingSlug')
     .delete(pricingCollectionController.removePricingFromCollection);
 };
 

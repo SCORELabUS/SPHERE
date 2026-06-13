@@ -34,7 +34,7 @@ export function useCacheApi() {
         if (data.error){
           return Promise.reject(data.error);
         }else{
-          return data;
+          return data.data;
         }
       })
       .catch(async error => {

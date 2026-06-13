@@ -12,7 +12,7 @@ export default function ConfigurationSpaceItem({
 }) {
   return (
     <div
-      className="rounded-lg border border-slate-200 shadow-sm transition-shadow hover:cursor-pointer hover:shadow-[0_0_0_2px_rgb(0,0,0)]"
+      className="cursor-pointer rounded-lg border border-slate-200 shadow-sm transition-shadow hover:shadow-[0_0_0_2px_rgb(0,0,0)]"
       onClick={() => onClick(configuration)}
     >
       <div className="p-4">

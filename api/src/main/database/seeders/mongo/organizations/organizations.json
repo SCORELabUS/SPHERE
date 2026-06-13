@@ -1,0 +1,44 @@
+[
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b600" },
+    "name": "sphere",
+    "displayName": "sphere PERSONAL",
+    "description": "Personal organization for sphere user.",
+    "avatar": null,
+    "isPersonal": true,
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b601" },
+    "name": "demo-org",
+    "displayName": "Demo Organization",
+    "description": "Shared org seeded for local testing.",
+    "avatar": "static/avatars/orgs/default-org.webp",
+    "isPersonal": false,
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b602" },
+    "name": "sub-org-1",
+    "displayName": "Sub Organization 1",
+    "description": "A sub-organization for testing purposes.",
+    "_parentId": { "$oid": "63f74bf8eeed64058364b601" },
+    "avatar": null,
+    "isPersonal": false,
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b603" },
+    "name": "sub-org-2",
+    "displayName": "Sub Organization 2",
+    "description": "Another sub-organization for testing purposes.",
+    "_parentId": { "$oid": "63f74bf8eeed64058364b601" },
+    "avatar": null,
+    "isPersonal": false,
+    "createdAt": { "$date": "2023-02-20T11:22:04.000Z" },
+    "updatedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  }
+]

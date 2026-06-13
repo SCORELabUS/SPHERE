@@ -29,7 +29,7 @@ export default function OperationalCadenceSection() {
           <h2 className="[font-family:'Clash_Display','Geist',sans-serif] text-4xl font-medium leading-[0.95] text-[#111827] md:text-6xl">
             The full story behind your pricing, in one place
           </h2>
-          <p className="mt-7 max-w-xl text-sm leading-relaxed text-[#475467] md:text-base">
+          <p className="mt-7 max-w-[36rem] text-sm leading-relaxed text-[#475467] md:text-base">
             Replace disconnected docs and ad-hoc spreadsheets with a centralized pricing version control system.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">

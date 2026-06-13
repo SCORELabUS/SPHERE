@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { FilterValues } from '../pages/list';
 
 export const PRICINGS_BASE_PATH = import.meta.env.VITE_API_URL + '/pricings';
 
@@ -14,7 +13,7 @@ export function usePricingsApi() {
     Authorization: `Bearer ${token}`,
   }), [token]);
 
-  const getPricings = useCallback(async (filters: Record<string, string | FilterValues | number> = {}) => {
+  const getPricings = useCallback(async (filters: Record<string, string | number> = {}) => {
     let requestUrl;
 
     if (Object.keys(filters).length === 0) {
@@ -67,10 +66,10 @@ export function usePricingsApi() {
       });
   }, []);
 
-  const getPricingByName = useCallback(async (name: string, owner: string, collectionName: string | null) => {
+  const getPricingBySlug = useCallback(async (slug: string, organizationId: string, collectionSlug: string | null) => {
     return fetch(
-      `${PRICINGS_BASE_PATH}/${owner}/${name}${
-        collectionName && collectionName !== 'undefined' ? `?collectionName=${collectionName}` : ''
+      `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
+        collectionSlug && collectionSlug !== 'undefined' ? `?collection=${collectionSlug}` : ''
       }`,
       {
         method: 'GET',
@@ -108,7 +107,40 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const getConfigurationSpace = useCallback(async (owner: string, pricingName: string, pricingVersion: string, limit?: number, offset?: number) => {
+  const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
+
+  const getPermissionBasedUserPricings = useCallback(async (filters: Record<string, string | number> = {}) => {
+    const filterParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (key === 'limit' || key === 'offset') {
+        filterParams.append(key, String(value));
+        return;
+      }
+      const stringValue = String(value);
+      if (stringValue.trim().length > 0) filterParams.append(key, stringValue);
+    });
+    const qs = filterParams.toString();
+    const url = `${USERS_BASE_PATH}/me/pricings${qs ? `?${qs}` : ''}`;
+
+    return fetchWithInterceptor(url, {
+      method: 'GET',
+      headers: basicHeaders,
+    })
+      .then(response => {
+        if (!response.ok) {
+          return Promise.reject(response);
+        } else {
+          return response.json();
+        }
+      })
+      .catch(async error => {
+        const body = await (error as Response).json().catch(() => ({}));
+        return Promise.reject({message: body.error});
+      });
+  }, [fetchWithInterceptor, basicHeaders]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getConfigurationSpace = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string, limit?: number, offset?: number) => {
     
     const params = new URLSearchParams();
 
@@ -118,7 +150,7 @@ export function usePricingsApi() {
     const queryString = params.toString(); 
     
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${owner}/${pricingName}/${pricingVersion}${queryString ? `?${queryString}` : ''}`,
+      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}${queryString ? `?${queryString}` : ''}`,
       {
         method: 'GET',
         headers: basicHeaders,
@@ -138,8 +170,8 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const createPricing = useCallback(async (formData: FormData, setErrors: (errors: string[]) => void = () => {}) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${authUser.user?.username}`, {
+  const createPricing = useCallback(async (formData: FormData, organizationId: string, setErrors: (errors: string[]) => void = () => {}) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -160,11 +192,30 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, token]);
 
-  const addPricingToCollection = useCallback(async (pricingName: string, collectionId: string) => {
-    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/me/pricings`, {
-      method: 'PUT',
+  const createPricingVersion = useCallback(async (formData: FormData, organizationId: string, pricingSlug: string, pricingVersion: string) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+      .then(async response => {
+        const parsedResponse = await response.json();
+
+        if (!response.ok) {
+          throw new Error(parsedResponse.error);
+        }
+
+        return parsedResponse;
+      });
+  }, [fetchWithInterceptor, token]);
+
+  const addPricingToCollection = useCallback(async (organizationId: string, pricingSlug: string, collectionSlug: string) => {
+    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/collections/${organizationId}/${collectionSlug}`, {
+      method: 'POST',
       headers: basicHeaders,
-      body: JSON.stringify({ pricingName, collectionId }),
+      body: JSON.stringify({ pricingSlug }),
     })
       .then(response => {
         if (!response.ok) {
@@ -177,11 +228,11 @@ export function usePricingsApi() {
         const body = await (error as Response).json().catch(() => ({}));
         return Promise.reject({message: body.error});
       });
-  }, [fetchWithInterceptor, basicHeaders]);
+  }, [fetchWithInterceptor, basicHeaders, authUser]);
 
    
-  const updatePricing = useCallback((pricingName: string, collectionName: string, pricingData: any) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${username}/${pricingName}?collectionName=${collectionName}`, {
+  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collection=${collectionSlug}`, {
       method: 'PUT',
       headers: basicHeaders,
       body: JSON.stringify(pricingData),
@@ -218,9 +269,9 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingVersion = useCallback(async (pricingName: string, pricingVersion: string) => {
+  const removePricingVersion = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string) => {
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${username}/${pricingName}/${pricingVersion}`,
+      `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`,
       {
         method: 'DELETE',
         headers: basicHeaders,
@@ -239,9 +290,9 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders, username]);
 
-  const removePricingFromCollection = useCallback(async (pricingName: string, owner: string, collectionName: string) => {
+  const removePricingFromCollection = useCallback(async (pricingName: string, organizationId: string, collectionSlug: string) => {
     return fetchWithInterceptor(
-      `${import.meta.env.VITE_API_URL}/collections/${owner}/${collectionName}/pricings/${pricingName}`,
+      `${import.meta.env.VITE_API_URL}/collections/${organizationId}/${collectionSlug}/pricings/${pricingName}`,
       {
         method: 'DELETE',
         headers: basicHeaders,
@@ -260,10 +311,10 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingByName = useCallback(async (name: string, collectionName?: string) => {
+  const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
-      `${PRICINGS_BASE_PATH}/${username}/${name}${
-        collectionName ? `?collectionName=${collectionName}` : ''
+      `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
+        collectionSlug ? `?collection=${collectionSlug}` : ''
       }`,
       {
         method: 'DELETE',
@@ -287,29 +338,62 @@ export function usePricingsApi() {
   return useMemo(
     () => ({
       getPricings,
-      getPricingByName,
+      getPricingBySlug,
       getLoggedUserPricings,
+      getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
+      createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
-      removePricingByName,
+      removePricingBySlug,
       updatePricing,
       updateClientPricingVersion,
       removePricingVersion,
     }),
     [
       getPricings,
-      getPricingByName,
+      getPricingBySlug,
       getLoggedUserPricings,
+      getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
+      createPricingVersion,
       addPricingToCollection,
       removePricingFromCollection,
-      removePricingByName,
+      removePricingBySlug,
       updatePricing,
       updateClientPricingVersion,
       removePricingVersion,
     ]
   );
+}
+
+const BASE_URL = import.meta.env.VITE_API_URL;
+
+export async function getPublicOrgPricings(orgId: string, filters?: Record<string, string>): Promise<{ pricings: any[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, v);
+    });
+  }
+  const response = await fetch(`${BASE_URL}/pricings/${orgId}?${params.toString()}`);
+  if (!response.ok) throw new Error('Failed to fetch organization pricings');
+  const data = await response.json();
+  return { pricings: data.pricings ?? [], total: data.total ?? 0 };
+}
+
+export async function getPublicOrgCollections(orgId: string, filters?: Record<string, string>): Promise<{ collections: any[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, v);
+    });
+  }
+  const qs = params.toString();
+  const response = await fetch(`${BASE_URL}/collections/${orgId}${qs ? `?${qs}` : ''}`);
+  if (!response.ok) throw new Error('Failed to fetch organization collections');
+  const data = await response.json();
+  return { collections: data.collections ?? [], total: data.total ?? 0 };
 }

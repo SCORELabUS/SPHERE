@@ -1,0 +1,79 @@
+[
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b700" },
+    "_userId": { "$oid": "63f74bf8eeed64058364b52e" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b600" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b701" },
+    "_userId": { "$oid": "63f74bf8eeed64058364b52e" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b721" },
+    "_userId": { "$oid": "63f74bf8eeed64058364b52e" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b602" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b711" },
+    "_userId": { "$oid": "63f74bf8eeed64058364b52e" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b603" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b702" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "role": "MEMBER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f740f8eeed64058364b702" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b602" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64018364b702" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b52d" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b603" },
+    "role": "OWNER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eaed64058364b703" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b529" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "role": "ADMIN",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eded64052364b703" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b529" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b602" },
+    "role": "ADMIN",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8e0ed64050364b703" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b529" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b603" },
+    "role": "ADMIN",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  },
+  {
+    "_id": { "$oid": "63f74bf8eeed64058364b704" },
+    "_userId": { "$oid": "63f74bf8eeed64054274b528" },
+    "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
+    "role": "MEMBER",
+    "joinedAt": { "$date": "2023-02-20T11:22:04.000Z" }
+  }
+]

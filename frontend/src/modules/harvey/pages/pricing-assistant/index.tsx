@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import ChatTranscript from '../../components/ChatTranscript';
-import ControlPanel from '../../components/ControlPanel';
+import { AnimatePresence, motion } from 'framer-motion';
+import ChatTranscript from '../../components-new/chat-transcript';
+import ChatInput from '../../components-new/chat-input';
+import ContextPanel from '../../components-new/context-panel';
+import HarveyLayout from '../../layouts/harvey-layout';
+import SearchPricings from '../../components/SearchPricings';
 import type {
   ChatMessage,
   ChatRequest,
@@ -31,16 +35,15 @@ import {
 } from '../../sse';
 import { UseCases } from '../../use-cases';
 
-interface Props {
-  playground?: boolean;
-}
-
-function PricingAssistantPage({ playground = false }: Props) {
+function PricingAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
   const [contextItems, setContextItems] = useState<PricingContextItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [preset, setPreset] = useState<PromptPreset | null>(null);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showMobileContext, setShowMobileContext] = useState(false);
+  const [playground, setPlayground] = useState(false);
 
   const urlTransformEvent: UrlTransformEvent = !playground
     ? sseUrlTransformEvent
@@ -81,9 +84,7 @@ function PricingAssistantPage({ playground = false }: Props) {
       );
 
   const addContextItems = (inputs: ContextInputType[]) => {
-    if (inputs.length === 0) {
-      return null;
-    }
+    if (inputs.length === 0) return null;
 
     const newPricingContextItems: PricingContextItem[] = createPricingContextItems(inputs);
 
@@ -103,7 +104,6 @@ function PricingAssistantPage({ playground = false }: Props) {
     }
 
     setContextItems(previous => [...previous, ...newPricingContextItems]);
-
     return newPricingContextItems;
   };
 
@@ -126,7 +126,6 @@ function PricingAssistantPage({ playground = false }: Props) {
         Promise.all(deletePromises);
       }
     }
-
     setContextItems(previous => previous.filter(item => item.id !== id));
   };
 
@@ -151,9 +150,7 @@ function PricingAssistantPage({ playground = false }: Props) {
   };
 
   const handleFilesSelected = (files: FileList | null) => {
-    if (!files || files.length === 0) {
-      return;
-    }
+    if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
     Promise.all(fileArray.map(file => file.text().then(content => ({ name: file.name, content }))))
@@ -167,9 +164,7 @@ function PricingAssistantPage({ playground = false }: Props) {
             origin: 'user',
           }));
 
-        if (inputs.length > 0) {
-          addContextItems(inputs);
-        }
+        if (inputs.length > 0) addContextItems(inputs);
 
         if (inputs.length !== results.length) {
           setMessages(prev => [
@@ -208,7 +203,6 @@ function PricingAssistantPage({ playground = false }: Props) {
         origin: 'preset',
       };
     }
-
     return { kind: 'yaml', label: contextInput.label, value: contextInput.value, origin: 'preset' };
   };
 
@@ -249,7 +243,7 @@ function PricingAssistantPage({ playground = false }: Props) {
       const newItems = addContextItems(
         newlyDetected.map(url => ({
           kind: 'url',
-          url: url,
+          url,
           label: url,
           value: url,
           origin: 'detected',
@@ -295,15 +289,12 @@ function PricingAssistantPage({ playground = false }: Props) {
       const planReferences = extractHttpReferences(data?.plan);
       const resultReferences = extractHttpReferences(data?.result);
       const agentDiscoveredUrls = [...planReferences, ...resultReferences];
-      const newAgentDiscovered = diffPricingContextWithDetectedUrls(
-        contextItems,
-        agentDiscoveredUrls
-      );
+      const newAgentDiscovered = diffPricingContextWithDetectedUrls(contextItems, agentDiscoveredUrls);
       if (newAgentDiscovered.length > 0) {
         addContextItems(
           newAgentDiscovered.map(url => ({
             kind: 'url',
-            url: url,
+            url,
             label: url,
             value: url,
             origin: 'agent',
@@ -344,7 +335,6 @@ function PricingAssistantPage({ playground = false }: Props) {
           items.map(item => (item.kind === 'url' ? { ...item, transform: 'done' } : item))
         );
       }
-
       setMessages(messages => [...messages, message]);
     }
   };
@@ -353,59 +343,102 @@ function PricingAssistantPage({ playground = false }: Props) {
     <PlaygroundProvider playground={playground}>
       <PresetProvider presetContext={{ preset, setPreset }}>
         <PricingContext.Provider value={contextItems}>
-          <div className="flex h-screen flex-col px-4 py-6 lg:px-6">
-            <div className="mb-4 space-y-4">
-              {playground && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Playground mode is active
-                </div>
-              )}
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h1 className="mb-1 text-4xl font-semibold">
-                    H.A.R.V.E.Y. Pricing Assistant
-                  </h1>
+          <HarveyLayout isPlayground={playground} onTogglePlayground={() => setPlayground(p => !p)} onNewConversation={handleNewConversation}>
+            <div className="flex flex-1 overflow-hidden">
+              {/* Chat area */}
+              <div className="flex flex-1 flex-col overflow-hidden">
+                {playground && (
+                  <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-800">
+                    Playground mode — responses are pre-scripted
+                  </div>
+                )}
 
-                  <p className="max-w-3xl text-sm text-slate-600 md:text-base">
-                    Ask about optimal subscriptions and pricing insights using the Holistic Agent
-                    for Reasoning on Value and Economic analYsis (HARVEY).
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={handleNewConversation} disabled={isLoading} className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-                    New conversation
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="grid flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-              <div className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <ChatTranscript
-                    messages={messages}
-                    isLoading={isLoading}
-                    promptPresets={PROMPT_PRESETS}
-                    onPresetSelect={handlePromptSelect}
-                  />
-              </div>
-              <div className="min-h-0 overflow-y-auto">
-                <ControlPanel
+                <ChatTranscript
+                  messages={messages}
+                  isLoading={isLoading}
+                  promptPresets={PROMPT_PRESETS}
+                  onPresetSelect={handlePromptSelect}
+                />
+
+                <ChatInput
                   question={question}
-                  detectedPricingUrls={detectedPricingUrls}
-                  contextItems={contextItems}
                   isSubmitting={isLoading}
-                  isSubmitDisabled={isSubmitDisabled}
+                  isDisabled={playground && messages.length > 0}
                   onQuestionChange={setQuestion}
                   onSubmit={!playground ? handleSubmit : handlePlaygroundSubmit}
-                  onFileSelect={handleFilesSelected}
-                  onContextAdd={addContextItem}
-                  onContextRemove={removeContextItem}
-                  onSphereContextRemove={removeSphereContextItem}
-                  onContextClear={clearContext}
-                  onPresetSelect={handlePromptSelect}
+                  onFileDrop={handleFilesSelected}
+                  onOpenContext={() => setShowMobileContext(true)}
+                />
+              </div>
+
+              {/* Context panel (desktop) */}
+              <div className="hidden w-80 shrink-0 border-l border-tp-hairline lg:block">
+                <ContextPanel
+                  items={contextItems}
+                  detectedUrls={detectedPricingUrls}
+                  isPlayground={playground}
+                  onAdd={addContextItem}
+                  onRemove={removeContextItem}
+                  onClear={clearContext}
+                  onOpenSearch={() => setShowSearchModal(true)}
                 />
               </div>
             </div>
-          </div>
+          </HarveyLayout>
+
+          {/* Mobile context panel overlay */}
+          <AnimatePresence>
+            {showMobileContext && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-40 cursor-pointer bg-tp-ink/50 lg:hidden"
+                  onClick={() => setShowMobileContext(false)}
+                />
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'tween', duration: 0.2 }}
+                  className="fixed bottom-0 right-0 top-0 z-50 w-80 max-w-[85vw] border-l border-tp-hairline bg-tp-canvas shadow-elevation-4 lg:hidden"
+                >
+                  <ContextPanel
+                    items={contextItems}
+                    detectedUrls={detectedPricingUrls}
+                    isPlayground={playground}
+                    onAdd={addContextItem}
+                    onRemove={removeContextItem}
+                    onClear={clearContext}
+                    onOpenSearch={() => { setShowMobileContext(false); setShowSearchModal(true); }}
+                  />
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+          {/* Search Pricings Modal */}
+          {showSearchModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-tp-ink/60 p-4">
+              <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl border border-tp-hairline bg-tp-canvas p-4 shadow-elevation-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-tp-ink">Search Pricings</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowSearchModal(false)}
+                    className="cursor-pointer rounded-md border border-tp-hairline px-3 py-1.5 text-sm text-tp-steel hover:bg-tp-surface"
+                  >
+                    Close
+                  </button>
+                </div>
+                <SearchPricings
+                  onContextAdd={addContextItem}
+                  onContextRemove={removeSphereContextItem}
+                />
+              </div>
+            </div>
+          )}
         </PricingContext.Provider>
       </PresetProvider>
     </PlaygroundProvider>

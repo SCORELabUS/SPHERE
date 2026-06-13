@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 import { useRouter } from '../../../core/hooks/useRouter';
 import BackgroundOrbs from './components/background-orbs';
 import FloatingMorphHeader from './components/floating-morph-header';
@@ -79,7 +79,7 @@ export default function HomePage() {
 
           <main className="relative z-[3] mx-auto flex w-full max-w-[1240px] flex-col px-4 pb-24 pt-28 md:px-8 md:pb-36 md:pt-40">
             <HeroSection
-              onRegister={() => handleNavigate('/register')}
+              onRegister={() => handleNavigate('/authentication?view=register')}
               onPricings={() => handleNavigate('/pricings')}
             />
             {/* <ProofMarqueeSection logos={PROOF_LOGOS} /> */}

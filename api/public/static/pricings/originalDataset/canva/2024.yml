@@ -1,10 +1,9 @@
-syntaxVersion: '2.1'
 saasName: Canva
-createdAt: '2024-07-07'
+syntaxVersion: '3.1'
 version: '2024-07-07'
-billing:
-  monthly: 1.0
+createdAt: '2024-07-07'
 currency: EUR
+variables: {}
 features:
   assets1:
     description: Free stock photos, font, graphics, videos and audio
@@ -508,7 +507,7 @@ usageLimits:
     unit: use
     type: NON_RENEWABLE
     linkedFeatures:
-    - magicDesign
+      - magicDesign
   magicWriteTotalUsages:
     description: ''
     valueType: NUMERIC
@@ -516,7 +515,7 @@ usageLimits:
     unit: use
     type: NON_RENEWABLE
     linkedFeatures:
-    - magicWrite
+      - magicWrite
   magicWriteReusableTokens:
     description: ''
     valueType: NUMERIC
@@ -524,7 +523,7 @@ usageLimits:
     unit: use
     type: RENEWABLE
     linkedFeatures:
-    - magicWrite
+      - magicWrite
   magicText2ImageTotalTokens:
     description: ''
     valueType: NUMERIC
@@ -532,7 +531,7 @@ usageLimits:
     unit: use
     type: NON_RENEWABLE
     linkedFeatures:
-    - magicMediaText2Image
+      - magicMediaText2Image
   magicText2ImageReusableTokens:
     description: ''
     valueType: NUMERIC
@@ -540,7 +539,7 @@ usageLimits:
     unit: use
     type: RENEWABLE
     linkedFeatures:
-    - magicMediaText2Image
+      - magicMediaText2Image
   magicText2VideoTotalTokens:
     description: ''
     valueType: NUMERIC
@@ -548,7 +547,7 @@ usageLimits:
     unit: use
     type: NON_RENEWABLE
     linkedFeatures:
-    - magicMediaText2Video
+      - magicMediaText2Video
   magicText2VideoReusableTokens:
     description: ''
     valueType: NUMERIC
@@ -556,7 +555,7 @@ usageLimits:
     unit: use
     type: RENEWABLE
     linkedFeatures:
-    - magicMediaText2Video
+      - magicMediaText2Video
   translatorTotalPages:
     description: ''
     valueType: NUMERIC
@@ -564,7 +563,7 @@ usageLimits:
     unit: page
     type: NON_RENEWABLE
     linkedFeatures:
-    - translator
+      - translator
   translatorReusablePages:
     description: ''
     valueType: NUMERIC
@@ -572,7 +571,7 @@ usageLimits:
     unit: page
     type: RENEWABLE
     linkedFeatures:
-    - translator
+      - translator
   brandKitsUnits:
     description: ''
     valueType: NUMERIC
@@ -580,7 +579,7 @@ usageLimits:
     unit: kit
     type: NON_RENEWABLE
     linkedFeatures:
-    - brandKits
+      - brandKits
   cloudStorageLimit:
     description: ''
     valueType: NUMERIC
@@ -588,28 +587,30 @@ usageLimits:
     unit: GB
     type: NON_RENEWABLE
     linkedFeatures:
-    - cloudStorage
+      - cloudStorage
   availableOnlyIfMoreThan100SeatsInvoiced:
     description: ''
     valueType: BOOLEAN
     defaultValue: false
     type: NON_RENEWABLE
     linkedFeatures:
-    - ipIndemnityContentControl
-    - dedicatedCustomerSuccessManager
-    - creativeServices
+      - ipIndemnityContentControl
+      - dedicatedCustomerSuccessManager
+      - creativeServices
 plans:
   FREE:
-    description: For anyone to design anything, on their own or with family, friends,
-      or others. No experience required.
+    description: >-
+      For anyone to design anything, on their own or with family, friends, or
+      others. No experience required.
     price: 0
     unit: user/month
     features: null
     usageLimits: null
   PRO:
-    description: For individuals, solopreneurs and freelance designers who want unlimited
-      access to premium content, to create professional designs with ease and scale
-      their productivity.
+    description: >-
+      For individuals, solopreneurs and freelance designers who want unlimited
+      access to premium content, to create professional designs with ease and
+      scale their productivity.
     price: 15
     unit: user/month
     features:
@@ -695,7 +696,8 @@ plans:
       cloudStorageLimit:
         value: 1024
   TEAMS:
-    description: All the great features of Canva Pro, plus we think you'll love these
+    description: >-
+      All the great features of Canva Pro, plus we think you'll love these
       features designed to allow teams of all sizes to collaborate with ease.
     price: 10
     unit: user/month

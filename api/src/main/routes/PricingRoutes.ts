@@ -20,24 +20,21 @@ const loadFileRoutes = function (app: express.Application) {
     .put(pricingController.updateVersion);
 
   app
-    .route(baseUrl + '/pricings/:username')
-    .get(pricingController.indexByOwner)
+    .route(baseUrl + '/pricings/:organizationId')
+    .get(pricingController.indexByOrganization)
     .post(upload, PricingValidator.create, handleValidation, pricingController.create);
 
   app
-    .route(baseUrl + '/pricings/:username/:pricingName')
+    .route(baseUrl + '/pricings/:organizationId/:pricingSlug')
     .get(pricingController.show)
     .put(PricingValidator.update, handleValidation, pricingController.update)
-    .delete(pricingController.destroyByNameAndOwner);
+    .delete(pricingController.destroyByNameAndOrganization);
 
   app
-    .route(baseUrl + '/pricings/:username/:pricingName/:pricingVersion')
+    .route(baseUrl + '/pricings/:organizationId/:pricingSlug/:pricingVersion')
     .get(pricingController.getConfigurationSpace)
-    .delete(pricingController.destroyVersionByNameAndOwner);
-
-  app
-    .route(baseUrl + '/me/pricings')
-    .put(pricingController.addPricingToCollection);
+    .post(upload, PricingValidator.create, handleValidation, pricingController.createVersion)
+    .delete(pricingController.destroyVersionByNameAndOrganization);
 };
 
 export default loadFileRoutes;

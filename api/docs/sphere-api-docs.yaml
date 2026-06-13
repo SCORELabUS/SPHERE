@@ -12,31 +12,78 @@ info:
     - **Integrate with existing tooling in pricing-driven DevOps**
     - **Perform pricing intelligence analysis**
 
-    ## Authentication Tokens
+    ## Authentication
 
-    SPHERE authentication system relies on auth tokens provided in the `Authorization` header as `<token>`. Here is some information about the purpose and usage of these tokens:
+    SPHERE supports two authentication methods:
 
-    - **Purpose**: Authenticate users and provide access to protected resources
-    - **Obtaining**: Authenticate via `POST /users/login` endpoint with username/email and password
-    - **Usage**: Include in `Authorization` header for requests. **DO NOT REQUIRE** `Bearer` prefix, just the token string.
-    - **Accessible Roles**: `ADMIN` (full access), `USER` (access limited to own account and organizations)
+    1. **User Token** (used by the SPHERE frontend):
+       - Obtained via `POST /users/login` with username/email and password
+       - Include it in `Authorization` header as `Bearer <token>` to authenticate requests
+       - Tokens expire after 24h
 
-    ## Roles
+    2. **API Key** (recommended for programmatic access):
+       - Can be created and managed via the SPHERE UI
+       - Include them in `x-api-key` header to authenticate requests
+       - Can have scoped permissions per organization
 
-    Users in SPHERE can have the following roles:
+    ---
 
-    | Role          | Permissions |
-    |---------------|-------------|
-    | **ADMIN**     | Can perform any operation, over any user/resource allocated in SPHERE |
-    | **USER**      | can perform operations on their own accounts and resources, while retaining read access to all resources. They are not permitted to manage other users’ accounts or resources |
+    ## Permission System Overview
 
-    ## Permission Summary by Endpoint Category
+    SPHERE implements a **three-layer permission system** that provides granular access control:
 
-    All endpoints require an `Authorization` header unless explicitly marked as **Public**. Here is a summary of the auth tags that are going to be used throughout this documentation:
+    ### 1. User Roles (Global Level)
 
-    - **Public**: No authentication required
-    - **ADMIN Role**: Requires user token with ADMIN role
-    - **USER Role**: Requires user token with USER role (or ADMIN)
+    Determines what a user can do across the entire platform:
+
+    | Role   | Description |
+    |--------|-------------|
+    | **ADMIN** | Full platform access. Can perform any operation on any user or resource. Bypasses organization membership checks. |
+    | **USER** | Standard user. Can only manage their own account, organizations they're members of, and resources within those organizations. |
+
+    ### 2. Organization Roles (Within an Organization)
+
+    Determines what a user can do within a specific organization. Organizations have a hierarchical structure where a parent organization can have child organizations.
+
+    | Role | Permissions |
+    |------|-------------|
+    | **OWNER** | Full control: manage organization resources, members, invitations, settings, and delete the organization |
+    | **ADMIN** | Everything an OWNER can do, but cannot delete the organization or downgrade OWNERs |
+    | **MEMBER** | Read-only access to organization data and pricings |
+
+    **Role Hierarchy Behavior:**
+    - A user can have **different roles** in different organizations
+    - Example: User A is MEMBER in org1, ADMIN in org2 (a child of org1), and has no access to org3
+
+    ### 3. API Key Scopes
+
+    API Keys can be created with limited permissions, even if the user has higher permissions in the organization. This is useful for integrating external tools with restricted access.
+
+    | Scope | Effect |
+    |-------|--------|
+    | **ALL** | Full access to organization - same as user's actual org role. Also grants access to **children organizations** in the hierarchy. |
+    | **MANAGEMENT** | Can perform management operations. Effective role is ADMIN for users with OWNER/ADMIN role, otherwise their actual role. This permission **does not extend to child organizations**. |
+    | **VIEW** | Read-only access. Effective role is always MEMBER regardless of actual org role. This permission **does not extend to child organizations** |
+
+    **Scope Intersection Example:**
+    - User has OWNER role in org1; and org1 have two children: org2 and org3 (given that user is OWNER, they also have OWNER permissions in org2 and org3)
+    - User creates API Key with VIEW scope for org1
+    - When using the API Key, the effective role becomes MEMBER (read-only) and can **only operate over org1**.
+
+    ---
+
+    ## Authentication Flow
+
+    1. Request arrives with either `Authorization: Bearer <token>` or `x-api-key: <key>`. 
+
+        - **NOTE:** if token access is provided, the API key is ignored and the user token is used for authentication and permission checks.
+        
+    2. AuthMiddleware authenticates and populates `req.user`
+    3. If accessing organization-scoped resources, `populateOrganizationContext` resolves:
+       - The organization from the URL path
+       - The user's actual role within that organization
+       - For API Keys: the scope-limited effective role
+    4. Permission check validates both user role AND org role (if required)
 
   contact:
     email: agarcia29@us.es
@@ -63,10 +110,19 @@ tags:
     description: User authentication and API key management
   - name: Users
     description: User account management
+  - name: Organizations
+    description: |
+      Organization, invitations and membership management
   - name: Pricings
     description: Pricing Version Control System (PVCS)
   - name: Collections
     description: Collection management for grouping pricings
+  - name: User Access
+    description: Retrieve pricings and collections a user can access
+  - name: Permissions
+    description: Retrieve permission information for entities
+  - name: Notifications
+    description: User notifications and real-time updates
   - name: Cache
     description: Redis cache operations for temporary data storage
 
@@ -165,9 +221,11 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
                     type: string
-                    example: User registered successfully
+                    description: JWT authentication token
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -179,19 +237,39 @@ paths:
 
   /users:
     get:
-      summary: Get all users
+      summary: Get all users or search users
       description: |
-        Retrieves a paginated list of all users in the system.
+        Retrieves a paginated list of users. Supports two access modes:
 
-        **Authentication**: User token with ADMIN role
+        **1. ADMIN mode (no `q` parameter):**
+        Returns all users with full details. Only accessible to ADMIN users.
 
-        **Permission**: Only ADMIN users can access this endpoint.
+        **2. Search mode (`q` parameter with 4+ characters):**
+        Searches users by username, firstName, or lastName (case-insensitive partial match).
+        Accessible to any authenticated user (ADMIN or USER).
+        When using search mode, sensitive fields (email, role, phone, token, apiKeys) are excluded from the response.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - ADMIN: full access to all users (with or without `q`)
+        - USER: only accessible with `q` parameter (4+ characters)
       
       tags:
         - Users
       security:
         - ApiKeyAuth: []
       parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 4
+          description: |
+            Search query to find users by username, firstName, or lastName.
+            Must be at least 4 characters long. When provided, any authenticated user can access this endpoint.
+            Sensitive fields are excluded from the response for non-ADMIN users.
         - $ref: '#/components/parameters/UsernameQuery'
         - $ref: '#/components/parameters/Email'
         - $ref: '#/components/parameters/Role'
@@ -205,13 +283,19 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                    description: Full user list (ADMIN only, no q parameter)
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/PublicUser'
+                    description: Search results (with q parameter, sensitive fields excluded)
         '401':
           description: Authentication required
         '403':
-          description: Insufficient permissions
+          description: Insufficient permissions (USER without q parameter, or q < 4 chars)
         default:
           description: Unexpected error
           content:
@@ -246,6 +330,876 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /users/me/orgs:
+    get:
+      summary: Get current user's organizations
+      description: |
+        Retrieves organizations the currently authenticated user is a member of.
+        Returns a tree-structured list where each top-level organization includes its
+        sub-organizations nested under the `subOrganizations` field. Each item also
+        includes the user's `role` in that organization.
+
+        Supports optional pagination via `limit` and `offset` query parameters.
+        When pagination params are provided, the response is wrapped in an object
+        with `items` and `total` fields. When omitted, returns a flat array for
+        backward compatibility.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER) can access this endpoint.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of top-level organizations to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of top-level organizations to skip
+      responses:
+        '200':
+          description: List of organizations the user belongs to (tree-structured)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/UserOrganization'
+                    description: Plain array when no pagination params are provided
+                  - $ref: '#/components/schemas/PaginatedUserOrganizations'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings:
+    get:
+      summary: Get current user's settings
+      description: |
+        Retrieves the full settings for the currently authenticated user, including
+        profile, social links, notification preferences, and avatar configuration.
+        Sensitive fields (password, token, API keys) are excluded.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: User settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update current user's account settings
+      description: |
+        Updates the account-level settings for the currently authenticated user.
+        Only provided fields are updated (partial update).
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                phone:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        '422':
+          description: Validation error (e.g. email already in use)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings/profile:
+    put:
+      summary: Update current user's public profile
+      description: |
+        Updates the public profile fields for the currently authenticated user.
+        These fields control how the user appears to other users on the platform.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  nullable: true
+                  description: Public display name (overrides real name in rankings)
+                bio:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                city:
+                  type: string
+                  nullable: true
+                country:
+                  type: string
+                  nullable: true
+                dateOfBirth:
+                  type: string
+                  format: date
+                  nullable: true
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings/social-links:
+    put:
+      summary: Update current user's social links
+      description: |
+        Updates the social media links for the currently authenticated user.
+        URLs are validated against platform-specific patterns.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkedin:
+                  type: string
+                  format: uri
+                  nullable: true
+                instagram:
+                  type: string
+                  format: uri
+                  nullable: true
+                facebook:
+                  type: string
+                  format: uri
+                  nullable: true
+                x:
+                  type: string
+                  format: uri
+                  nullable: true
+      responses:
+        '200':
+          description: Social links updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        '422':
+          description: Invalid URL for a social platform
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings/notifications:
+    put:
+      summary: Update current user's notification preferences
+      description: |
+        Updates the notification preferences for the currently authenticated user.
+        Controls which notification types are received via which channels.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Map of notification kind to channel preferences
+              additionalProperties:
+                type: object
+                properties:
+                  email:
+                    type: boolean
+                  inbox:
+                    type: boolean
+              example:
+                OrganizationInvitation: { email: true, inbox: true }
+                System: { email: true, inbox: false }
+                CollectionShared: { email: false, inbox: true }
+                PricingUpdated: { email: false, inbox: false }
+      responses:
+        '200':
+          description: Notification preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings/avatar:
+    post:
+      summary: Upload avatar image
+      description: |
+        Uploads a new avatar image for the currently authenticated user.
+        Accepts JPEG, PNG, and WebP formats. Maximum file size is 2MB.
+        The image is saved to disk and the avatar path is updated.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, or WebP, max 2MB)
+                avatarBgColor:
+                  type: string
+                  description: Background color for avatar (hex)
+                  example: "#fa520f"
+                avatarFgColor:
+                  type: string
+                  description: Foreground/text color for avatar (hex)
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatar:
+                    type: string
+                    description: URL path to the uploaded avatar
+        '400':
+          description: No file uploaded or invalid file type/size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Remove avatar (revert to initials)
+      description: |
+        Removes the current user's custom avatar, reverting to the initials-based
+        default display.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Avatar removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/settings/avatar-colors:
+    put:
+      summary: Update avatar colors (for initials/SVG mode)
+      description: |
+        Updates the avatar display with custom colors. Used for initials-based
+        avatars or SVG avatars to set background and foreground colors.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - avatarBgColor
+                - avatarFgColor
+              properties:
+                avatarPath:
+                  type: string
+                  description: Path to the avatar file (for SVG avatars)
+                avatarBgColor:
+                  type: string
+                  description: Background color (hex)
+                  example: "#fa520f"
+                avatarFgColor:
+                  type: string
+                  description: Foreground/text color (hex)
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Avatar colors updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings:
+  #   get:
+  #     summary: Get user settings by username (ADMIN only)
+  #     description: |
+  #       Retrieves the full settings for a specific user by username.
+  #       Sensitive fields (password, token, API keys) are excluded.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users can access other users' settings.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     responses:
+  #       '200':
+  #         description: User settings retrieved successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  #   put:
+  #     summary: Update user account settings by username (ADMIN only)
+  #     description: |
+  #       Updates account-level settings for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users can update other users' settings.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               email:
+  #                 type: string
+  #                 format: email
+  #               firstName:
+  #                 type: string
+  #               lastName:
+  #                 type: string
+  #               phone:
+  #                 type: string
+  #                 nullable: true
+  #     responses:
+  #       '200':
+  #         description: Settings updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       '422':
+  #         description: Validation error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings/profile:
+  #   put:
+  #     summary: Update user profile by username (ADMIN only)
+  #     description: |
+  #       Updates the public profile for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               displayName:
+  #                 type: string
+  #                 nullable: true
+  #               bio:
+  #                 type: string
+  #                 nullable: true
+  #                 maxLength: 200
+  #               city:
+  #                 type: string
+  #                 nullable: true
+  #               country:
+  #                 type: string
+  #                 nullable: true
+  #               dateOfBirth:
+  #                 type: string
+  #                 format: date
+  #                 nullable: true
+  #     responses:
+  #       '200':
+  #         description: Profile updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings/social-links:
+  #   put:
+  #     summary: Update user social links by username (ADMIN only)
+  #     description: |
+  #       Updates social media links for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               linkedin:
+  #                 type: string
+  #                 format: uri
+  #                 nullable: true
+  #               instagram:
+  #                 type: string
+  #                 format: uri
+  #                 nullable: true
+  #               facebook:
+  #                 type: string
+  #                 format: uri
+  #                 nullable: true
+  #               x:
+  #                 type: string
+  #                 format: uri
+  #                 nullable: true
+  #     responses:
+  #       '200':
+  #         description: Social links updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       '422':
+  #         description: Invalid URL
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings/notifications:
+  #   put:
+  #     summary: Update user notification preferences by username (ADMIN only)
+  #     description: |
+  #       Updates notification preferences for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             additionalProperties:
+  #               type: object
+  #               properties:
+  #                 email:
+  #                   type: boolean
+  #                 inbox:
+  #                   type: boolean
+  #     responses:
+  #       '200':
+  #         description: Notification preferences updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings/avatar:
+  #   post:
+  #     summary: Upload avatar for a user (ADMIN only)
+  #     description: |
+  #       Uploads a new avatar image for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         multipart/form-data:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               avatar:
+  #                 type: string
+  #                 format: binary
+  #               avatarBgColor:
+  #                 type: string
+  #               avatarFgColor:
+  #                 type: string
+  #     responses:
+  #       '200':
+  #         description: Avatar uploaded successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               type: object
+  #               properties:
+  #                 avatar:
+  #                   type: string
+  #       '400':
+  #         description: Invalid file
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  #   delete:
+  #     summary: Remove avatar for a user (ADMIN only)
+  #     description: |
+  #       Removes the avatar for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     responses:
+  #       '200':
+  #         description: Avatar removed successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
+
+  # /users/{username}/settings/avatar-colors:
+  #   put:
+  #     summary: Update avatar colors for a user (ADMIN only)
+  #     description: |
+  #       Updates avatar colors for a specific user by username.
+
+  #       **Authentication**: User token with ADMIN role
+
+  #       **Permission**: Only ADMIN users.
+
+  #     tags:
+  #       - Users
+  #     security:
+  #       - ApiKeyAuth: []
+  #     parameters:
+  #       - $ref: '#/components/parameters/Username'
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             required:
+  #               - avatarBgColor
+  #               - avatarFgColor
+  #             properties:
+  #               avatarPath:
+  #                 type: string
+  #               avatarBgColor:
+  #                 type: string
+  #               avatarFgColor:
+  #                 type: string
+  #     responses:
+  #       '200':
+  #         description: Avatar colors updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/UserSettings'
+  #       '401':
+  #         description: Authentication required
+  #       '403':
+  #         description: Insufficient permissions (requires ADMIN)
+  #       '404':
+  #         description: User not found
+  #       default:
+  #         description: Unexpected error
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/Error'
 
   /users/{username}:
     get:
@@ -365,7 +1319,187 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /users/{username}/updateToken:
+  /users/{username}/pricings:
+    get:
+      summary: Get pricings accessible to the current user
+      description: |
+        Returns all pricings the currently authenticated user has access to across all
+        their organizations. The response includes permission-filtered pricings with
+        organization and collection data. This is a convenience endpoint equivalent to
+        `GET /users/{userId}/pricings` with `userId=me`.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - Any authenticated user (ADMIN or USER) can access this endpoint.
+        - Results are scoped to the user's organizations.
+        - **ADMIN** (global): Can see all pricings (PUBLIC and PRIVATE) in any organization.
+        - **OWNER / ADMIN** of an organization: Can see all pricings in that organization.
+        - **MEMBER**: Can see PUBLIC pricings, plus PRIVATE pricings for which they have
+          an explicit `GET` permission (either directly on the pricing or via a collection
+          they have `GET` access to).
+
+        **Supported Filters**: `name`, `sortBy`, `sort`, `min-subscription`,
+        `max-subscription`, `min-minPrice`, `max-minPrice`, `min-maxPrice`, `max-maxPrice`,
+        `selectedOrganizations`, `collection`.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/SortByPricings'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/MinSubscription'
+        - $ref: '#/components/parameters/MaxSubscription'
+        - $ref: '#/components/parameters/MinMinPrice'
+        - $ref: '#/components/parameters/MaxMinPrice'
+        - $ref: '#/components/parameters/MinMaxPrice'
+        - $ref: '#/components/parameters/MaxMaxPrice'
+        - $ref: '#/components/parameters/SelectedOwners'
+        - name: collection
+          in: query
+          required: false
+          description: Filter pricings by collection slug (URL-friendly identifier)
+          schema:
+            type: string
+            example: "ieee-tsc-2025"
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list of pricings the user has access to, with filter statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of pricings matching the filter (before pagination)
+                  minPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  maxPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  configurationSpaceSize:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  pricings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pricing'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{username}/collections:
+    get:
+      summary: Get collections accessible to the current user
+      description: |
+        Returns all collections the authenticated user can access across all
+        their organizations, applying permission checks.
+
+        The `{username}` path parameter accepts the reserved value `me` to
+        refer to the currently authenticated user.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - Any authenticated user (ADMIN or USER) can access this endpoint.
+        - Non-ADMIN users can only query their own collections (`{username}` must match their username or be `me`).
+        - Results are scoped to collections the user can access according to role and entity permissions.
+
+        **Supported Filters**: `name`, `organizationIds`, `sortBy`, `sort`.
+
+        The `organizationIds` query parameter accepts a comma-separated list of
+        organization IDs. For non-admin users, only organization IDs the user
+        belongs to are considered; IDs of organizations the user is not a member
+        of are silently ignored. For global admins, the filter is applied as
+        provided. When omitted, collections from all accessible organizations are
+        returned.
+
+      tags:
+        - User Access
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username to query, or the reserved value `me` for the authenticated user
+          schema:
+            type: string
+            example: me
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/OrganizationIds'
+        - $ref: '#/components/parameters/SortByCollections'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: writableOnly
+          in: query
+          required: false
+          description: When set to `true`, only returns collections where the user has both GET and PUT permissions (useful for "add pricing to collection" workflows)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Paginated list of collections the user has access to
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of collections matching the filter (before pagination)
+                  collections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        numberOfPricings:
+                          type: number
+                        organization:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            displayName:
+                              type: string
+                            avatar:
+                              type: string
+                              nullable: true
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: Insufficient permissions (non-ADMIN querying another user's collections)
+        '404':
+          description: User not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+  /users/{username}/refresh-token:
     put:
       summary: Regenerate user's token
       description: |
@@ -403,6 +1537,1030 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # ============================================
+  # API Keys Management
+  # ============================================
+
+  /users/{username}/api-keys:
+    get:
+      summary: List API keys for a user
+      description: |
+        Retrieves all API keys for the specified user. The key values are truncated
+        for security (only last 6 characters visible).
+
+        **Authentication**: User token
+
+        **Permission**: Users can only view their own API keys. ADMIN users can
+        view any user's API keys.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Username'
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKeySummary'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (can only view own API keys)
+        '404':
+          description: User not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new API key
+      description: |
+        Creates a new API key for the specified user. The full key is returned
+        only once in the response — it cannot be retrieved later.
+
+        **Authentication**: User token
+
+        **Permission**: Users can only create API keys for themselves. ADMIN users
+        can create API keys for any user.
+
+        **Security**: The key value is hashed with SHA-256 before storage.
+        The plain key is only returned in the creation response.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Username'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (can only create own API keys)
+        '404':
+          description: User not found
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{username}/api-keys/{keyId}:
+    delete:
+      summary: Delete an API key
+      description: |
+        Permanently deletes an API key. This action cannot be undone.
+
+        **Authentication**: User token
+
+        **Permission**: Users can only delete their own API keys. ADMIN users
+        can delete any user's API keys.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Username'
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the API key to delete
+      responses:
+        '204':
+          description: API key deleted successfully
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (can only delete own API keys)
+        '404':
+          description: API key not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{username}/api-keys/{keyId}/revoke:
+    put:
+      summary: Revoke an API key
+      description: |
+        Revokes an API key, making it invalid for authentication. The key
+        remains in the database but cannot be used anymore.
+
+        **Authentication**: User token
+
+        **Permission**: Users can only revoke their own API keys. ADMIN users
+        can revoke any user's API keys.
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Username'
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the API key to revoke
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "API key revoked"
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (can only revoke own API keys)
+        '404':
+          description: API key not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    # ============================================
+  # Organization Management
+  # ============================================
+
+  /orgs:
+    get:
+      summary: Get all organizations
+      description: |
+        Retrieves a list of all organizations in the system, sorted by creation date (newest first).
+        This is an administrative endpoint intended for platform-wide organization management.
+
+        **Authentication**: User token
+
+        **Permission**: Only global ADMIN users can access this endpoint. Regular USER
+        roles will receive a 403 error.
+
+        **Response**: Returns an array of organization objects. Each object includes the
+        organization's `id`, `name`, `displayName`, `description`, `avatar`, `isPersonal`
+        flag, and audit timestamps. Returns an empty array if no organizations exist.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of all organizations sorted by creation date (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: Insufficient permissions — only global ADMIN users can list all organizations
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new organization
+      description: |
+        Creates a new organization. The authenticated user automatically becomes the
+        **OWNER** of the newly created organization (an `OrganizationMembership` with
+        role `OWNER` is created alongside the organization).
+
+        **Authentication**: User token
+
+        **Request Body**:
+        - **`name`** (required unless `isPersonal` is `true`): A URL-safe unique identifier
+          for the organization. Must be 3-50 characters, lowercase letters, digits, hyphens,
+          and underscores only (`/^[a-z0-9_-]+$/`). The name must be unique across the
+          platform — attempting to use a duplicate name will result in a 422 error.
+        - **`displayName`** (required): A human-readable name for the organization (max 255 chars).
+        - **`description`** (optional): A free-text description of the organization.
+        - **`isPersonal`** (optional, default `false`): When set to `true`, the `name` field
+          is automatically overridden with the authenticated user's username (lowercase).
+          Personal organizations are special-purpose and cannot be deleted.
+        - **`_parentId`** (optional): The ID of a parent organization. When provided, the new
+          organization becomes a child of the specified parent. The `ancestors` array is
+          automatically computed from the parent's ancestry chain. Users with membership in
+          the parent organization automatically inherit role-based access to child organizations.
+
+        **Cascading Actions**:
+        - An `OrganizationMembership` record is created linking the authenticated user
+          as the OWNER of the new organization.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/OrganizationCreate'
+            example:
+              name: "acme-corp"
+              displayName: "Acme Corporation"
+              description: "The leading provider of SaaS solutions"
+              isPersonal: false
+              _parentId: "68050bd09890322c57842f6f"
+      responses:
+        '201':
+          description: Organization created successfully — the authenticated user is set as OWNER
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: Insufficient permissions
+        '422':
+          description: Validation failed — either request body validation errors (e.g. invalid name format, missing displayName) or a duplicate organization name
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/responses/UnprocessableEntity'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                validationError:
+                  summary: Field validation error
+                  value:
+                    errors:
+                      - type: field
+                        msg: "Name must be between 3 and 50 characters"
+                        path: name
+                        location: body
+                duplicateName:
+                  summary: Duplicate organization name
+                  value:
+                    error: "Organization with this name already exists"
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/invitations/preview/{code}:
+    get:
+      summary: Preview an organization invitation
+      description: |
+        Retrieves the organization details associated with an invitation code. This allows
+        users to inspect the organization (name, display name, avatar) before deciding to
+        accept the invitation. The invitation itself is also returned with its metadata
+        (expiration, usage limits, current use count).
+
+        **Authentication**: User token
+
+        **Note**: This endpoint does **not** resolve an organization context from the URL path.
+        Any authenticated user (ADMIN or USER) can preview an invitation using a valid code.
+
+        **Invitation Validation** (checked in order):
+        1. The invitation code must exist in the database
+        2. The invitation must not have expired (`expiresAt` must be in the future or `null`)
+        3. The invitation must not have reached its maximum number of uses (`useCount < maxUses`
+           or `maxUses` is `null`)
+        4. The associated organization must still exist
+
+        If any of these checks fail, a **404** is returned with an appropriate error message
+        (e.g. "Invitation expired", "Invitation has reached the maximum number of uses").
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InvitationCode'
+      responses:
+        '200':
+          description: Invitation preview data containing the invitation details and basic organization info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationInvitationPreview'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '404':
+          description: |
+            Invitation not found, expired, has reached max uses, or the associated
+            organization no longer exists
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/join/{code}:
+    post:
+      summary: Join an organization via invitation
+      description: |
+        Accepts an invitation code and adds the authenticated user to the corresponding
+        organization. The user always joins with the **MEMBER** role (hardcoded, not
+        configurable via this endpoint).
+
+        **Authentication**: User token
+
+        **Note**: This endpoint does **not** resolve an organization context from the URL path.
+        Any authenticated user (ADMIN or USER) can join via an invitation code.
+
+        **Process** (in order):
+        1. Validates the invitation code (existence, expiry, max uses — same as the preview endpoint)
+        2. Checks that the user is not already a member of the organization
+        3. Creates an `OrganizationMembership` with role `MEMBER` and `joinedAt` set to the current timestamp
+        4. Atomically increments the invitation's `useCount` by 1
+        5. Returns the organization object
+
+        **Constraints**:
+        - User must not already be a member of the organization (returns **422** if they are)
+        - Invitation must be valid (not expired, not at max uses, organization must exist)
+        - The role assigned is always `MEMBER` — to change the role, an OWNER or ADMIN
+          must use `PUT /orgs/{organizationId}/members/{userId}`
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InvitationCode'
+      responses:
+        '200':
+          description: Successfully joined the organization — returns the organization object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '404':
+          description: |
+            Invitation not found, expired, has reached max uses, or the associated
+            organization no longer exists
+        '422':
+          description: User is already a member of this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "User is already a member of this organization"
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}:
+    get:
+      summary: Get organization details
+      description: |
+        Retrieves detailed information about a specific organization by its ID.
+
+        **Authentication**: Optional (public endpoint)
+
+        **Permission**:
+        - **Unauthenticated**: Can access any organization.
+        - **USER**: Can access any organization.
+        - **ADMIN** (global): Can access any organization.
+
+        This endpoint supports public access so that non-members and unauthenticated
+        users can view organization details (e.g., for the public organization profile page).
+
+        **Response**: Returns the full organization object including `id`, `name`,
+        `displayName`, `description`, `avatar`, `isPersonal`, and timestamps.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Organization details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update organization metadata
+      description: |
+        Updates the mutable metadata of an organization. Only `displayName`, `description`,
+        and `avatar` can be modified. The organization `name` field **cannot be changed**
+        after creation.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can update any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+          Regular `MEMBER` roles will receive a 403 error.
+
+        **Request Body** (all optional, but at least one field should be provided):
+        - `displayName`: Updated human-readable name (max 255 chars)
+        - `description`: Updated description (can be `null` to clear)
+        - `avatar`: Updated avatar (can be `null` to clear)
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/OrganizationUpdate'
+      responses:
+        '200':
+          description: Organization updated successfully — returns the updated organization object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        '422':
+          description: Validation failed — e.g. invalid `avatarUrl` format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete an organization
+      description: |
+        Permanently deletes an organization along with all associated data. This is a
+        destructive, irreversible operation.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can delete any non-personal organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Constraints**:
+        - **Personal organizations cannot be deleted.** If the organization's `isPersonal`
+          flag is `true`, the request will be rejected with a 403 error.
+
+        **Cascading Actions** (executed in order):
+        1. All `OrganizationMembership` records for this organization are deleted
+           (all members are removed)
+        2. All `OrganizationInvitation` records for this organization are deleted
+           (all pending invitations are revoked)
+        3. The organization document itself is deleted
+
+        **Warning**: This action removes all members and invitations permanently.
+        Pricings and collections owned by the organization are **not** affected.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Organization deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully deleted."
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions or personal organization — either the user lacks
+            OWNER/ADMIN role, or the organization is a personal organization (which
+            cannot be deleted)
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/members:
+    get:
+      summary: List organization members
+      description: |
+        Retrieves a list of all members in an organization, including their roles, join
+        dates, and basic user information. The response is enriched via a database
+        aggregation pipeline that joins membership records with user data.
+
+        **Authentication**: Optional (public endpoint)
+
+        **Permission**:
+        - **Unauthenticated**: Can view any organization's members.
+        - **USER**: Can view any organization's members.
+        - **ADMIN** (global): Can view any organization's members.
+
+        This endpoint supports public access so that non-members and unauthenticated
+        users can view the member list (e.g., for the public organization profile page).
+
+        **Response**: Each item in the array contains:
+        - `id`: The membership record ID
+        - `role`: The member's role (`OWNER`, `ADMIN`, or `MEMBER`)
+        - `joinedAt`: When the user joined the organization
+        - `user`: Nested object with `id`, `username`, `email`, `avatar`, `avatarBgColor`, and `avatarFgColor` of the member
+
+        Returns an empty array if the organization has no members (should not happen in
+        practice, as the creator is always added as OWNER).
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: List of organization members with enriched user data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationMember'
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add a member to the organization
+      description: |
+        Adds a user to the organization with a specified role. This is the administrative
+        way to add members (as opposed to `POST /orgs/join/{code}` which is self-service
+        via invitation codes and always assigns the `MEMBER` role).
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can add members to any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Request Body**:
+        - `userId` (required): The MongoDB ObjectId of the user to add as a member.
+        - `role` (required): The role to assign — one of `OWNER`, `ADMIN`, or `MEMBER`.
+
+        **Constraints**:
+        - The target user must not already be a member of the organization. If they are,
+          the request returns **422** with an error message.
+        - A unique compound index on `{ userId, organizationId }` also prevents duplicates
+          at the database level.
+
+        **Note**: Unlike `POST /orgs/join/{code}`, this endpoint allows assigning any role
+        (not just `MEMBER`), making it suitable for administrative member management.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/AddMember'
+            example:
+              userId: "68050bd09890322c57842f71"
+              role: "MEMBER"
+      responses:
+        '201':
+          description: Member added successfully — returns the created membership record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMember'
+        '400':
+          description: Invalid request body
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        '422':
+          description: |
+            Validation failed — either request body validation errors (e.g. missing
+            `userId` or `role`) or the target user is already a member of this organization
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/responses/UnprocessableEntity'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                validationError:
+                  summary: Field validation error
+                  value:
+                    errors:
+                      - type: field
+                        msg: "Role must be one of OWNER, ADMIN, MEMBER"
+                        path: role
+                        location: body
+                alreadyMember:
+                  summary: User already a member
+                  value:
+                    error: "User is already a member of this organization"
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/members/{userId}:
+    put:
+      summary: Update a member's role
+      description: |
+        Changes the role of an existing member within the organization. This can be used
+        to promote a MEMBER to ADMIN, demote an ADMIN to MEMBER, or transfer ownership
+        by assigning the OWNER role.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can update any member's role in any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Request Body**:
+        - `role` (required): The new role to assign — one of `OWNER`, `ADMIN`, or `MEMBER`.
+
+        **Behavior**:
+        - The system automatically recalculates an internal `_roleWeight` field
+          (`OWNER: 3`, `ADMIN: 2`, `MEMBER: 1`) used for aggregation queries.
+        - If the membership record does not exist (i.e., the user is not a member of the
+          organization), the request returns **404**.
+
+        **Constraints**:
+        - The target user must already be a member of the organization.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/UpdateMemberRole'
+            example:
+              role: "ADMIN"
+      responses:
+        '200':
+          description: Member role updated successfully — returns the updated membership record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMember'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: |
+            Organization or membership not found — either the organization does not exist
+            or the target user is not a member of it
+        '422':
+          description: Validation failed — e.g. invalid or missing `role` value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Remove a member from the organization (or leave)
+      description: |
+        Removes a user from the organization by deleting their membership record. After
+        removal, the user loses all access to the organization's resources.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **Self-removal (leave)**: Any authenticated member can remove themselves from
+          an organization by setting `userId` to their own user ID. This allows users to
+          leave organizations they belong to.
+        - **ADMIN** (global): Can remove any member from any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization to
+          remove other members.
+
+        **Constraints**:
+        - The target user must be a member of the organization. If no membership record
+          is found, the request returns **404**.
+        - The last OWNER cannot be removed from the organization (even via self-removal).
+          Ownership must be transferred before the OWNER can leave.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Member removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully removed."
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: |
+            Organization or membership not found — either the organization does not exist
+            or the target user is not a member of it
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/invitations:
+    get:
+      summary: List organization invitations
+      description: |
+        Retrieves all invitations for an organization, sorted by creation date (newest first).
+        This includes both active and expired invitations, as well as invitations that have
+        reached their maximum usage.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can list invitations for any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+          Regular `MEMBER` roles will receive a 403 error.
+
+        **Response**: Returns an array of invitation objects. Each contains:
+        - `id`: The invitation's unique identifier
+        - `code`: The shareable invitation code (10-character hex string)
+        - `createdBy`: The user ID of who created the invitation
+        - `expiresAt`: Expiration timestamp (`null` if no expiration)
+        - `maxUses`: Maximum allowed uses (`null` if unlimited)
+        - `useCount`: How many times the invitation has been used
+        - `createdAt` / `updatedAt`: Audit timestamps
+
+        Returns an empty array if no invitations exist for the organization.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: List of organization invitations sorted by creation date (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationInvitation'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create an organization invitation
+      description: |
+        Creates a new invitation code for joining the organization. The generated code is a
+        random 10-character hexadecimal string that can be shared with users to allow them
+        to join the organization via `POST /orgs/join/{code}`.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can create invitations for any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Request Body** (all optional):
+        - `expiresInDays` (integer, default: `7`): Number of days until the invitation expires.
+          The expiration is calculated from the current timestamp. Must be a positive integer.
+        - `maxUses` (integer, default: `null`): Maximum number of times this invitation can
+          be accepted. `null` or omitted means unlimited uses.
+
+        **Response**: Returns the created invitation object including the generated `code`
+        field. Share this code with users who should join the organization.
+
+        **Note**: The invitation code is generated using `crypto.randomBytes(5).toString('hex')`
+        and has a unique index in the database. While collisions are extremely unlikely, the
+        system would return an error if one occurred.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/CreateInvitation'
+            example:
+              expiresInDays: 7
+              maxUses: 10
+      responses:
+        '201':
+          description: Invitation created successfully — returns the invitation object with the generated `code`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationInvitation'
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: Organization not found — no organization exists with the given ID
+        '422':
+          description: Validation failed — e.g. invalid `expiresInDays` or `maxUses` values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/invitations/{invitationId}:
+    delete:
+      summary: Revoke an organization invitation
+      description: |
+        Revokes (deletes) an existing invitation. Once revoked, the invitation code can no
+        longer be used to join the organization. Users who already joined via this invitation
+        are **not** affected — their membership remains intact.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can revoke invitations for any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Note**: The `organizationId` path parameter is used for organization context
+        resolution (auth and permission checks), but the actual deletion targets the
+        invitation by its own `invitationId`. The invitation is permanently removed from
+        the database.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/InvitationId'
+      responses:
+        '200':
+          description: Invitation revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invitation revoked."
+        '401':
+          description: Authentication required — no valid token or API key provided
+        '403':
+          description: |
+            Insufficient permissions — the user must have OWNER or ADMIN role within
+            the organization (or be a global ADMIN)
+        '404':
+          description: Invitation not found — no invitation exists with the given ID
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
   /pricings:
     get:
       summary: Get and filter pricings
@@ -431,24 +2589,44 @@ paths:
         - $ref: '#/components/parameters/MinMaxPrice'
         - $ref: '#/components/parameters/MaxMaxPrice'
         - $ref: '#/components/parameters/SelectedOwners'
+        - name: collection
+          in: query
+          required: false
+          description: Filter pricings by collection slug (URL-friendly identifier)
+          schema:
+            type: string
+            example: "ieee-tsc-2025"
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Operation Completed
+          description: Paginated list of pricings with filter statistics
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/responses/PricingList'
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of pricings matching the filter (before pagination)
+                  minPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  maxPrice:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  configurationSpaceSize:
+                    $ref: '#/components/schemas/MetricHistogram'
+                  pricings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pricing'
         default:
           description: Unexpected error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-    
+
     put:
       summary: Update pricing version
       description: |
@@ -522,25 +2700,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /pricings/{username}:
+  /pricings/{organizationId}:
     get:
-      summary: Get all pricings from a user.
+      summary: Get pricings for an organization
       description: |
-        Retrieves a paginated list of a user's pricings that ARE NOT in a collection. If you want to retrieve pricings from a usar of a specific collection, use the `collectionName` query parameter in the `GET /pricings` endpoint.
+        Retrieves a paginated list of pricings belonging to the specified organization.
+        Supports entity-level permission filtering for organization members.
 
         **Authentication**: Public
 
-        **Permission**: 
-        - UNAUTHENTICATED: can only list PUBLIC pricings of any user.
-        - USER: can list all their pricings (PUBLIC, PRIVATE) and PUBLIC pricings of other users.
-        - ADMIN: can access any user's pricings.
+        **Permission**:
+        - UNAUTHENTICATED: can only see PUBLIC pricings in the organization.
+        - USER (not a member of the org): can only see PUBLIC pricings.
+        - MEMBER: can see PUBLIC pricings, plus PRIVATE pricings for which they have
+          an explicit `GET` permission (either directly on the pricing or via a collection
+          they have `GET` access to).
+        - OWNER / ADMIN of the org: can see all pricings (PUBLIC and PRIVATE).
+        - Global ADMIN: can see all pricings (PUBLIC and PRIVATE) in any organization.
 
       tags:
         - Pricings
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
+        - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/Name'
         - $ref: '#/components/parameters/SortByPricings'
         - $ref: '#/components/parameters/Sort'
@@ -550,13 +2733,13 @@ paths:
         - $ref: '#/components/parameters/MaxMinPrice'
         - $ref: '#/components/parameters/MinMaxPrice'
         - $ref: '#/components/parameters/MaxMaxPrice'
-        - $ref: '#/components/parameters/CollectionName'
-        - $ref: '#/components/parameters/IncludePricingsInCollection'
+        - $ref: '#/components/parameters/CollectionQuery'
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
         '200':
-          description: Operation Completed
+          description: Paginated list of pricings for the organization with filter statistics
           content:
             application/json:
               schema:
@@ -564,7 +2747,7 @@ paths:
                 properties:
                   total:
                     type: integer
-                    description: The total number of pricings matching the query
+                    description: Total number of pricings matching the filter (before pagination)
                   configurationSpaceSize:
                     $ref: '#/components/schemas/MetricHistogram'
                   minPrice:
@@ -574,11 +2757,11 @@ paths:
                   pricings:
                     type: array
                     items:
-                      $ref: '#/components/responses/PricingList'
+                      $ref: '#/components/schemas/Pricing'
         '403':
           description: Insufficient permissions
         '404':
-          description: User not found
+          description: Organization not found
         default:
           description: Unexpected error
           content:
@@ -586,49 +2769,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Create pricing for a given user.
+      summary: Create pricing for an organization.
       description: |
-        Creates a new pricing for a given user.
+        Creates a new pricing under the specified organization.
 
-        **Authentication**: User API Key
+        **Authentication**: Bearer Token or User API Key
 
         **Permission**: 
-        - USER: can create pricings for their own account.
-        - ADMIN: can create pricings for any user.
+        - OWNER or ADMIN of the organization: can always create pricings.
+        - MEMBER: requires the `CREATE` permission on the `pricing` entity type for the organization.
+        - Global ADMIN: can create pricings for any organization.
 
       tags:
         - Pricings
       security:
+        - BearerAuth: []
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
+        - $ref: '#/components/parameters/OrganizationId'
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
                 yaml:
                   type: string
                   format: binary
+                  description: The Pricing2Yaml file
                 private:
                   type: boolean
                   default: false
+                  description: Whether the pricing should be private
                 collectionId:
                   type: string
                   description: Optional collection ID to add the pricing to upon creation
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Custom display name for the pricing. If provided, overrides the saasName field in the YAML file.
+              required:
+                - yaml
       responses:
-        '201':
+        '200':
           description: Pricing Created
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pricing'
+        '401':
+          description: Authentication required
         '403':
-          description: Insufficient permissions
+          description: Insufficient permissions (user is not a member of the organization, or lacks CREATE permission)
         '404':
-          description: User not found
+          description: Organization not found
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -638,11 +2833,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /pricings/{username}/{pricingName}:
+  /pricings/{organizationId}/{pricingSlug}:
     get:
       summary: Get public pricing details.
       description: |
-        Retrieves a pricing by name for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
+        Retrieves a pricing by slug for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
 
         **Authentication**: Public
 
@@ -656,8 +2851,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/CollectionSlug'
       responses:
         '200':
           description: Operation Completed
@@ -679,7 +2875,7 @@ paths:
     put:
       summary: Update metadata of a pricing.
       description: |
-        Updates the metadata of all pricing versions of a given pricing. If a pricing is inside a collection, **you have to provide the `collectionName` query parameter**
+        Updates the metadata of all pricing versions of a given pricing. If a pricing is inside a collection, **you have to provide the `collection` query parameter**
 
         **Authentication**: User API Key
 
@@ -691,9 +2887,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/CollectionQuery'
       requestBody:
         $ref: '#/components/requestBodies/PricingUpdate'
       responses:
@@ -717,7 +2913,7 @@ paths:
     delete:
       summary: Delete a pricing.
       description: |
-        Deletes all versions of a given pricing. If a pricing is inside a collection, **you have to provide the `collectionName` query parameter**
+        Deletes all versions of a given pricing. If a pricing is inside a collection, **you have to provide the `collection` query parameter**
 
         **Authentication**: User API Key
 
@@ -730,9 +2926,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/CollectionQuery'
       responses:
         '200':
           description: Operation Completed
@@ -755,7 +2951,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
-  /pricings/{username}/{pricingName}/{pricingVersion}:
+  /pricings/{organizationId}/{pricingSlug}/{pricingVersion}:
     get:
       summary: Get the configurations of a pricing version.
       description: |
@@ -773,10 +2969,10 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/CollectionSlug'
       responses:
         '200':
           description: Operation Completed
@@ -788,6 +2984,71 @@ paths:
           description: Insufficient permissions
         '404':
           description: User, pricing or pricing version not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Add a new version to an existing pricing.
+      description: |
+        Creates a new version of the specified pricing. The `saasName` field in the
+        uploaded YAML file will be overridden to match the `:pricingSlug` path parameter,
+        ensuring consistency across all versions of the same pricing.
+
+        **Authentication**: Bearer Token or User API Key
+
+        **Permission**:
+        - OWNER or ADMIN of the organization: can always add versions.
+        - MEMBER: requires both org-level `CREATE` permission on the `pricing` entity type
+          AND entity-level `CREATE` permission on the specific pricing.
+        - Global ADMIN: can add versions to any pricing.
+
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/PricingVersion'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                yaml:
+                  type: string
+                  format: binary
+                  description: The Pricing2Yaml file
+                private:
+                  type: boolean
+                  default: false
+                  description: Whether the pricing version should be private
+                collectionId:
+                  type: string
+                  description: Optional collection ID to associate this version with
+              required:
+                - yaml
+      responses:
+        '200':
+          description: Pricing version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pricing'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (not a member of the organization, or lacks CREATE permission)
+        '404':
+          description: Organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         default:
           description: Unexpected error
           content:
@@ -810,8 +3071,8 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
       responses:
         '200':
@@ -828,52 +3089,6 @@ paths:
           description: Insufficient permissions
         '404':
           description: User, pricing or pricing version not found
-        default:
-          description: Unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /me/pricings:
-    put:
-      summary: Add pricing to collection.
-      description: |
-        Adds a pricing to a collection of the user performing the request.
-
-        **Authentication**: User API Key
-      
-      tags:
-        - Pricings
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                pricingName:
-                  $ref: '#/components/schemas/Name'
-                collectionId:
-                  type: string
-                  description: ID of the collection to add the pricing to
-      responses:
-        '200':
-          description: Operation Completed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Pricing added to collection successfully
-        '403':
-          description: Insufficient permissions
-        '404':
-          description: Pricing or collection not found
         default:
           description: Unexpected error
           content:
@@ -921,7 +3136,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
-  /collections/{username}:
+  /collections/{organizationId}:
     get:
       summary: Get all collections from a user.
       description: |
@@ -999,7 +3214,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /collections/{username}/bulk:
+  /collections/{organizationId}/bulk:
     post:
       summary: Creates a collection from a list of pricings.
       description: |
@@ -1051,11 +3266,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /collections/{username}/{collectionName}:
+  /collections/{organizationId}/{collectionSlug}:
     get:
       summary: Get collection details.
       description: |
-        Retrieves a collection by name for a given user. If the user requesting is the owner of the collection, they can then access private collections. Otherwise, only public ones.
+        Retrieves a collection by slug for a given user. If the user requesting is the owner of the collection, they can then access private collections. Otherwise, only public ones.
 
         **Authentication**: Public
 
@@ -1070,7 +3285,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/CollectionSlug'
       responses:
         '200':
           description: Operation Completed
@@ -1082,6 +3297,56 @@ paths:
           description: Insufficient permissions
         '404':
           description: User or collection not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add pricing to collection.
+      description: |
+        Adds a pricing to a collection of the user performing the request.
+
+        **Authentication**: User API Key
+
+        **Permission**: 
+        - USER: can add pricings to their own collections.
+        - ADMIN: can add pricings to any collection.
+
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/CollectionSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pricingSlug:
+                  type: string
+                  description: Slug of the pricing to add to the collection
+      responses:
+        '200':
+          description: Operation Completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Pricing added to collection successfully
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Pricing or collection not found
         default:
           description: Unexpected error
           content:
@@ -1106,7 +3371,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/CollectionSlug'
       requestBody:
         $ref: '#/components/requestBodies/CollectionUpdate'
       responses:
@@ -1144,7 +3409,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/CollectionSlug'
         - $ref: '#/components/parameters/CollectionCascade'
       responses:
         '200':
@@ -1168,7 +3433,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     
-  /collections/{username}/{collectionName}/download:
+  /collections/{organizationId}/{collectionSlug}/download:
     get:
       summary: Download collection.
       description: |
@@ -1187,7 +3452,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/CollectionName'
+        - $ref: '#/components/parameters/CollectionSlug'
       responses:
         '200':
           description: Operation Completed
@@ -1207,7 +3472,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /collections/{username}/{collectionName}/pricings/{pricingName}:
+  /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}:
     delete:
       summary: Remove a pricing from a collection.
       description: |
@@ -1219,16 +3484,16 @@ paths:
         - USER: can remove pricings from their own collections.
         - ADMIN: can remove pricings from any collection.
 
-        The `collectionName` path parameter must match the collection that contains the pricing, otherwise the endpoint returns 404.
+        The `collectionSlug` path parameter must match the collection that contains the pricing, otherwise the endpoint returns 404.
 
       tags:
         - Collections
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/Username'
-        - $ref: '#/components/parameters/CollectionName'
-        - $ref: '#/components/parameters/PricingName'
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/CollectionSlug'
+        - $ref: '#/components/parameters/PricingSlug'
       responses:
         '200':
           description: Operation Completed
@@ -1351,6 +3616,499 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: "ERROR: Redis client not initialized"
+
+  # ============================================
+  # Entity Permission Management Routes
+  # ============================================
+
+  /orgs/{orgId}/permissions:
+    get:
+      summary: List entity permissions for an organization
+      description: |
+        Returns all entity permissions configured for the organization. Results can be
+        filtered by entity type. All authenticated members (OWNER, ADMIN, MEMBER) can
+        access this endpoint.
+
+        For OWNER and ADMIN users, implicit full permissions (GET, PUT, DELETE, CREATE)
+        are included in the response for each entity type when no explicit permission
+        record exists. This ensures the frontend can correctly determine that these
+        roles have full access without needing separate role checks.
+
+        For MEMBER users, only explicitly configured permission records are returned.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: entityType
+          in: query
+          required: false
+          description: Filter by entity type (pricing or collection)
+          schema:
+            type: string
+            enum: [pricing, collection]
+      responses:
+        '200':
+          description: List of entity permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EntityPermission'
+        '403':
+          description: Insufficient permissions (requires OWNER or ADMIN role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Set entity permissions for a user
+      description: |
+        Creates or updates permissions for a specific user on an entity (pricing or collection).
+        Only OWNER and ADMIN users can manage entity permissions.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/SetPermissionRequest'
+      responses:
+        '201':
+          description: Permission created or updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityPermission'
+        '403':
+          description: Insufficient permissions (requires OWNER or ADMIN role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{orgId}/permissions/{permissionId}:
+    delete:
+      summary: Remove an entity permission
+      description: |
+        Removes a specific entity permission by ID. Only OWNER and ADMIN users can
+        remove entity permissions.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/PermissionId'
+      responses:
+        '200':
+          description: Permission removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Permission removed successfully"
+        '403':
+          description: Insufficient permissions (requires OWNER or ADMIN role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Permission not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================
+  # Entity Permission Query Routes
+  # ============================================
+
+  /pricings/{organizationId}/{pricingSlug}/permissions:
+    get:
+      summary: Get current user's permissions on a pricing
+      description: |
+        Returns the current user's effective permissions on a specific pricing. If the user
+        is OWNER or ADMIN of the organization, all permissions are returned as true.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+      responses:
+        '200':
+          description: User's permissions on the pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityPermission'
+        '404':
+          description: Pricing not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /collections/{organizationId}/{collectionSlug}/permissions:
+    get:
+      summary: Get current user's permissions on a collection
+      description: |
+        Returns the current user's effective permissions on a specific collection. If the user
+        is OWNER or ADMIN of the organization, all permissions are returned as true.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: collectionSlug
+          in: path
+          required: true
+          description: The slug of the collection
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User's permissions on the collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityPermission'
+        '404':
+          description: Collection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================
+  # Notifications
+  # ============================================
+
+  /notifications:
+    get:
+      summary: Get current user's notifications
+      description: |
+        Retrieves a paginated list of notifications for the currently authenticated user.
+        Supports filtering by read/unread status.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Notifications
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+          description: Filter to only return unread notifications
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of notifications to skip
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of notifications to return
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/stream:
+    get:
+      summary: SSE stream for real-time notifications
+      description: |
+        Establishes a Server-Sent Events (SSE) connection for real-time notification delivery.
+        Events are sent when new notifications are created for the authenticated user.
+
+        **Authentication**: JWT token as query parameter `?token=xxx`
+
+        **Events**:
+        - `connected`: Sent on successful connection with `{ userId }`
+        - `notification`: Sent when a new notification is created
+        - `unread-count`: Sent on connection with current unread count
+
+      tags:
+        - Notifications
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: JWT authentication token
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Invalid or missing token
+
+  /notifications/unread-count:
+    get:
+      summary: Get unread notification count
+      description: |
+        Returns the count of unread notifications for the currently authenticated user.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Notifications
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 5
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/mark-all-read:
+    put:
+      summary: Mark all notifications as read
+      description: |
+        Marks all notifications for the currently authenticated user as read.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Notifications
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Number of notifications updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+                    example: 5
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/{notificationId}:
+    put:
+      summary: Mark a notification as read
+      description: |
+        Marks a specific notification as read.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Notifications
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The notification ID
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Authentication required
+        '404':
+          description: Notification not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a notification
+      description: |
+        Deletes a specific notification.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Notifications
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The notification ID
+      responses:
+        '200':
+          description: Notification deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Authentication required
+        '404':
+          description: Notification not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================
+  # Organization Invitations (Invite Users)
+  # ============================================
+
+  /orgs/{organizationId}/invitations/invite-users:
+    post:
+      summary: Invite users to organization via notifications
+      description: |
+        Creates an invitation and sends notifications to the specified users.
+        Internally generates an invitation link with `maxUses` set to the number of invited users.
+        Each invited user receives a notification with the invitation link.
+
+        **Authentication**: User token
+
+        **Permission**: Only OWNER or ADMIN of the organization.
+
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of user IDs to invite
+                  minItems: 1
+              required:
+                - userIds
+      responses:
+        '201':
+          description: Invitation created and notifications sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationInvitation'
+        '400':
+          description: Invalid request (empty userIds array)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions (requires OWNER or ADMIN)
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -1551,6 +4309,186 @@ components:
           type: string
           format: date-time
 
+    UserSettings:
+      type: object
+      description: User settings (password, token, API keys excluded)
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        settings:
+          type: object
+          description: User preferences and configuration
+          properties:
+            phone:
+              type: string
+              nullable: true
+            avatar:
+              type: string
+              nullable: true
+              description: URI to the user's avatar image or SVG path
+            avatarBgColor:
+              type: string
+              nullable: true
+              description: Background color for avatar (hex)
+              example: "#fa520f"
+            avatarFgColor:
+              type: string
+              nullable: true
+              description: Icon/text color for avatar (hex)
+              example: "#ffffff"
+            profile:
+              type: object
+              nullable: true
+              properties:
+                displayName:
+                  type: string
+                  nullable: true
+                  description: Public display name (overrides real name)
+                bio:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                city:
+                  type: string
+                  nullable: true
+                country:
+                  type: string
+                  nullable: true
+                dateOfBirth:
+                  type: string
+                  format: date
+                  nullable: true
+            socialLinks:
+              type: object
+              nullable: true
+              properties:
+                linkedin:
+                  type: string
+                  nullable: true
+                instagram:
+                  type: string
+                  nullable: true
+                facebook:
+                  type: string
+                  nullable: true
+                x:
+                  type: string
+                  nullable: true
+            notificationPrefs:
+              type: object
+              nullable: true
+              description: Map of notification kind to channel preferences
+              additionalProperties:
+                type: object
+                properties:
+                  email:
+                    type: boolean
+                  inbox:
+                    type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ------------------------------
+    # --         API KEYS          --
+    # ------------------------------
+
+    ApiKeyScope:
+      type: object
+      description: Scope assignment for an API key within an organization
+      properties:
+        organizationId:
+          type: string
+          description: ID of the organization
+        scope:
+          type: string
+          enum: [ALL, MANAGEMENT, VIEW]
+          description: |
+            Access level for the organization:
+            - ALL: Full access to this organization and all sub-organizations
+            - MANAGEMENT: Full access to this organization only (no inheritance)
+            - VIEW: Read-only access to this organization only
+
+    ApiKeySummary:
+      type: object
+      description: API key summary (key is truncated for security)
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the API key
+        name:
+          type: string
+          description: Human-readable name for the API key
+          example: "CI/CD Pipeline"
+        keyPreview:
+          type: string
+          description: Truncated API key (only last 6 characters visible)
+          example: "sk-...abc123"
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyScope'
+          description: List of organization scopes for this API key
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiration date (null = never expires)
+        revoked:
+          type: boolean
+          description: Whether the API key has been revoked
+
+    CreateApiKeyRequest:
+      type: object
+      description: Request body for creating a new API key
+      required:
+        - name
+        - scopes
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the API key
+          example: "CI/CD Pipeline"
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyScope'
+          description: List of organization scopes for this API key
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiration date (null = never expires)
+
+    CreateApiKeyResponse:
+      type: object
+      description: Response after creating a new API key (key shown only once)
+      properties:
+        apiKey:
+          $ref: '#/components/schemas/ApiKeySummary'
+        plainKey:
+          type: string
+          description: |
+            Full API key (shown only once). Copy this key immediately.
+            You won't be able to see it again.
+          example: "sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6"
+
+    # ------------------------------
+    # --        ORGANIZATIONS     --
     # ------------------------------
     # --         PRICINGS         --
     # ------------------------------
@@ -1581,12 +4519,29 @@ components:
       properties:
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the pricing name
+          example: "zoom"
         owner:
           type: string
-        collectionName:
-          type: string
-          description: Name of the pricing collection to which this pricing belongs
-          example: "MyCollection"
+        collection:
+          type: object
+          description: Details about the collection that contains the pricing, if any
+          properties:
+            id:
+              type: string
+              description: ID of the collection
+            name:
+              type: string
+              description: Name of the collection
+            slug:
+              type: string
+              description: Slug of the collection
+          example:
+            id: "68050bd09890322c57842f6f"
+            name: "My Collection"
+            slug: "my-collection"
         version:
           type: string
           description: Any string representing the version of the pricing definition (e.g. "1.0", "2.1.3", "2024-09-30")
@@ -1597,6 +4552,10 @@ components:
           type: string
           description: ISO 4217 currency code for the pricing definition
           example: "USD"
+        private:
+          type: boolean
+          description: Whether the pricing is private (only accessible to users with explicit permissions)
+          default: false
         analytics:
           type: object
           nullable: true
@@ -1626,10 +4585,27 @@ components:
         name:
           type: string
           description: Common name of all pricing versions
-        collectionName:
+        slug:
           type: string
-          description: Name of the pricing collection to which this pricing belongs
-          example: "MyCollection"
+          description: URL-friendly identifier auto-generated from the pricing name
+          example: "zoom"
+        collection:
+          type: object
+          description: Details about the collection that contains the pricing, if any
+          properties:
+            id:
+              type: string
+              description: ID of the collection
+            name:
+              type: string
+              description: Name of the collection
+            slug:
+              type: string
+              description: Slug of the collection
+          example:
+            id: "68050bd09890322c57842f6f"
+            name: "My Collection"
+            slug: "my-collection"
         versions:
           type: array
           description: List of all versions of the pricing definition with their details
@@ -1648,10 +4624,23 @@ components:
         private:
           type: boolean
           default: false
-        collectionName:
-          type: string
-          description: Name of the pricing collection to which this pricing belongs
-          example: "MyCollection"
+        collection:
+          type: object
+          description: Details about the collection that contains the pricing, if any
+          properties:
+            id:
+              type: string
+              description: ID of the collection
+            name:
+              type: string
+              description: Name of the collection
+            slug:
+              type: string
+              description: Slug of the collection
+          example:
+            id: "68050bd09890322c57842f6f"
+            name: "My Collection"
+            slug: "my-collection"
         createdAt:
           $ref: '#/components/schemas/Date'
         url:
@@ -1829,7 +4818,7 @@ components:
             avatar:
               type: string
               format: uri
-              example: https://sphere.score.us.es/avatars/default-avatar.png
+              example: https://sphere.score.us.es/static/avatars/users/default-avatar.png
 
     PricingCollection:
       type: object
@@ -1838,6 +4827,10 @@ components:
           type: string
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the collection name
+          example: "my-collection"
         description:
           type: string
           nullable: true
@@ -1867,6 +4860,10 @@ components:
           type: string
         name:
           type: string
+        slug:
+          type: string
+          description: URL-friendly identifier auto-generated from the collection name
+          example: "my-collection"
         description:
           type: string
           nullable: true
@@ -1902,7 +4899,501 @@ components:
               items:
                 $ref: '#/components/schemas/Pricing'
 
+        # ------------------------------
+    # --      ORGANIZATIONS       --
+    # ------------------------------
+
+    Organization:
+      type: object
+      description: |
+        Represents an organization in the SPHERE platform. Organizations group users
+        together and can own pricings and collections. Each user is automatically assigned
+        a personal organization upon registration. Organizations support hierarchical
+        parent-child relationships via the `_parentId` and `ancestors` fields.
+      required:
+        - id
+        - name
+        - displayName
+        - isPersonal
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique MongoDB ObjectId identifier of the organization
+          example: "68050bd09890322c57842f6f"
+        name:
+          type: string
+          description: |
+            URL-safe unique identifier for the organization. Must be 3-50 characters,
+            lowercase letters, digits, hyphens, and underscores only. Cannot be changed
+            after creation. For personal organizations, this is set to the owner's username.
+          example: "acme-corp"
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-z0-9_-]+$'
+        displayName:
+          type: string
+          description: Human-readable name for the organization (max 255 characters)
+          example: "Acme Corporation"
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          description: Optional free-text description of the organization
+          example: "The leading provider of SaaS solutions"
+        avatar:
+          type: string
+          nullable: true
+          description: URL to the organization's avatar image
+          example: "https://sphere.score.us.es/static/avatars/orgs/org-avatar.png"
+        _parentId:
+          type: string
+          nullable: true
+          description: |
+            ID of the parent organization, or `null` if this is a top-level organization.
+            When set, this organization is a child in the hierarchy. Users with membership
+            in ancestor organizations automatically inherit role-based access.
+          example: "68050bd09890322c57842f6f"
+        ancestors:
+          type: array
+          description: |
+            Materialized path of ancestor organization IDs from root to immediate parent.
+            Empty array for top-level organizations. Used for efficient hierarchy queries
+            and role inheritance resolution.
+          items:
+            type: string
+          example: ["68050bd09890322c57842f6f"]
+        subOrganizations:
+          type: array
+          description: |
+            List of immediate child organizations. Not stored in the database, but included
+            in API responses for convenience when fetching organization details.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              displayName:
+                type: string
+              description:
+                type: string
+                nullable: true
+              _parentId:
+                type: string
+                nullable: true
+              ancestors:
+                type: array
+                items:
+                  type: string
+              avatar:
+                type: string
+                nullable: true
+        isPersonal:
+          type: boolean
+          description: |
+            Whether this is a personal organization. Personal organizations are
+            automatically created for each user and cannot be deleted.
+          default: false
+          example: false
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        updatedAt:
+          $ref: '#/components/schemas/Date'
+
+    UserOrganization:
+      type: object
+      description: |
+        An organization as returned by the user's organization list endpoint. Extends the
+        base Organization with the user's role and nested sub-organizations.
+      required:
+        - id
+        - name
+        - displayName
+        - isPersonal
+        - role
+      properties:
+        id:
+          type: string
+          description: Unique MongoDB ObjectId identifier of the organization
+          example: "68050bd09890322c57842f6f"
+        name:
+          type: string
+          description: URL-safe unique identifier for the organization
+          example: "acme-corp"
+        displayName:
+          type: string
+          description: Human-readable name for the organization
+          example: "Acme Corporation"
+        description:
+          type: string
+          nullable: true
+          description: Optional free-text description of the organization
+        avatar:
+          type: string
+          nullable: true
+          description: URL to the organization's avatar image
+        avatarBgColor:
+          type: string
+          description: Background color for avatar initials fallback
+        avatarFgColor:
+          type: string
+          description: Foreground color for avatar initials fallback
+        _parentId:
+          type: string
+          nullable: true
+          description: ID of the parent organization, or null if top-level
+        ancestors:
+          type: array
+          description: Materialized path of ancestor organization IDs
+          items:
+            type: string
+        isPersonal:
+          type: boolean
+          description: Whether this is a personal organization
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: The authenticated user's role in this organization
+          example: "MEMBER"
+        subOrganizations:
+          type: array
+          description: Nested child organizations (tree structure)
+          items:
+            $ref: '#/components/schemas/UserOrganization'
+
+    PaginatedUserOrganizations:
+      type: object
+      description: Paginated response containing user organizations with tree structure
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          description: Array of top-level organizations with nested sub-organizations
+          items:
+            $ref: '#/components/schemas/UserOrganization'
+        total:
+          type: integer
+          description: Total number of top-level organizations the user belongs to
+          example: 5
+
+    OrganizationMember:
+      type: object
+      description: |
+        Represents a user's membership in an organization. Returned by the members listing
+        endpoint with enriched user data (via aggregation pipeline join with the users collection).
+      required:
+        - id
+        - role
+        - joinedAt
+      properties:
+        id:
+          type: string
+          description: Unique MongoDB ObjectId of the membership record (not the user or organization)
+          example: "68050bd09890322c57842f70"
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: |
+            The member's role within the organization:
+            - **OWNER**: Full control over the organization, can manage members, invitations, and settings
+            - **ADMIN**: Can manage members and invitations, but cannot delete the organization
+            - **MEMBER**: Basic access, can view organization resources
+          example: "ADMIN"
+        joinedAt:
+          $ref: '#/components/schemas/Date'
+        user:
+          type: object
+          description: |
+            Basic user information for the member. Included when listing members via the
+            aggregation pipeline that joins membership records with the users collection.
+          properties:
+            id:
+              type: string
+              description: The user's MongoDB ObjectId
+              example: "68050bd09890322c57842f71"
+            username:
+              type: string
+              description: The user's unique username
+              example: "johndoe"
+            email:
+              type: string
+              format: email
+              description: The user's email address
+              example: "johndoe@example.com"
+            avatar:
+              type: string
+              nullable: true
+              description: URL to the user's avatar image
+              example: "https://sphere.score.us.es/static/avatars/users/default-avatar.png"
+            avatarBgColor:
+              type: string
+              description: Background color for the avatar (hex color code). Used for initials/SVG avatars.
+              example: "#fa520f"
+            avatarFgColor:
+              type: string
+              description: Foreground/text color for the avatar (hex color code). Used for initials/SVG avatars.
+              example: "#ffffff"
+
+    OrganizationInvitation:
+      type: object
+      description: |
+        Represents an invitation to join an organization. Invitations are created by
+        OWNER or ADMIN members and generate a unique code that can be shared with users.
+        Users join via `POST /orgs/join/{code}` and are always assigned the `MEMBER` role.
+      required:
+        - id
+        - code
+        - useCount
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: Unique MongoDB ObjectId of the invitation
+          example: "68050bd09890322c57842f72"
+        code:
+          type: string
+          description: |
+            Unique invitation code (10-character hex string) generated via
+            `crypto.randomBytes(5).toString('hex')`. This is the code users provide
+            to join the organization.
+          example: "a1b2c3d4e5"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the invitation expires. `null` means the invitation never expires.
+            Default is 7 days from creation if not specified.
+          example: "2025-12-31T23:59:59Z"
+        maxUses:
+          type: number
+          nullable: true
+          description: |
+            Maximum number of times this invitation can be accepted. `null` means
+            unlimited uses. Once `useCount` reaches `maxUses`, the invitation can
+            no longer be used.
+          example: 10
+        useCount:
+          type: number
+          description: |
+            How many times this invitation has been accepted. Incremented atomically
+            each time a user joins via this invitation.
+          example: 3
+        createdAt:
+          $ref: '#/components/schemas/Date'
+
+    OrganizationInvitationPreview:
+      type: object
+      description: |
+        Preview of an organization invitation, returned by the `GET /orgs/invitations/preview/{code}`
+        endpoint. Contains the full invitation details along with basic organization information
+        so users can see which organization they'll be joining before accepting.
+      properties:
+        invitation:
+          $ref: '#/components/schemas/OrganizationInvitation'
+        organization:
+          type: object
+          description: |
+            Basic organization information visible in the invitation preview. Includes
+            enough detail for users to identify the organization before deciding to join.
+          properties:
+            id:
+              type: string
+              description: The organization's MongoDB ObjectId
+              example: "68050bd09890322c57842f6f"
+            name:
+              type: string
+              description: The organization's unique URL-safe name
+              example: "acme-corp"
+            displayName:
+              type: string
+              description: The organization's human-readable name
+              example: "Acme Corporation"
+            avatar:
+              type: string
+              nullable: true
+              description: URL to the organization's avatar image
+              example: "https://sphere.score.us.es/static/avatars/orgs/org-avatar.png"
+            isPersonal:
+              type: boolean
+              description: Whether this is a personal organization
+
+    # ------------------------------
+    # --       NOTIFICATIONS      --
+    # ------------------------------
+
+    Notification:
+      type: object
+      description: |
+        Represents a notification for a user. Notifications are created for various events
+        such as organization invitations, system messages, and more.
+      required:
+        - id
+        - kind
+        - title
+        - message
+        - read
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: Unique MongoDB ObjectId of the notification
+          example: "68050bd09890322c57842f80"
+        kind:
+          type: string
+          enum: [OrganizationInvitation, System, CollectionShared, PricingUpdated]
+          description: The type of notification
+          example: "OrganizationInvitation"
+        title:
+          type: string
+          description: Short title of the notification
+          example: "You've been invited to join Acme Corp"
+        message:
+          type: string
+          description: Detailed message of the notification
+          example: "John Doe has invited you to join Acme Corp"
+        data:
+          type: object
+          description: Additional data related to the notification (kind-specific)
+          example: { "invitationCode": "a1b2c3d4e5", "organizationId": "68050bd09890322c57842f6f" }
+        read:
+          type: boolean
+          description: Whether the notification has been read
+          example: false
+        createdAt:
+          $ref: '#/components/schemas/Date'
     
+    # ------------------------------
+    # --   ENTITY PERMISSION SCHEMAS --
+    # ------------------------------
+
+    EntityPermission:
+      type: object
+      description: An entity permission record linking a user to specific permissions on a pricing or collection
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the permission record
+          example: "68050bd09890322c57842f80"
+        _userId:
+          type: string
+          description: The ID of the user this permission applies to
+          example: "68050bd09890322c57842f71"
+        _organizationId:
+          type: string
+          description: The ID of the organization this permission belongs to
+          example: "68050bd09890322c57842f6f"
+        entityType:
+          type: string
+          enum: [pricing, collection]
+          description: The type of entity this permission applies to
+          example: "pricing"
+        entitySlug:
+          type: string
+          nullable: true
+          description: The URL-friendly slug of the entity (pricing or collection). Null for org-scoped permissions.
+          example: "zoom"
+        permissions:
+          $ref: '#/components/schemas/EntityPermissions'
+        grantedBy:
+          type: string
+          description: The ID of the user who granted this permission
+          example: "68050bd09890322c57842f71"
+        entityName:
+          type: string
+          description: The name of the entity (populated in responses)
+          example: "My Pricing"
+        userName:
+          type: string
+          description: The username of the user (populated in responses)
+          example: "johndoe"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EntityPermissions:
+      type: object
+      description: Granular permissions for an entity
+      properties:
+        GET:
+          type: boolean
+          description: Whether the user can view the entity
+          example: true
+        PUT:
+          type: boolean
+          description: Whether the user can update the entity
+          example: false
+        DELETE:
+          type: boolean
+          description: Whether the user can delete the entity
+          example: false
+        CREATE:
+          type: boolean
+          description: Whether the user can create new versions or child entities
+          example: false
+
+    UserPricingsResponse:
+      type: object
+      description: Response containing pricings accessible to a user with their permissions
+      properties:
+        pricings:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "My Pricing"
+              permissions:
+                $ref: '#/components/schemas/EntityPermissions'
+              organization:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  role:
+                    type: string
+                    enum: [OWNER, ADMIN, MEMBER]
+        total:
+          type: integer
+          description: Total number of pricings accessible to the user
+          example: 10
+
+    UserCollectionsResponse:
+      type: object
+      description: Response containing collections accessible to a user with their permissions
+      properties:
+        collections:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "My Collection"
+              permissions:
+                $ref: '#/components/schemas/EntityPermissions'
+              organization:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  role:
+                    type: string
+                    enum: [OWNER, ADMIN, MEMBER]
+        total:
+          type: integer
+          description: Total number of collections accessible to the user
+          example: 10
+
     # ------------------------------
     # --          ERRORS          --
     # ------------------------------
@@ -2264,6 +5755,190 @@ components:
                 description: Optional expiration time in seconds. If not provided, defaults to 300 seconds (5 minutes)
                 minimum: 1
                 example: 3600
+
+    OrganizationCreate:
+      description: |
+        Request body for creating a new organization. The authenticated user becomes
+        the OWNER of the created organization.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+                description: |
+                  URL-safe unique identifier for the organization. Required unless
+                  `isPersonal` is `true` (in which case it is auto-set to the user's
+                  username). Must be 3-50 characters, lowercase letters, digits, hyphens,
+                  and underscores only. Must be unique across the platform.
+                example: "acme-corp"
+                minLength: 3
+                maxLength: 50
+                pattern: '^[a-z0-9_-]+$'
+              displayName:
+                type: string
+                description: Human-readable name for the organization (required, max 255 chars)
+                example: "Acme Corporation"
+                maxLength: 255
+              description:
+                type: string
+                nullable: true
+                description: Optional free-text description of the organization
+                example: "The leading provider of SaaS solutions"
+              isPersonal:
+                type: boolean
+                description: |
+                  Whether this is a personal organization. When `true`, the `name` field
+                  is automatically overridden with the authenticated user's username.
+                  Personal organizations cannot be deleted.
+                default: false
+                example: false
+              _parentId:
+                type: string
+                description: |
+                  ID of a parent organization. When provided, the new organization becomes
+                  a child of the specified parent. The `ancestors` array is automatically
+                  computed from the parent's ancestry chain. Users with membership in
+                  ancestor organizations automatically inherit role-based access to the
+                  new child organization.
+                example: "68050bd09890322c57842f6f"
+
+    OrganizationUpdate:
+      description: |
+        Request body for updating organization metadata. All fields are optional, but at
+        least one should be provided. The `name` field cannot be changed after creation.
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              displayName:
+                type: string
+                description: Updated human-readable name for the organization (max 255 chars)
+                example: "Acme Corporation Updated"
+                maxLength: 255
+              description:
+                type: string
+                nullable: true
+                description: Updated description (set to `null` to clear)
+                example: "Updated description"
+              avatar:
+                type: string
+                nullable: true
+                description: Updated avatar URL (set to `null` to clear)
+                example: "https://sphere.score.us.es/static/avatars/orgs/new-avatar.png"
+
+    AddMember:
+      description: |
+        Request body for adding a user to an organization. Unlike `POST /orgs/join/{code}`
+        (which always assigns `MEMBER` role), this endpoint allows assigning any role.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - userId
+              - role
+            properties:
+              userId:
+                type: string
+                description: The MongoDB ObjectId of the user to add as a member
+                example: "68050bd09890322c57842f71"
+              role:
+                type: string
+                enum: [OWNER, ADMIN, MEMBER]
+                description: |
+                  The role to assign to the new member:
+                  - **OWNER**: Full control over the organization
+                  - **ADMIN**: Can manage members and invitations
+                  - **MEMBER**: Basic access to organization resources
+                example: "MEMBER"
+
+    UpdateMemberRole:
+      description: |
+        Request body for changing a member's role within the organization. The system
+        automatically recalculates an internal role weight used for sorting.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - role
+            properties:
+              role:
+                type: string
+                enum: [OWNER, ADMIN, MEMBER]
+                description: |
+                  The new role to assign to the member:
+                  - **OWNER**: Full control over the organization
+                  - **ADMIN**: Can manage members and invitations
+                  - **MEMBER**: Basic access to organization resources
+                example: "ADMIN"
+
+    CreateInvitation:
+      description: |
+        Request body for creating an organization invitation. All fields are optional.
+        The invitation code is auto-generated as a 10-character hex string.
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              expiresInDays:
+                type: integer
+                description: |
+                  Number of days until the invitation expires. Default is 7 days.
+                  Must be a positive integer. The expiration is calculated from the
+                  current timestamp.
+                minimum: 1
+                example: 7
+              maxUses:
+                type: integer
+                description: |
+                  Maximum number of times this invitation can be accepted. Default is
+                  `null` (unlimited). Once the limit is reached, the invitation can no
+                  longer be used.
+                minimum: 1
+                example: 10
+
+    SetPermissionRequest:
+      description: Request to set entity permissions for a user
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - userId
+              - entityType
+              - permissions
+            properties:
+              userId:
+                type: string
+                description: The MongoDB ObjectId of the user to grant permissions to
+                example: "68050bd09890322c57842f71"
+              entityType:
+                type: string
+                enum: [pricing, collection]
+                description: The type of entity to set permissions for
+                example: "pricing"
+              entitySlug:
+                type: string
+                nullable: true
+                description: >-
+                  The URL-friendly slug of the entity (pricing name or collection name).
+                  Use null for org-scoped permissions (e.g. CREATE permission at the
+                  organization level).
+                example: "zoom"
+              permissions:
+                $ref: '#/components/schemas/EntityPermissions'
+
   responses:
     PricingList:
       description: A list of pricings matching the provided filter
@@ -2421,20 +6096,44 @@ components:
               message:
                 type: string
                 example: "Cache set successfully"
+
   parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      description: |
+        The MongoDB ObjectId of the organization. The middleware automatically resolves
+        the organization context from this parameter — loading the organization and
+        determining the authenticated user's role within it.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f6f"
+
     Username:
       name: username
       in: path
       required: true
       schema:
         $ref: '#/components/schemas/Username'
-    
-    PricingName:
-      name: pricingName
+
+    CollectionSlug:
+      name: collectionSlug
       in: path
       required: true
+      description: The URL-safe slug identifier of the collection (e.g., "my-collection")
       schema:
         type: string
+        example: "my-collection"
+    
+    PricingSlug:
+      name: pricingSlug
+      in: path
+      required: true
+      description: The URL-friendly slug identifier of the pricing (auto-generated from name)
+      schema:
+        type: string
+        example: "zoom"
 
     PricingVersion:
       name: pricingVersion
@@ -2442,6 +6141,17 @@ components:
       required: true
       schema:
         type: string
+
+    PermissionId:
+      name: permissionId
+      in: path
+      required: true
+      description: |
+        The MongoDB ObjectId of the entity permission record. Used to identify which
+        permission to remove when deleting entity permissions.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f80"
 
     UsernameQuery:
       name: username
@@ -2487,6 +6197,15 @@ components:
       required: false
       schema:
         $ref: '#/components/schemas/SortByPricings'
+
+    OrganizationIds:
+      name: organizationIds
+      in: query
+      required: false
+      description: Comma-separated list of organization IDs to filter by. Non-admin users can only filter by organizations they belong to; non-member organization IDs are ignored. When omitted, results include all accessible organizations.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f6f,68050bd09890322c57842f70"
 
     SortByCollections:
       name: sortBy
@@ -2564,20 +6283,24 @@ components:
       schema:
         $ref: '#/components/schemas/Offset'
 
-    CollectionName:
-      name: collectionName
-      in: path
+    CollectionQuery:
+      name: collection
+      description: The slug identifier of the collection to filter pricings by (only pricings that are in this collection will be included in the results)
+      in: query
       required: true
       schema:
         type: string
+        example: "my-collection"
 
-    IncludePricingsInCollection:
-      name: includePricingsInCollection
-      description: Whether to include pricings that are in a collection in the results (only applicable when `collectionName` is NOT PROVIDED)
+    ExcludePricingsInCollection:
+      name: excludePricingsInCollection
+      description: If set to "true", only pricings that are NOT in any collection will be returned. Cannot be used together with the `collection` parameter.
       in: query
       required: false
       schema:
-        type: boolean
+        type: string
+        enum: ["true", "false"]
+        example: "true"
 
     CollectionCascade:
       name: cascade
@@ -2587,6 +6310,52 @@ components:
       schema:
         type: boolean
 
+    OrganizationId:
+      name: organizationId
+      in: path
+      required: true
+      description: |
+        The MongoDB ObjectId of the organization. The middleware automatically resolves
+        the organization context from this parameter — loading the organization and
+        determining the authenticated user's role within it.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f6f"
+
+    UserId:
+      name: userId
+      in: path
+      required: true
+      description: |
+        The MongoDB ObjectId of the user. Used in member management endpoints to identify
+        which user to add, update, or remove from an organization.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f71"
+
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      description: |
+        The MongoDB ObjectId of the invitation. Used to identify which invitation to
+        revoke when deleting from an organization.
+      schema:
+        type: string
+        example: "68050bd09890322c57842f72"
+
+    InvitationCode:
+      name: code
+      in: path
+      required: true
+      description: |
+        The unique invitation code (10-character hex string) generated when the invitation
+        was created. Used to preview or accept an invitation. This code is shareable and
+        is included in the invitation join URL.
+      schema:
+        type: string
+        example: "a1b2c3d4e5"
+
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -2594,6 +6363,9 @@ components:
       name: x-api-key
       description: |
         API Key for authentication. Two types are supported:
-        - **User API Key** (format: `usr_*`): Obtained from POST /users/authenticate endpoint
-        - **Organization API Key** (format: `org_*`): Created in organization settings
+        - **User API Key** (format: `usr_*`): Obtained from `POST /users/login` endpoint.
+          Provides access based on the user's role (ADMIN or USER).
+        - **Organization API Key** (format: `org_*`): Created in organization settings.
+          Provides access scoped to the organization's resources.
 
+        Include the token directly in the `Authorization` header **without** a `Bearer` prefix.

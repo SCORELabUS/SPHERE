@@ -1,88 +1,194 @@
-@startuml
+@startuml SPHERE_DB
 
-' Classes
-class User {
-    firstName: String
-    lastName: String
-    email: String
-    password: String
-    phone: String
-    avatar: String [Optional]
-    address: String [Optional]
-    postalCode: String [Optional]
-    userType: UserType
+' =====================
+' ENUMS
+' =====================
+
+enum Role {
+  ADMIN
+  USER
 }
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ApiKeyScope {
+  ALL
+  MANAGEMENT
+  VIEW
+}
+
+' =====================
+' CORE ENTITIES
+' =====================
+
+class User {
+  firstName: String
+  lastName: String
+  email: String
+  username: String
+  password: String
+  avatar: String [Optional]
+  token: String [Optional]
+  tokenExpiration: Date [Optional]
+  role: Role
+  apiKeys: ApiKeySchema[] [Optional]
+  --
+  createdAt: Date
+  updatedAt: Date
+}
+
+class ApiKey {
+  key: String
+  name: String
+  expiresAt: Date [Optional]
+  revoked: Boolean
+  --
+  scopes: ApiKeyScope[]
+}
+
+class Organization {
+  name: String
+  displayName: String
+  description: String [Optional]
+  avatar: String [Optional]
+  _parentId: ObjectId [Optional]
+  ancestors: ObjectId[]
+  isPersonal: Boolean
+  --
+  createdAt: Date
+  updatedAt: Date
+}
+
+' =====================
+' MEMBERSHIPS
+' =====================
+
+class OrganizationMembership {
+  _userId: ObjectId
+  _organizationId: ObjectId
+  role: OrgRole
+  _roleWeight: Number
+  joinedAt: Date
+  --
+  createdAt: Date
+  updatedAt: Date
+}
+
+' =====================
+' INVITATIONS
+' =====================
+
+class OrganizationInvitation {
+  _organizationId: ObjectId
+  code: String
+  createdBy: ObjectId
+  expiresAt: Date [Optional]
+  maxUses: Number [Optional]
+  useCount: Number
+  --
+  createdAt: Date
+  updatedAt: Date
+}
+
+' =====================
+' PRICING DOMAIN
+' =====================
 
 class PricingCollection {
-    name: String
-    lastUpdate: Date
+  name: String
+  description: String [Optional]
+  _organizationId: ObjectId [Optional]
+  private: Boolean
+  --
+  analytics: {
+    evolutionOfPlans: ParameterEvolution
+    evolutionOfAddOns: ParameterEvolution
+    evolutionOfFeatures: ParameterEvolution
+    evolutionOfConfigurationSpaceSize: ParameterEvolution
 }
 
-class CollectionAnalytics {
-    evolutionOfPlans: double[][]
-    evolutionOfFeatures: double[][]
-    evolutionOfAddOns: double[][]
-    evolutionOfConfigurationSpaceSize: double[][]
+
+class ParameterEvolution {
+  dates: Date[]
+  values: Number[]
 }
 
 class Pricing {
-    name: String
-    version: String
-    createdAt: Date
-    url: String [Optional]
-    currency: String
-    yaml: String
+  name: String
+  _collectionId: ObjectId [Optional]
+  _organizationId: ObjectId
+  version: String
+  url: String [Optional]
+  currency: String
+  yaml: String
+  private: Boolean
+  createdAt: Date
+  --
+  analytics: PricingAnalytics
 }
 
 class PricingAnalytics {
-    numberOfFeatures: integer
-    numberOfInformationFeatures: integer
-    numberOfIntegrationFeatures: integer
-    numberOfIntegrationApiFeatures: integer
-    numberOfIntegrationExtensionFeatures : integer
-    numberOfIntegrationIdentityProviderFeatures: integer
-    numberOfIntegrationWebSaaSFeatures: integer
-    numberOfIntegrationMarketplaceFeatures: integer
-    numberOfIntegrationExternalDeviceFeatures: integer
-    numberOfDomainFeatures: integer
-    numberOfAutomationFeatures: integer
-    numberOfBotAutomationFeatures: integer
-    numberOfFilteringAutomationFeatures: integer
-    numberOfTrackingAutomationFeatures: integer
-    numberOfTaskAutomationFeatures: integer
-    numberOfManagementFeatures: integer
-    numberOfGuaranteeFeatures: integer
-    numberOfSupportFeatures: integer
-    numberOfPaymentFeatures: integer
-    numberOfUsageLimits: integer
-    numberOfRenewableUsageLimits: integer
-    numberOfNonRenewableUsageLimits: integer
-    numberOfResponseDrivenUsageLimits: integer
-    numberOfTimeDrivenUsageLimits: integer
-    numberOfPlans: integer
-    numberOfFreePlans: integer
-    numberOfPaidPlans: integer
-    numberOfAddOns: integer
-    numberOfReplacementAddons: integer
-    numberOfExtensionAddons: integer
-    configurationSpaceSize: integer
-    minSubscriptionPrice: double
-    maxSubscriptionPrice: double
+  numberOfFeatures: Number
+  numberOfInformationFeatures: Number
+  numberOfIntegrationFeatures: Number
+  numberOfIntegrationApiFeatures: Number
+  numberOfIntegrationExtensionFeatures: Number
+  numberOfIntegrationIdentityProviderFeatures: Number
+  numberOfIntegrationWebSaaSFeatures: Number
+  numberOfIntegrationMarketplaceFeatures: Number
+  numberOfIntegrationExternalDeviceFeatures: Number
+  numberOfDomainFeatures: Number
+  numberOfAutomationFeatures: Number
+  numberOfBotAutomationFeatures: Number
+  numberOfFilteringAutomationFeatures: Number
+  numberOfTrackingAutomationFeatures: Number
+  numberOfTaskAutomationFeatures: Number
+  numberOfManagementFeatures: Number
+  numberOfGuaranteeFeatures: Number
+  numberOfSupportFeatures: Number
+  numberOfPaymentFeatures: Number
+  numberOfUsageLimits: Number
+  numberOfRenewableUsageLimits: Number
+  numberOfNonRenewableUsageLimits: Number
+  numberOfResponseDrivenUsageLimits: Number
+  numberOfTimeDrivenUsageLimits: Number
+  numberOfPlans: Number
+  numberOfFreePlans: Number
+  numberOfPaidPlans: Number
+  numberOfAddOns: Number
+  numberOfReplacementAddons: Number
+  numberOfExtensionAddons: Number
+  configurationSpaceSize: Number
+  minSubscriptionPrice: Number
+  maxSubscriptionPrice: Number
 }
 
-' Relationships
+' =====================
+' RELATIONSHIPS
+' =====================
 
-User "1" --> "0..*" Pricing : owns
-User "1" --> "0..*" PricingCollection : owns
-PricingCollection *-- CollectionAnalytics
-PricingCollection "0..1" <-- "1..*" Pricing : belongsTo
-Pricing *-- PricingAnalytics
+' Membership (policy layer)
+User "1" -- "0..*" OrganizationMembership : has
+Organization "1" -- "0..*" OrganizationMembership : has
 
-' Enums
+' Invitations
+Organization "1" -- "0..*" OrganizationInvitation : has
 
-enum UserType {
-    ADMIN
-    USER
-}
+' Hierarchy (structure layer)
+Organization "1" --> "0..*" Organization : children
+Organization "0..1" --> "1" Organization : parent
+
+' Pricing ownership
+Organization "1" -- "0..*" PricingCollection : owns
+Organization "1" -- "0..*" Pricing : owns
+
+PricingCollection "1" -- "0..*" Pricing : contains
+
+' ApiKey (embedded in User)
+User "1" *-- "0..*" ApiKey
 
 @enduml

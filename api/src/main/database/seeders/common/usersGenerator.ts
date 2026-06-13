@@ -33,8 +33,6 @@ const generateFakeUser = async () => {
   const lastName = faker.person.lastName();
   const email = faker.internet.email({ firstName: firstName, lastName: lastName });
   const password = faker.internet.password();
-  const phone = faker.phone.number();
-  const avatar = faker.image.avatar() + `?timestamp=${Math.floor(Math.random() * 100)}`;
   const address = `${faker.location.streetAddress()}, ${faker.location.city()}, ${faker.location.country()}.`;
   const postalCode = faker.location.zipCode();
   const userType = faker.helpers.arrayElement(['user', 'admin']);
@@ -45,8 +43,10 @@ const generateFakeUser = async () => {
     lastName,
     email,
     password,
-    phone,
-    avatar,
+    settings: {
+      phone: faker.phone.number(),
+      avatar: faker.image.avatar() + `?timestamp=${Math.floor(Math.random() * 100)}`,
+    },
     address,
     postalCode,
     userType,

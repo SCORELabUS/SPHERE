@@ -2,6 +2,7 @@ export interface Pricing {
   id: string;
   name: string;
   _collectionId?: string;
+  _organizationId?: string;
   createdAt: Date;
   url?: string;
   yaml: string;

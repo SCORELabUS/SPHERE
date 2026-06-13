@@ -136,7 +136,7 @@ export function ToolingStackSection({
                       key={`${tool.name}-${link.label}`}
                       type="button"
                       onClick={() => openLink(link.href, link.kind)}
-                      className="rounded-full border border-black/10 bg-[#f8fafc] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-cyan-300 hover:text-cyan-700"
+                      className="cursor-pointer rounded-full border border-black/10 bg-[#f8fafc] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-cyan-300 hover:text-cyan-700"
                     >
                       {link.label}
                       {link.kind === 'external' ? ' ↗' : ''}
@@ -147,7 +147,7 @@ export function ToolingStackSection({
                 <button
                   type="button"
                   onClick={() => openLink(tool.primary.href, tool.primary.kind)}
-                  className="mt-5 inline-flex items-center gap-2 text-xs uppercase tracking-[0.15em] text-[#1d2939] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:translate-x-1"
+                  className="mt-5 inline-flex cursor-pointer items-center gap-2 text-xs uppercase tracking-[0.15em] text-[#1d2939] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:translate-x-1"
                 >
                   {tool.primary.label}
                   <span className={tool.primary.kind === 'internal' ? 'rotate-45' : ''}>↗</span>

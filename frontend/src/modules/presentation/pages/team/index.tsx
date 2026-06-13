@@ -1,4 +1,4 @@
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { teamMembers } from "./data/team-data.tsx";
 import TeamMemberCard from "../../layouts/components/team-member-card";
 

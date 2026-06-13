@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Contribution, contributions } from './data/contributions-data';
 import ContributionCard from '../../layouts/components/contribution-card';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 import ContributionDetailsModal from '../../layouts/components/contribution-details';
 import { v4 as uuidv4 } from 'uuid';
 

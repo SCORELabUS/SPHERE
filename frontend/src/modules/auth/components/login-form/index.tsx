@@ -1,10 +1,11 @@
-// LoginForm.tsx
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { validateLogin } from '../../utils/validators/login-validators';
 import { loginUser } from '../../api/usersApi';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { Link } from 'react-router-dom';
+import { fadeUp } from '../auth-layout';
 
 export type LoginFormProps = {
   loginField: string;
@@ -12,135 +13,138 @@ export type LoginFormProps = {
 }
 
 const LoginForm: React.FC = () => {
-  
   const [errors, setErrors] = React.useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const {login} = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
 
-  function handleLogin(e: any) {
+  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    
+    const formData = new FormData(e.currentTarget);
+
     const formValues: LoginFormProps = {
       loginField: formData.get('loginField') as string,
       password: formData.get('password') as string,
     }
 
-    const errors = validateLogin(formValues);
-    
-    if (errors.length > 0) {
-      setErrors(errors);
-    }else{
-      loginUser(formValues)
-        .then(async (response: any) => {
-          await login(response.token);
-          router.push('/');
-        })
-        .catch((error: Error) => {
-          setErrors([error.message]);
-        })
-    }
-  }
-  
-  return (
-    <div className="flex h-[95dvh] max-h-[600px] w-[95dvw] max-w-[450px] flex-col items-center justify-center rounded-lg bg-white p-3 shadow-[rgba(0,0,0,0.35)_0px_5px_15px]">
-      <h1 className="mb-4 text-center text-[30px] font-extrabold text-sphere-grey-900">
-        Welcome back!
-      </h1>
-      
-      {errors.length > 0 && (
-        <div className="mb-2 w-full rounded-[20px] bg-[rgba(255,0,0,0.8)] p-2 text-center text-white">
-          {errors.map((error, index) => (
-            <p key={index}>{error}</p>
-          ))}
-        </div>
-      )}
+    const validationErrors = validateLogin(formValues);
 
-      <form
-        onSubmit={handleLogin}
-        className="mb-2 flex w-full flex-col gap-2"
-      >
-        <input
-          placeholder="Username or Email"
-          name="loginField"
-          className="w-full rounded-[20px] border border-sphere-grey-300 px-4 py-2 outline-none focus:border-sphere-primary-700"
-        />
-        <input
-          placeholder="Password"
-          type="password"
-          name="password"
-          className="w-full rounded-[20px] border border-sphere-grey-300 px-4 py-2 outline-none focus:border-sphere-primary-700"
-        />
-        {/* <Link
-          href="#"
-          underline="hover"
-          sx={{
-            fontSize: "9px",
-            fontWeight: 700,
-            textAlign: "end",
-            color: "#747474",
-            cursor: "pointer",
-            "&:hover": {
-              color: "#000",
-            },
-          }}
-        >
-          Forgot Password?
-        </Link> */}
-        <button
-          type="submit"
-          className="w-full rounded-[20px] bg-teal-600 p-2 text-white shadow-[rgba(0,0,0,0.24)_0px_3px_8px] transition-colors hover:bg-teal-800"
-        >
-          Log in
-        </button>
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrors([]);
+
+    loginUser(formValues)
+      .then(async (response: any) => {
+        await login(response.token);
+        router.push('/');
+      })
+      .catch((error: Error) => {
+        setErrors([error.message]);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
+  }
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <motion.div variants={fadeUp} className="mb-8">
+        <h1 className="font-display text-3xl tracking-tight text-tp-ink sm:text-4xl">
+          Welcome back
+        </h1>
+        <p className="mt-2 text-sm text-tp-steel">
+          Sign in to your account to continue
+        </p>
+      </motion.div>
+
+      {/* Error alert */}
+      <AnimatePresence>
+        {errors.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/50">
+              {errors.map((error, index) => (
+                <p key={index} className="text-sm text-red-600 dark:text-red-400">
+                  {error}
+                </p>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Form */}
+      <form onSubmit={handleLogin} className="flex flex-col gap-4">
+        <motion.div variants={fadeUp}>
+          <label htmlFor="loginField" className="mb-1.5 block text-sm font-medium text-tp-ink">
+            Username or Email
+          </label>
+          <input
+            id="loginField"
+            placeholder="Enter your username or email"
+            name="loginField"
+            autoComplete="username"
+            className="h-11 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-4 text-sm text-tp-ink outline-none transition-all duration-200 placeholder:text-tp-muted focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/10 dark:focus:ring-tp-primary/20"
+          />
+        </motion.div>
+
+        <motion.div variants={fadeUp}>
+          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-tp-ink">
+            Password
+          </label>
+          <input
+            id="password"
+            placeholder="Enter your password"
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            className="h-11 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-4 text-sm text-tp-ink outline-none transition-all duration-200 placeholder:text-tp-muted focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/10 dark:focus:ring-tp-primary/20"
+          />
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="pt-2">
+          <motion.button
+            type="submit"
+            disabled={isSubmitting}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            className="h-11 w-full cursor-pointer rounded-lg bg-tp-primary text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-tp-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <span className="inline-flex items-center gap-2">
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Signing in...
+              </span>
+            ) : (
+              "Sign in"
+            )}
+          </motion.button>
+        </motion.div>
       </form>
 
-      <p className="mb-2 text-center text-sm text-[#747474]">
-        Don't have an account?{' '}
-        <Link to="/register" className="cursor-pointer text-sm font-extrabold text-teal-600 underline">
-          Sign up
+      {/* Footer */}
+      <motion.p variants={fadeUp} className="mt-8 text-center text-sm text-tp-steel">
+        Don&apos;t have an account?{' '}
+        <Link
+          to="/authentication?view=register"
+          className="cursor-pointer font-medium text-tp-primary transition-colors duration-200 hover:text-tp-primary-deep"
+        >
+          Create one
         </Link>
-      </p>
-
-      {/* <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          width: '100%',
-        }}
-      >
-        <Button
-          fullWidth
-          startIcon={<AppleIcon />}
-          sx={{
-            backgroundColor: '#000',
-            color: '#fff',
-            borderRadius: '20px',
-            p: 1,
-            fontWeight: 500,
-            '&:hover': { backgroundColor: '#333' },
-            boxShadow: 'rgba(0, 0, 0, 0.16) 0px 10px 36px 0px, rgba(0, 0, 0, 0.06) 0px 0px 0px 1px',
-          }}
-        >
-          Log in with Apple
-        </Button>
-        <Button
-          fullWidth
-          startIcon={<GoogleIcon />}
-          sx={{
-            border: '2px solid #747474',
-            color: '#747474',
-            borderRadius: '20px',
-            p: 1,
-            fontWeight: 500,
-            '&:hover': { borderColor: '#555', color: '#555' },
-          }}
-        >
-          Log in with Google
-        </Button>
-      </Box> */}
+      </motion.p>
     </div>
   );
 };

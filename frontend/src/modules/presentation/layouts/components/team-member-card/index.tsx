@@ -5,7 +5,7 @@ import { AiOutlineProject } from 'react-icons/ai';
 import { TeamMember } from '../../../pages/team/data/team-data';
 
 export default function TeamMemberCard({ member }: { member: TeamMember }) {
-  const iconButtonClass = 'rounded-full p-2 text-sphere-grey-700 transition-colors hover:bg-sphere-grey-200';
+  const iconButtonClass = 'cursor-pointer rounded-full p-2 text-sphere-grey-700 transition-colors hover:bg-sphere-grey-200';
 
   return (
     <div className="mx-auto w-[90dvw] max-w-[400px] rounded-xl bg-white shadow-[0_8px_40px_-12px_rgba(0,0,0,0.3)] transition duration-300 hover:shadow-[0_16px_70px_-12.125px_rgba(0,0,0,0.3)]">

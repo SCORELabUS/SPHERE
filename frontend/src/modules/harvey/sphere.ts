@@ -5,6 +5,7 @@ export interface PricingSearchResult {
 
 export interface PricingSearchResultItem {
   name: string;
+  slug: string;
   owner: string;
   version: string;
   createdAt: string;
@@ -17,7 +18,7 @@ export interface PricingSearchResultItem {
     minSubscriptionPrice: number;
     maxSubscriptionPrice: number;
   };
-  collectionName?: string | null;
+  collection: { id: string; name: string; slug: string } | null;
 }
 
 export interface SphereError {
@@ -34,7 +35,8 @@ export async function fetchPricingYaml(url: string) {
 
 export interface PricingVersionsResult {
   name: string;
-  collectionName: string | null;
+  slug: string;
+  collection: { id: string; name: string; slug: string } | null;
   versions: PricingVersion[];
 }
 
@@ -42,7 +44,7 @@ export interface PricingVersion {
   id: string;
   version: string;
   private: boolean;
-  collectionName: string | null;
+  collection: { id: string; name: string; slug: string } | null;
   createdAt: string;
   url: string;
   yaml: string;

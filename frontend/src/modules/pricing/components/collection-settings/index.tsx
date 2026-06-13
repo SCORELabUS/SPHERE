@@ -4,60 +4,86 @@ import customConfirm from '../../../core/utils/custom-confirm';
 import customAlert from '../../../core/utils/custom-alert';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { Collection } from '../../types/collection';
-import { DangerZone, SettingsPage } from '../pricing-settings';
 import { usePricingCollectionsApi } from '../../../profile/api/pricingCollectionsApi';
+import { motion } from 'framer-motion';
+import { transitionDefault } from '../../../core/utils/motion-variants';
+
+export interface CollectionPermissions {
+  GET: boolean;
+  CREATE: boolean;
+  PUT: boolean;
+  DELETE: boolean;
+}
 
 export default function CollectionSettings({
+  organizationId,
   collection,
-  updateCollectionMethod,
+  permissions,
+  onCollectionUpdated,
 }: {
+  organizationId: string;
   collection: Collection;
-  updateCollectionMethod: (collection: Collection) => void;
+  permissions: CollectionPermissions;
+  onCollectionUpdated: (collection: Collection) => void;
 }) {
-  const [visibility, setVisibility] = useState('Public');
+  const [visibility, setVisibility] = useState(collection.private ? 'Private' : 'Public');
+  const [nameValue, setNameValue] = useState(collection.name);
+  const [descriptionValue, setDescriptionValue] = useState(collection.description ?? '');
 
   const { updateCollection, deleteCollection } = usePricingCollectionsApi();
   const router = useRouter();
 
+  useEffect(() => {
+    setVisibility(collection.private ? 'Private' : 'Public');
+    setNameValue(collection.name);
+    setDescriptionValue(collection.description ?? '');
+  }, [collection]);
+
   function handleRename() {
+    const newName = nameValue.trim();
+    if (!newName || newName === collection.name) return;
+
     customConfirm(
-      `Are you sure you want to change the name of this collection? You'll be redirected to your profile page.`
+      `Are you sure you want to change the name of this collection? You'll be redirected to your profile page.`,
+      { danger: false }
     ).then(() => {
-      const newName = (document.getElementById('collectionNameInput') as HTMLInputElement).value;
-
-      updateCollection(collection.name, { name: newName });
-
-      router.push(`/me/pricings`);
+      updateCollection(organizationId, collection.slug, { name: newName })
+        .then(() => {
+          router.push('/collections');
+        })
+        .catch((error: Error) => {
+          customAlert(`Error: ${error.message}`, 'error');
+        });
     });
   }
 
   function handleDescriptionChange() {
-    const newDescription = (document.getElementById('collectionDescriptionInput') as HTMLInputElement).value;
-
-    updateCollection(collection.name, { description: newDescription });
-
-    customAlert('Description updated!');
+    updateCollection(organizationId, collection.slug, { description: descriptionValue })
+      .then(() => {
+        customAlert('Description updated!', 'success');
+      })
+      .catch((error: Error) => {
+        customAlert(`Error: ${error.message}`, 'error');
+      });
   }
 
   function handleVisibilityChange() {
-    customConfirm('Are you sure you want to change the visibility of this collection?')
+    customConfirm('Are you sure you want to change the visibility of this collection?', { danger: false })
       .then(() => {
-        const collectionUpdateBody = {
-          private: !(visibility === 'Private'),
-        };
-
-        updateCollection(collection.name, collectionUpdateBody)
+        const collectionUpdateBody = { private: visibility === 'Public' };
+        console.log("organizationId:", organizationId);
+        updateCollection(organizationId, collection.slug, collectionUpdateBody)
           .then((data: any) => {
             if (data.error) {
-              customAlert(`Error: ${data.error}`);
+              customAlert(`Error: ${data.error}`, 'error');
               return;
             }
-            updateCollectionMethod(data);
+            onCollectionUpdated(data);
             setVisibility(visibility === 'Private' ? 'Public' : 'Private');
-            customAlert('Pricing visibility updated successfully');
+            customAlert('Visibility updated successfully', 'success');
           })
           .catch((error: Error) => {
-            customAlert(`Error: ${error.message}`);
+            customAlert(`Error: ${error.message}`, 'error');
           });
       })
       .catch(() => {});
@@ -65,117 +91,134 @@ export default function CollectionSettings({
 
   function handleDeleteCollection() {
     customConfirm(
-      'Are you sure you want to delete this collection and preserve its pricings? This action is irreversible.'
+      'Are you sure you want to delete this collection and preserve its pricings? This action is irreversible.',
+      { danger: true }
     ).then(() => {
-      deleteCollection(collection.name, false)
+      deleteCollection(organizationId, collection.slug, false)
         .then(() => {
-          router.push('/me/pricings');
+          router.push('/collections');
         })
-        .catch(error => {
-          console.log(error);
-          customAlert(
-            `An error has occurred while removing the collection. Please, try again later.`
-          );
+        .catch(() => {
+          customAlert('An error has occurred while removing the collection. Please, try again later.', 'error');
         });
     });
   }
 
   function handleDeleteCollectionAndPricings() {
     customConfirm(
-      'Are you sure you want to delete this collection and its pricings? This action is irreversible.'
+      'Are you sure you want to delete this collection and its pricings? This action is irreversible.',
+      { danger: true }
     ).then(() => {
-      deleteCollection(collection.name, true)
+      deleteCollection(organizationId, collection.slug, true)
         .then(() => {
-          router.push('/me/pricings');
+          router.push('/collections');
         })
         .catch(() => {
-          customAlert(
-            `An error has occurred while removing the collection. Please, try again later.`
-          );
+          customAlert('An error has occurred while removing the collection. Please, try again later.', 'error');
         });
     });
   }
 
-  useEffect(() => {
-    setVisibility(collection.private ? 'Private' : 'Public');
-  }, []);
+  const hasAnyPermission = permissions.PUT || permissions.DELETE;
+
+  if (!hasAnyPermission) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
+        <p className="text-sm text-tp-steel">You don't have permission to modify this collection.</p>
+      </div>
+    );
+  }
 
   return (
-    <SettingsPage>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold">
-          Global Settings
-        </h2>
-        <div className="mt-3 flex max-w-200 items-center gap-3 pl-5">
-          <input
-            defaultValue={collection.name}
-            id="collectionNameInput"
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
-          />
-          <button type="button" className="rounded-md border border-slate-400 px-4 py-2" onClick={handleRename}>
-            Rename
-          </button>
-        </div>
-        <div className="mt-3 flex max-w-200 items-center gap-3 pl-5">
-          <textarea
-            id="collectionDescriptionInput"
-            placeholder="Description of this collection"
-            defaultValue={collection.description}
-            rows={5}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
-          />
-          <button type="button" className="rounded-md border border-slate-400 px-4 py-2" onClick={handleDescriptionChange}>
-            Change
-          </button>
-        </div>
-      </div>
-      <h2 className="mb-3 text-2xl font-bold">
-        Visibility
-      </h2>
-      <div className="pl-5">
-        <VisibilityOptions value={visibility} onChange={handleVisibilityChange} />
-      </div>
-      <h2 className="mt-3 text-2xl font-bold">
-        Danger zone
-      </h2>
-      <DangerZone>
-        <div className="mb-2 flex w-full items-center justify-between">
-          <div className="flex flex-col gap-2">
-            <h3 className="mb-2 text-xl font-bold">
-              Delete this collection
-            </h3>
-            <p className="mb-2 text-base">
-              This action will delete this collection forever, but not its pricings. Please be
-              certain.
-            </p>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault}>
+      {/* Global Settings - PUT only */}
+      {permissions.PUT && (
+        <div className="mb-6 rounded-xl border border-tp-hairline bg-tp-canvas p-5">
+          <h3 className="mb-4 text-sm font-medium text-tp-ink">General</h3>
+
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[11px] font-medium text-tp-steel">Name</label>
+            <div className="flex items-center gap-3">
+              <input
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                className="flex-1 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary"
+              />
+              <button
+                type="button"
+                onClick={handleRename}
+                disabled={!nameValue.trim() || nameValue === collection.name}
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-4 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-default disabled:opacity-40"
+              >
+                Rename
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDeleteCollection}
-            className="rounded-md border border-red-500 px-4 py-2 font-bold text-red-500 hover:bg-red-500 hover:text-white"
-          >
-            Delete collection
-          </button>
-        </div>
-        <div className="mb-2 flex w-full items-center justify-between">
-          <div className="flex flex-col gap-2">
-            <h3 className="mb-2 text-xl font-bold">
-              Delete this collection and its pricings
-            </h3>
-            <p className="mb-2 text-base">
-              This action will delete this collection and all pricings associated with it forever.
-              Please be certain.
-            </p>
+
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[11px] font-medium text-tp-steel">Description</label>
+            <div className="flex items-start gap-3">
+              <textarea
+                value={descriptionValue}
+                onChange={(e) => setDescriptionValue(e.target.value)}
+                placeholder="Describe this collection..."
+                rows={3}
+                className="flex-1 resize-none rounded-lg border border-tp-hairline-strong bg-tp-surface px-3 py-2 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary"
+              />
+              <button
+                type="button"
+                onClick={handleDescriptionChange}
+                disabled={descriptionValue === (collection.description ?? '')}
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-4 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-default disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDeleteCollectionAndPricings}
-            className="rounded-md border border-red-500 px-4 py-2 font-bold text-red-500 hover:bg-red-500 hover:text-white"
-          >
-            Delete collection and pricings
-          </button>
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium text-tp-steel">Visibility</label>
+            <div className="flex items-center gap-3">
+              <VisibilityOptions value={visibility} onChange={() => handleVisibilityChange()} />
+            </div>
+          </div>
         </div>
-      </DangerZone>
-    </SettingsPage>
+      )}
+
+      {/* Danger Zone - DELETE only */}
+      {permissions.DELETE && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-5">
+          <h3 className="mb-4 text-sm font-medium text-red-600">Danger zone</h3>
+
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-tp-ink">Delete collection</p>
+              <p className="mt-0.5 text-xs text-tp-steel">This will delete the collection forever, but preserve its pricings.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteCollection}
+              className="cursor-pointer shrink-0 rounded-lg border border-red-500 px-4 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-500 hover:text-white"
+            >
+              Delete collection
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-tp-ink">Delete collection and pricings</p>
+              <p className="mt-0.5 text-xs text-tp-steel">This will delete the collection and all pricings associated with it forever.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteCollectionAndPricings}
+              className="cursor-pointer shrink-0 rounded-lg border border-red-500 px-4 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-500 hover:text-white"
+            >
+              Delete all
+            </button>
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }

@@ -1,21 +1,28 @@
-import { User } from "./User";
-
 export interface PricingCollection {
     name: string,
-    owner: User,
+    organization: Organization,
     analytics: PricingCollectionAnalytics
 }
 
 export interface RetrievedCollection {
   id: string,  
+  slug: string,
   name: string,
-    owner: {
+    organization: {
         id: string,
-        username: string,
+        name: string,
+        displayName: string,
         avatar: string
     },
     pricings: any,
     analytics: PricingCollectionAnalytics
+}
+
+interface Organization {
+    id: string,
+    name: string,
+    displayName: string,
+    avatar: string
 }
 
 export interface PricingCollectionAnalytics {

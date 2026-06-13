@@ -8,9 +8,17 @@ import path from 'path';
 const addFilenameToBody = (...fieldNames: string[]) => (req: any, res: any, next: NextFunction) => {
   fieldNames.forEach(fieldName => {
     if (req.files && req.files[fieldName]) {
-      req.body[fieldName] = req.files[fieldName][0].destination + '/' + req.files[fieldName][0].filename;
+      let destination = req.files[fieldName][0].destination;
+      if (destination.startsWith('public/')) {
+        destination = destination.substring('public/'.length);
+      }
+      req.body[fieldName] = destination + '/' + req.files[fieldName][0].filename;
     } else if (req.file && req.file.fieldname === fieldName) {
-      req.body[fieldName] = req.file.destination + '/' + req.file.filename;
+      let destination = req.file.destination;
+      if (destination.startsWith('public/')) {
+        destination = destination.substring('public/'.length);
+      }
+      req.body[fieldName] = destination + '/' + req.file.filename;
     }
   });
   return next();

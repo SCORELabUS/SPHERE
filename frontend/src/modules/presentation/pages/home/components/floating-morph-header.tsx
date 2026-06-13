@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useAuth } from '../../../../auth/hooks/useAuth';
+import Avatar from '../../../../core/components/avatar';
 import type { NavItem } from '../data';
 
 type Props = {
@@ -18,10 +19,6 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
   const headerMorphCurrentRef = useRef(0);
   const headerMorphRafRef = useRef(0);
   const { authUser, logout } = useAuth();
-
-  const triggerUploadPricingModal = () => {
-    window.dispatchEvent(new Event('open-upload-pricing-modal'));
-  };
 
   useEffect(() => {
     document.body.style.overflow = isMenuOpen ? 'hidden' : '';
@@ -143,7 +140,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
           <button
             type="button"
             onClick={() => onNavigate('/')}
-            className="text-sm font-medium tracking-[0.22em] text-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-black"
+            className="cursor-pointer text-sm font-medium tracking-[0.22em] text-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-black"
           >
             SPHERE
           </button>
@@ -163,7 +160,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                       onNavigate(item.to);
                     }
                   }}
-                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#0f172a]"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#0f172a]"
                 >
                   {item.label}
                   {item.children ? <span className="text-[11px]">▾</span> : null}
@@ -171,7 +168,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
 
                 {item.children ? (
                   <div
-                    className={`absolute left-0 top-full min-w-[220px] pt-2 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${openDesktopDropdown === item.label ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
+                    className={`absolute left-0 top-full min-w-55 pt-2 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${openDesktopDropdown === item.label ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
                   >
                     <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
                       {item.children.map(child => (
@@ -179,7 +176,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                           key={child.label}
                           type="button"
                           onClick={() => onNavigate(child.to)}
-                          className="block w-full rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
+                          className="block w-full cursor-pointer rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
                         >
                           {child.label}
                         </button>
@@ -199,19 +196,13 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                   onClick={() => setIsUserMenuOpen(prev => !prev)}
                   aria-label="User settings"
                   aria-expanded={isUserMenuOpen}
-                  className="h-10 w-10 overflow-hidden rounded-full border border-black/15 bg-white"
+                  className="overflow-hidden cursor-pointer rounded-full border border-black/15 bg-white"
                 >
-                  {authUser.user?.avatar ? (
-                    <img src={authUser.user.avatar} alt={authUser.user.firstName ?? 'User avatar'} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-sm font-medium text-[#0f172a]">
-                      {authUser.user?.firstName?.[0] ?? 'U'}
-                    </span>
-                  )}
+                  <Avatar w={40} h={40} />
                 </button>
 
                 <div
-                  className={`absolute right-0 top-full mt-2 w-[220px] rounded-2xl border border-black/10 bg-white p-2 shadow-[0_14px_34px_rgba(15,23,42,0.12)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isUserMenuOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
+                  className={`absolute right-0 top-full mt-2 w-55 rounded-2xl border border-black/10 bg-white p-2 shadow-[0_14px_34px_rgba(15,23,42,0.12)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isUserMenuOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
                 >
                   <div className="mb-2 rounded-xl border border-black/10 bg-[#fcfcfb] px-3 py-2 text-center">
                     <p className="text-sm font-medium text-[#0f172a]">{authUser.user?.firstName ?? 'User'}</p>
@@ -221,21 +212,11 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                     type="button"
                     onClick={() => {
                       setIsUserMenuOpen(false);
-                      onNavigate('/me/pricings');
+                      onNavigate('/pricings/new');
                     }}
-                    className="block w-full rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
+                    className="block w-full cursor-pointer rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
                   >
-                    My Pricings
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUserMenuOpen(false);
-                      triggerUploadPricingModal();
-                    }}
-                    className="mt-1 block w-full rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
-                  >
-                    Upload pricing
+                    New Pricing
                   </button>
                   <button
                     type="button"
@@ -244,7 +225,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                       setIsUserMenuOpen(false);
                       onNavigate('/');
                     }}
-                    className="mt-1 block w-full rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
+                    className="mt-1 block w-full cursor-pointer rounded-xl px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#f8fafc] hover:text-[#0f172a]"
                   >
                     Logout
                   </button>
@@ -254,18 +235,18 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => onNavigate('/login')}
-                  className="inline-flex h-10 items-center justify-center rounded-full border border-black/15 bg-white px-5 text-xs uppercase tracking-[0.14em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#0f172a]"
+                  onClick={() => onNavigate('/authentication')}
+                  className="inline-flex h-10 cursor-pointer items-center justify-center rounded-full border border-black/15 bg-white px-5 text-xs uppercase tracking-[0.14em] text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#0f172a]"
                 >
                   Login
                 </button>
                 <button
                   type="button"
-                  onClick={() => onNavigate('/register')}
-                  className="group inline-flex h-10 items-center gap-2 rounded-full border border-black/10 bg-[#0f172a] px-5 text-xs uppercase tracking-[0.14em] text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#1e293b] active:scale-[0.98]"
+                  onClick={() => onNavigate('/authentication?view=register')}
+                  className="group inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/10 bg-[#0f172a] px-5 text-xs uppercase tracking-[0.14em] text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#1e293b] active:scale-[0.98]"
                 >
                   Register
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-[11px] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-y-[1px] group-hover:translate-x-1">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-[11px] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-y-px group-hover:translate-x-1">
                     ↗
                   </span>
                 </button>
@@ -278,13 +259,13 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
             aria-label="Toggle navigation menu"
             aria-expanded={isMenuOpen}
             onClick={() => setIsMenuOpen(prev => !prev)}
-            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98] md:hidden"
+            className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-black/10 bg-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98] md:hidden"
           >
             <span
-              className={`absolute h-px w-5 bg-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 rotate-45' : '-translate-y-[5px] rotate-0'}`}
+              className={`absolute h-px w-5 bg-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 rotate-45' : '-translate-y-1.25 rotate-0'}`}
             />
             <span
-              className={`absolute h-px w-5 bg-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 -rotate-45' : 'translate-y-[5px] rotate-0'}`}
+              className={`absolute h-px w-5 bg-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 -rotate-45' : 'translate-y-1.25 rotate-0'}`}
             />
           </button>
         </div>
@@ -293,7 +274,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
       <div
         className={`fixed inset-0 z-20 bg-white/85 backdrop-blur-3xl px-4 pt-28 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] md:hidden ${isMenuOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
       >
-        <div className="mx-auto flex w-full max-w-md flex-col gap-3">
+        <div className="mx-auto flex w-full max-w-112 flex-col gap-3">
           {navItems.map((item, index) => (
             <div key={item.label} className="rounded-[1.35rem] border border-black/10 bg-white px-5 py-3">
               <button
@@ -310,7 +291,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                     onNavigate(item.to);
                   }
                 }}
-                className={`flex w-full items-center justify-between text-left text-sm uppercase tracking-[0.15em] text-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
+                className={`flex w-full cursor-pointer items-center justify-between text-left text-sm uppercase tracking-[0.15em] text-[#0f172a] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
               >
                 {item.label}
                 {item.children ? <span className="text-[11px]">{openMobileDropdown === item.label ? '▴' : '▾'}</span> : null}
@@ -326,7 +307,7 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                         setIsMenuOpen(false);
                         onNavigate(child.to);
                       }}
-                      className="rounded-xl border border-black/10 bg-[#f8fafc] px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155]"
+                      className="cursor-pointer rounded-xl border border-black/10 bg-[#f8fafc] px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155]"
                     >
                       {child.label}
                     </button>
@@ -341,14 +322,8 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
               className={`mt-2 rounded-[1.35rem] border border-black/10 bg-white px-5 py-4 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
             >
               <div className="mb-3 flex items-center gap-3">
-                <div className="h-10 w-10 overflow-hidden rounded-full border border-black/10 bg-white">
-                  {authUser.user?.avatar ? (
-                    <img src={authUser.user.avatar} alt={authUser.user.firstName ?? 'User avatar'} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-sm font-medium text-[#0f172a]">
-                      {authUser.user?.firstName?.[0] ?? 'U'}
-                    </span>
-                  )}
+                <div className="overflow-hidden rounded-full border border-black/10 bg-white">
+                  <Avatar w={40} h={40} />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-[#0f172a]">{authUser.user?.firstName ?? 'User'}</p>
@@ -360,21 +335,11 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
-                    onNavigate('/me/pricings');
+                    onNavigate('/pricings/new');
                   }}
                   className="rounded-xl border border-black/10 bg-[#f8fafc] px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155]"
                 >
-                  My Pricings
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    triggerUploadPricingModal();
-                  }}
-                  className="rounded-xl border border-black/10 bg-[#f8fafc] px-3 py-2 text-center text-xs uppercase tracking-[0.12em] text-[#334155]"
-                >
-                  Upload pricing
+                  New Pricing
                 </button>
                 <button
                   type="button"
@@ -395,9 +360,9 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
-                  onNavigate('/login');
+                  onNavigate('/authentication');
                 }}
-                className={`inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-sm font-medium text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
+                className={`inline-flex items-center justify-center cursor-pointer rounded-full border border-black/10 bg-white px-6 py-3 text-sm font-medium text-[#334155] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
               >
                 Login
               </button>
@@ -405,9 +370,9 @@ export default function FloatingMorphHeader({ navItems, onNavigate }: Props) {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
-                  onNavigate('/register');
+                  onNavigate('/authentication?view=register');
                 }}
-                className={`inline-flex items-center justify-between rounded-full border border-black/10 bg-[#0f172a] px-6 py-3 text-sm font-medium text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
+                className={`inline-flex items-center justify-between cursor-pointer rounded-full border border-black/10 bg-[#0f172a] px-6 py-3 text-sm font-medium text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
               >
                 Start with SPHERE
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-[13px]">↗</span>

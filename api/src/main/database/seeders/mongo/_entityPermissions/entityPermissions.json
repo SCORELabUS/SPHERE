@@ -1,0 +1,226 @@
+[
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b800"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "collection",
+    "permissions": {
+      "GET": true,
+      "PUT": true,
+      "DELETE": true,
+      "CREATE": true
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": null
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b801"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "collection",
+    "permissions": {
+      "GET": true,
+      "PUT": false,
+      "DELETE": false,
+      "CREATE": false
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "ieee-tsc-2025"
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b802"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": false,
+      "DELETE": false,
+      "CREATE": true
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": null
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b803"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": true,
+      "DELETE": false,
+      "CREATE": false
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "box"
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b806"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": true,
+      "DELETE": true,
+      "CREATE": false
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "buffer"
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b808"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": false,
+      "DELETE": false,
+      "CREATE": false
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "canva"
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b80a"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": true,
+      "DELETE": false,
+      "CREATE": true
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "clickup"
+  },
+  {
+    "_id": {
+      "$oid": "63f74bf8eeed64058364b80c"
+    },
+    "_userId": {
+      "$oid": "63f74bf8eeed64054274b52d"
+    },
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
+    "entityType": "pricing",
+    "permissions": {
+      "GET": true,
+      "PUT": false,
+      "DELETE": false,
+      "CREATE": false
+    },
+    "grantedBy": {
+      "$oid": "63f74bf8eeed64058364b52e"
+    },
+    "createdAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "updatedAt": {
+      "$date": "2023-02-20T11:22:04.000Z"
+    },
+    "entitySlug": "clockify"
+  }
+]

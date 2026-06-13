@@ -7,12 +7,35 @@ const AUTH_TOKEN_KEY = 'token';
 const AUTH_USER_KEY = 'auth_user';
 let authBootstrapPromise: Promise<void> | null = null;
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 export interface AuthUserContext {
   user: AuthUser | null;
   isAuthenticated: boolean;
   token: string | null;
   tokenExpiration: Date | null;
   isLoading: boolean;
+}
+
+export interface AuthUserSettings {
+  phone?: string;
+  avatar?: string;
+  avatarBgColor?: string;
+  avatarFgColor?: string;
+  profile?: {
+    displayName?: string;
+    bio?: string;
+    city?: string;
+    country?: string;
+    dateOfBirth?: string;
+  };
+  socialLinks?: {
+    linkedin?: string;
+    instagram?: string;
+    facebook?: string;
+    x?: string;
+  };
+  notificationPrefs?: Record<string, { email: boolean; inbox: boolean }>;
 }
 
 export interface AuthUser {
@@ -22,16 +45,33 @@ export interface AuthUser {
   username: string;
   email: string;
   avatar: string;
+  role: string;
+  settings?: AuthUserSettings;
 }
 
-const normalizeUser = (user): AuthUser => ({
+const normalizeUser = (user: any): AuthUser => ({
   id: user.id,
   firstName: user.firstName,
   lastName: user.lastName,
   username: user.username,
   email: user.email,
-  avatar: user.avatar,
+  avatar: user.settings?.avatar || user.avatar || '',
+  role: user.role || 'USER',
+  settings: user.settings,
 });
+
+async function fetchUserSettings(token: string): Promise<AuthUserSettings | undefined> {
+  try {
+    const res = await fetch(`${API_URL}/users/me/settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return data.settings;
+  } catch {
+    return undefined;
+  }
+}
 
 export const useAuth = () => {
   const { authUser, setAuthUser } = useContext(AuthContext);
@@ -127,7 +167,10 @@ export const useAuth = () => {
 
       try {
         const currentUser = await getCurrentUser(storedToken);
-        setSession(normalizeUser(currentUser), storedToken, null);
+        const user = normalizeUser(currentUser);
+        const settings = await fetchUserSettings(storedToken);
+        if (settings) user.settings = settings;
+        setSession(user, storedToken, null);
       } catch {
         if (storedUser) {
           try {
@@ -150,12 +193,39 @@ export const useAuth = () => {
 
   const login = useCallback(async (token: string) => {
     const currentUser = await getCurrentUser(token);
-    setSession(normalizeUser(currentUser), token, null);
+    const user = normalizeUser(currentUser);
+    const settings = await fetchUserSettings(token);
+    if (settings) user.settings = settings;
+    setSession(user, token, null);
   }, [setSession]);
 
   const logout = useCallback(() => {
     clearSession();
   }, [clearSession]);
+
+  const updateUser = useCallback((partial: Partial<AuthUser>) => {
+    setAuthUser((prev) => {
+      if (!prev.user) return prev;
+      return {
+        ...prev,
+        user: { ...prev.user, ...partial },
+      };
+    });
+  }, [setAuthUser]);
+
+  const updateUserSettings = useCallback((partial: Partial<AuthUserSettings>) => {
+    setAuthUser((prev) => {
+      if (!prev.user) return prev;
+      return {
+        ...prev,
+        user: {
+          ...prev.user,
+          settings: { ...prev.user.settings, ...partial },
+          avatar: partial.avatar !== undefined ? partial.avatar : prev.user.avatar,
+        },
+      };
+    });
+  }, [setAuthUser]);
 
   const fetchWithInterceptor = useCallback(async (url: RequestInfo | URL, options?: RequestInit) => {
     await refreshTokenIfNeeded();
@@ -179,5 +249,5 @@ export const useAuth = () => {
     return response;
   }, [authUser.token, clearSession, getItem, refreshTokenIfNeeded]);
 
-  return { authUser, login, logout, setAuthUser, fetchWithInterceptor };
+  return { authUser, login, logout, setAuthUser, updateUser, updateUserSettings, fetchWithInterceptor };
 };

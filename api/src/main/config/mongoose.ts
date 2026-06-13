@@ -28,7 +28,11 @@ const disconnectMongoose = async () => {
   console.log('Disconnecting from MongoDB');
   if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
     try {
-      await mongoose.connection.db.dropDatabase();
+      // Dropping the DB is only acceptable for local/dev convenience.
+      // Tests should manage their own lifecycle and should not erase external data.
+      if (process.env.ENVIRONMENT === 'development') {
+        await mongoose.connection.db.dropDatabase();
+      }
     } catch (_error) {
       // Ignore drop errors if the session is already closed.
     }

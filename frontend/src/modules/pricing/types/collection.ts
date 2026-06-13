@@ -1,28 +1,22 @@
-import { AnalyticsDataEntry } from "../../../assets/data/analytics";
-
 export interface Collection {
+  id: string;
   name: string;
+  slug: string;
   description: string;
-  owner: {
+  organization: {
     id: string;
-    username: string;
+    name: string;
+    displayName: string;
     avatar: string;
   };
   private: boolean;
   data: {
-    pricings: AnalyticsDataEntry[],
-    minPrice: CollectionPricingStat,
-    maxPrice: CollectionPricingStat,
-    configurationSpaceSize: CollectionPricingStat,
+    pricings: any[];
+    minPrice: CollectionDataStat;
+    maxPrice: CollectionDataStat;
+    configurationSpaceSize: CollectionDataStat;
   };
-  pricings?: {
-    pricings: AnalyticsDataEntry[];
-    minPrice: CollectionPricingStat;
-    maxPrice: CollectionPricingStat;
-    configurationSpaceSize: CollectionPricingStat;
-  }[];
   analytics: CollectionAnalytics;
-  lastUpdate: string;
   numberOfPricings: number;
 }
 
@@ -38,8 +32,8 @@ export interface ParameterEvolution {
   values: number[];
 }
 
-export interface CollectionPricingStat {
-  min: number,
-  max: number,
-  data: {value: string, count: number}[],
+export interface CollectionDataStat {
+  min: number;
+  max: number;
+  data: ParameterEvolution[];
 }

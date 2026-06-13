@@ -4,9 +4,12 @@
       "$oid": "6787d0facaeb2b25748bc01c"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": true,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -45,16 +48,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 8,
       "maxSubscriptionPrice": 420
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01d"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": true,
     "createdAt": "2023-11-19T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -93,16 +100,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 8,
       "maxSubscriptionPrice": 420
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01e"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": true,
     "createdAt": "2022-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -141,16 +152,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc01f"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": true,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -189,16 +204,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc020"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": true,
     "createdAt": "2020-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -237,16 +256,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc021"
     },
     "name": "Box",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": true,
     "createdAt": "2019-11-13T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -285,16 +308,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 5,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "box"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc022"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -333,16 +360,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 126
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc023"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -381,16 +412,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 126
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc024"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -429,16 +464,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 125
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc025"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -477,16 +516,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 12
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc026"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -525,16 +568,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 99
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc027"
     },
     "name": "Buffer",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -573,16 +620,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 99
-    }
+    },
+    "slug": "buffer"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc028"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-07T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -621,16 +672,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc029"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-24T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -669,16 +724,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 23
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02a"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-02-08T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -717,16 +776,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.9
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02b"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-03-18T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -765,16 +828,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.9
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02c"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-06-19T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -813,16 +880,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.5
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02d"
     },
     "name": "Canva",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-09-05T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -861,16 +932,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 129.5
-    }
+    },
+    "slug": "canva"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02e"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-04T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -909,16 +984,20 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc02f"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -957,16 +1036,20 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 197
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc030"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1005,16 +1088,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 292
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc031"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-01T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1053,16 +1140,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 292
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc032"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-10-01T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1101,16 +1192,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 190
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc033"
     },
     "name": "Clickup",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-10-31T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1149,16 +1244,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 190
-    }
+    },
+    "slug": "clickup"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc034"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-05T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1197,16 +1296,20 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc035"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1245,16 +1348,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc036"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1293,16 +1400,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 17.98
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc037"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1341,16 +1452,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc038"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1389,16 +1504,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 29.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc039"
     },
     "name": "Clockify",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-11T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1437,16 +1556,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 29.99
-    }
+    },
+    "slug": "clockify"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03a"
     },
     "name": "Crowdcast",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-14T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1485,16 +1608,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03b"
     },
     "name": "Crowdcast",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1533,16 +1660,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03c"
     },
     "name": "Crowdcast",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-22T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1581,16 +1712,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 49,
       "maxSubscriptionPrice": 195
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03d"
     },
     "name": "Crowdcast",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1629,16 +1764,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 29,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03e"
     },
     "name": "Crowdcast",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1677,16 +1816,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 29,
       "maxSubscriptionPrice": 199
-    }
+    },
+    "slug": "crowdcast"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc03f"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-06-11T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1725,16 +1868,20 @@
       "configurationSpaceSize": 786,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2617
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc040"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-11T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1773,16 +1920,20 @@
       "configurationSpaceSize": 786,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2699
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc041"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-07T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1821,16 +1972,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 539
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc042"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-22T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1869,16 +2024,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 689
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc043"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1917,16 +2076,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc044"
     },
     "name": "Databox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-12-10T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -1965,16 +2128,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "databox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc045"
     },
     "name": "Deskera",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2013,16 +2180,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 199,
       "maxSubscriptionPrice": 2490
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc046"
     },
     "name": "Deskera",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-03-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2061,16 +2232,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 200,
       "maxSubscriptionPrice": 3000
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc047"
     },
     "name": "Deskera",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-12-04T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2109,16 +2284,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 200,
       "maxSubscriptionPrice": 3000
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc048"
     },
     "name": "Deskera",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-10-13T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2157,16 +2336,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 35,
       "maxSubscriptionPrice": 119
-    }
+    },
+    "slug": "deskera"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc049"
     },
     "name": "Dropbox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -2205,16 +2388,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04a"
     },
     "name": "Dropbox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2253,16 +2440,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04b"
     },
     "name": "Dropbox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2301,16 +2492,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04c"
     },
     "name": "Dropbox",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-19T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2349,16 +2544,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 9.99,
       "maxSubscriptionPrice": 20
-    }
+    },
+    "slug": "dropbox"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04d"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-06T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2397,16 +2596,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 24.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04e"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2445,16 +2648,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 16.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc04f"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2493,16 +2700,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 10.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc050"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2541,16 +2752,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc051"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2589,16 +2804,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc052"
     },
     "name": "Evernote",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2637,16 +2856,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14.99
-    }
+    },
+    "slug": "evernote"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc053"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-05T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2685,16 +2908,20 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc054"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-08T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -2733,16 +2960,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc055"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2781,16 +3012,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc056"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2829,16 +3064,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc057"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-26T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2877,16 +3116,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc058"
     },
     "name": "Figma",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-10-17T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -2925,16 +3168,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "figma"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc059"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-06-07T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -2973,16 +3220,20 @@
       "configurationSpaceSize": 1630,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 416.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05a"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-20T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -3021,16 +3272,20 @@
       "configurationSpaceSize": 1611,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 416.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05b"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -3069,16 +3324,20 @@
       "configurationSpaceSize": 261,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 372.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05c"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -3117,16 +3376,20 @@
       "configurationSpaceSize": 261,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 372.95
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05d"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -3165,16 +3428,20 @@
       "configurationSpaceSize": 14,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 410
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05e"
     },
     "name": "Github",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-29T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -3213,16 +3480,20 @@
       "configurationSpaceSize": 11,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 321
-    }
+    },
+    "slug": "github"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc05f"
     },
     "name": "Hypercontext",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3261,16 +3532,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 12.8
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc060"
     },
     "name": "Hypercontext",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-10-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3309,16 +3584,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc061"
     },
     "name": "Hypercontext",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-10-13T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3357,16 +3636,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc062"
     },
     "name": "Hypercontext",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-10-09T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3405,16 +3688,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 111
-    }
+    },
+    "slug": "hypercontext"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc063"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-07T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3453,16 +3740,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc064"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-16T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3501,16 +3792,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc065"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3549,16 +3844,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 124.8
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc066"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-09-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3597,16 +3896,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 140
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc067"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3645,16 +3948,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 140
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc068"
     },
     "name": "Jira",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-10-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3693,16 +4000,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 14
-    }
+    },
+    "slug": "jira"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc069"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-12T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3741,16 +4052,20 @@
       "configurationSpaceSize": 11,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 550
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06a"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3789,16 +4104,20 @@
       "configurationSpaceSize": 9,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 399
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06b"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3837,16 +4156,20 @@
       "configurationSpaceSize": 26,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 507
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06c"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3885,16 +4208,20 @@
       "configurationSpaceSize": 26,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 507
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06d"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3933,16 +4260,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06e"
     },
     "name": "Mailchimp",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -3981,16 +4312,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 299
-    }
+    },
+    "slug": "mailchimp"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc06f"
     },
     "name": "Office",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4029,16 +4364,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 15
-    }
+    },
+    "slug": "office"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc070"
     },
     "name": "Microsoft",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-16T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4077,16 +4416,20 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 56.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc071"
     },
     "name": "Microsoft",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4125,16 +4468,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 26.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc072"
     },
     "name": "Microsoft",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4173,16 +4520,20 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 7.2,
       "maxSubscriptionPrice": 129.4
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc073"
     },
     "name": "Microsoft",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-18T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4221,16 +4572,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc074"
     },
     "name": "Microsoft",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-11T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4269,16 +4624,20 @@
       "configurationSpaceSize": 7,
       "minSubscriptionPrice": 6,
       "maxSubscriptionPrice": 24
-    }
+    },
+    "slug": "microsoft"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc075"
     },
     "name": "Notion",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-16T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4317,16 +4676,20 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 380
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc076"
     },
     "name": "Notion",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4365,16 +4728,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 180
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc077"
     },
     "name": "Notion",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4413,16 +4780,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc078"
     },
     "name": "Notion",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-01T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4461,16 +4832,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "notion"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc079"
     },
     "name": "Openphone",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-16T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4509,16 +4884,20 @@
       "configurationSpaceSize": 288,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 557.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07a"
     },
     "name": "Openphone",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-19T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4557,16 +4936,20 @@
       "configurationSpaceSize": 288,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 557.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07b"
     },
     "name": "Openphone",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4605,16 +4988,20 @@
       "configurationSpaceSize": 36,
       "minSubscriptionPrice": 13,
       "maxSubscriptionPrice": 355.02
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07c"
     },
     "name": "Openphone",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-17T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4653,16 +5040,20 @@
       "configurationSpaceSize": 24,
       "minSubscriptionPrice": 10,
       "maxSubscriptionPrice": 355.01
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07d"
     },
     "name": "Openphone",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-11T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4701,16 +5092,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 10,
       "maxSubscriptionPrice": 105
-    }
+    },
+    "slug": "openphone"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07e"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-10T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4749,16 +5144,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 42
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc07f"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4797,16 +5196,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 42
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc080"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4845,16 +5248,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 45
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc081"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4893,16 +5300,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc082"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4941,16 +5352,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc083"
     },
     "name": "Overleaf",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-03T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -4989,16 +5404,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 30
-    }
+    },
+    "slug": "overleaf"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc084"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-18T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5037,16 +5456,20 @@
       "configurationSpaceSize": 13,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 289
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc085"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-10-20T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5085,16 +5508,20 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 260
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc086"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-10-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5133,16 +5560,20 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 260
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc087"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-18T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5181,16 +5612,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc088"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-25T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5229,16 +5664,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc089"
     },
     "name": "Planable",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-05-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5277,16 +5716,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 24,
       "maxSubscriptionPrice": 990
-    }
+    },
+    "slug": "planable"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08a"
     },
     "name": "Postman",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-06-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5325,16 +5768,20 @@
       "configurationSpaceSize": 706,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 246.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08b"
     },
     "name": "Postman",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-04T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5373,16 +5820,20 @@
       "configurationSpaceSize": 1280,
       "minSubscriptionPrice": 19,
       "maxSubscriptionPrice": 590.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08c"
     },
     "name": "Postman",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5421,16 +5872,20 @@
       "configurationSpaceSize": 112,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 150.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08d"
     },
     "name": "Postman",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5469,16 +5924,20 @@
       "configurationSpaceSize": 112,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 120.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08e"
     },
     "name": "Postman",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5517,16 +5976,20 @@
       "configurationSpaceSize": 64,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 110.5
-    }
+    },
+    "slug": "postman"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc08f"
     },
     "name": "Pumble",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5565,16 +6028,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 7.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc090"
     },
     "name": "Pumble",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-09-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5613,16 +6080,20 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc091"
     },
     "name": "Pumble",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-27T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5661,16 +6132,20 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1.99
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc092"
     },
     "name": "Pumble",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-09-19T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5709,16 +6184,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 19.9
-    }
+    },
+    "slug": "pumble"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc093"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-01T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5757,16 +6236,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc094"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5805,16 +6288,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc095"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5853,16 +6340,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc096"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5901,16 +6392,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc097"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5949,16 +6444,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 75
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc098"
     },
     "name": "Quip",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-25T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -5997,16 +6496,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "quip"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc099"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-15T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6045,16 +6548,20 @@
       "configurationSpaceSize": 12544,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1555
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09a"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-02T00:00:00.000Z",
     "currency": "EUR",
     "url": null,
@@ -6093,16 +6600,20 @@
       "configurationSpaceSize": 522,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1065
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09b"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-26T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6141,16 +6652,20 @@
       "configurationSpaceSize": 1042,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 1150
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09c"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6189,16 +6704,20 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09d"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-25T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6237,16 +6756,20 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09e"
     },
     "name": "Salesforce",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-25T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6285,16 +6808,20 @@
       "configurationSpaceSize": 10,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 350
-    }
+    },
+    "slug": "salesforce"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc09f"
     },
     "name": "Slack",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6333,16 +6860,20 @@
       "configurationSpaceSize": 21,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 350.05
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a0"
     },
     "name": "Slack",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-10-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6381,16 +6912,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a1"
     },
     "name": "Slack",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-10-21T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6429,16 +6964,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 250
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a2"
     },
     "name": "Slack",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-10-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6477,16 +7016,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 15
-    }
+    },
+    "slug": "slack"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a3"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-06-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6525,16 +7068,20 @@
       "configurationSpaceSize": 48,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 725
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a4"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6573,16 +7120,20 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 375
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a5"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6621,16 +7172,20 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 370
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a6"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6669,16 +7224,20 @@
       "configurationSpaceSize": 24,
       "minSubscriptionPrice": 12,
       "maxSubscriptionPrice": 620
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a7"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-25T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6717,16 +7276,20 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 325.5
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a8"
     },
     "name": "Tableau",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-08-12T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6765,16 +7328,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 70
-    }
+    },
+    "slug": "tableau"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0a9"
     },
     "name": "Trustmary",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-14T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6813,16 +7380,20 @@
       "configurationSpaceSize": 8,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 1149
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0aa"
     },
     "name": "Trustmary",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-10-30T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6861,16 +7432,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 189
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ab"
     },
     "name": "Trustmary",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6909,16 +7484,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 590
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ac"
     },
     "name": "Trustmary",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -6957,16 +7536,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 290,
       "maxSubscriptionPrice": 590
-    }
+    },
+    "slug": "trustmary"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ad"
     },
     "name": "Userguiding",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-11-09T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7005,16 +7588,20 @@
       "configurationSpaceSize": 4,
       "minSubscriptionPrice": 129,
       "maxSubscriptionPrice": 3990
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ae"
     },
     "name": "Userguiding",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-09T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7053,16 +7640,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 129,
       "maxSubscriptionPrice": 999
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0af"
     },
     "name": "Userguiding",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-22T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7101,16 +7692,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 99,
       "maxSubscriptionPrice": 699
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b0"
     },
     "name": "Userguiding",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-10-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7149,16 +7744,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 99,
       "maxSubscriptionPrice": 699
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b1"
     },
     "name": "Userguiding",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-24T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7197,16 +7796,20 @@
       "configurationSpaceSize": 3,
       "minSubscriptionPrice": 199,
       "maxSubscriptionPrice": 999
-    }
+    },
+    "slug": "userguiding"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b2"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-09T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7245,16 +7848,20 @@
       "configurationSpaceSize": 85,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2980
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b3"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-12-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7293,16 +7900,20 @@
       "configurationSpaceSize": 85,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2980
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b4"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-10-03T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7341,16 +7952,20 @@
       "configurationSpaceSize": 42,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2880
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b5"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2021",
+    "private": false,
     "createdAt": "2021-11-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7389,16 +8004,20 @@
       "configurationSpaceSize": 42,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 2880
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b6"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-23T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7437,16 +8056,20 @@
       "configurationSpaceSize": 194,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 948
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b7"
     },
     "name": "Wrike",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7485,16 +8108,20 @@
       "configurationSpaceSize": 194,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 948
-    }
+    },
+    "slug": "wrike"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b8"
     },
     "name": "Zapier",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2024",
+    "private": false,
     "createdAt": "2024-07-02T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7533,16 +8160,20 @@
       "configurationSpaceSize": 40,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 4762.7
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0b9"
     },
     "name": "Zapier",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2023",
+    "private": false,
     "createdAt": "2023-11-28T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7581,16 +8212,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 4462.7
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0ba"
     },
     "name": "Zapier",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2022",
+    "private": false,
     "createdAt": "2022-11-29T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7629,16 +8264,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0bb"
     },
     "name": "Zapier",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2020",
+    "private": false,
     "createdAt": "2020-11-16T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7677,16 +8316,20 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0bc"
     },
     "name": "Zapier",
-    "owner": "sphere",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "_collectionId": "6787d0facaeb2b25748bc12a",
     "version": "2019",
+    "private": false,
     "createdAt": "2019-11-12T00:00:00.000Z",
     "currency": "USD",
     "url": null,
@@ -7725,15 +8368,19 @@
       "configurationSpaceSize": 5,
       "minSubscriptionPrice": 0,
       "maxSubscriptionPrice": 748.75
-    }
+    },
+    "slug": "zapier"
   },
   {
     "_id": {
       "$oid": "6787d0facaeb2b25748bc0fe"
     },
     "name": "Fleet Management",
-    "owner": "Faked",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "1.0.0",
+    "private": false,
     "createdAt": {
       "$date": "2025-01-19T00:00:00.000Z"
     },
@@ -7774,15 +8421,19 @@
       "configurationSpaceSize": 16,
       "minSubscriptionPrice": 15,
       "maxSubscriptionPrice": 77.55
-    }
+    },
+    "slug": "fleet-management"
   },
   {
     "_id": {
       "$oid": "67a8af9c0f009fd3b4310151"
     },
     "name": "Fleet Management",
-    "owner": "Faked",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "0.1.0",
+    "private": false,
     "createdAt": {
       "$date": "2024-01-19T00:00:00.000Z"
     },
@@ -7824,15 +8475,19 @@
       "configurationSpaceSize": 6,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 101.8
-    }
+    },
+    "slug": "fleet-management"
   },
   {
     "_id": {
       "$oid": "67a8b01f0f009fd3b4310167"
     },
     "name": "Fleet Management",
-    "owner": "Faked",
+    "_organizationId": {
+      "$oid": "63f74bf8eeed64058364b601"
+    },
     "version": "0.0.1",
+    "private": false,
     "createdAt": {
       "$date": "2023-01-19T00:00:00.000Z"
     },
@@ -7874,6 +8529,7 @@
       "configurationSpaceSize": 2,
       "minSubscriptionPrice": 25,
       "maxSubscriptionPrice": 100
-    }
+    },
+    "slug": "fleet-management"
   }
 ]

@@ -37,3 +37,5 @@ nginx/production/ssl/
 
 coverage/
 .secrets
+
+api/public/static/avatars/users/

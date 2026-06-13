@@ -14,7 +14,7 @@ export default function ConfigurationDetailsModal({
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/45 p-4" onClick={handleClose}>
+        <div className="fixed inset-0 z-50 cursor-pointer bg-black/45 p-4" onClick={handleClose}>
           <div
             className="absolute left-1/2 top-1/2 flex h-[90dvh] w-[90%] max-w-[1200px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-lg bg-white p-4 shadow-2xl"
             onClick={e => e.stopPropagation()}

@@ -1,8 +1,9 @@
 import { GrWorkshop } from 'react-icons/gr';
 import { IoNewspaperOutline } from "react-icons/io5";
 import { FaPlayCircle } from 'react-icons/fa';
+import type { TimelineItem } from '../components/timeline';
 
-const timelineData = [
+const timelineData: TimelineItem[] = [
   {
     variant: 'proceedings',
     title: 'Pricing Intelligence: Rethinking IS Engineering in Volatile SaaS Environments',

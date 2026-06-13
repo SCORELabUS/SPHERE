@@ -9,7 +9,7 @@ export async function up(connection: Connection): Promise<void> {
     {
       $set: {
         createdAt: {
-          $cond: [{ $ifNull: ['$extractionDate', false] }, '$extractionDate', '$$REMOVE'],
+          $ifNull: ['$extractionDate', '$createdAt'],
         },
       },
     },

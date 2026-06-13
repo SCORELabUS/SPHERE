@@ -14,6 +14,9 @@ async function initTestContainer(): Promise<AwilixContainer> {
     pricingsToDelete: asValue(new Set<string>()),
     generatedFilesToDelete: asValue(new Set<string>()),
     collectionIdsToDelete: asValue(new Set<string>()),
+    orgsToDelete: asValue(new Set<string>()),
+    membershipsToDelete: asValue(new Set<string>()),
+    invitationsToDelete: asValue(new Set<string>()),
     adminUser: asValue(await createGlobalAdminUser()),
     testUser: asValue(await createGlobalTestUser()),
   });

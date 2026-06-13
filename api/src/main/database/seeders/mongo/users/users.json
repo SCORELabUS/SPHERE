@@ -5,16 +5,35 @@
     },
     "firstName": "Admin",
     "lastName": "1",
-    "username": "Admin",
+    "username": "admin",
     "email": "admin1@admin.com",
     "password": "$2a$05$su1Kqvc5EdsmVPcT1QsLcOWXZpFrWKKU/rsl8glLVWBV3gcKG/Byq",
     "token": "aa8b184a5b0b48737cfdfdbef8cc4990f3821c8b",
     "tokenExpiration": {"$date": "2023-02-23T11:10:52.000Z"},
-    "phone": "+34666777888",
-    "avatar": "avatars/maleAvatar.png",
-    "address": "Fake street 123",
-    "postalCode": "41010",
-    "role": "ADMIN",
+    "role": "USER",
+    "settings": {
+      "phone": "+34666777888",
+      "avatar": "static/avatars/users/default/avatar-1.svg",
+      "avatarBgColor": "#fa520f",
+      "avatarFgColor": "#ffffff",
+      "profile": {
+        "displayName": "Admin",
+        "bio": "Platform administrator and pricing researcher.",
+        "city": "Seville",
+        "country": "Spain",
+        "dateOfBirth": "1990-01-15"
+      },
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/admin-sphere",
+        "x": "https://x.com/admin_sphere"
+      },
+      "notificationPrefs": {
+        "OrganizationInvitation": { "email": true, "inbox": true },
+        "System": { "email": true, "inbox": true },
+        "CollectionShared": { "email": true, "inbox": true },
+        "PricingUpdated": { "email": false, "inbox": true }
+      }
+    },
     "createdAt": {"$date": "2023-02-20T11:22:04.000Z"},
     "updatedAt": {"$date": "2023-02-23T10:09:58.000Z"}
   },
@@ -29,11 +48,28 @@
     "password": "$2a$05$su1Kqvc5EdsmVPcT1QsLcOWXZpFrWKKU/rsl8glLVWBV3gcKG/Byq",
     "token": "aa8b184a5b0b48737cfdfdbef8cc4990f3821c8b",
     "tokenExpiration": {"$date": "2023-02-23T11:10:52.000Z"},
-    "phone": "+34666777888",
-    "avatar": "avatars/maleAvatar.png",
-    "address": "Fake street 123",
-    "postalCode": "41010",
     "role": "USER",
+    "settings": {
+      "phone": "+34666777888",
+      "avatar": "static/avatars/users/default/avatar-3.svg",
+      "avatarBgColor": "#1f1f1f",
+      "avatarFgColor": "#ffd900",
+      "profile": {
+        "displayName": "Sphere User",
+        "bio": "Exploring pricing strategies and SaaS analytics.",
+        "city": "Madrid",
+        "country": "Spain"
+      },
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/sphere-user"
+      },
+      "notificationPrefs": {
+        "OrganizationInvitation": { "email": true, "inbox": true },
+        "System": { "email": true, "inbox": true },
+        "CollectionShared": { "email": true, "inbox": true },
+        "PricingUpdated": { "email": true, "inbox": true }
+      }
+    },
     "createdAt": {"$date": "2023-02-20T11:22:04.000Z"},
     "updatedAt": {"$date": "2023-02-23T10:09:58.000Z"}
   },
@@ -43,16 +79,34 @@
     },
     "firstName": "Test",
     "lastName": "User",
-    "username": "TestUser",
+    "username": "testuser",
     "email": "test_user@test.com",
-    "password": "$2a$05$1ODkvjiWy7PPEMXGcbh2yujBvGmwlqTr2zz/fo1oNiqgdpzMA/UGa",
+    "password": "$2a$05$su1Kqvc5EdsmVPcT1QsLcOWXZpFrWKKU/rsl8glLVWBV3gcKG/Byq",
     "token": "39b27fde450fd1b1304bdd3bbd686ff41158e609",
     "tokenExpiration": {"$date": "2023-02-23T11:10:14.000Z"},
-    "phone": "+34666777888",
-    "avatar": "avatars/maleAvatar.png",
-    "address": "Fake street 123",
-    "postalCode": "41001",
     "role": "USER",
+    "settings": {
+      "phone": "+34666777888",
+      "avatar": "static/avatars/users/default/avatar-6.svg",
+      "avatarBgColor": "#cc3a05",
+      "avatarFgColor": "#fff8e0",
+      "profile": {
+        "displayName": "Testy",
+        "bio": "Just a test account for development.",
+        "city": "Barcelona",
+        "country": "Spain",
+        "dateOfBirth": "1995-06-20"
+      },
+      "socialLinks": {
+        "instagram": "https://instagram.com/testuser_dev"
+      },
+      "notificationPrefs": {
+        "OrganizationInvitation": { "email": false, "inbox": true },
+        "System": { "email": true, "inbox": false },
+        "CollectionShared": { "email": true, "inbox": true },
+        "PricingUpdated": { "email": false, "inbox": false }
+      }
+    },
     "createdAt": {"$date": "2023-02-20T11:22:04.000Z"},
     "updatedAt": {"$date": "2023-02-23T10:09:58.000Z"}
   },
@@ -62,16 +116,31 @@
     },
     "firstName": "Faker",
     "lastName": "User",
-    "username": "Faked",
+    "username": "faked",
     "email": "faked@acme.com",
-    "password": "$2a$05$ev5Nn4nr5wugf7mEaCBMnOJkCCLqmbF8T4c/TbnJXb/BAGWqiKSuG",
+    "password": "$2a$05$su1Kqvc5EdsmVPcT1QsLcOWXZpFrWKKU/rsl8glLVWBV3gcKG/Byq",
     "token": "39b27fde450fd1b1304bdd3bbd686ff41158e609",
     "tokenExpiration": {"$date": "2023-02-23T11:10:14.000Z"},
-    "phone": "+34666777888",
-    "avatar": "avatars/maleAvatar.png",
-    "address": "Fake street 123",
-    "postalCode": "41001",
     "role": "USER",
+    "settings": {
+      "phone": "+34666777888",
+      "avatar": "static/avatars/users/default/avatar-7.svg",
+      "avatarBgColor": "#2c2c2c",
+      "avatarFgColor": "#fa520f",
+      "profile": {
+        "bio": "Demo user from Acme Corp."
+      },
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/faked-acme",
+        "facebook": "https://facebook.com/faked.acme"
+      },
+      "notificationPrefs": {
+        "OrganizationInvitation": { "email": true, "inbox": true },
+        "System": { "email": true, "inbox": true },
+        "CollectionShared": { "email": true, "inbox": true },
+        "PricingUpdated": { "email": true, "inbox": true }
+      }
+    },
     "createdAt": {"$date": "2023-02-20T11:22:04.000Z"},
     "updatedAt": {"$date": "2023-02-23T10:09:58.000Z"}
   }

@@ -4,6 +4,7 @@ import { Accept, useDropzone } from 'react-dropzone';
 import { MdDeleteForever } from 'react-icons/md';
 import { error } from '../../theme/palette';
 import customAlert from '../../utils/custom-alert';
+import ActionButton from '../action-button';
 
 export default function FileUpload({
   onSubmit,
@@ -12,6 +13,7 @@ export default function FileUpload({
   isDragActiveText,
   isNotDragActiveText,
   accept,
+  disabled,
 }: {
   onSubmit: (file: File) => void;
   submitButtonText?: string;
@@ -19,6 +21,7 @@ export default function FileUpload({
   isDragActiveText?: string;
   isNotDragActiveText?: string;
   accept?: Accept;
+  disabled?: boolean;
 }) {
   const [file, setFile] = useState<File | null>(null);
 
@@ -33,7 +36,7 @@ export default function FileUpload({
     if (uploadedFile && extensionValidator) {
       setFile(uploadedFile);
     } else {
-      customAlert('Please upload a file with a .yaml or .yml extension');
+      customAlert('Please upload a file with a .yaml or .yml extension', 'warning');
     }
   }, []);
 
@@ -93,20 +96,14 @@ export default function FileUpload({
                 <p className="text-sm font-medium text-sphere-grey-900">{file.name}</p>
                 <p className="text-xs text-sphere-grey-600">{`${(file.size / 1024).toFixed(2)} KB`}</p>
               </div>
-              <button type="button" aria-label="delete" onClick={handleDelete}>
+              <button type="button" aria-label="delete" onClick={handleDelete} className="cursor-pointer">
                 <MdDeleteForever size={25} fill={error.dark} />
               </button>
             </li>
           </ul>
         )}
       </div>
-      <button
-        onClick={handleSubmit}
-        type="button"
-        className={`mt-5 rounded-xl bg-sphere-primary-700 px-5 py-2 text-base font-bold text-white ${submitButtonWidth ? 'w-auto' : 'w-full'}`}
-      >
-        {submitButtonText ?? 'Submit file'}
-      </button>
+      <ActionButton text={submitButtonText ?? 'Submit file'} onClick={handleSubmit} disabled={!file || disabled} className={`mt-5 font-bold ${submitButtonWidth ? 'w-auto' : 'w-full'}`}/>
     </div>
   );
 }

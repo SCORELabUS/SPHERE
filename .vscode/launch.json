@@ -19,7 +19,7 @@
             "type": "node",
             "request": "launch",
             "name": "Debug TSX Execution",
-            "runtimeExecutable": "npx",
+            "runtimeExecutable": "pnpx",
             "args": ["tsx", "--tsconfig", "tsconfig.json", "--watch", "src/main/backend.ts"],
             "smartStep": true,
             "console": "integratedTerminal",

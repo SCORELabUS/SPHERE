@@ -56,6 +56,7 @@ jobs:
           envkey_DATABASE_PASSWORD: ${{vars.CI_DATABASE_PASSWORD}}
           envkey_SERVER_PORT: ${{vars.CI_SERVER_PORT}}
           envkey_AVATARS_FOLDER: ${{vars.CI_AVATARS_FOLDER}}
+          envkey_ORG_AVATARS_FOLDER: ${{vars.CI_ORG_AVATARS_FOLDER}}
           envkey_COLLECTIONS_FOLDER: ${{vars.CI_COLLECTIONS_FOLDER}}
           envkey_SERVER_STATICS_FOLDER: public/
           envkey_REDIS_URL: ${{vars.CI_REDIS_URL}}
