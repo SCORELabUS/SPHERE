@@ -130,7 +130,6 @@ export default function OrganizationSearchInput({
     setResults([]);
     setIsOpen(false);
     setHighlightedIndex(0);
-    inputRef.current?.focus();
   };
 
   const handleRemove = (orgId: string) => {

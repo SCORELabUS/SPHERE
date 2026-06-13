@@ -136,19 +136,10 @@ export default function ApiKeysPage() {
               <button
                 type="button"
                 onClick={handleCopyKey}
-                className="cursor-pointer shrink-0 rounded-md bg-tp-primary px-3 py-1.5 text-sm font-medium text-tp-on-primary transition-colors hover:bg-tp-primary/90"
+                className="cursor-pointer shrink-0 rounded-md border border-tp-severity-warning-border bg-tp-severity-warning-bg p-1.5 text-tp-severity-warning transition-colors hover:bg-tp-severity-warning-border/20"
+                title={copied ? 'Copied' : 'Copy key'}
               >
-                {copied ? (
-                  <span className="flex items-center gap-1">
-                    <Iconify icon="mdi:check" width={14} />
-                    Copied
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    <Iconify icon="mdi:content-copy" width={14} />
-                    Copy
-                  </span>
-                )}
+                <Iconify icon={copied ? 'mdi:check' : 'mdi:content-copy'} width={16} />
               </button>
             </div>
             <p className="mt-2 text-sm">

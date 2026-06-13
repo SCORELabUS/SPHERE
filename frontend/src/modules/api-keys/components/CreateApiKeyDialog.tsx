@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ApiKeyScope, CreateApiKeyData } from '../api/apiKeysApi';
 import OrganizationSearchInput, { OrgSearchResult } from './OrganizationSearchInput';
@@ -21,6 +21,32 @@ export default function CreateApiKeyDialog({
   const [scopes, setScopes] = useState<ApiKeyScope[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setName('');
+      setSelectedOrgs([]);
+      setScopes([]);
+      setError(null);
+      setLoading(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (selectedOrgs.length === 0) {
+      setScopes([]);
+      return;
+    }
+    setScopes((prev) => {
+      const orgIds = new Set(selectedOrgs.map((o) => o.id));
+      const kept = prev.filter((s) => orgIds.has(s.organizationId));
+      const newScopes: ApiKeyScope[] = selectedOrgs
+        .filter((o) => !kept.some((s) => s.organizationId === o.id))
+        .map((o) => ({ organizationId: o.id, scope: 'VIEW' as const }));
+      console.log('newScopes', newScopes);
+      return [...kept, ...newScopes];
+    });
+  }, [selectedOrgs]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,21 +121,7 @@ export default function CreateApiKeyDialog({
               </label>
               <OrganizationSearchInput
                 selectedOrgs={selectedOrgs}
-                onOrgsChange={(orgs) => {
-                  setSelectedOrgs(orgs);
-                  const orgIds = orgs.map((o) => o.id);
-                  const existingScopes = scopes.filter((s) =>
-                    orgIds.includes(s.organizationId)
-                  );
-                  const newOrgs = orgs.filter(
-                    (o) => !scopes.some((s) => s.organizationId === o.id)
-                  );
-                  const newScopes = newOrgs.map((o) => ({
-                    organizationId: o.id,
-                    scope: 'VIEW' as const,
-                  }));
-                  setScopes([...existingScopes, ...newScopes]);
-                }}
+                onOrgsChange={setSelectedOrgs}
               />
             </div>
 

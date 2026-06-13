@@ -20,7 +20,9 @@ class PermissionController {
       const entityType = req.query.entityType as EntityType | undefined;
       const permissions = await this.permissionService.getOrganizationPermissions(
         req.params.orgId,
-        entityType
+        entityType,
+        req.user.id,
+        req.user.role === 'ADMIN'
       );
       res.json(permissions);
     } catch (err: any) {

@@ -39,8 +39,8 @@ export default function ScopeSelector({
   selectedScopes,
   onChange,
 }: ScopeSelectorProps) {
-  const getScopeForOrg = (orgId: string): ApiKeyScope['scope'] => {
-    return selectedScopes.find((s) => s.organizationId === orgId)?.scope || 'VIEW';
+  const getScopeForOrg = (orgId: string): ApiKeyScope['scope'] | null => {
+    return selectedScopes.find((s) => s.organizationId === orgId)?.scope ?? null;
   };
 
   const updateScope = (orgId: string, scope: ApiKeyScope['scope']) => {

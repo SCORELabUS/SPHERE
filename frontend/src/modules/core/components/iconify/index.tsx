@@ -39,6 +39,8 @@ import {
     MdOutlineDashboard,
     MdDelete,
     MdVpnKey,
+    MdOutlineRemoveRedEye,
+    MdOutlineShield,
 } from 'react-icons/md';
 import { IconType } from 'react-icons';
 
@@ -83,6 +85,8 @@ const iconMap: Record<string, IconType> = {
     'mdi:trash-can-outline': MdDelete,
     'mdi:view-dashboard-outline': MdOutlineDashboard,
     'mdi:key': MdVpnKey,
+    'mdi:eye-outline': MdOutlineRemoveRedEye,
+    'mdi:shield-account-outline': MdOutlineShield,
 };
 
 type IconifyProps = {

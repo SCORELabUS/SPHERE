@@ -248,12 +248,40 @@ class PermissionService {
 
   /**
    * Gets all entity permissions for an organization.
+   * OWNER/ADMIN users receive implicit full permissions for each entity type
+   * (org-scoped, entitySlug=null) when no explicit record exists.
    */
   async getOrganizationPermissions(
     organizationId: string,
-    entityType?: EntityType
+    entityType?: EntityType,
+    userId?: string,
+    isGlobalAdmin?: boolean
   ): Promise<LeanEntityPermission[]> {
-    return this.entityPermissionRepository.findByOrganization(organizationId, entityType);
+    const permissions = await this.entityPermissionRepository.findByOrganization(organizationId, entityType);
+
+    if (!userId) return permissions;
+
+    const orgRole = await this.resolveOrgRole(userId, organizationId);
+
+    if (isGlobalAdmin || orgRole === 'OWNER' || orgRole === 'ADMIN') {
+      const types: EntityType[] = entityType ? [entityType] : ['pricing', 'collection'];
+      for (const type of types) {
+        const existing = permissions.find(
+          p => p.entitySlug === null && p.entityType === type && p._userId?.toString() === userId
+        );
+        if (!existing) {
+          permissions.push({
+            _userId: userId,
+            _organizationId: organizationId,
+            entityType: type,
+            entitySlug: null,
+            permissions: { ...FULL_PERMISSIONS },
+          } as LeanEntityPermission);
+        }
+      }
+    }
+
+    return permissions;
   }
 
   /**

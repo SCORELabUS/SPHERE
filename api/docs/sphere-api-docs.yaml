@@ -3625,8 +3625,16 @@ paths:
     get:
       summary: List entity permissions for an organization
       description: |
-        Returns all entity permissions configured for the organization. Only OWNER and ADMIN
-        users can access this endpoint. Results can be filtered by entity type.
+        Returns all entity permissions configured for the organization. Results can be
+        filtered by entity type. All authenticated members (OWNER, ADMIN, MEMBER) can
+        access this endpoint.
+
+        For OWNER and ADMIN users, implicit full permissions (GET, PUT, DELETE, CREATE)
+        are included in the response for each entity type when no explicit permission
+        record exists. This ensures the frontend can correctly determine that these
+        roles have full access without needing separate role checks.
+
+        For MEMBER users, only explicitly configured permission records are returned.
       tags:
         - Permissions
       security:

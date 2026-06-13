@@ -11,7 +11,8 @@ import { BASE_PATH } from './utils/config/variables';
 import { LeanUser } from '../main/types/models/User';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
-import { randomSuffix } from './utils/helpers';
+import { randomSuffix, createGlobalAdminUser } from './utils/helpers';
+import { createOrgScopedPermission } from './utils/organizations';
 
 dotenv.config();
 
@@ -178,13 +179,16 @@ describe('Entity Permissions API integration', () => {
         });
 
       const response = await request(app)
-        .get(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBe(1);
-      expect(response.body[0].entityType).toBe('pricing');
+      expect(response.body.length).toBe(2);
+      const memberPerm = response.body.find((p: any) => p._userId === member.id);
+      expect(memberPerm.entityType).toBe('pricing');
+      const ownerPerm = response.body.find((p: any) => p._userId === owner.id && p.entitySlug === null);
+      expect(ownerPerm.permissions.CREATE).toBe(true);
     });
 
     it('should filter by entityType', async () => {
@@ -223,16 +227,18 @@ describe('Entity Permissions API integration', () => {
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(pricingResponse.status).toBe(200);
-      expect(pricingResponse.body.length).toBe(1);
-      expect(pricingResponse.body[0].entityType).toBe('pricing');
+      expect(pricingResponse.body.length).toBe(2);
+      const pricingTypes = pricingResponse.body.map((p: any) => p.entityType);
+      expect(pricingTypes.every((t: string) => t === 'pricing')).toBe(true);
 
       const collectionResponse = await request(app)
         .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=collection`)
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(collectionResponse.status).toBe(200);
-      expect(collectionResponse.body.length).toBe(1);
-      expect(collectionResponse.body[0].entityType).toBe('collection');
+      expect(collectionResponse.body.length).toBe(2);
+      const collectionTypes = collectionResponse.body.map((p: any) => p.entityType);
+      expect(collectionTypes.every((t: string) => t === 'collection')).toBe(true);
     });
 
     it('should resolve entityName when entityId is a pricing name (not an ObjectId)', async () => {
@@ -258,13 +264,14 @@ describe('Entity Permissions API integration', () => {
       expect(createResponse.status).toBe(201);
 
       const getResponse = await request(app)
-        .get(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(getResponse.status).toBe(200);
-      expect(getResponse.body.length).toBe(1);
-      expect(getResponse.body[0].entityName).toBe(pricing.serviceName);
-      expect(getResponse.body[0].entityType).toBe('pricing');
+      expect(getResponse.body.length).toBe(2);
+      const memberPerm = getResponse.body.find((p: any) => p._userId === member.id);
+      expect(memberPerm.entityName).toBe(pricing.serviceName);
+      expect(memberPerm.entityType).toBe('pricing');
     });
 
     it('should resolve entityName when entityId is a collection name (not an ObjectId)', async () => {
@@ -288,13 +295,14 @@ describe('Entity Permissions API integration', () => {
       expect(createResponse.status).toBe(201);
 
       const getResponse = await request(app)
-        .get(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=collection`)
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(getResponse.status).toBe(200);
-      expect(getResponse.body.length).toBe(1);
-      expect(getResponse.body[0].entityName).toBe(collectionName);
-      expect(getResponse.body[0].entityType).toBe('collection');
+      expect(getResponse.body.length).toBe(2);
+      const memberPerm = getResponse.body.find((p: any) => p._userId === member.id);
+      expect(memberPerm.entityName).toBe(collectionName);
+      expect(memberPerm.entityType).toBe('collection');
     });
 
     it('should resolve entityName when entityId is an ObjectId', async () => {
@@ -320,13 +328,181 @@ describe('Entity Permissions API integration', () => {
       expect(createResponse.status).toBe(201);
 
       const getResponse = await request(app)
-        .get(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
         .set('Authorization', `Bearer ${owner.token}`);
 
       expect(getResponse.status).toBe(200);
-      expect(getResponse.body.length).toBe(1);
-      expect(getResponse.body[0].entityName).toBe(pricing.serviceName);
-      expect(getResponse.body[0].entityType).toBe('pricing');
+      expect(getResponse.body.length).toBe(2);
+      const memberPerm = getResponse.body.find((p: any) => p._userId === member.id);
+      expect(memberPerm.entityName).toBe(pricing.serviceName);
+      expect(memberPerm.entityType).toBe('pricing');
+    });
+
+    it('should return implicit full permissions for OWNER on pricing when no explicit record exists', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].entityType).toBe('pricing');
+      expect(response.body[0].entitySlug).toBeNull();
+      expect(response.body[0].permissions).toEqual({
+        GET: true,
+        CREATE: true,
+        PUT: true,
+        DELETE: true,
+      });
+    });
+
+    it('should return implicit full permissions for OWNER on collection when no explicit record exists', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=collection`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].entityType).toBe('collection');
+      expect(response.body[0].entitySlug).toBeNull();
+      expect(response.body[0].permissions).toEqual({
+        GET: true,
+        CREATE: true,
+        PUT: true,
+        DELETE: true,
+      });
+    });
+
+    it('should return implicit full permissions for OWNER on both entity types without filter', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(2);
+      const types = response.body.map((p: any) => p.entityType).sort();
+      expect(types).toEqual(['collection', 'pricing']);
+      for (const perm of response.body) {
+        expect(perm.entitySlug).toBeNull();
+        expect(perm.permissions).toEqual({
+          GET: true,
+          CREATE: true,
+          PUT: true,
+          DELETE: true,
+        });
+      }
+    });
+
+    it('should return implicit full permissions for ADMIN of the organization', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: adminMember } = await createAndLoginUser('USER');
+      await createMembership(adminMember.id, organizationId, 'ADMIN');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${adminMember.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].entityType).toBe('pricing');
+      expect(response.body[0].entitySlug).toBeNull();
+      expect(response.body[0].permissions).toEqual({
+        GET: true,
+        CREATE: true,
+        PUT: true,
+        DELETE: true,
+      });
+    });
+
+    it('should return empty array for MEMBER with no explicit permissions', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(0);
+    });
+
+    it('should return only explicit permissions for MEMBER with org-scoped permissions', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+      await createOrgScopedPermission(member.id, organizationId, 'pricing', {
+        GET: true,
+        CREATE: false,
+        PUT: false,
+        DELETE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].permissions).toEqual({
+        GET: true,
+        CREATE: false,
+        PUT: false,
+        DELETE: false,
+      });
+    });
+
+    it('should not duplicate implicit permissions when OWNER already has an explicit org-scoped record', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      await createOrgScopedPermission(owner.id, organizationId, 'pricing', {
+        GET: true,
+        CREATE: true,
+        PUT: false,
+        DELETE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      const orgScoped = response.body.filter(
+        (p: any) => p.entitySlug === null && p._userId === owner.id
+      );
+      expect(orgScoped.length).toBe(1);
+      expect(orgScoped[0].permissions).toEqual({
+        GET: true,
+        CREATE: true,
+        PUT: false,
+        DELETE: false,
+      });
+    });
+
+    it('should return implicit full permissions for global ADMIN on any organization', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const globalAdmin = await createGlobalAdminUser();
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}/permissions?entityType=pricing`)
+        .set('Authorization', `Bearer ${globalAdmin.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].entityType).toBe('pricing');
+      expect(response.body[0].entitySlug).toBeNull();
+      expect(response.body[0].permissions).toEqual({
+        GET: true,
+        CREATE: true,
+        PUT: true,
+        DELETE: true,
+      });
+      await deleteTestUser(globalAdmin.username);
     });
   });
 
