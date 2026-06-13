@@ -17,7 +17,7 @@ export default function PricingTree({ analytics: a }: PricingTreeProps) {
   );
 
   const Section = ({ label, count, unit, k, children }: { label: string; count: number; unit?: string; k: string; children?: React.ReactNode }) => (
-    <div className="border-b border-tp-hairline-soft last:border-b-0">
+    <div className="border-b border-tp-hairline last:border-b-0">
       <button type="button" onClick={() => toggle(k)} className="flex w-full cursor-pointer items-center gap-2 py-1.5 text-xs font-medium text-tp-ink hover:text-tp-primary">
         <svg className={`h-3 w-3 shrink-0 text-tp-muted transition-transform ${open[k] ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
         <span className="flex-1 text-left">{label}</span>
@@ -28,7 +28,7 @@ export default function PricingTree({ analytics: a }: PricingTreeProps) {
   );
 
   return (
-    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
       <h3 className="mb-2 text-xs font-medium text-tp-ink">Pricing</h3>
       <Section label="Plans" count={a.numberOfPlans} unit="plans" k="plans">
         <Row label="Free" count={a.numberOfFreePlans} unit="plan" indent={1} />

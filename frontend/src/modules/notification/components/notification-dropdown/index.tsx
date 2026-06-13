@@ -29,9 +29,9 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
       exit="hidden"
       variants={dropdownVariants}
       transition={transitionFast}
-      className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-4"
+      className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
     >
-      <div className="flex items-center justify-between border-b border-tp-hairline-soft px-4 py-3">
+      <div className="flex items-center justify-between border-b border-tp-hairline px-4 py-3">
         <h3 className="font-display text-sm font-medium text-tp-ink">Notifications</h3>
         {unreadCount > 0 && (
           <button
@@ -62,7 +62,7 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
       </div>
 
       {notifications.length > 0 && (
-        <div className="border-t border-tp-hairline-soft px-4 py-2">
+        <div className="border-t border-tp-hairline px-4 py-2">
           <button
             onClick={handleViewAll}
             className="w-full cursor-pointer text-center text-xs font-medium text-tp-primary transition-colors hover:text-tp-primary-deep"

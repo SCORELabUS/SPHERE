@@ -21,8 +21,8 @@ export default function PricingVersionsTab({
   onDelete,
 }: PricingVersionsTabProps) {
   return (
-    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-      <div className="divide-y divide-tp-hairline-soft">
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+      <div className="divide-y divide-tp-hairline">
         {versions.map(v => (
           <div key={v.id} className={`flex flex-col gap-3 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${v.id === currentVersion?.id ? 'bg-tp-primary/5' : ''}`}>
             <div className="flex items-center gap-3">

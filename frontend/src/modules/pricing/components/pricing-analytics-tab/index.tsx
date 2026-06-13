@@ -35,7 +35,7 @@ export default function PricingAnalyticsTab({
 }: PricingAnalyticsTabProps) {
   if (chartData.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
         <p className="text-sm text-tp-steel">No data available for the selected date range.</p>
       </div>
     );
@@ -48,7 +48,7 @@ export default function PricingAnalyticsTab({
         <DatePicker dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={onDateFromChange} onDateToChange={onDateToChange} />
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+        <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
           <div className="mb-3 flex items-center justify-center gap-4 text-[11px]">
             <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#2563eb]" />Min price</span>
             <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#dc2626]" />Max price</span>
@@ -56,7 +56,7 @@ export default function PricingAnalyticsTab({
           <ResponsiveContainer width="100%" height={220}><LineChart data={chartData} margin={{ top: 5, right: 10, left: -8, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#ededed" /><XAxis dataKey="date" tick={axisTick} /><YAxis tick={axisTick} tickFormatter={fmtY} width={50} domain={['auto', 'auto']} /><Tooltip formatter={(v: number) => fmtTooltip(v)} isAnimationActive={false} /><Line type="monotone" dataKey="minPrice" name="Min" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} /><Line type="monotone" dataKey="maxPrice" name="Max" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
         </div>
         {([['configs', 'Configuration Space', '#08aeb3', 'configs'], ['plans', 'Plans', '#7c3aed', 'plans'], ['features', 'Features', '#0891b2', 'features'], ['addOns', 'Add-Ons', '#16a34a', 'addOns'], ['usageLimits', 'Usage Limits', '#ea580c', 'usageLimits']] as const).map(([k, label, color, dk]) => (
-          <div key={k} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+          <div key={k} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
             <div className="mb-2 flex items-center justify-center gap-2 text-[11px] text-tp-ink"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />{label}</div>
             <ResponsiveContainer width="100%" height={220}><LineChart data={chartData} margin={{ top: 5, right: 10, left: -8, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#ededed" /><XAxis dataKey="date" tick={axisTick} /><YAxis tick={axisTick} tickFormatter={fmtY} width={50} domain={['auto', 'auto']} /><Tooltip formatter={(v: number) => fmtTooltip(v)} isAnimationActive={false} /><Line type="monotone" dataKey={dk} stroke={color} strokeWidth={2} dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
           </div>

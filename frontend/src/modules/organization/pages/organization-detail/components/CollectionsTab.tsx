@@ -67,8 +67,8 @@ export default function CollectionsTab({ collections, collectionsTotal, collecti
       exit={{ opacity: 0, y: -8 }}
       transition={transitionDefault}
     >
-      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-        <div className="flex flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+        <div className="flex flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg text-tp-ink">Collections</h2>
             <p className="text-xs text-tp-steel">Collections owned by this organization.</p>
@@ -114,7 +114,7 @@ export default function CollectionsTab({ collections, collectionsTotal, collecti
         </div>
 
         {collectionsTotal > PER_PAGE && (
-          <div className="border-t border-tp-hairline-soft px-5 py-3">
+          <div className="border-t border-tp-hairline px-5 py-3">
             <Pagination
               currentPage={collectionPage}
               totalPages={Math.ceil(collectionsTotal / PER_PAGE)}

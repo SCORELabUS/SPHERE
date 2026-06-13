@@ -12,7 +12,7 @@ export default function DashboardSkeleton() {
       {/* Stats grid */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-4 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+          <div key={i} className="flex items-center gap-4 rounded-xl border border-tp-hairline bg-tp-canvas p-4">
             <Skeleton width={40} height={40} />
             <div>
               <Skeleton width={48} height={28} />
@@ -34,7 +34,7 @@ export default function DashboardSkeleton() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+                <div key={i} className="flex items-center gap-3 rounded-xl border border-tp-hairline bg-tp-canvas p-4">
                   <Skeleton width={36} height={36} />
                   <div className="flex-1">
                     <Skeleton width="70%" height={14} />
@@ -76,7 +76,7 @@ export default function DashboardSkeleton() {
         <div className="space-y-3">
           <Skeleton width={100} height={16} />
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+            <div key={i} className="flex items-center gap-3 rounded-xl border border-tp-hairline bg-tp-canvas p-4">
               <Skeleton width={36} height={36} />
               <div className="flex-1">
                 <Skeleton width="60%" height={14} />

@@ -438,12 +438,12 @@ export default function CardPage() {
         {/* Stats */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...transitionDefault, delay: 0.05 }} className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[{ l: 'Configurations', v: a?.configurationSpaceSize?.toLocaleString() ?? '—' }, { l: 'Min price', v: a ? `$${a.minSubscriptionPrice.toFixed(2)}` : '—' }, { l: 'Max price', v: a ? `$${a.maxSubscriptionPrice.toFixed(2)}` : '—' }, { l: 'Versions', v: String(versions.length) }].map(s => (
-            <div key={s.l} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3"><p className="text-[11px] text-tp-steel">{s.l}</p><p className="mt-0.5 text-lg font-semibold text-tp-ink">{s.v}</p></div>
+            <div key={s.l} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3"><p className="text-[11px] text-tp-steel">{s.l}</p><p className="mt-0.5 text-lg font-semibold text-tp-ink">{s.v}</p></div>
           ))}
         </motion.div>
 
         {/* Tabs */}
-        <div className="mb-6 border-b border-tp-hairline-soft">
+        <div className="mb-6 border-b border-tp-hairline">
           <div className="mb-2 flex gap-2 overflow-x-auto pb-2 md:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
             {([
               ['overview', 'Overview'],
@@ -459,7 +459,7 @@ export default function CardPage() {
                 className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
                   tab === k
                     ? 'bg-tp-primary text-tp-on-primary shadow-sm'
-                    : 'bg-tp-surface text-tp-steel hover:bg-tp-hairline-soft hover:text-tp-ink'
+                    : 'bg-tp-surface text-tp-steel hover:bg-tp-hairline hover:text-tp-ink'
                 }`}
               >
                 {l}
@@ -503,7 +503,7 @@ export default function CardPage() {
 
               <div className="hidden flex-col gap-6 md:flex md:flex-row">
                 <motion.div
-                  className="min-w-0 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4"
+                  className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
                   animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
                   transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 >
@@ -532,7 +532,7 @@ export default function CardPage() {
               </div>
 
               <div className="md:hidden">
-                <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+                <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
                   {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
                     : pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={handleApplyVariables} />
                     : <div className="flex h-64 items-center justify-center text-sm text-tp-steel">Could not load pricing preview</div>}
@@ -604,7 +604,7 @@ export default function CardPage() {
               {isPrivateNoAccess ? <PrivateAccessFallback /> : (
               <>
               {a && a.configurationSpaceSize && a.configurationSpaceSize > 2000 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
                   <svg className="mb-3 h-10 w-10 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
                   <p className="text-sm font-medium text-tp-ink">Configuration space too large</p>
                   <p className="mt-1 max-w-md text-xs text-tp-steel">This pricing has {a.configurationSpaceSize.toLocaleString()} configurations. The explorer is only available for pricing with ≤2,000 configurations.</p>

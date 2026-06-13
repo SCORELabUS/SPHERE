@@ -60,8 +60,8 @@ export default function MembersTab({
       exit={{ opacity: 0, y: -8 }}
       transition={transitionDefault}
     >
-      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-        <div className="flex flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+        <div className="flex flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg text-tp-ink">Members</h2>
             <p className="text-xs text-tp-steel">
@@ -80,7 +80,7 @@ export default function MembersTab({
           )}
         </div>
 
-        <div className="divide-y divide-tp-hairline-soft">
+        <div className="divide-y divide-tp-hairline">
           {members.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-12 text-tp-ink">
               <Iconify icon="mdi:account-group-outline" width={32} />

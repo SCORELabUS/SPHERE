@@ -35,7 +35,7 @@ const ConfirmModal = ({
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={transitionFast}
         onClick={(e) => e.stopPropagation()}
-        className={`flex w-[90dvw] max-w-150 flex-col rounded-xl border border-tp-hairline-soft ${danger ? 'border-t-4 border-t-tp-severity-error' : ''} bg-tp-canvas p-6 shadow-elevation-4`}
+        className={`flex w-[90dvw] max-w-150 flex-col rounded-xl border border-tp-hairline ${danger ? 'border-t-4 border-t-tp-severity-error' : ''} bg-tp-canvas p-6 shadow-elevation-4`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-message"

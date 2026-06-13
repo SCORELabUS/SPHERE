@@ -221,7 +221,7 @@ export default function DashboardPage() {
             key={stat.label}
             variants={fadeInUp}
             transition={transitionDefault}
-            className="flex items-center gap-4 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4"
+            className="flex items-center gap-4 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.color}`}>
               {stat.icon}
@@ -255,7 +255,7 @@ export default function DashboardPage() {
             </div>
 
             {recentOrganizationsData.length === 0 ? (
-              <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 text-center">
+              <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-6 text-center">
                 <p className="text-sm text-tp-steel">No recent organizations yet</p>
                 <button
                   type="button"
@@ -292,7 +292,7 @@ export default function DashboardPage() {
             </div>
 
             {recentPricingsData.length === 0 ? (
-              <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 text-center">
+              <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-6 text-center">
                 <p className="text-sm text-tp-steel">No recent activity yet</p>
                 <button
                   type="button"
@@ -329,7 +329,7 @@ export default function DashboardPage() {
             </div>
 
             {recentCollectionsData.length === 0 ? (
-              <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 text-center">
+              <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-6 text-center">
                 <p className="text-sm text-tp-steel">No recent activity yet</p>
                 <button
                   type="button"
@@ -363,7 +363,7 @@ export default function DashboardPage() {
               key={action.to}
               type="button"
               onClick={() => router.push(action.to)}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 text-left transition-all hover:border-tp-primary/30 hover:shadow-elevation-1"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-tp-hairline bg-tp-canvas p-4 text-left transition-all hover:border-tp-primary/30 hover:shadow-elevation-1"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tp-surface text-tp-steel">
                 {action.icon}

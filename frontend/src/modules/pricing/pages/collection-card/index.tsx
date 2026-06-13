@@ -266,7 +266,7 @@ export default function CollectionCardPage() {
             { label: 'Max price', value: d?.maxPrice ? `$${d.maxPrice.min.toFixed(2)} – $${d.maxPrice.max.toFixed(2)}` : '—' },
             { label: 'Config space', value: d?.configurationSpaceSize ? `${d.configurationSpaceSize.min.toLocaleString()} – ${d.configurationSpaceSize.max.toLocaleString()}` : '—' },
           ].map(s => (
-            <div key={s.label} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+            <div key={s.label} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
               <p className="text-[11px] text-tp-steel">{s.label}</p>
               <p className="mt-0.5 truncate text-lg font-semibold text-tp-ink">{s.value}</p>
             </div>
@@ -274,7 +274,7 @@ export default function CollectionCardPage() {
         </motion.div>
 
         {/* Tabs */}
-        <div className="mb-6 flex gap-1 border-b border-tp-hairline-soft">
+        <div className="mb-6 flex gap-1 border-b border-tp-hairline">
           {availableTabs.map(([key, label]) => (
             <button key={key} type="button" onClick={() => setTab(key)} className={`relative cursor-pointer px-4 py-2.5 text-sm font-medium transition-colors ${tab === key ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}>
               {label}
@@ -311,7 +311,7 @@ export default function CollectionCardPage() {
                   ))}
                 </div>
               ) : pricings.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
                   <p className="text-sm font-medium text-tp-ink">No pricings in this collection</p>
                 </div>
               ) : (
@@ -378,15 +378,15 @@ export default function CollectionCardPage() {
                   {/* Summary stats */}
                   {pricings.length > 0 && (
                     <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+                      <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
                         <p className="text-[11px] text-tp-steel">Avg min price</p>
                         <p className="mt-0.5 text-lg font-semibold text-tp-ink">${avgPrices.avgMin.toFixed(2)}</p>
                       </div>
-                      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+                      <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
                         <p className="text-[11px] text-tp-steel">Avg max price</p>
                         <p className="mt-0.5 text-lg font-semibold text-tp-ink">${avgPrices.avgMax.toFixed(2)}</p>
                       </div>
-                      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+                      <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
                         <p className="text-[11px] text-tp-steel">Pricings</p>
                         <p className="mt-0.5 text-lg font-semibold text-tp-ink">{pricingsTotal}</p>
                       </div>
@@ -402,7 +402,7 @@ export default function CollectionCardPage() {
                         ['features', 'Features', '#0891b2'],
                         ['addOns', 'Add-ons', '#16a34a'],
                       ] as const).map(([k, label, color]) => (
-                        <div key={k} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+                        <div key={k} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
                           <div className="mb-2 flex items-center justify-center gap-2 text-[11px] text-tp-ink">
                             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
                             {label}
@@ -422,7 +422,7 @@ export default function CollectionCardPage() {
                   )}
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
                   <p className="text-sm text-tp-steel">No analytics data available for this collection.</p>
                 </div>
               )}

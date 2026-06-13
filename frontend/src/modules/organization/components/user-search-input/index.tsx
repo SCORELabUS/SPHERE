@@ -201,7 +201,7 @@ export default function UserSearchInput({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-tp-hairline-soft bg-tp-canvas px-3 py-2 focus-within:border-tp-primary focus-within:ring-1 focus-within:ring-tp-primary/20">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-tp-hairline bg-tp-canvas px-3 py-2 focus-within:border-tp-primary focus-within:ring-1 focus-within:ring-tp-primary/20">
         {selectedUsers.map((user) => (
           <span
             key={user.id}

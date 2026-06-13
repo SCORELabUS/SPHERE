@@ -5,7 +5,7 @@ export default function EditorSkeleton() {
     <div className="grid h-full w-full gap-4 bg-slate-300 lg:grid-cols-2">
       {/* Left: editor placeholder */}
       <div className="relative h-full min-h-0 p-4">
-        <div className="h-full rounded-xl border border-tp-hairline-soft bg-tp-canvas">
+        <div className="h-full rounded-xl border border-tp-hairline bg-tp-canvas">
           {/* Line numbers */}
           <div className="flex gap-4 p-4">
             <div className="space-y-2">

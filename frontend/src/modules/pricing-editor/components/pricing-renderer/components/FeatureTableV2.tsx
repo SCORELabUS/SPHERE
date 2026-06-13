@@ -461,7 +461,7 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     const usageRows = rows.filter(r => r.type === 'usageLimit');
 
     return (
-      <div key={planKey} className="overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+      <div key={planKey} className="overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-1">
         <div
           className="flex flex-col items-center justify-center px-4 py-6 text-center text-tp-on-primary"
           style={{ background: `linear-gradient(135deg, ${a}, ${b})` }}
@@ -477,7 +477,7 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
           )}
         </div>
 
-        <div className="divide-y divide-tp-hairline-soft">
+        <div className="divide-y divide-tp-hairline">
           {featureRows.map(row => (
             <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <span className="min-w-0 flex-1 text-sm font-bold text-tp-charcoal">
@@ -526,11 +526,11 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
           const tagPanelId = `tag-panel-${tag.replace(/\s+/g, '-').toLowerCase()}`;
 
           return (
-            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-1">
               <button
                 type="button"
                 onClick={() => toggleTag(tag, index)}
-                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline-soft"
+                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline"
                 aria-expanded={open}
                 aria-controls={tagPanelId}
               >
@@ -574,11 +574,11 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
           const tagPanelId = `mobile-tag-panel-${tag.replace(/\s+/g, '-').toLowerCase()}`;
 
           return (
-            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1">
+            <div key={tag} className="mt-5 overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-1">
               <button
                 type="button"
                 onClick={() => toggleTag(tag, index)}
-                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline-soft"
+                className="flex w-full cursor-pointer items-center justify-between bg-tp-surface px-5 py-4 text-left text-base font-semibold text-tp-ink transition-colors hover:bg-tp-hairline"
                 aria-expanded={open}
                 aria-controls={tagPanelId}
               >

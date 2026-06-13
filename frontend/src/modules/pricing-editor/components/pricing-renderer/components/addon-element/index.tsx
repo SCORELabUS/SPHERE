@@ -41,7 +41,7 @@ export default function AddOnElement({
       initial="hidden"
       animate="visible"
       whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(15,23,42,0.12)' }}
-      className={`relative overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-1 transition-shadow`}
+      className={`relative overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-1 transition-shadow`}
     >
       <div className={`absolute inset-y-0 left-0 w-1 ${accentClass}`} />
 

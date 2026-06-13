@@ -77,7 +77,7 @@ const AlertModal = ({ message, severity = 'auto', onClose }: AlertModalProps): J
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={transitionFast}
         onClick={(e) => e.stopPropagation()}
-        className={`flex w-[90dvw] max-w-100 flex-col rounded-xl border border-tp-hairline-soft border-t-4 ${config.borderColor} bg-tp-canvas p-6 shadow-elevation-4`}
+        className={`flex w-[90dvw] max-w-100 flex-col rounded-xl border border-tp-hairline border-t-4 ${config.borderColor} bg-tp-canvas p-6 shadow-elevation-4`}
         role="dialog"
         aria-modal="true"
       >

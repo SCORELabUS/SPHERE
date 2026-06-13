@@ -18,7 +18,7 @@ export default function PaymentsSection({ settings: _settings }: Props) {
       </div>
 
       {/* Subscription status */}
-      <div className="rounded-[12px] border border-tp-hairline-soft bg-tp-canvas p-6">
+      <div className="rounded-[12px] border border-tp-hairline bg-tp-canvas p-6">
         <h3 className="text-sm font-medium text-tp-ink">Subscription Status</h3>
         <div className="mt-4 flex items-start gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-tp-primary/10">
@@ -45,8 +45,8 @@ export default function PaymentsSection({ settings: _settings }: Props) {
       </div>
 
       {/* Payment history */}
-      <div className="rounded-[12px] border border-tp-hairline-soft bg-tp-canvas">
-        <div className="border-b border-tp-hairline-soft px-6 py-4">
+      <div className="rounded-[12px] border border-tp-hairline bg-tp-canvas">
+        <div className="border-b border-tp-hairline px-6 py-4">
           <h3 className="text-sm font-medium text-tp-ink">Payment History</h3>
         </div>
         <div className="px-6 py-10 text-center">
@@ -56,7 +56,7 @@ export default function PaymentsSection({ settings: _settings }: Props) {
       </div>
 
       {/* Payment method placeholder */}
-      <div className="rounded-[12px] border border-tp-hairline-soft bg-tp-canvas p-6">
+      <div className="rounded-[12px] border border-tp-hairline bg-tp-canvas p-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium text-tp-ink">Payment Method</h3>

@@ -193,7 +193,7 @@ export default function DatePicker({ dateFrom, dateTo, onDateFromChange, onDateT
             </div>
 
             {/* Footer */}
-            <div className="mt-2 flex items-center justify-between border-t border-tp-hairline-soft pt-2">
+            <div className="mt-2 flex items-center justify-between border-t border-tp-hairline pt-2">
               {hasRange || startDate ? (
                 <button
                   type="button"

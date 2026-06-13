@@ -101,8 +101,8 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
       exit={{ opacity: 0, y: -8 }}
       transition={transitionDefault}
     >
-      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-        <div className="flex pb-8 flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+        <div className="flex pb-8 flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg text-tp-ink">Pricings</h2>
             <p className="text-xs text-tp-steel">Pricings owned by this organization.</p>
@@ -207,7 +207,7 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
         </div>
 
         {pricingsTotal > PER_PAGE && (
-          <div className="border-t border-tp-hairline-soft px-5 py-3">
+          <div className="border-t border-tp-hairline px-5 py-3">
             <Pagination
               currentPage={pricingPage}
               totalPages={Math.ceil(pricingsTotal / PER_PAGE)}

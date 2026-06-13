@@ -372,7 +372,7 @@ function PricingAssistantPage() {
               </div>
 
               {/* Context panel (desktop) */}
-              <div className="hidden w-80 shrink-0 border-l border-tp-hairline-soft lg:block">
+              <div className="hidden w-80 shrink-0 border-l border-tp-hairline lg:block">
                 <ContextPanel
                   items={contextItems}
                   detectedUrls={detectedPricingUrls}
@@ -402,7 +402,7 @@ function PricingAssistantPage() {
                   animate={{ x: 0 }}
                   exit={{ x: '100%' }}
                   transition={{ type: 'tween', duration: 0.2 }}
-                  className="fixed bottom-0 right-0 top-0 z-50 w-80 max-w-[85vw] border-l border-tp-hairline-soft bg-tp-canvas shadow-elevation-4 lg:hidden"
+                  className="fixed bottom-0 right-0 top-0 z-50 w-80 max-w-[85vw] border-l border-tp-hairline bg-tp-canvas shadow-elevation-4 lg:hidden"
                 >
                   <ContextPanel
                     items={contextItems}

@@ -37,7 +37,7 @@ export default function AppHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-tp-hairline-soft bg-tp-canvas/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-tp-hairline bg-tp-canvas/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 md:px-6">
           {/* Left: Logo */}
           <div className="flex items-center gap-4">

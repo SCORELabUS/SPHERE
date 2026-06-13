@@ -59,7 +59,7 @@ export default function DangerZoneSection() {
               className="w-full max-w-md overflow-hidden rounded-[12px] border border-tp-hairline bg-tp-canvas shadow-elevation-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-tp-hairline-soft px-5 py-4">
+              <div className="flex items-center justify-between border-b border-tp-hairline px-5 py-4">
                 <h3 className="text-base font-medium text-tp-ink">
                   Confirm Deletion
                 </h3>

@@ -4,7 +4,7 @@ export default function OrgDetailSkeleton() {
   return (
     <div className="min-h-screen">
       {/* Hero header */}
-      <div className="border-b border-tp-hairline-soft bg-gradient-to-br from-tp-cream via-tp-cream-light to-tp-canvas">
+      <div className="border-b border-tp-hairline bg-gradient-to-br from-tp-cream via-tp-cream-light to-tp-canvas">
         <div className="mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-10">
           {/* Back link */}
           <Skeleton width={120} height={14} className="mb-5" />
@@ -35,7 +35,7 @@ export default function OrgDetailSkeleton() {
       </div>
 
       {/* Tab nav */}
-      <div className="border-b border-tp-hairline-soft bg-tp-canvas/80 backdrop-blur-xl">
+      <div className="border-b border-tp-hairline bg-tp-canvas/80 backdrop-blur-xl">
         <div className="mx-auto max-w-5xl px-4 md:px-8">
           <div className="flex gap-1 py-1">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -49,7 +49,7 @@ export default function OrgDetailSkeleton() {
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-8">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+            <div key={i} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
               <div className="flex items-center gap-3">
                 <Skeleton width={36} height={36} />
                 <div>

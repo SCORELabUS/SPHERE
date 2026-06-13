@@ -60,7 +60,7 @@ function OrgTreeNode({
       <motion.div variants={fadeInUp} initial="hidden" animate="visible">
         <Link
           to={`/orgs/${org.id}`}
-          className="group flex cursor-pointer items-center gap-4 rounded-lg border border-tp-hairline-soft bg-tp-canvas px-5 py-4 transition-all hover:border-tp-hairline hover:shadow-(--shadow-elevation-2) dark:border-tp-hairline dark:bg-tp-surface dark:hover:border-tp-hairline-strong"
+          className="group flex cursor-pointer items-center gap-4 rounded-lg border border-tp-hairline bg-tp-canvas px-5 py-4 transition-all hover:border-tp-hairline hover:shadow-(--shadow-elevation-2) dark:border-tp-hairline dark:bg-tp-surface dark:hover:border-tp-hairline-strong"
           style={{ marginLeft: level > 0 ? `${level * 24 + 12}px` : undefined }}
         >
           {hasChildren ? (
@@ -71,7 +71,7 @@ function OrgTreeNode({
                 e.stopPropagation();
                 onToggle(org.id);
               }}
-              className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-tp-steel transition-colors hover:bg-tp-hairline-soft"
+              className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-tp-steel transition-colors hover:bg-tp-hairline"
             >
               <Iconify
                 icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}

@@ -28,7 +28,7 @@ export default function OrganizationCard({ org }: Props) {
       whileHover={{ y: -2 }}
       transition={{ duration: 0.15 }}
       onClick={() => router.push(`/orgs/${org.id}`)}
-      className="group cursor-pointer rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
+      className="group cursor-pointer rounded-xl border border-tp-hairline bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
     >
       <div className="mb-3 flex items-center gap-3">
         <OrgAvatar

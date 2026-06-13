@@ -28,7 +28,7 @@ export default function WelcomeScreen({ presets, onSelect }: Props) {
               key={preset.id}
               type="button"
               onClick={() => onSelect(preset)}
-              className="animate-[fadeSlideIn_0.15s_ease-out_both] group cursor-pointer rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 text-left transition-all hover:border-tp-primary/30 hover:shadow-elevation-2"
+              className="animate-[fadeSlideIn_0.15s_ease-out_both] group cursor-pointer rounded-xl border border-tp-hairline bg-tp-canvas p-4 text-left transition-all hover:border-tp-primary/30 hover:shadow-elevation-2"
               style={{ animationDelay: `${i * 0.06}s` }}
             >
               <p className="text-sm font-medium text-tp-ink group-hover:text-tp-primary">

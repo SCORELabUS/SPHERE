@@ -31,7 +31,7 @@ export default function UnsavedChangesDialog({ open, onDiscard, onCancel }: Prop
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 16 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="relative w-full max-w-100 overflow-hidden rounded-lg border border-tp-hairline-soft bg-tp-canvas shadow-elevation-4"
+            className="relative w-full max-w-100 overflow-hidden rounded-lg border border-tp-hairline bg-tp-canvas shadow-elevation-4"
           >
             <div className="h-1 w-full bg-linear-to-r from-tp-primary via-tp-sunshine-700 to-tp-sunshine-500" />
 

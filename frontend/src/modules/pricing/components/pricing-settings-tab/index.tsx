@@ -38,7 +38,7 @@ export default function PricingSettingsTab({
   }
 
   return (
-    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-5">
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-5">
       {entityPermissions?.PUT && (
         <div>
           <h3 className="mb-4 text-sm font-medium text-tp-ink">General</h3>
@@ -70,7 +70,7 @@ export default function PricingSettingsTab({
       )}
 
       {entityPermissions?.PUT && entityPermissions?.DELETE && (
-        <hr className="my-6 border-tp-hairline-soft" />
+        <hr className="my-6 border-tp-hairline" />
       )}
 
       {entityPermissions?.DELETE && (

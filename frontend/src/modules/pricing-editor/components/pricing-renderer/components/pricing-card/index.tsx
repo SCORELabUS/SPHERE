@@ -10,7 +10,7 @@ export default function PricingCard({
 
   return (
     <motion.div variants={cardVariants} initial="hidden" animate="visible">
-      <section className="mb-6 rounded-xl border border-tp-hairline-soft bg-tp-canvas px-6 py-8 shadow-elevation-2">
+      <section className="mb-6 rounded-xl border border-tp-hairline bg-tp-canvas px-6 py-8 shadow-elevation-2">
         <div className="text-center">
           <h1 className="text-2xl font-extrabold tracking-tight text-tp-ink sm:text-[34px]">
             {pricing?.saasName}

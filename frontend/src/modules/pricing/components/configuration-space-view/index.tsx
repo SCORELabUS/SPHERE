@@ -108,7 +108,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   if (loading) return <div className="mt-10 flex justify-center"><BanterLoader /></div>;
 
   if (loadError) return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
       <svg className="mb-3 h-10 w-10 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
       <p className="text-sm font-medium text-tp-ink">Could not load configuration space</p>
       <p className="mt-1 w-full max-w-125 text-xs text-tp-steel">{loadError}</p>
@@ -119,7 +119,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
     <div className="mx-auto flex w-full flex-col gap-4">
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         {/* Explorer */}
-        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-tp-ink">Configuration Explorer</h2>
@@ -145,17 +145,17 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-tp-hairline-soft bg-tp-surface p-4">
+          <div className="mt-4 rounded-xl border border-tp-hairline bg-tp-surface p-4">
             <AnimatePresence mode="wait">
               {focused ? (
                 <motion.div key={focused.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div><p className="text-[10px] font-medium uppercase tracking-wider text-tp-steel">Current selection</p><h3 className="mt-0.5 text-base font-semibold text-tp-ink">{focused.selectedPlan || 'No plan'}</h3></div>
-                    <span className="rounded-full bg-tp-canvas px-2 py-0.5 text-[11px] text-tp-steel border border-tp-hairline-soft">#{Math.max(activeIdx + 1, 0)} of {filtered.length.toLocaleString()}</span>
+                    <span className="rounded-full bg-tp-canvas px-2 py-0.5 text-[11px] text-tp-steel border border-tp-hairline">#{Math.max(activeIdx + 1, 0)} of {filtered.length.toLocaleString()}</span>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {[['Add-ons', focused.selectedAddons.length], ['Features', focused.subscriptionFeatures.length], ['Limits', focused.subscriptionUsageLimits.length]].map(([l, n]) => (
-                      <div key={l} className="rounded-lg bg-tp-canvas px-3 py-2 border border-tp-hairline-soft"><p className="text-[11px] text-tp-steel">{l}</p><p className="text-sm font-semibold text-tp-ink">{n as number}</p></div>
+                      <div key={l} className="rounded-lg bg-tp-canvas px-3 py-2 border border-tp-hairline"><p className="text-[11px] text-tp-steel">{l}</p><p className="text-sm font-semibold text-tp-ink">{n as number}</p></div>
                     ))}
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -185,7 +185,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
         </motion.div>
 
         {/* Quick browse */}
-        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
           <h3 className="text-xs font-medium text-tp-steel">Quick Browse</h3>
           <p className="mt-0.5 text-[11px] text-tp-muted">Scroll to load more configurations.</p>
           <div className="mt-3 max-h-[66vh] overflow-y-auto pr-1">
@@ -194,7 +194,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
                 const s = summarizeConfiguration(c, i);
                 const active = focusedId === c.id;
                 return (
-                  <button key={c.id} type="button" onClick={() => setFocusedId(c.id)} className={`cursor-pointer w-full rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-tp-primary bg-tp-primary/5' : 'border-tp-hairline-soft bg-tp-canvas hover:bg-tp-surface'}`}>
+                  <button key={c.id} type="button" onClick={() => setFocusedId(c.id)} className={`cursor-pointer w-full rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-tp-primary bg-tp-primary/5' : 'border-tp-hairline bg-tp-canvas hover:bg-tp-surface'}`}>
                     <div className="flex items-center justify-between"><p className="truncate text-sm font-medium text-tp-ink">{s.plan}</p><p className="text-[10px] text-tp-muted">#{s.index}</p></div>
                     <p className="mt-0.5 text-[11px] text-tp-steel">{s.addOns} add-ons · {s.features} features · {s.limits} limits</p>
                   </button>

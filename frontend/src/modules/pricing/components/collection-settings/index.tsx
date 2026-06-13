@@ -123,7 +123,7 @@ export default function CollectionSettings({
 
   if (!hasAnyPermission) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-16 text-center">
+      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
         <p className="text-sm text-tp-steel">You don't have permission to modify this collection.</p>
       </div>
     );
@@ -133,7 +133,7 @@ export default function CollectionSettings({
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault}>
       {/* Global Settings - PUT only */}
       {permissions.PUT && (
-        <div className="mb-6 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-5">
+        <div className="mb-6 rounded-xl border border-tp-hairline bg-tp-canvas p-5">
           <h3 className="mb-4 text-sm font-medium text-tp-ink">General</h3>
 
           <div className="mb-4">

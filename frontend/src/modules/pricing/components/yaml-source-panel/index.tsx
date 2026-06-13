@@ -8,7 +8,7 @@ export default function YamlSourcePanel({ yamlText }: YamlSourcePanelProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
       <button
         type="button"
         onClick={() => setExpanded(p => !p)}

@@ -177,7 +177,7 @@ export default function CommandPalette() {
                 className="relative z-10 flex w-[90vw] max-w-150 flex-col overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
               >
                 {/* Search */}
-                <div className="flex items-center gap-3 border-b border-tp-hairline-soft px-4 py-3">
+                <div className="flex items-center gap-3 border-b border-tp-hairline px-4 py-3">
                   <FiSearch className="h-4 w-4 shrink-0 text-tp-ink" />
                   <input
                     ref={inputRef}
@@ -243,7 +243,7 @@ export default function CommandPalette() {
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between border-t border-tp-hairline-soft px-4 py-2.5">
+                <div className="flex items-center justify-between border-t border-tp-hairline px-4 py-2.5">
                   <div className="flex items-center gap-3 text-[11px] text-tp-ink">
                     <span className="flex items-center gap-1">
                       <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px]">

@@ -70,7 +70,7 @@ export default function MobileNav({ isOpen, onClose }: Props) {
           >
             <div className="flex h-full flex-col">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-tp-hairline-soft px-4 py-4">
+              <div className="flex items-center justify-between border-b border-tp-hairline px-4 py-4">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold tracking-[0.22em] text-tp-ink">SPHERE</span>
                 </div>
@@ -87,7 +87,7 @@ export default function MobileNav({ isOpen, onClose }: Props) {
 
               {/* User info */}
               {authUser.isAuthenticated && (
-                <div className="border-b border-tp-hairline-soft px-4 py-3">
+                <div className="border-b border-tp-hairline px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-tp-cream text-sm font-semibold text-tp-primary">
                       {authUser.user?.firstName?.[0]?.toUpperCase() ?? 'U'}
@@ -135,7 +135,7 @@ export default function MobileNav({ isOpen, onClose }: Props) {
                               transition={{ duration: 0.2 }}
                               className="overflow-hidden"
                             >
-                              <div className="ml-3 border-l border-tp-hairline-soft py-1 pl-3">
+                              <div className="ml-3 border-l border-tp-hairline py-1 pl-3">
                                 {item.children.map(child => (
                                   <button
                                     key={child.to}
@@ -165,7 +165,7 @@ export default function MobileNav({ isOpen, onClose }: Props) {
               </motion.nav>
 
               {/* Footer actions */}
-              <div className="border-t border-tp-hairline-soft px-3 py-3">
+              <div className="border-t border-tp-hairline px-3 py-3">
                 <p className="mb-2 px-1 text-xs font-medium text-tp-steel">Create new</p>
                 <button
                   type="button"

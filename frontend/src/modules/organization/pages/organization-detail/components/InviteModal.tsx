@@ -91,7 +91,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
         exit={{ opacity: 0, scale: 0.95, y: 12 }}
         transition={SPRING_MODAL}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[36rem] overflow-hidden rounded-xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-4"
+        className="w-full max-w-[36rem] overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-0">
@@ -108,7 +108,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
         </div>
 
         {/* Tabs */}
-        <div className="relative mx-6 mt-4 mb-0 flex gap-1 rounded-lg border border-tp-hairline-soft bg-tp-surface p-1">
+        <div className="relative mx-6 mt-4 mb-0 flex gap-1 rounded-lg border border-tp-hairline bg-tp-surface p-1">
           {(['link', 'users'] as const).map((tab) => (
             <button
               key={tab}
@@ -213,7 +213,7 @@ export default function InviteModal({ orgId, invitations, onClose, onRefresh }: 
                               animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04, ...SPRING_SOFT } }}
                               exit={{ opacity: 0, x: -12, transition: { duration: 0.15 } }}
                               layout
-                              className="group flex items-center gap-2 rounded-lg border border-tp-hairline-soft bg-tp-surface px-3 py-2.5 transition-all duration-200 hover:border-tp-hairline-strong hover:bg-tp-canvas"
+                              className="group flex items-center gap-2 rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2.5 transition-all duration-200 hover:border-tp-hairline-strong hover:bg-tp-canvas"
                             >
                               <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-tp-slate">
                                 {inv.code}

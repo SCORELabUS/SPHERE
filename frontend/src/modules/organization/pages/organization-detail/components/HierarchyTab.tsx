@@ -24,8 +24,8 @@ export default function HierarchyTab({ org, canManage, hierarchyTree, expandedTr
       exit={{ opacity: 0, y: -8 }}
       transition={transitionDefault}
     >
-      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-        <div className="flex flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+        <div className="flex flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg text-tp-ink">Organization Hierarchy</h2>
             <p className="text-xs text-tp-steel">

@@ -89,11 +89,6 @@ export default function CreateApiKeyDialog({
             Create new API key
           </h2>
 
-          <BlockAlert variant="warning" className="mb-4">
-            This key will only be shown once. Make sure to copy it now.
-            You won't be able to see it again.
-          </BlockAlert>
-
           {error && (
             <BlockAlert variant="error" className="mb-4">
               {error}
@@ -109,7 +104,7 @@ export default function CreateApiKeyDialog({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., CI/CD Pipeline"
+                placeholder="Example: CI/CD Pipeline"
                 className="w-full rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2 text-sm text-tp-ink placeholder:text-tp-steel focus:border-tp-primary focus:outline-none focus:ring-1 focus:ring-tp-primary"
                 required
               />

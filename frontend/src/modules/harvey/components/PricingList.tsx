@@ -13,7 +13,7 @@ interface PricingListProps {
 function PricingList({ pricings, onContextAdd, onContextRemove }: PricingListProps) {
   if (pricings.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-12 text-center">
+      <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-12 text-center">
         <p className="text-sm font-medium text-tp-ink">No pricings found</p>
         <p className="mt-1 text-xs text-tp-steel">Try adjusting your search or filters.</p>
       </div>
@@ -37,7 +37,7 @@ function PricingList({ pricings, onContextAdd, onContextRemove }: PricingListPro
             key={`${item.organization?.name ?? 'org'}-${item.name}-${slug ?? 'nocollection'}`}
             whileHover={{ y: -2 }}
             transition={{ duration: 0.15 }}
-            className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
+            className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
           >
             {/* Header */}
             <div className="mb-3 flex items-start justify-between">

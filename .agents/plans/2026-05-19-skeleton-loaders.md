@@ -29,7 +29,7 @@ cd frontend && pnpm add react-loading-skeleton
 **File:** `frontend/src/modules/core/components/skeleton-theme-provider/index.tsx`
 
 - Wrap `SkeletonTheme` from `react-loading-skeleton`
-- Use project colors: `baseColor="#ededed"` (tp-hairline-soft), `highlightColor="#fafafa"` (tp-surface)
+- Use project colors: `baseColor="#ededed"` (tp-hairline), `highlightColor="#fafafa"` (tp-surface)
 - Dark mode variants: `baseColor="#222222"`, `highlightColor="#1a1a1a"`
 - Import `react-loading-skeleton/dist/skeleton.css` in main.tsx
 

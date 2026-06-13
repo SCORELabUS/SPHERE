@@ -223,8 +223,8 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
   }, [canManage, selectedMemberId, organizationId, entityTab, addPermissions, setOrgPermission, reloadPermissions]);
 
   return (
-    <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
-      <div className="flex flex-col gap-3 border-b border-tp-hairline-soft px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+      <div className="flex flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-lg text-tp-ink">Entity Permissions</h2>
           <p className="text-xs text-tp-steel">Configure which pricings and collections each member can access.</p>
@@ -238,8 +238,8 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
       ) : (
         <div className="flex min-h-125">
           {/* ── Member sidebar ── */}
-          <div className="w-64 shrink-0 border-r border-tp-hairline-soft">
-            <div className="border-b border-tp-hairline-soft p-3">
+          <div className="w-64 shrink-0 border-r border-tp-hairline">
+            <div className="border-b border-tp-hairline p-3">
               <input
                 type="text"
                 value={memberSearch}
@@ -248,7 +248,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                 className="h-9 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-sm text-tp-ink placeholder-tp-muted transition-colors focus:border-tp-primary focus:outline-none"
               />
             </div>
-            <div className="divide-y divide-tp-hairline-soft overflow-y-auto" style={{ maxHeight: 460 }}>
+            <div className="divide-y divide-tp-hairline overflow-y-auto" style={{ maxHeight: 460 }}>
               {filteredMembers.length === 0 && (
                 <div className="py-8 text-center text-xs text-tp-steel">No members found.</div>
               )}
@@ -354,7 +354,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-tp-steel">Entity-level</h3>
-                    <div className="flex gap-1 rounded-lg border border-tp-hairline-soft bg-tp-surface p-0.5">
+                    <div className="flex gap-1 rounded-lg border border-tp-hairline bg-tp-surface p-0.5">
                       {(['pricing', 'collection'] as EntityType[]).map(type => (
                         <button
                           key={type}
@@ -373,7 +373,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                   </div>
 
                   {entityScopedPermissions.length === 0 ? (
-                    <div className="rounded-lg border border-tp-hairline-soft bg-tp-surface/50 py-8 text-center">
+                    <div className="rounded-lg border border-tp-hairline bg-tp-surface/50 py-8 text-center">
                       <Iconify icon="mdi:shield-lock-outline" width={28} className="mx-auto text-tp-muted" />
                       <p className="mt-2 text-xs text-tp-steel">No {entityTab} permissions configured yet.</p>
                       {canManage && (
@@ -389,10 +389,10 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                     </div>
                   ) : (
                     <>
-                      <div className="overflow-x-auto rounded-lg border border-tp-hairline-soft">
+                      <div className="overflow-x-auto rounded-lg border border-tp-hairline">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="border-b border-tp-hairline-soft bg-tp-surface/50">
+                            <tr className="border-b border-tp-hairline bg-tp-surface/50">
                               <th className="px-4 py-2.5 text-left text-xs font-semibold text-tp-steel">Name</th>
                               {(['GET', 'CREATE', 'PUT', 'DELETE'] as const).map(perm => (
                                 <th key={perm} className="px-4 py-2.5 text-center text-xs font-semibold text-tp-steel">
@@ -402,7 +402,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
                               {canManage && <th className="px-4 py-2.5" />}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-tp-hairline-soft">
+                          <tbody className="divide-y divide-tp-hairline">
                             {entityScopedPermissions.map(permission => (
                               <tr key={permission.id} className="transition-colors hover:bg-tp-surface/30">
                                 <td className="px-4 py-2.5 font-medium text-tp-ink">
@@ -472,7 +472,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="w-[90dvw] max-w-150 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 shadow-elevation-4"
+            className="w-[90dvw] max-w-150 rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-4"
             onClick={e => e.stopPropagation()}
           >
             <div className="mb-5 flex items-center justify-between">
@@ -498,7 +498,7 @@ export default function PermissionsTab({ organizationId, canManage }: Permission
               className="mb-4 h-9 w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-sm text-tp-ink placeholder-tp-muted transition-colors focus:border-tp-primary focus:outline-none"
             />
 
-            <div className="max-h-48 divide-y divide-tp-hairline-soft overflow-y-auto rounded-lg border border-tp-hairline-soft">
+            <div className="max-h-48 divide-y divide-tp-hairline overflow-y-auto rounded-lg border border-tp-hairline">
               {availableEntities.length === 0 && (
                 <div className="py-6 text-center text-xs text-tp-steel">No {entityTab}s available.</div>
               )}

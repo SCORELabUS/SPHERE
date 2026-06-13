@@ -429,9 +429,9 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16, scale: 0.99 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="max-h-[93vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-tp-hairline-soft bg-tp-canvas shadow-elevation-4"
+        className="max-h-[93vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
       >
-        <div className="border-b border-tp-hairline-soft px-5 py-5">
+        <div className="border-b border-tp-hairline px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold tracking-tight text-tp-ink">Variables Simulator</h2>
@@ -481,7 +481,7 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
                           exit={{ opacity: 0, y: 8 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 28, delay: idx * 0.02 }}
                         >
-                          <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 shadow-elevation-1">
+                          <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 shadow-elevation-1">
                             <div className="mb-3 flex items-start justify-between gap-3">
                               <div>
                                 <div className="font-bold text-tp-ink">{camelToTitle(k)}</div>
@@ -613,7 +613,7 @@ export default function VariablesEditor({ open, onClose, variables, onApply }: P
           )}
         </div>
 
-        <div className="flex items-center gap-2 border-t border-tp-hairline-soft bg-tp-surface px-5 py-4">
+        <div className="flex items-center gap-2 border-t border-tp-hairline bg-tp-surface px-5 py-4">
           <button
             type="button"
             onClick={handleReset}

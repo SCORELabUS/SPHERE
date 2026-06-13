@@ -61,7 +61,7 @@ export default function HarveyChatInput({ value, onChange, onSend }: Props) {
   const hasContent = value.trim().length > 0;
 
   return (
-    <div className="border-t border-tp-hairline-soft bg-tp-canvas px-3 py-3">
+    <div className="border-t border-tp-hairline bg-tp-canvas px-3 py-3">
       <div className="flex items-end gap-2 rounded-xl border border-tp-hairline-strong bg-tp-surface px-3 py-2 transition-colors focus-within:border-tp-primary/40">
         {/* Textarea — WhatsApp-style */}
         <textarea
@@ -106,7 +106,7 @@ export default function HarveyChatInput({ value, onChange, onSend }: Props) {
       </div>
 
       <p className="mt-1.5 text-center text-[10px] text-tp-muted">
-        Press <kbd className="rounded border border-tp-hairline-soft bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline-soft bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
+        Press <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
       </p>
     </div>
   );

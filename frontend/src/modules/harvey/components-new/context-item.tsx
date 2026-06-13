@@ -27,7 +27,7 @@ export default function ContextItem({ item, onRemove }: Props) {
       exit="exit"
       transition={transitionFast}
       layout
-      className="group flex items-center gap-2 rounded-lg border border-tp-hairline-soft bg-tp-canvas px-3 py-2 transition-colors hover:border-tp-hairline-strong"
+      className="group flex items-center gap-2 rounded-lg border border-tp-hairline bg-tp-canvas px-3 py-2 transition-colors hover:border-tp-hairline-strong"
     >
       {/* Icon */}
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-tp-surface">

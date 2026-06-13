@@ -18,7 +18,7 @@ export default function PricingCardSkeleton() {
       {/* Stats row */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-3">
+          <div key={i} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
             <Skeleton width={80} height={10} />
             <Skeleton width={60} height={24} className="mt-1" />
           </div>
@@ -26,7 +26,7 @@ export default function PricingCardSkeleton() {
       </div>
 
       {/* Tab bar */}
-      <div className="mb-6 flex gap-1 border-b border-tp-hairline-soft">
+      <div className="mb-6 flex gap-1 border-b border-tp-hairline">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} width={100} height={40} />
         ))}

@@ -36,7 +36,7 @@ export default function OrgTreeNode({ node, level = 0, expandedIds, onToggle, on
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggle(node.id); }}
-            className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-tp-steel transition-colors hover:bg-tp-hairline-soft"
+            className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-tp-steel transition-colors hover:bg-tp-hairline"
           >
             <Iconify icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'} width={14} />
           </button>

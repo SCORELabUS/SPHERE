@@ -67,7 +67,7 @@ function PricingVersions({
       )}
       <ul className="mt-2 space-y-1.5">
         {versions?.versions.map(item => (
-          <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-tp-hairline-soft px-3 py-2">
+          <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-tp-hairline px-3 py-2">
             <span className="truncate text-xs text-tp-ink">{item.version}</span>
             {!isVersionIncludedInContext(item.yaml) ? (
               <button

@@ -130,7 +130,7 @@ export default function SocialLinksSection({ settings, onUpdate, onDirtyChange }
         </p>
       </div>
 
-      <div className="rounded-[12px] border border-tp-hairline-soft bg-tp-canvas p-6">
+      <div className="rounded-[12px] border border-tp-hairline bg-tp-canvas p-6">
         <div className="space-y-4">
           {SOCIAL_PLATFORMS.map((platform) => (
             <div key={platform.key}>

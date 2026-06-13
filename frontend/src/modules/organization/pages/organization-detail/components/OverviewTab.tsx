@@ -38,7 +38,7 @@ export default function OverviewTab({ org, members, pricingsTotal, collectionsTo
             variants={cardHover}
             initial="rest"
             whileHover="hover"
-            className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-shadow hover:shadow-elevation-1"
+            className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 transition-shadow hover:shadow-elevation-1"
           >
             <div className="flex items-center gap-3">
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${stat.color}`}>

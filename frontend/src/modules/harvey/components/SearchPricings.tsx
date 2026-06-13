@@ -152,12 +152,12 @@ export default function SearchPricings({ onContextAdd, onContextRemove }: Search
       <AnimatePresence>
         {showFilters && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-            <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4">
+            <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {ownerFilters.length > 0 && (
                   <div>
                     <label className="mb-1.5 block text-[11px] font-medium text-tp-steel">Owner ({ownerFilters.length})</label>
-                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-tp-hairline-soft p-1.5">
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-tp-hairline p-1.5">
                       {ownerFilters.map(o => (
                         <label key={o.value} className="flex cursor-pointer items-center gap-1.5 text-xs text-tp-slate hover:text-tp-ink">
                           <input type="checkbox" checked={draftOwners.includes(o.value)} onChange={() => setDraftOwners(p => p.includes(o.value) ? p.filter(x => x !== o.value) : [...p, o.value])} className="h-3.5 w-3.5 rounded border-tp-hairline-strong text-tp-primary focus:ring-tp-primary" />
@@ -207,10 +207,10 @@ export default function SearchPricings({ onContextAdd, onContextRemove }: Search
       <div className="min-h-[200px]">
         {isLoading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {Array.from({ length: PER_PAGE }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-xl border border-tp-hairline-soft bg-tp-surface" />)}
+            {Array.from({ length: PER_PAGE }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-xl border border-tp-hairline bg-tp-surface" />)}
           </div>
         ) : pricings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline-soft bg-tp-canvas py-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-12 text-center">
             <svg className="mb-3 h-8 w-8 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
             <p className="text-sm font-medium text-tp-ink">No pricings found</p>
             <p className="mt-1 text-xs text-tp-steel">Try adjusting your search or filters.</p>

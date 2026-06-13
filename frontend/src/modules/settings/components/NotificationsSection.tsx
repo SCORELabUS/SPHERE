@@ -75,9 +75,9 @@ export default function NotificationsSection({ settings, onUpdate, onDirtyChange
         </p>
       </div>
 
-      <div className="rounded-[12px] border border-tp-hairline-soft bg-tp-canvas">
+      <div className="rounded-[12px] border border-tp-hairline bg-tp-canvas">
         {/* Header */}
-        <div className="grid grid-cols-[1fr_repeat(2,80px)] items-center gap-2 border-b border-tp-hairline-soft px-6 py-3">
+        <div className="grid grid-cols-[1fr_repeat(2,80px)] items-center gap-2 border-b border-tp-hairline px-6 py-3">
           <span className="text-xs font-medium text-tp-steel">Notification Type</span>
           {CHANNELS.map((ch) => (
             <div key={ch.key} className="flex flex-col items-center gap-0.5">
@@ -92,7 +92,7 @@ export default function NotificationsSection({ settings, onUpdate, onDirtyChange
           <div
             key={kind.key}
             className={`grid grid-cols-[1fr_repeat(2,80px)] items-center gap-2 px-6 py-4 transition-colors hover:bg-tp-surface ${
-              i < NOTIFICATION_KINDS.length - 1 ? 'border-b border-tp-hairline-soft' : ''
+              i < NOTIFICATION_KINDS.length - 1 ? 'border-b border-tp-hairline' : ''
             }`}
           >
             <div>

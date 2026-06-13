@@ -258,7 +258,7 @@ export default function AvatarEditor({ settings, onUpdate }: Props) {
         {showAvatarModal && !showCropModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setShowAvatarModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 12 }} transition={{ type: 'spring', stiffness: 400, damping: 30 }} className="w-[90vw] max-w-150 overflow-hidden rounded-[12px] border border-tp-hairline bg-tp-canvas shadow-elevation-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b border-tp-hairline-soft px-5 py-4">
+              <div className="flex items-center justify-between border-b border-tp-hairline px-5 py-4">
                 <h3 className="text-base font-medium text-tp-ink">Edit Avatar</h3>
                 <button type="button" onClick={() => setShowAvatarModal(false)} className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[6px] text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink">
                   <FiX className="h-4 w-4" />
@@ -346,7 +346,7 @@ export default function AvatarEditor({ settings, onUpdate }: Props) {
                   {error && <p className="text-sm text-red-500">{error}</p>}
 
                   {/* Actions */}
-                  <div className="flex justify-between border-t border-tp-hairline-soft pt-4">
+                  <div className="flex justify-between border-t border-tp-hairline pt-4">
                     {s?.avatar && (
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={handleRemoveAvatar} disabled={uploading} className="flex cursor-pointer items-center gap-2 rounded-[8px] border border-red-300 px-4 py-2.5 text-sm font-medium text-red-500 transition-colors hover:bg-red-50 disabled:opacity-40">
                         Remove Avatar
@@ -376,7 +376,7 @@ export default function AvatarEditor({ settings, onUpdate }: Props) {
         {showCropModal && cropImage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => { setShowCropModal(false); setCropImage(null); }}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 12 }} transition={{ type: 'spring', stiffness: 400, damping: 30 }} className="w-[90vw] max-w-150 overflow-hidden rounded-[12px] border border-tp-hairline bg-tp-canvas shadow-elevation-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b border-tp-hairline-soft px-5 py-4">
+              <div className="flex items-center justify-between border-b border-tp-hairline px-5 py-4">
                 <h3 className="text-base font-medium text-tp-ink">Crop Avatar</h3>
                 <button type="button" onClick={() => { setShowCropModal(false); setCropImage(null); }} className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[6px] text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink">
                   <FiX className="h-4 w-4" />

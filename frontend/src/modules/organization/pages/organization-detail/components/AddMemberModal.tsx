@@ -45,7 +45,7 @@ export default function AddMemberModal({ orgId, onClose, onAdded }: Props) {
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={transitionFast}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-112 rounded-xl border border-tp-hairline-soft bg-tp-canvas p-6 shadow-elevation-4"
+        className="w-full max-w-112 rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-4"
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-xl text-tp-ink">Add Member</h2>

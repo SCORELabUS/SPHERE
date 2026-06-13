@@ -60,7 +60,7 @@ export default function ChatMessage({ message }: Props) {
               <summary className="cursor-pointer text-xs text-tp-steel hover:text-tp-ink">
                 View reasoning context
               </summary>
-              <div className="mt-2 space-y-2 rounded-lg border border-tp-hairline-soft bg-tp-surface p-3">
+              <div className="mt-2 space-y-2 rounded-lg border border-tp-hairline bg-tp-surface p-3">
                 {message.metadata.plan && (
                   <div>
                     <p className="mb-1 text-xs font-medium text-tp-slate">Plan</p>

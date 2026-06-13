@@ -24,7 +24,7 @@ export default function OrgListSkeleton() {
         {Array.from({ length: 5 }).map((_, i) => (
           <div
             key={i}
-            className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-tp-hairline-soft bg-tp-canvas p-5 dark:border-tp-hairline dark:bg-tp-surface"
+            className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-tp-hairline bg-tp-canvas p-5 dark:border-tp-hairline dark:bg-tp-surface"
           >
             <Skeleton width={52} height={52} />
             <div className="flex-1 space-y-2">

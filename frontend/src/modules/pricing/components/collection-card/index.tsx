@@ -21,7 +21,7 @@ export default function CollectionCard({ collection }: Props) {
       whileHover={{ y: -2 }}
       transition={{ duration: 0.15 }}
       onClick={() => router.push(`/collections/${collection.organization.id}/${collection.slug}`)}
-      className="group cursor-pointer rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
+      className="group cursor-pointer rounded-xl border border-tp-hairline bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
     >
       <div className="mb-3 flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tp-cream">

@@ -479,7 +479,7 @@ export default function OrganizationDetailPage() {
   return (
     <div className="min-h-screen">
       {/* ═══ HERO HEADER ═══ */}
-      <div className="relative overflow-hidden border-b border-tp-hairline-soft bg-linear-to-b from-tp-cream via-tp-cream-light to-tp-canvas">
+      <div className="relative overflow-hidden bg-linear-to-b from-tp-cream via-tp-cream-light to-tp-canvas">
         <div className="relative mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-10">
           <motion.div initial="hidden" animate="visible" variants={staggerContainer}>
             <motion.button
@@ -609,7 +609,7 @@ export default function OrganizationDetailPage() {
       </div>
 
       {/* ═══ TAB NAVIGATION ═══ */}
-      <div className="sticky top-14 z-30 border-b border-tp-hairline-soft bg-tp-canvas/80 backdrop-blur-xl">
+      <div className="sticky top-14 z-30 border-b border-tp-hairline bg-tp-canvas/80 backdrop-blur-xl">
         <div className="mx-auto max-w-5xl px-4 md:px-8">
           <div className="py-2 md:hidden">
             <div className="relative">

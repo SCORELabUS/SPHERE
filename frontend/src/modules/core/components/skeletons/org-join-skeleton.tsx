@@ -10,7 +10,7 @@ export default function OrgJoinSkeleton() {
           <Skeleton width={120} height={14} className="mt-2" />
         </div>
         <Skeleton width={260} height={14} />
-        <div className="mt-2 w-full rounded-lg border border-tp-hairline-soft bg-tp-surface p-4">
+        <div className="mt-2 w-full rounded-lg border border-tp-hairline bg-tp-surface p-4">
           <Skeleton width="90%" height={14} />
           <Skeleton width="70%" height={12} className="mt-2" />
           <Skeleton width="50%" height={10} className="mt-2" />

@@ -111,7 +111,7 @@ export default function UserMenu() {
             transition={transitionFast}
             className="absolute right-0 top-full z-50 mt-2 w-50 origin-top-right rounded-lg border border-tp-hairline bg-tp-canvas py-1 shadow-elevation-4"
           >
-            <div className="border-b border-tp-hairline-soft px-3 py-2.5">
+            <div className="border-b border-tp-hairline px-3 py-2.5">
               <p className="text-sm font-medium text-tp-ink">{authUser.user?.firstName}</p>
               <p className="text-xs text-tp-steel">{authUser.user?.email}</p>
             </div>
@@ -133,7 +133,7 @@ export default function UserMenu() {
               </button>
             ))}
 
-            <div className="border-t border-tp-hairline-soft">
+            <div className="border-t border-tp-hairline">
               <button
                 type="button"
                 onClick={handleLogout}

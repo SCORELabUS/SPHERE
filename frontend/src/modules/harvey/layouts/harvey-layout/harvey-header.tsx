@@ -10,7 +10,7 @@ export default function HarveyHeader({ isPlayground, onTogglePlayground, onNewCo
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 z-40 flex h-12 items-center border-b border-tp-hairline-soft bg-tp-canvas px-4">
+    <header className="sticky top-0 z-40 flex h-12 items-center border-b border-tp-hairline bg-tp-canvas px-4">
       <div className="flex items-center gap-3">
         <button
           type="button"

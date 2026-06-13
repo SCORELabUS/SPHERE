@@ -46,7 +46,7 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
   };
 
   return (
-    <div className="border-t border-tp-hairline-soft bg-tp-canvas px-4 py-3">
+    <div className="border-t border-tp-hairline bg-tp-canvas px-4 py-3">
       <form
         onSubmit={onSubmit}
         className={`mx-auto max-w-200 rounded-xl border transition-colors ${
@@ -69,7 +69,7 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
           className="w-full resize-none bg-transparent px-4 py-3 text-sm text-tp-ink placeholder-tp-muted focus:outline-none disabled:opacity-50"
         />
 
-        <div className="flex items-center justify-between border-t border-tp-hairline-soft px-3 py-2">
+        <div className="flex items-center justify-between border-t border-tp-hairline px-3 py-2">
           <div className="flex items-center gap-1">
             <label className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

@@ -56,7 +56,7 @@ export default function AccountSection({ settings, onUpdate, onDirtyChange }: Pr
         </p>
       </div>
 
-      <div className="rounded-lg border border-tp-hairline-soft bg-tp-canvas p-6">
+      <div className="rounded-lg border border-tp-hairline bg-tp-canvas p-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First Name" value={firstName} onChange={setFirstName} placeholder="Your first name" />
           <Field label="Last Name" value={lastName} onChange={setLastName} placeholder="Your last name" />

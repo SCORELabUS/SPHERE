@@ -69,7 +69,7 @@ export default function InboxPage() {
         {unreadCount > 0 && (
           <button
             onClick={() => markAllAsRead()}
-            className="cursor-pointer rounded-lg border border-tp-hairline-soft px-3 py-2 text-sm font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+            className="cursor-pointer rounded-lg border border-tp-hairline px-3 py-2 text-sm font-medium text-tp-ink transition-colors hover:bg-tp-surface"
           >
             Mark all read
           </button>
@@ -82,7 +82,7 @@ export default function InboxPage() {
           className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
             activeFilter === 'all'
               ? 'bg-tp-primary text-tp-on-primary'
-              : 'border border-tp-hairline-soft text-tp-steel hover:bg-tp-surface'
+              : 'border border-tp-hairline text-tp-steel hover:bg-tp-surface'
           }`}
         >
           All
@@ -94,7 +94,7 @@ export default function InboxPage() {
             className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               activeFilter === kind
                 ? 'bg-tp-primary text-tp-on-primary'
-                : 'border border-tp-hairline-soft text-tp-steel hover:bg-tp-surface'
+                : 'border border-tp-hairline text-tp-steel hover:bg-tp-surface'
             }`}
           >
             {label}
@@ -114,7 +114,7 @@ export default function InboxPage() {
         </label>
       </div>
 
-      <div className="rounded-xl border border-tp-hairline-soft bg-tp-canvas">
+      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
         {isLoading && filteredNotifications.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-primary border-t-transparent" />
@@ -125,7 +125,7 @@ export default function InboxPage() {
             <p className="mt-4 text-sm text-tp-steel">No notifications found</p>
           </div>
         ) : (
-          <div className="divide-y divide-tp-hairline-soft">
+          <div className="divide-y divide-tp-hairline">
             {filteredNotifications.map((notification) => (
               <button
                 key={notification.id}

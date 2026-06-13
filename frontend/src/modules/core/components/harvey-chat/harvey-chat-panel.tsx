@@ -72,7 +72,7 @@ export default function HarveyChatPanel({
       style={{ height: 'min(580px, calc(100vh - 140px))' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-tp-hairline-soft bg-tp-surface px-4 py-3">
+      <div className="flex items-center justify-between border-b border-tp-hairline bg-tp-surface px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-tp-cream text-xs font-bold text-tp-primary">
             H
@@ -87,7 +87,7 @@ export default function HarveyChatPanel({
         <motion.button
           type="button"
           onClick={onClose}
-          className="cursor-pointer rounded-lg p-1.5 text-tp-steel transition-colors hover:bg-tp-hairline-soft hover:text-tp-ink"
+          className="cursor-pointer rounded-lg p-1.5 text-tp-steel transition-colors hover:bg-tp-hairline hover:text-tp-ink"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
@@ -127,7 +127,7 @@ export default function HarveyChatPanel({
                   key={sq.id}
                   type="button"
                   onClick={() => onSuggestionClick(sq.question)}
-                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-tp-hairline-soft bg-tp-surface px-3.5 py-2.5 text-left transition-all hover:border-tp-primary/30 hover:bg-tp-cream/40"
+                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-tp-hairline bg-tp-surface px-3.5 py-2.5 text-left transition-all hover:border-tp-primary/30 hover:bg-tp-cream/40"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + i * 0.08, duration: 0.25 }}

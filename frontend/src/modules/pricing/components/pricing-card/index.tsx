@@ -63,7 +63,7 @@ export default function PricingCard({ data, showMenu = false, menuItems = [] }: 
       whileHover={{ y: -2 }}
       transition={{ duration: 0.15 }}
       onClick={handleNavigate}
-      className="group cursor-pointer rounded-xl border border-tp-hairline-soft bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
+      className="group cursor-pointer rounded-xl border border-tp-hairline bg-tp-canvas p-4 transition-colors hover:border-tp-hairline-strong hover:shadow-elevation-2"
     >
       {/* Header */}
       <div className="mb-3 flex items-start justify-between">

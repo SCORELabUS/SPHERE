@@ -50,7 +50,7 @@ export default function ContextPanel({ items, detectedUrls, isPlayground, onAdd,
   return (
     <div className="flex h-full flex-col bg-tp-canvas">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-tp-hairline-soft px-4 py-3">
+      <div className="flex items-center justify-between border-b border-tp-hairline px-4 py-3">
         <div>
           <h2 className="text-sm font-medium text-tp-ink">Pricing Context</h2>
           <p className="text-[11px] text-tp-steel">
@@ -93,7 +93,7 @@ export default function ContextPanel({ items, detectedUrls, isPlayground, onAdd,
 
       {/* Detected URLs */}
       {availableDetected.length > 0 && (
-        <div className="border-t border-tp-hairline-soft px-3 py-2">
+        <div className="border-t border-tp-hairline px-3 py-2">
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-tp-steel">
             Detected in question
           </p>
@@ -123,7 +123,7 @@ export default function ContextPanel({ items, detectedUrls, isPlayground, onAdd,
 
       {/* Add URL */}
       {!isPlayground && (
-        <div className="border-t border-tp-hairline-soft px-3 py-3">
+        <div className="border-t border-tp-hairline px-3 py-3">
           <div className="flex gap-1.5">
             <input
               type="url"

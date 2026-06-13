@@ -61,10 +61,10 @@ export default function PublicProfileSection({ settings, onUpdate, onDirtyChange
         <p className="mt-0.5 text-sm text-tp-steel">Control how other users see you on the platform</p>
       </div>
 
-      <div className="rounded-lg border border-tp-hairline-soft bg-tp-canvas p-6">
+      <div className="rounded-lg border border-tp-hairline bg-tp-canvas p-6">
         <AvatarEditor settings={settings} onUpdate={onUpdate} />
 
-        <div className="my-6 border-t border-tp-hairline-soft" />
+        <div className="my-6 border-t border-tp-hairline" />
 
         {/* Profile form */}
         <div className="space-y-4">
