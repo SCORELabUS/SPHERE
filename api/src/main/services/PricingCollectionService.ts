@@ -101,6 +101,11 @@ class PricingCollectionService {
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
     const permissions = await this.permissionService.buildUserPermissionsContext(user);
+
+    if (queryParams?.writableOnly) {
+      permissions.collections = permissions.collectionsWritable ?? [];
+    }
+
     const enhancedQueryParams = {
       ...queryParams,
       limit: queryParams?.limit ?? 10,

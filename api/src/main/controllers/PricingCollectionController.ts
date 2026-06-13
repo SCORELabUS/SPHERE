@@ -255,6 +255,7 @@ class PricingCollectionController {
       organizationIds: indexQueryParams.organizationIds ? indexQueryParams.organizationIds.split(',') : undefined,
       limit: parseInt(indexQueryParams.limit) || 10,
       offset: parseInt(indexQueryParams.offset) || 0,
+      writableOnly: indexQueryParams.writableOnly === 'true',
     };
 
     const optionalFields = ['name', 'sortBy', 'sort', 'organizationIds'] as const;

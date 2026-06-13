@@ -102,6 +102,22 @@ const loadFileRoutes = function (app: express.Application) {
     .get(collectionController.indexByAuthenticatedUser);
   
   app.route(baseUrl + '/users/:username/refresh-token').put(userController.updateToken);
+
+  // ============================================
+  // /users/:username/api-keys routes
+  // ============================================
+  app
+    .route(baseUrl + '/users/:username/api-keys')
+    .get(checkEntityExists(userService, 'username'), userController.getApiKeys)
+    .post(checkEntityExists(userService, 'username'), userController.createApiKey);
+
+  app
+    .route(baseUrl + '/users/:username/api-keys/:keyId')
+    .delete(checkEntityExists(userService, 'username'), userController.deleteApiKey);
+
+  app
+    .route(baseUrl + '/users/:username/api-keys/:keyId/revoke')
+    .put(checkEntityExists(userService, 'username'), userController.revokeApiKey);
 };
 
 export default loadFileRoutes;

@@ -1,6 +1,7 @@
 import { ApiKey, LeanUser, LeanUserWithApiKey, UserFilters } from '../../types/models/User';
 import RepositoryBase from '../RepositoryBase';
 import UserMongoose from './models/UserMongoose';
+import mongoose from 'mongoose';
 
 class UserRepository extends RepositoryBase {
   async find(
@@ -208,6 +209,56 @@ class UserRepository extends RepositoryBase {
   async destroy(username: string): Promise<boolean> {
     const result = await UserMongoose.deleteOne({ username }).exec();
     return result?.deletedCount === 1;
+  }
+
+  async findByUsernameWithApiKeys(username: string): Promise<LeanUser | null> {
+    try {
+      const user = await UserMongoose.findOne({ username }).select('+apiKeys').exec();
+      return user ? user.toObject() : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async addApiKey(username: string, apiKey: any): Promise<any> {
+    try {
+      const result = await UserMongoose.findOneAndUpdate(
+        { username },
+        { $push: { apiKeys: apiKey } },
+        { new: true }
+      ).select('+apiKeys');
+      if (!result) return null;
+      const apiKeys = result.apiKeys as any[];
+      return apiKeys[apiKeys.length - 1];
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async revokeApiKey(username: string, keyId: string): Promise<boolean> {
+    try {
+      const result = await UserMongoose.findOneAndUpdate(
+        { username, 'apiKeys._id': new mongoose.Types.ObjectId(keyId) },
+        { $set: { 'apiKeys.$.revoked': true } },
+        { new: true }
+      );
+      return !!result;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async deleteApiKey(username: string, keyId: string): Promise<boolean> {
+    try {
+      const result = await UserMongoose.findOneAndUpdate(
+        { username },
+        { $pull: { apiKeys: { _id: new mongoose.Types.ObjectId(keyId) } } },
+        { new: true }
+      );
+      return !!result;
+    } catch (err) {
+      return false;
+    }
   }
 }
 

@@ -91,6 +91,7 @@ class PermissionService {
 
     const pricingsWithGetPermissions: string[] = [];
     const collectionsWithGetPermissions: string[] = [];
+    const collectionsWithPutPermissions: string[] = [];
     const adminOrgIds: string[] = [];
 
     for (const [orgId, orgPermissions] of permissions) {
@@ -101,6 +102,10 @@ class PermissionService {
 
       const entriesWithGetPermissions = Array.from(orgPermissions.entityPermissions.entries())
         .filter(([_, permissionEntry]) => permissionEntry.GET === true)
+        .map(([key]) => key);
+
+      const entriesWithPutPermissions = Array.from(orgPermissions.entityPermissions.entries())
+        .filter(([_, permissionEntry]) => permissionEntry.GET === true && permissionEntry.PUT === true)
         .map(([key]) => key);
 
       pricingsWithGetPermissions.push(
@@ -114,12 +119,19 @@ class PermissionService {
           .filter(key => key.startsWith('collection:'))
           .map(key => key.split(':')[1])
       );
+
+      collectionsWithPutPermissions.push(
+        ...entriesWithPutPermissions
+          .filter(key => key.startsWith('collection:'))
+          .map(key => key.split(':')[1])
+      );
     }
 
     return {
       orgRole: null,
       pricings: pricingsWithGetPermissions,
       collections: collectionsWithGetPermissions,
+      collectionsWritable: collectionsWithPutPermissions,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       adminOrgIds,
     };

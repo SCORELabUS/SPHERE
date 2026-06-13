@@ -1,6 +1,7 @@
 import container from '../config/container';
 import UserService from '../services/UserService';
 import UserSettingsService from '../services/UserSettingsService';
+import ApiKeyService from '../services/ApiKeyService';
 import { LeanUser, UserFilters } from '../types/models/User';
 import { handleError } from '../utils/users/helpers';
 import multer from 'multer';
@@ -18,11 +19,13 @@ const settingsUpload = multer({
 class UserController {
   private userService: UserService;
   private userSettingsService: UserSettingsService;
+  private apiKeyService: ApiKeyService;
   public settingsUploadMiddleware: any;
 
   constructor() {
     this.userService = container.resolve('userService');
     this.userSettingsService = container.resolve('userSettingsService');
+    this.apiKeyService = container.resolve('apiKeyService');
     this.index = this.index.bind(this);
     this.show = this.show.bind(this);
     this.getCurrentUser = this.getCurrentUser.bind(this);
@@ -39,6 +42,10 @@ class UserController {
     this.uploadAvatar = this.uploadAvatar.bind(this);
     this.removeAvatar = this.removeAvatar.bind(this);
     this.updateAvatarColors = this.updateAvatarColors.bind(this);
+    this.getApiKeys = this.getApiKeys.bind(this);
+    this.createApiKey = this.createApiKey.bind(this);
+    this.revokeApiKey = this.revokeApiKey.bind(this);
+    this.deleteApiKey = this.deleteApiKey.bind(this);
     this.settingsUploadMiddleware = settingsUpload.single('avatar');
   }
 
@@ -294,6 +301,57 @@ class UserController {
       const { avatarPath, avatarBgColor, avatarFgColor } = req.body;
       const settings = await this.userSettingsService.updateAvatar(targetUserId, { avatarPath, avatarBgColor, avatarFgColor });
       res.json(settings);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  // ============================================
+  // API Keys endpoints
+  // ============================================
+
+  async getApiKeys(req: any, res: any) {
+    try {
+      const apiKeys = await this.apiKeyService.getApiKeys(req.user, req.params.username);
+      res.json(apiKeys);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async createApiKey(req: any, res: any) {
+    try {
+      const { apiKey, plainKey } = await this.apiKeyService.createApiKey(
+        req.user,
+        req.params.username,
+        req.body
+      );
+      res.status(201).json({
+        apiKey: { ...apiKey, id: apiKey._id },
+        plainKey,
+      });
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async revokeApiKey(req: any, res: any) {
+    try {
+      await this.apiKeyService.revokeApiKey(req.user, req.params.username, req.params.keyId);
+      res.json({ message: 'API key revoked' });
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async deleteApiKey(req: any, res: any) {
+    try {
+      await this.apiKeyService.deleteApiKey(req.user, req.params.username, req.params.keyId);
+      res.status(204).send();
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

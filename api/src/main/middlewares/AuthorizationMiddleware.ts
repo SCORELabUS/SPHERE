@@ -227,6 +227,13 @@ async function checkEntityPermissions(
 
   // For POST (creation), check org-scoped CREATE permission
   if (method === 'POST') {
+    // POST to an existing collection (add pricing to collection) is a PUT-level
+    // operation, not a CREATE. Skip the CREATE check here; the service layer
+    // handles PUT permission on the collection.
+    if (entityType === 'collection' && segments.length >= 3) {
+      return null;
+    }
+
     const permissionQueries = new (await import('../policies/queries/PermissionQueries')).PermissionQueries();
     const batchCtx = await permissionQueries.buildBatchContext(
       user.id,

@@ -33,7 +33,7 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
 
   useEffect(() => {
     let cancelled = false;
-    fetchRef.current({ organizationIds: organizationId! })
+    fetchRef.current({ organizationIds: organizationId!, writableOnly: 'true' })
       .then(data => { if (!cancelled) setCollections(data.collections ?? []); })
       .catch(() => { if (!cancelled) setCollections([]); })
       .finally(() => { if (!cancelled) setIsLoading(false); });

@@ -447,6 +447,31 @@ class PricingService {
         reqUser
       );
 
+      if (reqUser) {
+        const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+        const batchCtx = await this.permissionService.buildBatchContext(
+          reqUser.id,
+          organizationId,
+          orgRole,
+          reqUser.role === 'ADMIN'
+        );
+        const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
+        const evalResult = this.permissionEngine.evaluate({
+          userId: reqUser.id,
+          organizationId,
+          entityType: 'collection',
+          entitySlug: collection.slug,
+          action: 'PUT',
+          isPrivate: collection.private,
+          userOrgRole: orgRole,
+          isGlobalAdmin: reqUser.role === 'ADMIN',
+          entityPermissions: entityPerms,
+        });
+        if (!evalResult.allowed) {
+          throw new Error(`PERMISSION ERROR: ${evalResult.reason}`);
+        }
+      }
+
       const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         includePrivate: true,
       });

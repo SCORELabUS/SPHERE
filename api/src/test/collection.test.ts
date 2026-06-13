@@ -568,6 +568,116 @@ describe('Pricing Collections API integration', () => {
       expect(collection.organization.id).toBeDefined();
       expect(typeof collection.numberOfPricings).toBe('number');
     });
+
+    it('returns 200 with all GET-permitted collections when writableOnly is not set', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const getOnlyCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `GetOnly_${randomSuffix()}`,
+        private: true,
+      });
+
+      const getPutCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `GetPut_${randomSuffix()}`,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, getOnlyCollection.slug, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, getPutCollection.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(getOnlyCollection.name);
+      expect(names).toContain(getPutCollection.name);
+    });
+
+    it('returns 200 with only GET+PUT permitted collections when writableOnly=true', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const getOnlyCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `GetOnly_${randomSuffix()}`,
+        private: true,
+      });
+
+      const getPutCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `GetPut_${randomSuffix()}`,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, getOnlyCollection.slug, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, getPutCollection.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?writableOnly=true`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(1);
+      expect(response.body.collections[0].name).toBe(getPutCollection.name);
+    });
+
+    it('returns 200 with all collections for OWNER when writableOnly=true', async () => {
+      const { user, organizationId } = await createAndLoginUser('USER');
+
+      const privateCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `Private_${randomSuffix()}`,
+        private: true,
+      });
+
+      const publicCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?writableOnly=true`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.length).toBe(2);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toContain(privateCollection.name);
+      expect(names).toContain(publicCollection.name);
+    });
   });
 
   describe('POST /api/v1/collections/:organizationId', () => {
@@ -726,6 +836,128 @@ describe('Pricing Collections API integration', () => {
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();
+    });
+
+    it('Return 200 when MEMBER has PUT permission on a private collection.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const collection = await createTestCollection({
+        _organizationId: organizationId,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, collection.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `pricing_${randomSuffix()}`,
+        version: '1.0.0',
+      });
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ pricingSlug: serviceName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBeDefined();
+    });
+
+    it('Return 403 when MEMBER has no PUT permission on a private collection.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const collection = await createTestCollection({
+        _organizationId: organizationId,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, collection.slug, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `pricing_${randomSuffix()}`,
+        version: '1.0.0',
+      });
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ pricingSlug: serviceName });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('PERMISSION ERROR');
+    });
+
+    it('Return 403 when MEMBER has GET but not PUT permission on a private collection.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const collection = await createTestCollection({
+        _organizationId: organizationId,
+        private: true,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, collection.slug, 'collection', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `pricing_${randomSuffix()}`,
+        version: '1.0.0',
+      });
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ pricingSlug: serviceName });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('PERMISSION ERROR');
+    });
+
+    it('Return 200 when OWNER adds pricing to any collection.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const collection = await createTestCollection({
+        _organizationId: organizationId,
+        private: true,
+      });
+
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `pricing_${randomSuffix()}`,
+        version: '1.0.0',
+      });
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ pricingSlug: serviceName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBeDefined();
     });
   });
 

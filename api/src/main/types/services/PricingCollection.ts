@@ -5,4 +5,5 @@ export type CollectionIndexQueryParams = {
   organizationIds?: string[];
   limit: number;
   offset: number;
+  writableOnly?: boolean;
 }

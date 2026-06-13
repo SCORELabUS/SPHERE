@@ -39,6 +39,7 @@ import CreateOrganizationPage from '../modules/organization/pages/create-organiz
 import OrganizationDetailPage from '../modules/organization/pages/organization-detail';
 import OrganizationJoinPage from '../modules/organization/pages/organization-join';
 import SettingsPage from '../modules/settings/pages/SettingsPage';
+import ApiKeysPage from '../modules/api-keys/pages/ApiKeysPage';
 
 function RootPage() {
   const { authUser } = useAuth();
@@ -151,6 +152,7 @@ export default function Router() {
         { element: <CreateCollectionPage />, path: '/collections/new' },
         { element: <OrganizationsListPage />, path: '/me/orgs' },
         { element: <SettingsPage />, path: '/me/settings' },
+        { element: <ApiKeysPage />, path: '/me/api-keys' },
         { element: <UserPricingListPage />, path: '/me/pricings' },
         { element: <UserCollectionsListPage />, path: '/me/collections' },
         { element: <CreateOrganizationPage />, path: '/orgs/new' },

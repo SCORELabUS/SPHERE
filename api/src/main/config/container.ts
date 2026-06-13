@@ -20,6 +20,7 @@ import OrganizationService from '../services/OrganizationService';
 import PermissionService from '../services/PermissionService';
 import UserSettingsService from '../services/UserSettingsService';
 import NotificationService from '../services/NotificationService';
+import ApiKeyService from '../services/ApiKeyService';
 
 dotenv.config();
 
@@ -58,6 +59,7 @@ function initContainer(databaseType: string): AwilixContainer {
     permissionService: asClass(PermissionService).singleton(),
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
+    apiKeyService: asClass(ApiKeyService).singleton(),
   });
   return container;
 }

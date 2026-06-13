@@ -73,6 +73,14 @@ export default function UserMenu() {
         setIsOpen(false);
       },
     },
+    {
+      label: 'API Keys',
+      icon: <Iconify icon="mdi:key" className="h-4 w-4" />,
+      onClick: () => {
+        router.push('/me/api-keys');
+        setIsOpen(false);
+      },
+    },
   ];
 
   const handleLogout = () => {

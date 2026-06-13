@@ -20,7 +20,7 @@ const ApiKeySchema = new Schema(
     expiresAt: { type: Date, default: null },
     revoked: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const UserSettingsSchema = new Schema(
@@ -184,6 +184,7 @@ export interface UserDocument extends Document {
   token?: string;
   tokenExpiration?: Date;
   apiKeys: {
+    _id: string;
     key: string;
     name: string;
     scopes: {

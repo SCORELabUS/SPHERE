@@ -50,6 +50,22 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
+  // API Keys management
+  {
+    path: '/users/*/api-keys',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/users/*/api-keys/*',
+    methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/users/*/api-keys/*/revoke',
+    methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
   // User settings: /users/me/settings (own settings)
   {
     path: '/users/me/settings/**',

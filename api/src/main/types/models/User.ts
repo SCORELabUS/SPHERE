@@ -45,16 +45,7 @@ export interface LeanUser {
   settings?: UserSettings;
   token?: string;
   tokenExpiration?: Date;
-  apiKeys: {
-    key: string;
-    name: string;
-    scopes: {
-      organizationId: string;
-      scope: 'ALL' | 'MANAGEMENT' | 'VIEW';
-    }[];
-    expiresAt?: Date;
-    revoked: boolean;
-  }[];
+  apiKeys: ApiKey[];
 }
 
 export type LeanUserWithApiKey = (Omit<LeanUser, 'apiKeys' | 'password'> & { apiKey: ApiKey })
@@ -67,8 +58,20 @@ export type UserFilters = {
 };
 
 export type ApiKey = {
+  _id: string;
   key: string;
+  name: string;
   revoked: boolean;
-  expiresAt: Date | null;
+  expiresAt?: Date | null;
   scopes: { organizationId: string; scope: 'ALL' | 'MANAGEMENT' | 'VIEW' }[];
+};
+
+export type ApiKeySummary = {
+  id: string;
+  name: string;
+  keyPreview: string;
+  scopes: { organizationId: string; scope: 'ALL' | 'MANAGEMENT' | 'VIEW' }[];
+  expiresAt?: Date | null;
+  revoked: boolean;
+  createdAt?: Date;
 };
