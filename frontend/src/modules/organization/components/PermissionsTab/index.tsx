@@ -3,7 +3,7 @@ import Iconify from '../../../core/components/iconify';
 import { FaFileInvoiceDollar } from 'react-icons/fa';
 import customAlert from '../../../core/utils/custom-alert';
 import { useOrganizationsApi, OrgMemberWithUser, OrgPricing, OrgCollection } from '../../api/organizationsApi';
-import { EntityType, EntityPermission, EntityPermissions } from '../../types/permissions';
+import { EntityType, EntityPermission } from '../../types/permissions';
 
 interface PermissionsTabProps {
   organizationId: string;

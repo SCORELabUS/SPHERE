@@ -47,12 +47,12 @@ function PricingVersions({
     onContextAdd({
       sphereId: sphereId,
       kind: 'yaml',
-      label: calculateLabel(name, collectionSlug),
+      label: calculateLabel(slug, collectionSlug),
       value: yamlFile,
       origin: 'sphere',
       owner: owner,
       yamlPath: yamlUrl,
-      pricingName: name,
+      pricingName: slug,
       version: version,
       collection: collectionSlug ?? null,
     });

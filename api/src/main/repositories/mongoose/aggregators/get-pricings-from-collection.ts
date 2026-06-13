@@ -1,4 +1,4 @@
-import { OrgUserPermissionsContext } from '../../../../types/policies';
+import { OrgUserPermissionsContext } from '../../../types/policies';
 import { getPricingsAggregator } from './pricings/get-pricings';
 
 export function getAllPricingsFromCollection(permissions?: OrgUserPermissionsContext) {

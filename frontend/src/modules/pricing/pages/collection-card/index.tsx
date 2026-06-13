@@ -165,7 +165,7 @@ export default function CollectionCardPage() {
       }
       if (dateTo) {
         const to = dateTo + 'T23:59:59';
-        const idx = dates.findLastIndex(d => d <= to);
+        const idx = dates.reduce((acc, d, i) => (d <= to ? i : acc), -1);
         if (idx >= 0 && idx < dates.length - 1) { dates = dates.slice(0, idx + 1); values = values.slice(0, idx + 1); }
         else if (idx === -1) { dates = []; values = []; }
       }

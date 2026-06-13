@@ -46,10 +46,6 @@ export default function BlockAlert({
     setIsExiting(true);
   };
 
-  const handleAnimationComplete = () => {
-    onDismiss?.();
-  };
-
   return (
     <AnimatePresence>
       {content && !isExiting && (

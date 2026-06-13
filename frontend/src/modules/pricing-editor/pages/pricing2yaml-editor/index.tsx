@@ -24,22 +24,22 @@ function normalizeSyntaxVersion(value?: string): SyntaxVersion {
   return value === '3.1' ? '3.1' : '3.0';
 }
 
-function replaceSyntaxVersionInYaml(yaml: string, version: SyntaxVersion): string {
-  const syntaxVersionRegex = /^(\s*syntaxVersion:\s*)(['"]?)([^'"\n\r]+)\2(\s*)$/m;
+// function replaceSyntaxVersionInYaml(yaml: string, version: SyntaxVersion): string {
+//   const syntaxVersionRegex = /^(\s*syntaxVersion:\s*)(['"]?)([^'"\n\r]+)\2(\s*)$/m;
 
-  if (syntaxVersionRegex.test(yaml)) {
-    return yaml.replace(syntaxVersionRegex, `$1"${version}"$4`);
-  }
+//   if (syntaxVersionRegex.test(yaml)) {
+//     return yaml.replace(syntaxVersionRegex, `$1"${version}"$4`);
+//   }
 
-  const saasNameRegex = /^(saasName:.*)$/m;
-  const saasNameMatch = saasNameRegex.exec(yaml);
-  if (saasNameMatch) {
-    const insertIndex = (saasNameMatch.index ?? 0) + saasNameMatch[0].length;
-    return `${yaml.slice(0, insertIndex)}\nsyntaxVersion: "${version}"${yaml.slice(insertIndex)}`;
-  }
+//   const saasNameRegex = /^(saasName:.*)$/m;
+//   const saasNameMatch = saasNameRegex.exec(yaml);
+//   if (saasNameMatch) {
+//     const insertIndex = (saasNameMatch.index ?? 0) + saasNameMatch[0].length;
+//     return `${yaml.slice(0, insertIndex)}\nsyntaxVersion: "${version}"${yaml.slice(insertIndex)}`;
+//   }
 
-  return `syntaxVersion: "${version}"\n${yaml}`;
-}
+//   return `syntaxVersion: "${version}"\n${yaml}`;
+// }
 
 export default function EditorPage() {
   const [pricing, setPricing] = useState<Pricing>();
@@ -197,18 +197,18 @@ export default function EditorPage() {
     }
   }, [editorValue, selectedSyntaxVersion]);
 
-  function handleSyntaxVersionChange(version: SyntaxVersion) {
-    setSelectedSyntaxVersion(version);
+  // function handleSyntaxVersionChange(version: SyntaxVersion) {
+  //   setSelectedSyntaxVersion(version);
 
-    if (!editorValue) {
-      return;
-    }
+  //   if (!editorValue) {
+  //     return;
+  //   }
 
-    const nextValue = replaceSyntaxVersionInYaml(editorValue, version);
-    if (nextValue !== editorValue) {
-      setEditorValue(nextValue);
-    }
-  }
+  //   const nextValue = replaceSyntaxVersionInYaml(editorValue, version);
+  //   if (nextValue !== editorValue) {
+  //     setEditorValue(nextValue);
+  //   }
+  // }
 
   const handleVisualDraftChange = useCallback((draft: PricingDraft) => {
     setPendingVisualDraft(draft);

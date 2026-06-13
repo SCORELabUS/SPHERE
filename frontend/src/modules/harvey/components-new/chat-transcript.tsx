@@ -24,13 +24,12 @@ export default function ChatTranscript({ messages, isLoading, promptPresets, onP
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6" aria-live="polite" aria-busy={isLoading}>
-      <div className="mx-auto max-w-[800px] space-y-6">
+      <div className="mx-auto max-w-200 space-y-6">
         <AnimatePresence mode="popLayout">
-          {messages.map((message, i) => (
+          {messages.map((message) => (
             <ChatMessageComponent
               key={message.id}
               message={message}
-              isLast={i === messages.length - 1}
             />
           ))}
         </AnimatePresence>
