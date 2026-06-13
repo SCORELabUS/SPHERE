@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { usePricingCollectionsApi } from '../../../profile/api/pricingCollectionsApi';
 import { usePricingsApi } from '../../api/pricingsApi';
@@ -28,12 +28,17 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
   const [search, setSearch] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
+  const fetchRef = useRef(getPermissionBasedUserCollections);
+  fetchRef.current = getPermissionBasedUserCollections;
+
   useEffect(() => {
-    getPermissionBasedUserCollections({ organizationIds: organizationId! })
-      .then(data => setCollections(data.collections ?? []))
-      .catch(() => setCollections([]))
-      .finally(() => setIsLoading(false));
-  }, [getPermissionBasedUserCollections, organizationId]);
+    let cancelled = false;
+    fetchRef.current({ organizationIds: organizationId! })
+      .then(data => { if (!cancelled) setCollections(data.collections ?? []); })
+      .catch(() => { if (!cancelled) setCollections([]); })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
+  }, [organizationId]);
 
   const filtered = collections.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
