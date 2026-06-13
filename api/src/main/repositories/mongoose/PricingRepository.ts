@@ -295,21 +295,21 @@ class PricingRepository extends RepositoryBase {
     );
   }
 
-  async destroyByNameOrganizationAndCollectionId(
-    name: string,
+  async destroyBySlugOrganizationAndCollectionId(
+    slug: string,
     organizationId: string,
     collectionId?: string
   ) {
     if (collectionId) {
       const result = await PricingMongoose.deleteMany({
-        name: name,
+        slug: slug,
         _organizationId: new mongoose.Types.ObjectId(organizationId),
         _collectionId: new mongoose.Types.ObjectId(collectionId),
       });
       return result.deletedCount >= 1;
     } else {
       const result = await PricingMongoose.deleteMany({
-        name: name,
+        slug: slug,
         _organizationId: new mongoose.Types.ObjectId(organizationId),
         _collectionId: { $exists: false },
       });
@@ -317,20 +317,16 @@ class PricingRepository extends RepositoryBase {
     }
   }
 
-  async destroyVersionByNameAndOrganization(
-    name: string,
+  async destroyVersionBySlugAndOrganization(
+    slug: string,
     version: string,
     organizationId: string,
     ...args: any
   ) {
     const result = await PricingMongoose.deleteOne({
-      $expr: {
-        $and: [
-          { $eq: [{ $toLower: '$name' }, name.toLowerCase()] },
-          { $eq: ['$_organizationId', new mongoose.Types.ObjectId(organizationId)] },
-          { $eq: ['$version', version] },
-        ],
-      },
+      slug: slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      version: version,
     });
 
     return result.deletedCount === 1;

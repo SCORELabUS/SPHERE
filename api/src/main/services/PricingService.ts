@@ -675,9 +675,8 @@ class PricingService {
       collectionId = collection.id;
     }
 
-    // TODO: debe eliminar por slug
-    const result = await this.pricingRepository.destroyByNameOrganizationAndCollectionId(
-      pricing!.name,
+    const result = await this.pricingRepository.destroyBySlugOrganizationAndCollectionId(
+      pricingSlug,
       effectiveOrgId,
       collectionId
     );
@@ -731,17 +730,15 @@ class PricingService {
 
     let result;
 
-    // TODO: debe eliminar por slug y version
-    result = await this.pricingRepository.destroyVersionByNameAndOrganization(
-      pricing!.name,
+    result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
+      pricingSlug,
       pricingVersion,
       organizationId
     );
 
     if (!result) {
-      // TODO: debe eliminar por slug y version
-      result = await this.pricingRepository.destroyVersionByNameAndOrganization(
-        pricing!.name,
+      result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
+        pricingSlug,
         pricingVersion.replace('_', '.'),
         organizationId
       );
