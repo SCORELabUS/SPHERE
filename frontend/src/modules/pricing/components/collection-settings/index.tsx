@@ -71,7 +71,7 @@ export default function CollectionSettings({
     customConfirm('Are you sure you want to change the visibility of this collection?', { danger: false })
       .then(() => {
         const collectionUpdateBody = { private: visibility === 'Public' };
-        console.log("organizationId:", organizationId);
+
         updateCollection(organizationId, collection.slug, collectionUpdateBody)
           .then((data: any) => {
             if (data.error) {

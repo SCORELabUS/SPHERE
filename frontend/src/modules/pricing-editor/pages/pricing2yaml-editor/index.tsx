@@ -136,8 +136,6 @@ export default function EditorPage() {
           const cachedPricing = await getFromCache(pricingParam);
 
           templatePricing = parseEncodedYamlToStringYaml(cachedPricing);
-
-          console.log(templatePricing);
         }
       }
 
