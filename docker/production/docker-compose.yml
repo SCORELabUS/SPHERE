@@ -29,6 +29,8 @@ services:
       ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-password}
     ports:
       - "8081:8081"
+    networks:
+      - sphere-network
   choco-analysis-engine:
     image: aleexgf/choco-pricing-analysis-engine:main
     container_name: choco-analysis-engine
