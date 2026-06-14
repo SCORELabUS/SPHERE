@@ -19,7 +19,7 @@ RUN pnpm install
 
 # Copy the rest of the application source code to the container
 COPY ./src/main ./src/main
-COPY ./public/avatars ./public/avatars
+COPY ./public/static/avatars ./public/static/avatars
 
 # Copy tsconfig.json to the container
 COPY ./tsconfig.json .
