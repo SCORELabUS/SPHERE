@@ -16,16 +16,13 @@ export async function up(db: mongoose.Connection) {
   const DEFAULT_ORGANIZATION_ID = new mongoose.Types.ObjectId('6a2d90d2e7661f8a65098f97');
 
   const collectionsWithoutOrg = await db
-                                      .collection('pricingCollections')
-                                      .find({
-                                        $or: [{ _organizationId: { $exists: false } }, { _organizationId: null }],
-                                      })
-                                      .toArray();
+    .collection('pricingCollections')
+    .find({
+      $or: [{ _organizationId: { $exists: false } }, { _organizationId: null }],
+    })
+    .toArray();
 
-  const organizations = await db
-                              .collection('organizations')
-                              .find({})
-                              .toArray();
+  const organizations = await db.collection('organizations').find({}).toArray();
 
   const orgByOwnerId = new Map(
     organizations
@@ -128,6 +125,42 @@ export async function up(db: mongoose.Connection) {
         $set: {
           slug,
         },
+      }
+    );
+  }
+
+  const collectionsWithoutSlug = await db
+
+    .collection('pricingCollections')
+
+    .find({
+      $or: [{ slug: { $exists: false } }, { slug: null }, { slug: '' }],
+    })
+
+    .toArray();
+
+  for (const collection of collectionsWithoutSlug) {
+    const baseSlug = generateSlug(collection.name || 'collection');
+
+    let slug = baseSlug;
+
+    let counter = 1;
+
+    while (
+      await db.collection('pricingCollections').findOne({
+        _organizationId: collection._organizationId,
+
+        slug,
+      })
+    ) {
+      slug = `${baseSlug}-${counter++}`;
+    }
+
+    await db.collection('pricingCollections').updateOne(
+      { _id: collection._id },
+
+      {
+        $set: { slug },
       }
     );
   }
