@@ -235,7 +235,7 @@ class PricingCollectionRepository extends RepositoryBase {
 
   async destroyWithPricings(id: string, ...args: any) {
     const resultPricings = await PricingMongoose.deleteMany({
-      _collectionId: new mongoose.Types.ObjectId(id),
+      _collectionId: id,
     });
     const resultCollections = await PricingCollectionMongoose.deleteOne({
       _id: new mongoose.Types.ObjectId(id),

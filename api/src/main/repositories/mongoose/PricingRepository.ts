@@ -184,7 +184,7 @@ class PricingRepository extends RepositoryBase {
   async create(data: any[]) {
     data.forEach(item => {
       if (item._collectionId) {
-        item._collectionId = new mongoose.Types.ObjectId(item._collectionId);
+        item._collectionId = String(item._collectionId);
       }
 
       if (item._organizationId) {
@@ -246,7 +246,7 @@ class PricingRepository extends RepositoryBase {
         _organizationId: new mongoose.Types.ObjectId(organizationId),
       },
       {
-        $set: { _collectionId: new mongoose.Types.ObjectId(collectionId) },
+        $set: { _collectionId: collectionId },
       }
     );
   }
@@ -287,7 +287,7 @@ class PricingRepository extends RepositoryBase {
   async removePricingsFromCollection(collectionId: string) {
     return await PricingMongoose.updateMany(
       {
-        _collectionId: new mongoose.Types.ObjectId(collectionId),
+        _collectionId: collectionId,
       },
       {
         $unset: { _collectionId: 1 },
@@ -304,7 +304,7 @@ class PricingRepository extends RepositoryBase {
       const result = await PricingMongoose.deleteMany({
         slug: slug,
         _organizationId: new mongoose.Types.ObjectId(organizationId),
-        _collectionId: new mongoose.Types.ObjectId(collectionId),
+        _collectionId: collectionId,
       });
       return result.deletedCount >= 1;
     } else {
