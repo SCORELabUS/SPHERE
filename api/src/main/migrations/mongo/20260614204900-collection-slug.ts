@@ -13,37 +13,42 @@ function generateSlug(text: string): string {
 
 export async function up(db: mongoose.Connection) {
   // ── Step 0: Populate _organizationId from owner's personal organization ──
+  const DEFAULT_ORGANIZATION_ID = new mongoose.Types.ObjectId('6a2d90d2e7661f8a65098f97');
 
   const collectionsWithoutOrg = await db
-    .collection('pricingCollections')
-    .find({
-      $or: [{ _organizationId: { $exists: false } }, { _organizationId: null }],
-    })
-    .toArray();
+                                      .collection('pricingCollections')
+                                      .find({
+                                        $or: [{ _organizationId: { $exists: false } }, { _organizationId: null }],
+                                      })
+                                      .toArray();
+
+  const organizations = await db
+                              .collection('organizations')
+                              .find({})
+                              .toArray();
+
+  const orgByOwnerId = new Map(
+    organizations
+      .filter((org: any) => org._ownerId)
+      .map((org: any) => [org._ownerId.toString(), org])
+  );
 
   for (const collection of collectionsWithoutOrg) {
-    if (!collection._ownerId) {
-      throw new Error(
-        `Collection ${collection._id} has no _ownerId and cannot be assigned to an organization`
-      );
-    }
-
-    const organization = await db.collection('organizations').findOne({
-      _ownerId: collection._ownerId,
-    });
+    const organization = collection._ownerId
+      ? orgByOwnerId.get(collection._ownerId.toString())
+      : undefined;
 
     if (!organization) {
-      throw new Error(
-        `No personal organization found for user ${collection._ownerId} (collection ${collection._id})`
+      console.warn(
+        `[pricingCollections] No personal organization found for owner ${collection._ownerId}. Using fallback organization ${DEFAULT_ORGANIZATION_ID}.`
       );
     }
 
     await db.collection('pricingCollections').updateOne(
       { _id: collection._id },
-
       {
         $set: {
-          _organizationId: organization._id,
+          _organizationId: organization?._id ?? DEFAULT_ORGANIZATION_ID,
         },
       }
     );
