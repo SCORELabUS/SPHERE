@@ -262,6 +262,7 @@ function PricingAssistantPage() {
       createdAt: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMessage]);
+    setQuestion('');
     setIsLoading(true);
     setContextItems(prev =>
       prev.map(item => (item.kind === 'url' ? { ...item, transform: 'pending' } : item))
@@ -312,7 +313,6 @@ function PricingAssistantPage() {
       setMessages(prev => [...prev, assistantMessage]);
     } finally {
       setIsLoading(false);
-      setQuestion('');
     }
   };
 
