@@ -195,7 +195,7 @@ export default function PricingsTab({ pricings, pricingsTotal, pricingPage, pric
 
                 return (
                   <PricingCard
-                    key={`${pricing.name}-${pricing.version}`}
+                    key={`${pricing.name}-${pricing.version}-${pricing.slug}-${pricing.collection?.id ?? 'no-collection'}`}
                     data={pricing}
                     showMenu={showMenu}
                     menuItems={menuItems}
