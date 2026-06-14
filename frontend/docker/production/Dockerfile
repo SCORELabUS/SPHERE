@@ -40,6 +40,8 @@ COPY ./vite.config.ts .
 COPY ./index.html .
 COPY ./.env.testing .env
 
+ENV VITE_HARVEY_URL=https://sphere.score.us.es/harvey-api
+
 # Build your application
 RUN pnpm run build
 RUN pnpm add -D serve
