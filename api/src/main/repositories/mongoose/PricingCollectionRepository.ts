@@ -13,6 +13,7 @@ import { addLastPricingUpdateAggregator } from './aggregators/pricingCollections
 import { CollectionIndexQueryParams } from '../../types/services/PricingCollection';
 import { OrgUserPermissionsContext } from '../../types/policies';
 import { getCollectionsAggregator } from './aggregators/pricingCollections/get-collections';
+import { escapeRegex } from '../../utils/regex';
 
 class PricingCollectionRepository extends RepositoryBase {
   async findAll(
@@ -235,7 +236,7 @@ class PricingCollectionRepository extends RepositoryBase {
 
   async destroyWithPricings(id: string, ...args: any) {
     const resultPricings = await PricingMongoose.deleteMany({
-      _collectionId: new mongoose.Types.ObjectId(id),
+      _collectionId: id,
     });
     const resultCollections = await PricingCollectionMongoose.deleteOne({
       _id: new mongoose.Types.ObjectId(id),
@@ -257,7 +258,7 @@ class PricingCollectionRepository extends RepositoryBase {
         filteringPipeline.push({
           $match: {
             name: {
-              $regex: name,
+              $regex: escapeRegex(name),
               $options: 'i', // case-insensitive
             },
           },

@@ -3,12 +3,20 @@ import type { Connection } from 'mongoose';
 export async function up(connection: Connection): Promise<void> {
   const pricingsCollection = connection.collection('pricings');
   const pricingCollectionsCollection = connection.collection('pricingCollections');
+  const usersCollection = connection.collection('users');
+  const orgsCollection = connection.collection('organizations');
+
+  // Check if organizations exist. If not, skip this migration —
+  // the composite migration (1781500000000) will handle org creation
+  // and data conversion.
+  const orgCount = await orgsCollection.countDocuments();
+  if (orgCount === 0) {
+    return;
+  }
 
   // Step 1: For each pricing document with an "owner" field, look up the user's personal organization
   // and set _organizationId from it, then remove the "owner" field
   const pricingsWithOwner = await pricingsCollection.find({ owner: { $exists: true } }).toArray();
-  const usersCollection = connection.collection('users');
-  const orgsCollection = connection.collection('organizations');
 
   for (const pricing of pricingsWithOwner) {
     const user = await usersCollection.findOne({ username: pricing.owner });
@@ -55,8 +63,11 @@ export async function up(connection: Connection): Promise<void> {
   }
 
   // Step 3: Drop old indexes and create new ones
+  // Only create new indexes if conversion was successful (no remaining owner fields)
+  const remainingPricingsWithOwner = await pricingsCollection.countDocuments({ owner: { $exists: true } });
+  const remainingCollectionsWithOwner = await pricingCollectionsCollection.countDocuments({ _ownerName: { $exists: true } });
 
-  // Pricings: drop old index, create new
+  // Pricings: drop old indexes
   const pricingIndexes = await pricingsCollection.indexes();
   const oldPricingIndex = pricingIndexes.some(
     (index) => index.name === 'name_1_owner_1_version_1__collectionId_1__organizationId_1'
@@ -73,17 +84,20 @@ export async function up(connection: Connection): Promise<void> {
     await pricingsCollection.dropIndex('name_1_owner_1_version_1__collectionId_1');
   }
 
-  const newPricingIndexExists = pricingIndexes.some(
-    (index) => index.name === 'name_1__organizationId_1_version_1__collectionId_1'
-  );
-  if (!newPricingIndexExists) {
-    await pricingsCollection.createIndex(
-      { name: 1, _organizationId: 1, version: 1, _collectionId: 1 },
-      { unique: true }
+  // Only create new pricing index if all owner fields have been converted
+  if (remainingPricingsWithOwner === 0) {
+    const newPricingIndexExists = pricingIndexes.some(
+      (index) => index.name === 'name_1__organizationId_1_version_1__collectionId_1'
     );
+    if (!newPricingIndexExists) {
+      await pricingsCollection.createIndex(
+        { name: 1, _organizationId: 1, version: 1, _collectionId: 1 },
+        { unique: true }
+      );
+    }
   }
 
-  // PricingCollections: drop old index, create new
+  // PricingCollections: drop old index
   const collectionIndexes = await pricingCollectionsCollection.indexes();
   const oldCollectionIndex = collectionIndexes.some(
     (index) => index.name === 'name_1__ownerName_1__organizationId_1'
@@ -92,14 +106,17 @@ export async function up(connection: Connection): Promise<void> {
     await pricingCollectionsCollection.dropIndex('name_1__ownerName_1__organizationId_1');
   }
 
-  const newCollectionIndexExists = collectionIndexes.some(
-    (index) => index.name === 'name_1__organizationId_1'
-  );
-  if (!newCollectionIndexExists) {
-    await pricingCollectionsCollection.createIndex(
-      { name: 1, _organizationId: 1 },
-      { unique: true }
+  // Only create new collection index if all _ownerName fields have been converted
+  if (remainingCollectionsWithOwner === 0) {
+    const newCollectionIndexExists = collectionIndexes.some(
+      (index) => index.name === 'name_1__organizationId_1'
     );
+    if (!newCollectionIndexExists) {
+      await pricingCollectionsCollection.createIndex(
+        { name: 1, _organizationId: 1 },
+        { unique: true }
+      );
+    }
   }
 }
 

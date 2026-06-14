@@ -13,6 +13,20 @@ function generateSlug(text: string): string {
 }
 
 export async function up(db: mongoose.Connection) {
+  // ── Safety check: ensure all pricings have _organizationId ──
+  const pricingsWithoutOrg = await db
+    .collection('pricings')
+    .countDocuments({ _organizationId: { $exists: false } });
+  const pricingsWithNullOrg = await db
+    .collection('pricings')
+    .countDocuments({ _organizationId: null });
+  if (pricingsWithoutOrg > 0 || pricingsWithNullOrg > 0) {
+    throw new Error(
+      `Cannot run slug migration: ${pricingsWithoutOrg + pricingsWithNullOrg} pricings missing _organizationId. ` +
+      `Run migration 1781500000000-migrate-production-to-organizations first.`
+    );
+  }
+
   // ── Step 1: Add slug to all pricings ──
   // Group by name + _organizationId to assign the same slug to all versions of a pricing
   const pricingGroups = await db

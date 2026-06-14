@@ -252,7 +252,7 @@ export function useOrganizationsApi() {
     return children;
   }, [getOrganization]);
 
-  const getOrgPricings = useCallback(async (orgId: string, filters?: Record<string, string>): Promise<{ pricings: OrgPricing[]; total: number }> => {
+  const getOrgPricings = useCallback(async (orgId: string, filters?: Record<string, string>, signal?: AbortSignal): Promise<{ pricings: OrgPricing[]; total: number }> => {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([k, v]) => {
@@ -262,6 +262,7 @@ export function useOrganizationsApi() {
     const response = await fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricings/${orgId}?${params.toString()}`, {
       method: 'GET',
       headers,
+      signal,
     });
     if (!response.ok) throw new Error('Failed to fetch organization pricings');
     const data = await response.json();

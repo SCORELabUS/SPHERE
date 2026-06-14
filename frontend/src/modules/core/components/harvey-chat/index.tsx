@@ -68,10 +68,6 @@ export default function HarveyChat({
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      console.log('[HARVEY Chat] User message:', trimmed);
-      console.log('[HARVEY Chat] Pricing context:', { pricingName, pricingSlug, organizationId });
-      console.log('[HARVEY Chat] YAML content:', yamlContent);
-
       const userMsg: ChatMessage = {
         id: nextId(),
         role: 'user',

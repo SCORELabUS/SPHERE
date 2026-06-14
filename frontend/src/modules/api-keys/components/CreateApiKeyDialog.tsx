@@ -43,7 +43,6 @@ export default function CreateApiKeyDialog({
       const newScopes: ApiKeyScope[] = selectedOrgs
         .filter((o) => !kept.some((s) => s.organizationId === o.id))
         .map((o) => ({ organizationId: o.id, scope: 'VIEW' as const }));
-      console.log('newScopes', newScopes);
       return [...kept, ...newScopes];
     });
   }, [selectedOrgs]);

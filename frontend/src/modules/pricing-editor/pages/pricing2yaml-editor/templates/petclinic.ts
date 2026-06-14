@@ -1,5 +1,5 @@
 export const TEMPLATE_PETCLINIC_PRICING = `saasName: PetClinic
-syntaxVersion: "3.0"
+syntaxVersion: "3.1"
 version: "1.0.0"
 createdAt: "2025-09-19"
 currency: EUR
@@ -133,7 +133,7 @@ addOns:
       min: 1
       max: 20
       step: 1
-    usageLimits:
+    usageLimitsExtensions:
       maxPets:
         value: 1
   havePetsDashboard:

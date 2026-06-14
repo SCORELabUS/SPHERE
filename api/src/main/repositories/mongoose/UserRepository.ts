@@ -2,6 +2,7 @@ import { ApiKey, LeanUser, LeanUserWithApiKey, UserFilters } from '../../types/m
 import RepositoryBase from '../RepositoryBase';
 import UserMongoose from './models/UserMongoose';
 import mongoose from 'mongoose';
+import { escapeRegex } from '../../utils/regex';
 
 class UserRepository extends RepositoryBase {
   async find(
@@ -17,7 +18,7 @@ class UserRepository extends RepositoryBase {
 
       // General query: search across username, firstName, and lastName
       if (filter.q) {
-        const regex = { $regex: filter.q, $options: 'i' };
+        const regex = { $regex: escapeRegex(filter.q), $options: 'i' };
         mongoFilter.$or = [
           { username: regex },
           { firstName: regex },
@@ -27,7 +28,7 @@ class UserRepository extends RepositoryBase {
         // Username transformation to allow partial and case-insensitive matches
         if (filter.username) {
           mongoFilter.username = {
-            $regex: filter.username,
+            $regex: escapeRegex(filter.username),
             $options: 'i',
           };
         }
@@ -35,7 +36,7 @@ class UserRepository extends RepositoryBase {
         // Email transformation to allow partial and case-insensitive matches
         if (filter.email) {
           mongoFilter.email = {
-            $regex: filter.email,
+            $regex: escapeRegex(filter.email),
             $options: 'i',
           };
         }

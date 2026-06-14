@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm globally
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Copy package.json and ./pnpm-lock.yaml to the container
 COPY ./package.json .
@@ -39,6 +39,8 @@ COPY ./tsconfig.json .
 COPY ./vite.config.ts .
 COPY ./index.html .
 COPY ./.env.testing .env
+
+ENV VITE_HARVEY_URL=https://sphere.score.us.es/harvey-api
 
 # Build your application
 RUN pnpm run build

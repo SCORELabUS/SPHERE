@@ -15,7 +15,7 @@ export function getAllPricingsFromCollection(permissions?: OrgUserPermissionsCon
           {
             $match: {
               $expr: {
-                $eq: ['$_collectionId', '$$localId'],
+                $eq: [{ $toString: '$_collectionId' }, '$$localId'],
               },
             },
           },

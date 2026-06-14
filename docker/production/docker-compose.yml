@@ -20,6 +20,18 @@ services:
       - 'redis_data:/data'
     networks:
       - sphere-network
+  mongo-express:
+    image: mongo-express:latest
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_SITE_BASEURL: /db-admin/
+      ME_CONFIG_MONGODB_URL: ${MONGO_EXPRESS_URL}
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-password}
+    ports:
+      - "8081:8081"
+    networks:
+      - sphere-network
   choco-analysis-engine:
     image: aleexgf/choco-pricing-analysis-engine:main
     container_name: choco-analysis-engine
@@ -162,6 +174,7 @@ services:
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml
+      - ../../api/public/static/avatars:/usr/src/server/public/static/avatars
     depends_on:
       - mongodb
       - redis

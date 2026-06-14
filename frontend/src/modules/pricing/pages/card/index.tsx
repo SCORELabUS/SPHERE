@@ -68,7 +68,6 @@ export default function CardPage() {
   }, [organizationId]);
 
   useEffect(() => {
-    console.log(collectionSlug);
     if (!slug || !organizationId) return;
     setIsLoading(true);
     getPricingBySlug(slug, organizationId, collectionSlug)

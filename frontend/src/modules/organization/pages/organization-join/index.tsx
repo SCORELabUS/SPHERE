@@ -7,28 +7,6 @@ import { useAuth } from '../../../auth/hooks/useAuth';
 import OrgJoinSkeleton from '../../../core/components/skeletons/org-join-skeleton';
 import OrgAvatar from '../../../core/components/org-avatar';
 
-// function OrgAvatar({
-//   org,
-// }: {
-//   org: { avatar: string | null; displayName: string };
-// }) {
-//   console.log('Org avatar:', org);
-//   if (org.avatar) {
-//     return (
-//       <img
-//         src={org.avatar}
-//         alt={org.displayName}
-//         className="h-20 w-20 rounded-full object-cover"
-//       />
-//     );
-//   }
-//   return (
-//     <span className="flex h-20 w-20 items-center justify-center rounded-full bg-tp-primary text-white">
-//       <Iconify icon="mdi:domain" width={36} />
-//     </span>
-//   );
-// }
-
 export default function OrganizationJoinPage() {
   const { code } = useParams<{ code: string }>();
   const { authUser } = useAuth();

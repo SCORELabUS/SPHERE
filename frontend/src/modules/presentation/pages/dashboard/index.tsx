@@ -68,7 +68,7 @@ export default function DashboardPage() {
 
   const recentPricingsData = useMemo(() => {
     const accessible = new Map(
-      accessiblePricings.map(p => [`${p.organization.id}/${p.name}`, p])
+      accessiblePricings.map(p => [`${p.organization.id}/${p.slug}`, p])
     );
     return recentPricings
       .filter(item => accessible.has(item.id))

@@ -21,7 +21,7 @@ export const sseUrlTransformEvent: UrlTransformEvent = {
 };
 
 export const playgroundMockUrlTrnasformEvent: UrlTransformEvent = {
-  connect(_) {
+  connect() {
     return () => {};
   },
 };

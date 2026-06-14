@@ -5,7 +5,7 @@ FROM node:21.1-slim
 WORKDIR /usr/src/client
 
 # Install pnpm globally
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Copy package.json and ./pnpm-lock.yaml to the container
 COPY ./package.json .
