@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
+import { escapeRegex } from '../../../utils/regex';
 
 export function getPricingByNameAndOrganizationAggregator(pricingName: string, organizationId: string) {
   return [
     {
       $match: {
-        name: { $regex: `^${pricingName}$`, $options: 'i' },
+        name: { $regex: `^${escapeRegex(pricingName)}$`, $options: 'i' },
         _organizationId: new mongoose.Types.ObjectId(organizationId),
       },
     },

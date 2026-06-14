@@ -342,7 +342,7 @@ export default function OrganizationDetailPage() {
   const debouncedCollectionSearch = useDebouncedValue(collectionSearch, 500);
 
   const fetchPricings = useCallback(
-    async (page: number, search: string) => {
+    async (page: number, search: string, signal?: AbortSignal) => {
       if (!org) return;
 
       try {
@@ -353,12 +353,18 @@ export default function OrganizationDetailPage() {
         if (search) filters.name = search;
         if (showOnlyUnlinked) filters.excludePricingsInCollection = 'true';
         const data = isPublicView
-          ? await getPublicOrgPricings(org.id, filters)
-          : await getOrgPricings(org.id, filters);
-        setPricings(data.pricings);
-        setPricingsTotal(data.total);
-      } catch {
-        /* silently ignore */
+          ? await getPublicOrgPricings(org.id, filters, signal)
+          : await getOrgPricings(org.id, filters, signal);
+        if (!signal?.aborted) {
+          setPricings(data.pricings);
+          setPricingsTotal(data.total);
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (!signal?.aborted) {
+          setPricings([]);
+          setPricingsTotal(0);
+        }
       }
     },
     [org, isPublicView, getOrgPricings, showOnlyUnlinked]
@@ -417,7 +423,11 @@ export default function OrganizationDetailPage() {
   }, [authUser.isLoading, organizationId]);
 
   useEffect(() => {
-    if (activeTab === 'pricings' && org) fetchPricings(pricingPage, debouncedPricingSearch);
+    if (activeTab === 'pricings' && org) {
+      const controller = new AbortController();
+      fetchPricings(pricingPage, debouncedPricingSearch, controller.signal);
+      return () => controller.abort();
+    }
   }, [activeTab, org, pricingPage, debouncedPricingSearch, showOnlyUnlinked]);
 
   useEffect(() => {

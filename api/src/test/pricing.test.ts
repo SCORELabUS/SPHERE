@@ -234,6 +234,107 @@ describe('Pricings API integration', () => {
     });
   });
 
+  describe('Name search with special regex characters', () => {
+    it('Return 200 and not crash when name contains unmatched opening parenthesis', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=(test`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+    });
+
+    it('Return 200 and not crash when name contains unmatched opening bracket', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=[test`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+    });
+
+    it('Return 200 and not crash when name contains regex metacharacters .*+?', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=.*+?test`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.pricings)).toBe(true);
+    });
+
+    it('Return 200 with empty results when searching literal dot pattern does not match name without dot', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `NoDotName_${randomSuffix()}`,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=${serviceName}.`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(0);
+    });
+
+    it('Return 200 and match pricing whose name contains a literal dot', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `Dot.Name_${randomSuffix()}`,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=${encodeURIComponent(serviceName)}`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].name).toBe(serviceName);
+    });
+
+    it('Return 200 and match pricing when searching pipe character literally', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        serviceName: `Pipe|Name_${randomSuffix()}`,
+        isPrivate: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=${encodeURIComponent(serviceName)}`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(1);
+      expect(response.body.pricings[0].name).toBe(serviceName);
+    });
+
+    it('Return 200 with empty results when regex-like input does not match any pricing', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      await createPricingForOrganization({ organizationId, isPrivate: false });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings?name=egegeg`)
+        .set('Authorization', `Bearer ${testUser.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.pricings.length).toBe(0);
+      expect(response.body.total).toBe(0);
+    });
+  });
+
   describe('PUT /api/v1/pricings', () => {
     it('Return 200 and updated pricing object when sending a valid pricing YAML string.', async () => {
       const serviceName = `updated_pricing_${randomSuffix()}`;

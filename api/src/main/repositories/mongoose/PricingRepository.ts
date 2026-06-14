@@ -9,6 +9,7 @@ import { OrgUserPermissionsContext } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
+import { escapeRegex } from '../../utils/regex';
 
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
@@ -377,7 +378,7 @@ class PricingRepository extends RepositoryBase {
         filteringPipeline.push({
           $match: {
             name: {
-              $regex: name,
+              $regex: escapeRegex(name),
               $options: 'i', // case-insensitive
             },
           },
