@@ -3,7 +3,8 @@ import { AnimatePresence } from 'framer-motion';
 import { retrievePricingFromYaml } from 'pricing4ts';
 import HarveyChatBubble from './harvey-chat-bubble';
 import HarveyChatPanel from './harvey-chat-panel';
-import type { ChatMessage } from '../../../../modules/harvey/types/types';
+import { chatWithAgent, createContextBodyPayload } from '../../../harvey/utils';
+import type { ChatMessage, ChatRequest } from '../../../harvey/types/types';
 
 export interface SuggestedQuestion {
   id: string;
@@ -13,8 +14,7 @@ export interface SuggestedQuestion {
 
 interface HarveyChatProps {
   yamlContent: string;
-  pricingSlug?: string;
-  organizationId?: string;
+  pricingVersion?: string;
   suggestedQuestions?: SuggestedQuestion[];
 }
 
@@ -36,13 +36,13 @@ function extractPricingName(yaml: string): string | null {
 
 export default function HarveyChat({
   yamlContent,
-  pricingSlug,
-  organizationId,
+  pricingVersion,
   suggestedQuestions = [],
 }: HarveyChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const hasOpened = useRef(false);
 
   const pricingName = useMemo(
@@ -56,17 +56,17 @@ export default function HarveyChat({
       const greeting: ChatMessage = {
         id: nextId(),
         role: 'assistant',
-        content: buildWelcomeMessage(pricingName),
+        content: buildWelcomeMessage(pricingName, pricingVersion),
         createdAt: new Date().toISOString(),
       };
       setMessages([greeting]);
     }
-  }, [isOpen, pricingName]);
+  }, [isOpen, pricingName, pricingVersion]);
 
   const handleSend = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed || isLoading) return;
 
       const userMsg: ChatMessage = {
         id: nextId(),
@@ -76,18 +76,39 @@ export default function HarveyChat({
       };
       setMessages((prev) => [...prev, userMsg]);
       setInputValue('');
+      setIsLoading(true);
 
-      setTimeout(() => {
-        const ack: ChatMessage = {
+      try {
+        const requestBody: ChatRequest = {
+          question: trimmed,
+          ...createContextBodyPayload([], yamlContent ? [yamlContent] : []),
+        };
+        const data = await chatWithAgent(requestBody);
+
+        const assistantMsg: ChatMessage = {
           id: nextId(),
           role: 'assistant',
-          content: `Thanks for your question about **${pricingName ?? 'this pricing'}**! In a future version, I'll provide a detailed analysis. For now, this is a prototype — your message was logged to the console.`,
+          content: data.answer ?? 'No response available.',
+          createdAt: new Date().toISOString(),
+          metadata: {
+            plan: data.plan ?? undefined,
+            result: data.result ?? undefined,
+          },
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+      } catch (error) {
+        const errorMsg: ChatMessage = {
+          id: nextId(),
+          role: 'assistant',
+          content: `Sorry, I encountered an error: ${(error as Error).message}. Please try again.`,
           createdAt: new Date().toISOString(),
         };
-        setMessages((prev) => [...prev, ack]);
-      }, 600);
+        setMessages((prev) => [...prev, errorMsg]);
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [pricingName, pricingSlug, organizationId, yamlContent],
+    [isLoading, yamlContent],
   );
 
   const handleSuggestionClick = useCallback(
@@ -114,6 +135,7 @@ export default function HarveyChat({
             onClose={handleToggle}
             pricingName={pricingName ?? undefined}
             suggestedQuestions={suggestedQuestions}
+            isLoading={isLoading}
           />
         )}
       </AnimatePresence>
@@ -123,21 +145,19 @@ export default function HarveyChat({
   );
 }
 
-function buildWelcomeMessage(pricingName: string | null): string {
+function buildWelcomeMessage(pricingName: string | null, pricingVersion?: string): string {
   if (pricingName) {
-  //   return (
-  //     `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
-  //     `I'm here to help you with questions about the **${pricingName}** pricing. Feel free to ask anything — ` +
-  //     `pricing structure, plan comparisons, feature analysis, or optimization suggestions.\n\n` +
-  //     `Here are some questions you might find useful:`
-  //   );
+    const versionText = pricingVersion ? ` (version **${pricingVersion}**)` : '';
+    return (
+      `Hi there! I'm **H.A.R.V.E.Y.** \u2014 Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
+      `I'm here to help you with questions about the **${pricingName}**${versionText} pricing. Feel free to ask anything \u2014 ` +
+      `pricing structure, plan comparisons, feature analysis, or optimization suggestions.\n\n` +
+      `Here are some questions you might find useful:`
+    );
   }
   return (
-    `👋 Hey there!\n\n` +
-    `I’m still learning a few tricks. My chat capabilities are currently under development and will be available in the next SPHERE release.\n\n` +
-    `Stay tuned — I’ll be ready to help very soon! 🚀`
-    // `Hi there! I'm **H.A.R.V.E.Y.** — Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
-    // `I'm here to help you with any pricing questions. Ask me about subscriptions, ` +
-    // `plan comparisons, feature analysis, or optimization strategies.`
+    `Hi there! I'm **H.A.R.V.E.Y.** \u2014 Holistic Agent for Reasoning on Value and Economic analYsis.\n\n` +
+    `I'm here to help you with any pricing questions. Ask me about subscriptions, ` +
+    `plan comparisons, feature analysis, or optimization strategies.`
   );
 }

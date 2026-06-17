@@ -5,12 +5,13 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onSend: (text: string) => void;
+  disabled?: boolean;
 }
 
 const MAX_VISIBLE_LINES = 4;
 const LINE_HEIGHT_PX = 20;
 
-export default function HarveyChatInput({ value, onChange, onSend }: Props) {
+export default function HarveyChatInput({ value, onChange, onSend, disabled = false }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea (WhatsApp-style)
@@ -69,9 +70,10 @@ export default function HarveyChatInput({ value, onChange, onSend }: Props) {
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about this pricing..."
+          placeholder={disabled ? "Waiting for response..." : "Ask about this pricing..."}
           rows={1}
-          className="max-h-[80px] min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none"
+          disabled={disabled}
+          className="max-h-[80px] min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           style={{ scrollbarWidth: 'thin' }}
         />
 
@@ -79,7 +81,7 @@ export default function HarveyChatInput({ value, onChange, onSend }: Props) {
         <motion.button
           type="button"
           onClick={handleSendClick}
-          disabled={!hasContent}
+          disabled={!hasContent || disabled}
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"
           animate={
             hasContent

@@ -670,8 +670,7 @@ export default function CardPage() {
       {/* HARVEY CHAT */}
       <HarveyChat
         yamlContent={yamlText}
-        pricingSlug={slug ?? undefined}
-        organizationId={organizationId ?? undefined}
+        pricingVersion={currentVersion?.version}
         suggestedQuestions={pricingSuggestions}
       />
     </>

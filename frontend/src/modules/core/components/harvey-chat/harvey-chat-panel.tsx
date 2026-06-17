@@ -14,6 +14,7 @@ interface Props {
   onClose: () => void;
   pricingName?: string;
   suggestedQuestions: SuggestedQuestion[];
+  isLoading?: boolean;
 }
 
 const panelVariants = {
@@ -51,6 +52,7 @@ export default function HarveyChatPanel({
   onClose,
   pricingName,
   suggestedQuestions,
+  isLoading = false,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isWelcome = messages.length <= 1 && messages[0]?.role === 'assistant';
@@ -112,6 +114,27 @@ export default function HarveyChatPanel({
             {messages.map((msg) => (
               <HarveyChatMessage key={msg.id} message={msg} />
             ))}
+            {isLoading && (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="flex items-center gap-2 text-tp-steel"
+              >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-tp-cream text-[10px] font-bold text-tp-primary">
+                  H
+                </div>
+                <div className="flex items-center gap-1 rounded-xl bg-tp-surface px-3 py-2">
+                  <span className="text-xs">Thinking</span>
+                  <span className="flex gap-0.5">
+                    <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                    <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                    <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+                  </span>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           {/* Suggested questions — shown after welcome */}
@@ -162,6 +185,7 @@ export default function HarveyChatPanel({
         value={inputValue}
         onChange={onInputChange}
         onSend={onSend}
+        disabled={isLoading}
       />
     </motion.div>
   );

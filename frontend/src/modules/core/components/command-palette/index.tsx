@@ -42,7 +42,7 @@ export default function CommandPalette() {
       },
       {
         id: 'toggle-theme',
-        label: 'Toggle theme',
+        label: 'Toggle theme (Upcoming)',
         description: 'Switch between light and dark mode',
         shortcut: ['mod', 'j'],
         icon: mode === 'dark' ? FiSun : FiMoon,

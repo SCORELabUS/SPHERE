@@ -155,34 +155,28 @@
 /* ═══════════════════════════════════════════════════════════════
    DARK MODE
    ═══════════════════════════════════════════════════════════════ */
-.dark {
-  /* Brand */
+/* .dark {
   --color-tp-primary: #ff6a2b;
   --color-tp-primary-deep: #ff8a57;
   --color-tp-on-primary: #ffffff;
 
-  /* Accent / sunshine scale */
   --color-tp-sunshine-300: #ffd06a;
   --color-tp-sunshine-500: #ffb83e;
   --color-tp-sunshine-700: #ffa110;
   --color-tp-sunshine-800: #ff8105;
   --color-tp-sunshine-900: #ff8a00;
 
-  /* Saturated highlights */
   --color-tp-yellow-saturated: #ffd900;
 
-  /* Cream palette */
   --color-tp-cream: #2b2418;
   --color-tp-cream-light: #332b1d;
   --color-tp-cream-deeper: #241e14;
   --color-tp-beige-deep: #8c7a52;
 
-  /* Blocks */
   --color-tp-block-5: #b88a1f;
   --color-tp-block-6: #d4b000;
   --color-tp-block-7: #ff8105;
 
-  /* Neutral text scale */
   --color-tp-ink: #f5f5f5;
   --color-tp-ink-tint: #d6d6d6;
   --color-tp-charcoal: #c2c2c2;
@@ -191,36 +185,28 @@
   --color-tp-stone: #5f5f5f;
   --color-tp-muted: #8f8f8f;
 
-  /* Borders / separators */
   --color-tp-hairline: #2a2a2a;
   --color-tp-hairline-soft: #222222;
   --color-tp-hairline-strong: #3a3a3a;
 
-  /* Surfaces */
   --color-tp-canvas: #121212;
   --color-tp-surface: #1a1a1a;
   --color-tp-surface-cream: #211b12;
   --color-tp-surface-cream-soft: #2a2318;
   --color-tp-surface-code: #0d0d0f;
 
-  /* Foreground on dark surfaces */
   --color-tp-on-dark: #ffffff;
   --color-tp-on-dark-muted: #a8a8a8;
 
-  /* Foreground on cream surfaces */
   --color-tp-on-cream: #f3ead7;
 
-  /* Footer */
   --color-tp-footer-cream: #1f1a12;
 
-  /* Form inputs */
   --color-tp-input-bg: #1e1e1e;
   --color-tp-input-border: #333333;
 
-  /* Links */
   --color-tp-link: #ff7a3d;
 
-  /* Severity / alert colors (dark mode) */
   --color-tp-severity-error: #f87171;
   --color-tp-severity-error-bg: #450a0a;
   --color-tp-severity-error-border: #7f1d1d;
@@ -233,13 +219,11 @@
   --color-tp-severity-success: #4ade80;
   --color-tp-severity-success-bg: #052e16;
   --color-tp-severity-success-border: #14532d;
-
-  /* Elevation (darker shadows for dark mode) */
   --shadow-elevation-1: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
   --shadow-elevation-2: 0 4px 12px 0 rgba(0, 0, 0, 0.25);
   --shadow-elevation-3: 0 12px 24px -4px rgba(0, 0, 0, 0.35);
   --shadow-elevation-4: 0 16px 48px -8px rgba(0, 0, 0, 0.45);
-}
+} */
 
 /* ═══════════════════════════════════════════════════════════════
    BASE STYLES
