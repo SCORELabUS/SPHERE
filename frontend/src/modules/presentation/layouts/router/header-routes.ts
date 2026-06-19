@@ -53,9 +53,9 @@ export const headerRoutes: HeaderRoute[] = [
     disabled: false,
     to: '/research',
   },
-  // {
-  //   name: 'Contribute',
-  //   disabled: false,
-  //   to: '/contributions',
-  // },
+  {
+    name: 'Changelog',
+    disabled: false,
+    to: '/changelog',
+  },
 ];

@@ -24,6 +24,7 @@ import EditorPage from '../modules/pricing-editor/pages/pricing2yaml-editor';
 import EditorLayout from '../modules/pricing-editor/layouts/editor-layout';
 import ResearchPage from '../modules/presentation/pages/research';
 import ContributionsPage from '../modules/presentation/pages/contributions';
+import ChangelogPage from '../modules/presentation/pages/changelog';
 import PricingListPage from '../modules/pricing/pages/list';
 import SpherePricingPage from '../modules/presentation/pages/pricing';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
@@ -127,6 +128,7 @@ export default function Router() {
         { element: <TeamPage />, path: '/team' },
         { element: <ResearchPage />, path: '/research' },
         { element: <ContributionsPage />, path: '/contributions' },
+        { element: <ChangelogPage />, path: '/changelog' },
         {
           path: '/orgs/:organizationId',
           element: (
