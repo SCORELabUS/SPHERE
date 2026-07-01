@@ -3,6 +3,11 @@
 > Guía directa de **qué archivos se crean/modifican y qué código va en cada uno**.
 > Para el porqué de cada decisión y los riesgos, ver `sso-uvus-design.md`.
 > Rama: `feature/sso-uvus` (desde `develop`). PR hacia `develop`.
+>
+> **Diseño multi-proveedor desde el principio.** Google se hará después, así que la capa
+> de identidad se deja **genérica por proveedor** (interfaz + registry) y el modelo usa
+> `identities[]`. Con esto, Google entra como una implementación más, sin tocar
+> controlador, rutas, one-time code ni frontend. Ver `social-login-google-prep.md`.
 
 ---
 
@@ -11,26 +16,32 @@
 ### Archivos nuevos
 | Archivo | Qué es |
 |---|---|
-| `api/src/main/services/SSOService.ts` | Lógica CAS: URL de login, validar ticket, crear/recuperar usuario, emitir JWT. |
-| `api/src/main/controllers/SSOController.ts` | `initiate`, `callback`, `exchange` (HTTP). |
-| `api/src/main/routes/SSORoutes.ts` | Registra las rutas (auto-cargado). |
-| `api/src/main/migrations/mongo/1782500000000-add-auth-provider.ts` | Backfill `authProvider:'local'`. |
+| `api/src/main/services/identity/IdentityProvider.ts` | Interfaz `IdentityProvider` + tipo `ProviderProfile`. |
+| `api/src/main/services/identity/UsCasProvider.ts` | Implementación UVUS (CAS): URL de login, validar ticket → perfil. |
+| `api/src/main/services/identity/providerRegistry.ts` | Mapa `nombre → proveedor`. Aquí se añadirá `google`. |
+| `api/src/main/services/AuthProviderService.ts` | Lógica común: crear/recuperar usuario por identidad, org personal, JWT. |
+| `api/src/main/controllers/SSOController.ts` | `initiate`, `callback`, `exchange` (genérico por `:provider`). |
+| `api/src/main/routes/SSORoutes.ts` | Rutas `/users/auth/sso/:provider/*` (auto-cargado). |
 | `frontend/src/modules/auth/pages/sso-callback/index.tsx` | Página que canjea el `code` por el token. |
-| `api/src/test/unit-tests/sso-service.test.ts` | Unitarias del parseo/creación. |
+| `api/src/test/unit-tests/us-cas-provider.test.ts` | Unitarias del parseo CAS. |
 | `api/src/test/sso.test.ts` | Integración de los 3 endpoints. |
 
 ### Archivos modificados
 | Archivo | Cambio |
 |---|---|
-| `api/src/main/repositories/mongoose/models/UserMongoose.ts` | Campos `authProvider` + `ssoId`; `password` condicional. |
-| `api/src/main/config/permissions.ts` | Regla pública `/users/auth/sso/us/*` **antes** de `/users/**`. |
-| `api/src/main/config/container.ts` | Registrar `ssoService`. |
+| `api/src/main/repositories/mongoose/models/UserMongoose.ts` | `identities[]`; `password` condicional; índice único. |
+| `api/src/main/config/permissions.ts` | Regla pública `/users/auth/sso/**` **antes** de `/users/**`. |
+| `api/src/main/config/container.ts` | Registrar `authProviderService`. |
 | `api/src/main/services/CacheService.ts` | Añadir método `del()`. |
 | `frontend/src/routes/router.tsx` | Ruta pública `/sso/callback`. |
 | `frontend/src/modules/auth/api/usersApi.ts` | `exchangeSsoCode(code)`. |
 | `frontend/src/modules/auth/components/login-form/index.tsx` | Botón "Continuar con UVUS". |
 | `frontend/src/modules/auth/components/register-form/index.tsx` | Botón "Continuar con UVUS". |
-| `api/.env*`, `frontend/.env*` | Nuevas variables. |
+| `api/.env*` | Nuevas variables. |
+
+> No hace falta migración: los usuarios existentes tienen contraseña y `identities`
+> ausente/vacío, lo cual es coherente con el nuevo `password` condicional y con el índice
+> `sparse`. (Opcional: una migración que ponga `identities: []` por limpieza.)
 
 ---
 
@@ -50,54 +61,66 @@ FRONTEND_URL=http://localhost:5173
 
 ## 2. Backend
 
-### 2.1 `UserMongoose.ts` — campos nuevos y password condicional
+### 2.1 `UserMongoose.ts` — `identities[]` y password condicional
 
-En el `userSchema`, junto al resto de campos:
+Nuevo subschema y campo (junto al resto del `userSchema`):
 ```ts
-authProvider: {
-  type: String,
-  enum: ['local', 'us-sso'],
-  default: 'local',
-},
-ssoId: {
-  type: String,
-  index: true,
-  sparse: true, // único-ish solo cuando existe; varios null no chocan
-},
+const IdentitySchema = new Schema(
+  {
+    provider: { type: String, enum: ['us-sso', 'google'], required: true },
+    providerId: { type: String, required: true }, // uid (UVUS) | sub (Google)
+    email: { type: String },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+// dentro de userSchema:
+identities: { type: [IdentitySchema], default: [] },
 ```
-Cambiar la definición de `password`:
+`password` pasa a ser obligatorio **solo** para cuentas sin identidad externa (las locales):
 ```ts
 password: {
   type: String,
   minlength: 5,
-  required: function (this: any) {
-    return this.authProvider !== 'us-sso';
-  },
   select: false,
+  required: function (this: any) {
+    return !this.identities || this.identities.length === 0;
+  },
 },
+```
+Índice único por identidad (evita duplicar la misma identidad de proveedor):
+```ts
+userSchema.index(
+  { 'identities.provider': 1, 'identities.providerId': 1 },
+  { unique: true, sparse: true }
+);
 ```
 Añadir a la interfaz `UserDocument`:
 ```ts
-authProvider: 'local' | 'us-sso';
-ssoId?: string;
+identities: {
+  provider: 'us-sso' | 'google';
+  providerId: string;
+  email?: string;
+  linkedAt?: Date;
+}[];
 ```
 > El `pre('save')` ya solo hashea `password` si está presente y modificado, así que un
 > usuario SSO sin password no rompe ese hook.
 
 ### 2.2 `permissions.ts` — regla pública (ORDEN IMPORTANTE)
 
-En `ROUTE_PERMISSIONS`, **antes** de la regla catch-all `/users/**` (la de
-`allowedUserRoles: ['ADMIN','USER']`), añadir:
+En `ROUTE_PERMISSIONS`, **antes** del catch-all `/users/**`, añadir:
 ```ts
-// SSO UVUS (Universidad de Sevilla) — público; debe ir ANTES de /users/**
+// Login social (UVUS, Google, …) — público; debe ir ANTES de /users/**
 {
-  path: '/users/auth/sso/us/*',
+  path: '/users/auth/sso/**',
   methods: ['GET'],
   isPublic: true,
 },
 ```
-> Una sola regla cubre `initiate`, `callback` y `exchange` (los tres GET). Colocarla
-> después de `/users/**` haría que ese comodín la capturase y exigiera token.
+> `**` (no `*`) porque la ruta tiene dos segmentos variables: `:provider` + acción. Cubre
+> `initiate`, `callback` y `exchange` de **cualquier** proveedor.
 
 ### 2.3 `CacheService.ts` — método `del`
 
@@ -112,52 +135,56 @@ async del(key: string) {
 
 ### 2.4 `container.ts` — registrar el servicio
 
-Import:
 ```ts
-import SSOService from "../services/SSOService";
-```
-En `container.register({ ... })`:
-```ts
-ssoService: asClass(SSOService).singleton(),
+import AuthProviderService from "../services/AuthProviderService";
+// ...
+authProviderService: asClass(AuthProviderService).singleton(),
 ```
 
-### 2.5 `SSOService.ts` (nuevo)
+### 2.5 `services/identity/IdentityProvider.ts` (nuevo) — contrato común
 
 ```ts
-import crypto from 'crypto';
-import container from '../config/container';
-import UserRepository from '../repositories/mongoose/UserRepository';
-import OrganizationService from './OrganizationService';
-import { generateJwtToken, generateUserTokenDTO } from '../utils/users/helpers';
+export interface ProviderProfile {
+  provider: 'us-sso' | 'google';
+  providerId: string;      // uid (UVUS) | sub (Google)
+  email: string | null;
+  emailVerified: boolean;  // UVUS: false; Google: claim email_verified
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface IdentityProvider {
+  name: 'us-sso' | 'google';
+  buildLoginUrl(state: string): string;
+  // Traduce lo que llegue al callback (ticket | code) en un perfil normalizado.
+  handleCallback(query: Record<string, string>): Promise<ProviderProfile | null>;
+}
+```
+
+### 2.6 `services/identity/UsCasProvider.ts` (nuevo) — proveedor UVUS
+
+```ts
+import { IdentityProvider, ProviderProfile } from './IdentityProvider';
 
 const CAS_BASE_URL = process.env.SSO_US_CAS_URL ?? 'https://sso.us.es/cas';
 const CALLBACK_URL =
   process.env.SSO_US_CALLBACK_URL ??
   `http://localhost:${process.env.SERVER_PORT ?? 8080}/api/v1/users/auth/sso/us/callback`;
 
-export interface CasData {
-  uvus: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-}
+export class UsCasProvider implements IdentityProvider {
+  name = 'us-sso' as const;
 
-class SSOService {
-  private userRepository: UserRepository;
-  private organizationService: OrganizationService;
-
-  constructor() {
-    this.userRepository = container.resolve('userRepository');
-    this.organizationService = container.resolve('organizationService');
-  }
-
-  buildCasLoginUrl(): string {
+  buildLoginUrl(): string {
+    // CAS no usa 'state'; el ticket es de un solo uso y se valida en servidor.
     return `${CAS_BASE_URL}/login?service=${encodeURIComponent(CALLBACK_URL)}`;
   }
 
-  // Llama al CAS de la US y parsea el XML. OJO: confirmar nombres de atributo reales
-  // (ver design §11.10). Se usa /p3/serviceValidate para recibir <cas:attributes>.
-  async validateCasTicket(ticket: string): Promise<CasData | null> {
+  async handleCallback(query: Record<string, string>): Promise<ProviderProfile | null> {
+    const ticket = query.ticket;
+    if (!ticket) return null;
+
+    // /p3/serviceValidate devuelve <cas:attributes>. OJO: confirmar nombres reales
+    // de atributo con la US antes del E2E (design §11.10).
     const url = `${CAS_BASE_URL}/p3/serviceValidate?ticket=${encodeURIComponent(
       ticket
     )}&service=${encodeURIComponent(CALLBACK_URL)}`;
@@ -171,44 +198,100 @@ class SSOService {
       return m ? m[1].trim() : null;
     };
 
+    const uvus = userMatch[1].trim();
     return {
-      uvus: userMatch[1].trim(),
-      email: pick('mail'),
-      firstName: pick('givenName'),
-      // schacSn1/schacSn2 si la US los entrega; fallback a 'sn'
-      lastName: [pick('schacSn1'), pick('schacSn2')].filter(Boolean).join(' ') || pick('sn'),
+      provider: 'us-sso',
+      providerId: uvus, // uid / UVUS
+      // Los defaults específicos de la US se resuelven AQUÍ, para que AuthProviderService
+      // quede neutral (no conozca ningún proveedor). Ver nota en §2.8.
+      email: pick('mail') ?? `${uvus}@alum.us.es`,
+      emailVerified: false, // la US no lo garantiza; ver §6.1 del design
+      firstName: pick('givenName') ?? uvus,
+      lastName:
+        [pick('schacSn1'), pick('schacSn2')].filter(Boolean).join(' ') || pick('sn') || 'US',
     };
   }
+}
+```
 
-  // Crea o recupera el usuario SSO y devuelve un JWT de sesión.
-  async findOrCreateSSOUser(casData: CasData): Promise<{ token: string }> {
-    const { uvus, email, firstName, lastName } = casData;
+### 2.7 `services/identity/providerRegistry.ts` (nuevo)
 
-    // 1. ¿Ya existe esta cuenta SSO?
-    let user = await this.userRepository.findOne({ ssoId: uvus });
+```ts
+import { IdentityProvider } from './IdentityProvider';
+import { UsCasProvider } from './UsCasProvider';
 
+const providers: Record<string, IdentityProvider> = {
+  us: new UsCasProvider(),
+  // 'google': new GoogleProvider(),  ← se añadirá en la fase Google
+};
+
+export function getProvider(name: string): IdentityProvider | null {
+  return providers[name] ?? null;
+}
+```
+> La URL de proveedor es `/users/auth/sso/**us**/…`; la clave del registry (`us`) es el
+> segmento `:provider`, distinta del `name` interno (`us-sso`).
+
+### 2.8 `AuthProviderService.ts` (nuevo) — lógica común
+
+```ts
+import container from '../config/container';
+import UserRepository from '../repositories/mongoose/UserRepository';
+import OrganizationService from './OrganizationService';
+import { ProviderProfile } from './identity/IdentityProvider';
+import { generateJwtToken, generateUserTokenDTO } from '../utils/users/helpers';
+
+class AuthProviderService {
+  private userRepository: UserRepository;
+  private organizationService: OrganizationService;
+
+  constructor() {
+    this.userRepository = container.resolve('userRepository');
+    this.organizationService = container.resolve('organizationService');
+  }
+
+  // Crea o recupera el usuario a partir de un perfil de proveedor y devuelve un JWT.
+  async findOrCreateUser(profile: ProviderProfile): Promise<{ token: string }> {
+    const { provider, providerId, email, emailVerified, firstName, lastName } = profile;
+
+    // 1. ¿Ya existe esta identidad?
+    let user = await this.userRepository.findOne({
+      'identities.provider': provider,
+      'identities.providerId': providerId,
+    });
+
+    // 2. Vinculación por email SOLO si el proveedor verifica el email (Google sí, UVUS no).
+    if (!user && emailVerified && email) {
+      const existing = await this.userRepository.findByEmail(email);
+      if (existing) {
+        await this.userRepository.updateById(existing.id, {
+          $push: { identities: { provider, providerId, email } },
+        } as any);
+        user = await this.userRepository.findById(existing.id);
+      }
+    }
+
+    // 3. Si no existe, crear cuenta nueva. El proveedor ya entrega un perfil válido
+    //    (con sus propios defaults); esta capa es neutral y no conoce ningún proveedor.
     if (!user) {
-      // 2. username libre (sufijar si choca). NO vincular por email (design §6.1/§11.3).
-      const username = await this.resolveFreeUsername(uvus);
-
+      if (!email) throw new Error('INVALID DATA: provider did not supply an email');
+      const username = await this.resolveFreeUsername(providerId);
       user = await this.userRepository.create({
         username,
-        ssoId: uvus,
-        authProvider: 'us-sso',
-        firstName: firstName ?? uvus,
-        lastName: lastName ?? 'US',
-        email: email ?? `${uvus}@alum.us.es`,
+        identities: [{ provider, providerId, email }],
+        firstName: firstName ?? username,
+        lastName: lastName ?? '-', // el modelo exige lastName; los proveedores lo rellenan
+        email,
         ...generateUserTokenDTO(),
       });
-
-      // 3. Organización personal (igual que el registro local). Si falla, propaga.
+      // Organización personal (igual que el registro local). Si falla, propaga.
       await this.organizationService.ensurePersonalOrganizationForUser({
         id: user.id,
         username: user.username,
       });
     }
 
-    const token = generateJwtToken({ id: user.id, username: user.username, role: user.role });
+    const token = generateJwtToken({ id: user!.id, username: user!.username, role: user!.role });
     return { token };
   }
 
@@ -223,50 +306,57 @@ class SSOService {
   }
 }
 
-export default SSOService;
+export default AuthProviderService;
 ```
+> Esta capa es **neutral**: no contiene defaults de ningún proveedor. Cada proveedor
+> entrega en su `ProviderProfile` el email/nombre ya resueltos (UVUS pone el fallback
+> `@alum.us.es` en `UsCasProvider`, §2.6). Así, añadir proveedores no obliga a tocar aquí.
+> El `throw` por email ausente es defensa: el modelo exige `email` único.
 
-### 2.6 `SSOController.ts` (nuevo)
+### 2.9 `SSOController.ts` (nuevo) — genérico por proveedor
 
 ```ts
 import crypto from 'crypto';
 import container from '../config/container';
-import SSOService from '../services/SSOService';
+import AuthProviderService from '../services/AuthProviderService';
 import CacheService from '../services/CacheService';
+import { getProvider } from '../services/identity/providerRegistry';
 import { handleError } from '../utils/users/helpers';
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 const SSO_CODE_TTL = 30; // segundos
 
 class SSOController {
-  private ssoService: SSOService;
+  private authProviderService: AuthProviderService;
   private cacheService: CacheService;
 
   constructor() {
-    this.ssoService = container.resolve('ssoService');
+    this.authProviderService = container.resolve('authProviderService');
     this.cacheService = container.resolve('cacheService');
     this.initiate = this.initiate.bind(this);
     this.callback = this.callback.bind(this);
     this.exchange = this.exchange.bind(this);
   }
 
-  initiate(_req: any, res: any) {
-    res.redirect(this.ssoService.buildCasLoginUrl());
+  initiate(req: any, res: any) {
+    const provider = getProvider(req.params.provider);
+    if (!provider) return res.status(404).json({ error: 'Unknown provider' });
+    const state = crypto.randomBytes(16).toString('hex'); // usado por OAuth (Google)
+    res.redirect(provider.buildLoginUrl(state));
   }
 
   async callback(req: any, res: any) {
-    const { ticket } = req.query;
-    if (!ticket) return res.redirect(`${FRONTEND_URL}/sso/callback?sso_error=no_ticket`);
+    const provider = getProvider(req.params.provider);
+    if (!provider) return res.redirect(`${FRONTEND_URL}/sso/callback?sso_error=unknown_provider`);
 
     try {
-      const casData = await this.ssoService.validateCasTicket(ticket);
-      if (!casData) return res.redirect(`${FRONTEND_URL}/sso/callback?sso_error=invalid_ticket`);
+      const profile = await provider.handleCallback(req.query);
+      if (!profile) return res.redirect(`${FRONTEND_URL}/sso/callback?sso_error=invalid_response`);
 
-      const { token } = await this.ssoService.findOrCreateSSOUser(casData);
+      const { token } = await this.authProviderService.findOrCreateUser(profile);
 
       const code = crypto.randomBytes(16).toString('hex');
       await this.cacheService.set(`sso:code:${code}`, { token }, SSO_CODE_TTL);
-
       return res.redirect(`${FRONTEND_URL}/sso/callback?code=${code}`);
     } catch (err: any) {
       console.error('[SSO] callback error:', err);
@@ -294,7 +384,7 @@ class SSOController {
 export default SSOController;
 ```
 
-### 2.7 `SSORoutes.ts` (nuevo)
+### 2.10 `SSORoutes.ts` (nuevo)
 
 ```ts
 import express from 'express';
@@ -304,30 +394,15 @@ const loadSSORoutes = function (app: express.Application) {
   const ssoController = new SSOController();
   const baseUrl = (process.env.BASE_URL_PATH ?? '') + '/api/v1';
 
-  app.route(baseUrl + '/users/auth/sso/us/initiate').get(ssoController.initiate);
-  app.route(baseUrl + '/users/auth/sso/us/callback').get(ssoController.callback);
-  app.route(baseUrl + '/users/auth/sso/us/exchange').get(ssoController.exchange);
+  app.route(baseUrl + '/users/auth/sso/:provider/initiate').get(ssoController.initiate);
+  app.route(baseUrl + '/users/auth/sso/:provider/callback').get(ssoController.callback);
+  app.route(baseUrl + '/users/auth/sso/:provider/exchange').get(ssoController.exchange);
 };
 
 export default loadSSORoutes;
 ```
-
-### 2.8 Migración `1782500000000-add-auth-provider.ts` (nueva)
-
-```ts
-import { type Connection } from 'mongoose';
-import UserMongoose from '../../repositories/mongoose/models/UserMongoose';
-
-export async function up(connection: Connection): Promise<void> {
-  const User = connection.models.User || connection.model('User', UserMongoose.schema, 'users');
-  await User.updateMany({ authProvider: { $exists: false } }, { $set: { authProvider: 'local' } });
-}
-
-export async function down(connection: Connection): Promise<void> {
-  const User = connection.models.User || connection.model('User', UserMongoose.schema, 'users');
-  await User.updateMany({ authProvider: 'local' }, { $unset: { authProvider: '', ssoId: '' } });
-}
-```
+> El botón UVUS apunta a `/users/auth/sso/us/initiate`; el de Google (futuro) a
+> `/users/auth/sso/google/initiate`. Solo hay que registrar el proveedor en el registry.
 
 ---
 
@@ -345,6 +420,9 @@ export function exchangeSsoCode(code: string): Promise<{ token: string }> {
     });
 }
 ```
+> El `exchange` es genérico: no usa el `:provider` (solo lee el code de la caché), pero la
+> ruta lleva ese segmento como las demás. Se usa el mismo proveedor que originó el flujo
+> (aquí `us`); para Google sería `…/sso/google/exchange`.
 
 ### 3.2 `sso-callback/index.tsx` (nuevo)
 
@@ -355,10 +433,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { exchangeSsoCode } from '../../api/usersApi';
 
+// Claves emitidas por el backend en ?sso_error= (ver SSOController).
 const ERROR_MESSAGES: Record<string, string> = {
-  no_ticket: 'No se recibió respuesta de la Universidad de Sevilla.',
-  invalid_ticket: 'La validación con la Universidad de Sevilla falló.',
-  server_error: 'Error procesando el inicio de sesión con UVUS.',
+  invalid_response: 'La validación con el proveedor falló.',
+  unknown_provider: 'Proveedor de identidad no reconocido.',
+  server_error: 'Error procesando el inicio de sesión.',
 };
 
 export default function SsoCallbackPage() {
@@ -405,7 +484,7 @@ export default function SsoCallbackPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-sm text-tp-steel">Iniciando sesión con UVUS…</p>
+      <p className="text-sm text-tp-steel">Iniciando sesión…</p>
     </div>
   );
 }
@@ -437,31 +516,32 @@ En `login-form/index.tsx` y `register-form/index.tsx`, **debajo** del `<form>`:
   Continuar con UVUS
 </a>
 ```
-> Es un `<a href>` (navegación completa), no `fetch`: el flujo CAS necesita redirects de
-> navegador. En dev, Vite proxya `/api/v1` al backend.
+> Es un `<a href>` (navegación completa), no `fetch`: el flujo necesita redirects de
+> navegador. En dev, Vite proxya `/api/v1` al backend. El botón de Google (futuro) es una
+> copia con `href` a `…/sso/google/initiate`.
 
 ---
 
 ## 4. Tests
 
-### 4.1 `unit-tests/sso-service.test.ts`
-- `validateCasTicket`: mockear `fetch` (`vi.stubGlobal('fetch', ...)`):
-  - XML `authenticationSuccess` con atributos → `CasData` correcto.
+### 4.1 `unit-tests/us-cas-provider.test.ts`
+- `UsCasProvider.handleCallback`: mockear `fetch` (`vi.stubGlobal('fetch', ...)`):
+  - XML `authenticationSuccess` con atributos → `ProviderProfile` correcto (`provider:'us-sso'`).
   - XML `authenticationFailure` → `null`.
   - XML sin `<cas:user>` → `null`.
-- `resolveFreeUsername`: sufijado ante colisiones.
+  - sin `ticket` en la query → `null`.
 
 ### 4.2 `sso.test.ts` (integración, supertest; requiere Mongo+Redis)
-- `GET /users/auth/sso/us/initiate` → 302 a `…/cas/login?service=…` (URL correcta).
-- `callback` sin `ticket` → 302 a `…/sso/callback?sso_error=no_ticket`.
-- `callback` con ticket válido (mock de `validateCasTicket`) → crea usuario + org personal,
-  302 con `?code=`.
-- segundo `callback` con el mismo UVUS → no duplica (busca por `ssoId`).
-- `exchange` con code válido → `{ token }` (verificable con `JWT_SECRET`); el JWT vale en
-  `GET /users/me`.
+- `GET /users/auth/sso/us/initiate` → 302 a `…/cas/login?service=…`.
+- `GET /users/auth/sso/desconocido/initiate` → 404.
+- `callback` sin `ticket` → 302 a `…/sso/callback?sso_error=invalid_response`.
+- `callback` con ticket válido (mock del proveedor) → crea usuario + org personal, 302 `?code=`.
+- segundo `callback` con la misma identidad → no duplica (busca por `identities`).
+- `exchange` con code válido → `{ token }` (JWT en `GET /users/me`).
 - `exchange` con code inexistente o ya usado → 401.
 
-> El test paramétrico de `auth.test.ts` no necesita cambios (design §11.11).
+> El test paramétrico de `auth.test.ts` no necesita cambios (design §11.11): la regla
+> `/users/auth/sso/**` genera una ruta `sample` → 302/404, no error de auth.
 
 ---
 
@@ -483,7 +563,7 @@ rechaza la autenticación. **Hacerlo en paralelo desde el principio: el alta tar
 ### 5.2 Atributos a marcar "Sí" (solo los que se usan)
 | Atributo (formulario) | Clave | Uso en SPHERE |
 |---|---|---|
-| **UVUS (uid)** | `uid` | `ssoId` + base de `username`. |
+| **UVUS (uid)** | `uid` | `identities.providerId` + base de `username`. |
 | **Nombre (givenName)** | `givenName` | `firstName`. |
 | **Primer apellido (schacSn1)** | `schacSn1` | `lastName`. |
 | Segundo apellido (schacSn2) | `schacSn2` | `lastName` (parte 2). |
@@ -497,8 +577,9 @@ rechaza la autenticación. **Hacerlo en paralelo desde el principio: el alta tar
 ### 5.3 Qué devuelve la US al aprobar
 - Autoriza la URL de callback (`SSO_US_CALLBACK_URL`) como `service` válido.
 - Confirma los **endpoints CAS reales** y los **nombres exactos de los atributos** en la
-  respuesta de `serviceValidate`. → Con eso se ajusta `validateCasTicket` (§2.5) y se hace
-  el E2E real (ver §11.10 del design: no dar por buenos los nombres hasta verificarlos).
+  respuesta de `serviceValidate`. → Con eso se ajusta `UsCasProvider.handleCallback`
+  (§2.6) y se hace el E2E real (design §11.10: no dar por buenos los nombres hasta
+  verificarlos).
 
 Normativa y docs: https://sic.us.es/servicios/cuentas-y-accesos-los-servicios/integracion-con-sso
 
@@ -506,16 +587,20 @@ Normativa y docs: https://sic.us.es/servicios/cuentas-y-accesos-los-servicios/in
 
 ## 6. Orden de ejecución (checklist)
 
-1. [ ] `UserMongoose.ts`: `authProvider` + `ssoId` + `password` condicional.
-2. [ ] Migración `add-auth-provider` + `npx migrate up`.
-3. [ ] `permissions.ts`: regla pública antes de `/users/**`.
-4. [ ] `CacheService.ts`: `del()`.
-5. [ ] `SSOService.ts` + registro en `container.ts`.
+1. [ ] `UserMongoose.ts`: `identities[]` + `password` condicional + índice único.
+2. [ ] `permissions.ts`: regla pública `/users/auth/sso/**` antes de `/users/**`.
+3. [ ] `CacheService.ts`: `del()`.
+4. [ ] Capa de identidad: `IdentityProvider`, `UsCasProvider`, `providerRegistry`.
+5. [ ] `AuthProviderService` + registro en `container.ts`.
 6. [ ] `SSOController.ts` + `SSORoutes.ts`.
-7. [ ] Backend tests (unit + integración) en verde.
+7. [ ] Backend tests (unit + integración) en verde (Mongo+Redis levantados).
 8. [ ] `usersApi.exchangeSsoCode` + `sso-callback` + ruta en `router.tsx`.
 9. [ ] Botón UVUS en login y registro.
 10. [ ] Variables de entorno en `api/.env*`.
 11. [ ] Enviar `SolicitudSSO.pdf` a la US (en paralelo) y, al tener el alta, **verificar
     los nombres de atributo CAS reales** (design §11.10) y E2E real.
 12. [ ] PR `feature/sso-uvus` → `develop`.
+
+> Google (fase siguiente): añadir `GoogleProvider implements IdentityProvider` y
+> registrarlo en `providerRegistry`. No toca modelo, controlador, rutas ni frontend salvo
+> el botón. Ver `social-login-google-prep.md`.

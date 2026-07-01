@@ -46,7 +46,7 @@ Solo se piden los necesarios para crear la cuenta. Mínimos imprescindibles en *
 
 | Atributo (formulario) | Clave técnica | Uso en SPHERE |
 |---|---|---|
-| **UVUS (uid)** | `uid` | Identificador único → base de `username` y clave de vinculación `ssoId`. |
+| **UVUS (uid)** | `uid` | Identificador único → base de `username` y `identities.providerId`. |
 | **Nombre (givenName)** | `givenName` | `firstName`. |
 | **Primer apellido (schacSn1)** | `schacSn1` | `lastName` (parte 1). |
 | Segundo apellido (schacSn2) | `schacSn2` | `lastName` (parte 2, opcional). |
@@ -84,8 +84,9 @@ La US ofrece ambos. La plataforma de e-learning de la US (`ev.us.es`) usa SAML
 | Atributos | Suficientes vía `serviceValidate` (p3) | Más ricos, pero no necesarios aquí |
 | Encaje con investigación previa | El `SSOController.ts` del compañero **ya es CAS** | Habría que reescribir |
 
-**Decisión:** implementar **CAS**, dejando la capa de servicio aislada
-(`SSOService`) para poder añadir SAML después sin tocar controladores ni frontend.
+**Decisión:** implementar **CAS**, con la capa de proveedor aislada (`UsCasProvider`
+detrás de la interfaz `IdentityProvider`, §5.2) para poder añadir SAML u otros proveedores
+después sin tocar controlador ni frontend.
 
 Endpoints CAS de la US (a confirmar en el alta; valores por defecto del controller del compañero):
 - Base: `https://sso.us.es/cas`
@@ -153,8 +154,8 @@ caché → exchange) es correcta y se reutiliza; solo cambian las llamadas al do
      │   4. 302 a {FRONTEND}/sso/callback?code=XXXX   ┌──────────────────────────┐
      │ ◄──────────────────────────────────────────────│ GET .../sso/us/callback  │
      │                                                 │ ?ticket=ST-...           │
-     │                                                 │  - validateCasTicket()   │
-     │                                                 │  - findOrCreateSSOUser() │
+     │                                                 │  - provider.handleCallback│
+     │                                                 │  - findOrCreateUser()    │
      │                                                 │  - code=randomHex →      │
      │                                                 │    CacheService(TTL 30s) │
      │                                                 └──────────────────────────┘
@@ -181,6 +182,10 @@ Fichero nuevo `routes/SSORoutes.ts` (se auto-carga). Base actual: `{BASE_URL_PAT
 | `GET` | `/users/auth/sso/us/callback` | pública | Recibe el `ticket` de CAS, valida, crea/recupera usuario, genera `code` y redirige al frontend. |
 | `GET` | `/users/auth/sso/us/exchange?code=` | pública | Canjea el `code` por `{ token }` (JWT). Invalida el code. |
 
+> Las rutas reales son **genéricas por proveedor**: `/users/auth/sso/:provider/{initiate,
+> callback,exchange}`. La tabla muestra la instancia de UVUS (`us`); Google usará
+> `google`. Ver `sso-uvus-implementation.md` §2.10.
+>
 > Se respeta el prefijo `/users` que ya aparece en las notas (`/users/auth`).
 >
 > ⚠️ **No basta con crear el fichero de rutas.** `authenticationMiddleware` y
@@ -191,18 +196,24 @@ Fichero nuevo `routes/SSORoutes.ts` (se auto-carga). Base actual: `{BASE_URL_PAT
 > `/users/login` y `/users/register`), o quedarán capturadas por él y exigirán token.
 > Ver §11.1.
 
-### 5.2 Capas nuevas (backend)
+### 5.2 Capas nuevas (backend) — diseño genérico por proveedor
 
-- `controllers/SSOController.ts` — `initiate`, `callback`, `exchange` (HTTP puro,
-  manejo de errores con `handleError`).
-- `services/SSOService.ts` — lógica de dominio: `buildCasLoginUrl()`,
-  `validateCasTicket(ticket)` (fetch + parseo XML), `findOrCreateSSOUser(casData)`
-  (reutiliza `userRepository` + `organizationService.ensurePersonalOrganizationForUser`
-  + `generateJwtToken`). Registrado en `container.ts` como
-  `ssoService: asClass(SSOService).singleton()`.
-- (Opc.) `controllers/validation/SSOValidation.ts` — validar presencia de `ticket`/`code`.
+Se separa lo **común a todos los proveedores** de lo **específico de cada uno**, para que
+Google entre como una implementación más (ver §6 y `social-login-google-prep.md`). El
+detalle de código está en `sso-uvus-implementation.md` §2:
 
-Mantener el **parseo del XML CAS** en el service. El `match` con regex del controller del
+- `controllers/SSOController.ts` — `initiate`, `callback`, `exchange`, **genérico por
+  `:provider`**. Resuelve el proveedor del *registry* y delega en él; el one-time code y
+  el intercambio son comunes.
+- `services/identity/IdentityProvider.ts` — interfaz común + tipo `ProviderProfile`.
+- `services/identity/UsCasProvider.ts` — implementación UVUS (CAS): `buildLoginUrl()` y
+  `handleCallback(query)` (fetch a `/p3/serviceValidate` + parseo XML → `ProviderProfile`).
+- `services/identity/providerRegistry.ts` — mapa `nombre → proveedor` (aquí se añade Google).
+- `services/AuthProviderService.ts` — lógica común: `findOrCreateUser(profile)` (reutiliza
+  `userRepository` + `ensurePersonalOrganizationForUser` + `generateJwtToken`). Registrado
+  en `container.ts` como `authProviderService: asClass(AuthProviderService).singleton()`.
+
+El **parseo del XML CAS** vive en `UsCasProvider`. El `match` con regex del controller del
 compañero funciona, pero para una integración fiable conviene un parser XML
 (`fast-xml-parser`) y usar `/p3/serviceValidate`, que devuelve los atributos dentro de
 `<cas:attributes>`. Ver §11.10 sobre el riesgo de los nombres de atributo.
@@ -222,8 +233,8 @@ compañero funciona, pero para una integración fiable conviene un parser XML
   `BanterLoader`/`LoadingModal`) y errores con el mismo patrón de alerta rojo existente.
 - **`usersApi.ts`**: añadir `export function exchangeSsoCode(code)` (GET a
   `/users/auth/sso/us/exchange?code=`).
-- Manejo de `?sso_error=no_ticket|invalid_ticket|server_error` → redirigir a
-  `/authentication?error=...` y pintar el mensaje.
+- Manejo de `?sso_error=invalid_response|unknown_provider|server_error` (los que emite el
+  `SSOController` genérico) → pintar el mensaje correspondiente.
 
 #### Estilo del botón (coherente con DESIGN.md / Tailwind tokens del repo)
 
@@ -256,37 +267,51 @@ principal "Sign in"/"Create account"):
 ## 6. Cambios en el modelo de datos
 
 El reto: el `password` es **`required`** en `UserMongoose`, pero una cuenta SSO no tiene
-contraseña local. Dos opciones:
+contraseña local. Además, **Google se hará después** (decisión confirmada), así que el
+modelo se diseña **multi-proveedor desde ya** para no encadenar migraciones.
 
-**Opción A (recomendada) — marcar el proveedor y relajar password condicionalmente:**
-- Añadir a `userSchema`:
-  - `authProvider: { type: String, enum: ['local', 'us-sso'], default: 'local' }`
-  - `ssoId: { type: String, index: true, sparse: true }` ← el `uid`/UVUS, clave de
-    vinculación estable (no depender del `username`, que el usuario podría cambiar).
-- Cambiar `password` a `required: function () { return this.authProvider === 'local'; }`.
-- Vinculación de cuentas: si ya existe un usuario `local` con el mismo `email`
-  institucional, **decidir política** (ver §6.1).
+**Modelo elegido — array de identidades vinculadas (`identities[]`):**
+```ts
+const IdentitySchema = new Schema({
+  provider: { type: String, enum: ['us-sso', 'google'], required: true },
+  providerId: { type: String, required: true }, // uid (UVUS) | sub (Google)
+  email: { type: String },
+  linkedAt: { type: Date, default: Date.now },
+}, { _id: false });
 
-**Opción B (mínimo cambio) — password aleatorio:** generar `crypto.randomBytes(32)` como
-password (se hashea en `pre('save')`). Más simple, pero deja una "contraseña fantasma",
-no distingue cuentas SSO de locales y no es auditable. No recomendada.
+// userSchema:
+identities: { type: [IdentitySchema], default: [] },
+```
+- `providerId` es la clave estable de vinculación (no depender de `username`, que el
+  usuario podría cambiar).
+- `password` pasa a obligatorio **solo** para cuentas sin identidad externa:
+  `required: function () { return !this.identities?.length; }`.
+- Índice único `(identities.provider, identities.providerId)` con `sparse`.
+- Permite que una misma cuenta tenga **varias** identidades (p. ej. local + Google, o
+  UVUS + Google) sin duplicar usuario.
 
-> Recomendación: **Opción A**. Es poco código y deja el sistema correcto y auditable.
+> Por qué `identities[]` y no un simple `authProvider` + `ssoId`: con un solo campo, un
+> usuario quedaría atado a un único proveedor y añadir Google exigiría otra migración.
+> El array lo evita y habilita la vinculación de cuentas. Ver `social-login-google-prep.md`.
+>
+> **Password aleatorio (descartado):** generar `crypto.randomBytes(32)` como contraseña
+> deja una "contraseña fantasma", no distingue cuentas SSO de locales y no es auditable.
 
 ### 6.1 Estrategia de `username` y colisiones
 
 - `username` debe ser único. El UVUS es buen candidato, pero puede chocar con un
-  username local existente. Algoritmo de `findOrCreateSSOUser`:
-  1. Buscar por `ssoId === uvus` → si existe, es la misma cuenta SSO: actualizar y entrar.
-  2. Si no, buscar por `email` institucional:
-     - ⚠️ **NO auto-vincular por defecto.** SPHERE **no verifica el email** en el
-       registro local (confirmado, §11.3), así que cualquiera puede haber registrado
-       una cuenta local con un `@us.es` ajeno. Auto-vincular = vector de *account
-       takeover*. **Default seguro:** no fusionar; tratar como cuenta distinta
-       (crear con `username` sufijado) o bloquear pidiendo login local + vinculación
-       explícita desde ajustes. La fusión automática queda como decisión de producto
-       documentada, NO como comportamiento por defecto.
-  3. Si no existe nada → crear cuenta nueva con `username = uvus`; si `uvus` ya está
+  username local existente. Algoritmo de `findOrCreateUser(profile)`:
+  1. Buscar por identidad `(provider, providerId)` → si existe, es la misma cuenta:
+     actualizar y entrar.
+  2. Si no, y **solo si el proveedor verifica el email** (`emailVerified === true`),
+     buscar por email y **vincular** añadiendo la identidad al usuario existente:
+     - **UVUS: NO verifica el email** → nunca entra por aquí. SPHERE **no verifica el
+       email** en el registro local (confirmado, §11.3); auto-vincular por email no
+       verificado sería un vector de *account takeover*. Por eso el UVUS crea siempre
+       cuenta nueva (paso 3), no fusiona.
+     - **Google: SÍ verifica el email** (`email_verified`) → aquí sí es seguro vincular.
+       Esta rama queda lista para la fase Google sin tocar la lógica.
+  3. Si no existe nada → crear cuenta nueva con `username = providerId`; si ya está
      tomado por otra cuenta, sufijar (`uvus`, `uvus-us`, `uvus-2`…).
      ⚠️ **El sufijado debe resolverse ANTES de crear la organización personal**
      (§11.2): `ensurePersonalOrganizationForUser` lanza `CONFLICT` si ya hay una org
@@ -330,23 +355,26 @@ Ubicación: `api/src/test` (ya hay `auth.test.ts`, `user.test.ts`,
 `unit-tests/auth-middleware.test.ts` y helpers en `test/utils/auth/`). Reutilizar
 `auth.testHelpers.ts` / `userTestUtils.ts`.
 
-### 8.1 Backend — unitarias (`api/src/test/unit-tests/sso-service.test.ts`)
-- `validateCasTicket`:
-  - parsea correctamente un XML `cas:authenticationSuccess` con atributos → `CasData`.
-  - XML de fallo (`cas:authenticationFailure`) → `null`.
+### 8.1 Backend — unitarias
+`UsCasProvider.handleCallback` (`unit-tests/us-cas-provider.test.ts`), mockeando `fetch`:
+  - XML `cas:authenticationSuccess` con atributos → `ProviderProfile` (`provider:'us-sso'`).
+  - XML `cas:authenticationFailure` → `null`.
   - XML sin `cas:user` → `null`.
-  - (mockear `fetch` de la validación CAS, sin red real).
-- `findOrCreateSSOUser`:
-  - usuario nuevo → crea con `authProvider='us-sso'`, `ssoId=uvus`, y llama a
-    `ensurePersonalOrganizationForUser`.
-  - usuario existente por `ssoId` → no duplica, actualiza token.
-  - colisión de `username` → aplica sufijo.
-  - vinculación por `email` con cuenta local existente → según política elegida.
-  - email ausente → fallback `${uvus}@alum.us.es`.
+  - query sin `ticket` → `null`.
+  - `mail` ausente → email fallback `${uvus}@alum.us.es` (el default vive en el proveedor).
+
+`AuthProviderService.findOrCreateUser(profile)` (`unit-tests/auth-provider-service.test.ts`):
+  - usuario nuevo → crea con `identities: [{ provider:'us-sso', providerId:uvus }]` y
+    llama a `ensurePersonalOrganizationForUser`.
+  - usuario existente por identidad `(provider, providerId)` → no duplica, emite JWT.
+  - colisión de `username` → aplica sufijo (antes de crear la org personal).
+  - `emailVerified === false` (UVUS) → NO vincula por email, crea cuenta nueva.
+  - `emailVerified === true` con email ya existente → vincula (añade identidad, no duplica).
 
 ### 8.2 Backend — integración (`api/src/test/sso.test.ts`, supertest)
 - `GET /users/auth/sso/us/initiate` → 302 a `sso.us.es/cas/login` con `service` correcto.
-- `GET /users/auth/sso/us/callback` sin `ticket` → 302 a `{FRONTEND}/...sso_error=no_ticket`.
+- `GET /users/auth/sso/us/callback` sin `ticket` → 302 a `{FRONTEND}/...sso_error=invalid_response`.
+- `GET /users/auth/sso/desconocido/initiate` → 404 (proveedor no registrado).
 - callback con `ticket` válido (mock de `serviceValidate`) → crea usuario + redirige con `code`.
 - `GET /users/auth/sso/us/exchange?code=` válido → `{ token }` (JWT verificable con `JWT_SECRET`).
 - `exchange` con code inexistente/expirado → 401.
@@ -366,12 +394,14 @@ Ubicación: `api/src/test` (ya hay `auth.test.ts`, `user.test.ts`,
 
 ## 9. Plan de implementación (orden de PRs / commits)
 
-1. **Modelo**: `authProvider` + `ssoId` + `password` condicional en `UserMongoose`
-   (+ migración mongo en `migrations/mongo/` si aplica a datos existentes). Tests de modelo.
-2. **Backend SSO**: `SSOService` + `SSOController` + `SSORoutes` + registro en
-   `container.ts` + variables `.env`. Unitarias + integración con mocks.
-3. **Frontend**: `exchangeSsoCode` en `usersApi`, `SsoCallbackPage`, ruta en `App.tsx`,
-   botón en `login-form` y `register-form`. Tests RTL.
+1. **Modelo**: `identities[]` + `password` condicional + índice único en `UserMongoose`.
+   Sin migración obligatoria (usuarios existentes tienen password e `identities` vacío).
+   Tests de modelo.
+2. **Backend SSO (genérico por proveedor)**: `IdentityProvider` + `UsCasProvider` +
+   `providerRegistry` + `AuthProviderService` + `SSOController` + `SSORoutes` + registro
+   en `container.ts` + variables `.env`. Unitarias + integración con mocks.
+3. **Frontend**: `exchangeSsoCode` en `usersApi`, `SsoCallbackPage`, ruta en
+   `routes/router.tsx`, botón en `login-form` y `register-form`. Tests RTL.
 4. **Docs**: actualizar `README`/`DESIGN` y este documento; añadir variables al
    `.env.example`.
 5. **Solicitud US**: (en paralelo desde el día 1) enviar `SolicitudSSO.pdf` con los
@@ -388,10 +418,12 @@ Ubicación: `api/src/test` (ya hay `auth.test.ts`, `user.test.ts`,
 
 - **Alta de la US es el bloqueante real** para probar end-to-end; iniciar ya el trámite.
 - **CAS vs SAML**: confirmar con la US que CAS está disponible para apps externas a
-  `ev.us.es`; si solo ofrecen SAML para terceros, conmutar el `SSOService` a SAML
-  (la interfaz del service y todo el frontend no cambian).
-- **Política de vinculación de cuentas** (email institucional ya registrado como local):
-  decisión de producto (§6.1) — por defecto se propone vincular.
+  `ev.us.es`; si solo ofrecen SAML para terceros, añadir un `UsSamlProvider implements
+  IdentityProvider` (la interfaz, el controlador y todo el frontend no cambian).
+- **Política de vinculación de cuentas**: para UVUS **NO se auto-vincula** por email
+  (SPHERE no verifica el email; §6.1/§11.3): si el email institucional ya existe como
+  cuenta local, se crea cuenta separada. La auto-vinculación por email queda reservada a
+  proveedores que verifican el email (Google), no a UVUS.
 - **`role` por defecto** para usuarios US: `'USER'` (no conceder `ADMIN` automáticamente).
 - **Endpoints CAS exactos** (`/serviceValidate` vs `/p3/serviceValidate`, dominio
   `sso.us.es`): confirmar en la documentación que entreguen en el alta.
@@ -408,10 +440,10 @@ que **no estaban bien valorados** en la primera versión y que son bloqueantes o
 autorización **deniega por defecto** (`403`) todo path sin regla en `ROUTE_PERMISSIONS`
 (`config/permissions.ts`). Además **las reglas se evalúan en orden, primera que casa
 gana**, y existe un catch-all `/users/**` (con `allowedUserRoles`) que **capturaría**
-`/users/auth/sso/us/*` exigiendo token. → Hay que **añadir 3 reglas `isPublic: true`**
-para las rutas SSO **por encima** de la regla `/users/**`. Mi afirmación original de que
-"las rutas SSO van sin AuthenticationMiddleware" era **incorrecta**: el middleware es
-global; lo que las hace públicas es la flag `isPublic` en el registro de permisos.
+`/users/auth/sso/...` exigiendo token. → Hay que **añadir una regla `isPublic: true`**
+(`/users/auth/sso/**`, GET) **por encima** de la regla `/users/**`. Mi afirmación original
+de que "las rutas SSO van sin AuthenticationMiddleware" era **incorrecta**: el middleware
+es global; lo que las hace públicas es la flag `isPublic` en el registro de permisos.
 
 ### 11.2 (BLOQUEANTE) `ensurePersonalOrganizationForUser` lanza CONFLICT por colisión de nombre
 Crea la org personal con `name = username.toLowerCase()` y **lanza `CONFLICT`** si ya
@@ -452,7 +484,7 @@ Ya señalado en §4.1, pero confirmado contra el modelo real: `UserMongoose` **n
 `phone`/`avatar`/`userType` top-level (van en `settings`/`role`). `userRepository.create`
 hace `new UserMongoose(data).save()`, que dispara `pre('save')` (hash de password solo
 si está presente y modificado, y genera token legacy). Encaja con hacer `password`
-condicional por `authProvider`.
+condicional según `identities` (obligatorio solo si el usuario no tiene identidad externa).
 
 ### 11.7 Variables de entorno: nombres reales del repo
 Backend (`api/.env*`): ya existen `JWT_SECRET`, `JWT_EXPIRATION`, `BASE_URL_PATH`,
@@ -472,8 +504,8 @@ Redis de verdad y siembra la BBDD. Implicaciones:
   levantado el entorno (`docker/dev`, `pnpm run dev:setup`) antes de `pnpm test`.
 - Ficheros `*.test.ts`, API de `vitest` (`describe/it/expect`, `beforeAll/afterAll`),
   y `supertest` para HTTP. Hay utilidades reutilizables en `test/utils/`.
-- Las unitarias de `validateCasTicket` deben **mockear `fetch`** (`vi.stubGlobal`/`vi.fn`)
-  para no llamar a la US.
+- Las unitarias de `UsCasProvider.handleCallback` deben **mockear `fetch`**
+  (`vi.stubGlobal`/`vi.fn`) para no llamar a la US.
 
 ### 11.10 (IMPORTANTE para que funcione a la primera) Los nombres de atributo CAS de la US no están confirmados
 El controller del compañero asume `<cas:givenName>`, `<cas:sn>`, `<cas:mail>`. **El CAS
@@ -488,11 +520,12 @@ nombres no coinciden, el usuario se crea con datos vacíos/fallback aunque el lo
 
 ### 11.11 El test paramétrico de endpoints públicos NO se rompe (verificado)
 `auth.test.ts` recorre `getPublicEndpoints()` y construye la ruta con un `switch`; el
-caso por defecto genera `${BASE_PATH}{patrón con * → 'sample'}`. Para una regla
-`/users/auth/sso/us/*` probará `GET /users/auth/sso/us/sample`, que devuelve 302/404
-(ninguno es 401/403) → **pasa sin tocar el test**. Por eso conviene **una sola regla**
-`/users/auth/sso/us/*` (GET, `isPublic`) en lugar de tres exactas: cubre
-initiate/callback/exchange y no obliga a editar `auth.test.ts`.
+caso por defecto genera `${BASE_PATH}{patrón con ** → 'sample'}`. Para la regla
+`/users/auth/sso/**` probará `GET /users/auth/sso/sample`, que no casa ninguna de las 3
+rutas (`:provider/{initiate,callback,exchange}`) → Express 404 (no es 401/403) → **pasa
+sin tocar el test**. Por eso conviene **una sola regla** `/users/auth/sso/**` (GET,
+`isPublic`): cubre initiate/callback/exchange de **todos** los proveedores y no obliga a
+editar `auth.test.ts`.
 
 ### 11.12 Imports sin extensión (ESM) y orden de carga de rutas
 - El proyecto es ESM (`"type": "module"`) pero compila con `tsc` + `tsc-alias` y corre con
@@ -502,16 +535,17 @@ initiate/callback/exchange y no obliga a editar `auth.test.ts`.
 - `routes/index.ts` carga los `*Routes.ts` con `fs.readdirSync` (orden alfabético) y
   Express resuelve por orden de registro. `SSORoutes.ts` se carga antes que
   `UserRoutes.ts`, pero además no hay colisión: `/users/:username` solo casa un segmento
-  (`/users/auth`), no `/users/auth/sso/us/...`. No requiere cambios, pero conviene
-  mantener el prefijo profundo `/users/auth/sso/us/...`.
+  (`/users/auth`), no `/users/auth/sso/:provider/...`. No requiere cambios, pero conviene
+  mantener el prefijo profundo `/users/auth/sso/:provider/...`.
 
-### 11.13 Migraciones: formato `ts-migrate-mongoose`
-Las migraciones (`api/src/main/migrations/mongo/`, config `api/migrate.ts`) exportan
-`up(connection)` y `down(connection)` y se ejecutan con `npx migrate up` (corre solo en
-`dev`/arranque). La migración para SSO debe **backfillear** `authProvider: 'local'` en los
-usuarios existentes (los documentos previos no tienen el campo y el `default` de Mongoose
-**no** aplica a documentos ya guardados; las consultas por `authProvider: 'local'` los
-omitirían). Patrón de fichero: `TIMESTAMP-add-auth-provider.ts` con `up`/`down`.
+### 11.13 Migraciones: formato `ts-migrate-mongoose` (no obligatoria con `identities[]`)
+Con el modelo `identities[]` **no hace falta migración**: los usuarios existentes tienen
+`password` y `identities` ausente/vacío, coherente con el `password` condicional
+(`required` solo si no hay identidades) y con el índice `sparse` (ignora documentos sin el
+campo). Las búsquedas por `identities.providerId` simplemente no los devuelven, que es lo
+correcto. *(Opcional, por limpieza: una migración que ponga `identities: []`.)* Formato:
+las migraciones (`api/src/main/migrations/mongo/`, config `api/migrate.ts`) exportan
+`up(connection)`/`down(connection)` y corren con `npx migrate up`.
 
 ### 11.14 (hardening) Quitar el `code` de la URL tras el intercambio
 La página `/sso/callback?code=...` queda en el historial del navegador. Tras canjear el
