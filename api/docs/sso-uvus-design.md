@@ -178,7 +178,7 @@ Fichero nuevo `routes/SSORoutes.ts` (se auto-carga). Base actual: `{BASE_URL_PAT
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| `GET` | `/users/auth/sso/us/initiate` | pública | Redirige al login CAS de la US. Acepta `?redirect=` opcional para volver a una ruta concreta tras login. |
+| `GET` | `/users/auth/sso/us/initiate` | pública | Redirige al login CAS de la US. (Un `?redirect=` opcional de retorno queda **fuera del alcance de esta fase**; si se añade, exige validar que sea ruta interna — §7.) |
 | `GET` | `/users/auth/sso/us/callback` | pública | Recibe el `ticket` de CAS, valida, crea/recupera usuario, genera `code` y redirige al frontend. |
 | `GET` | `/users/auth/sso/us/exchange?code=` | pública | Canjea el `code` por `{ token }` (JWT). Invalida el code. |
 
@@ -339,6 +339,23 @@ identities: { type: [IdentitySchema], default: [] },
   (validar que el `redirect` sea una ruta interna).
 - **Datos personales (RGPD)**: pedir solo los atributos de §2.2; no almacenar atributos
   que no se usen. Documentar en la política de privacidad que se procesa identidad US.
+- **Cierre de sesión (sin Single Logout)**: el logout de SPHERE solo borra el JWT local;
+  la **sesión CAS de la US sigue viva** en el navegador, así que pulsar "Continuar con
+  UVUS" de nuevo entra sin pedir credenciales. Es el comportamiento SSO estándar, pero en
+  **ordenadores compartidos** (bibliotecas/laboratorios de la US) implica que otro usuario
+  podría reentrar. Decisión de esta fase: **no** implementar CAS Single Logout; documentar
+  al usuario que debe cerrar la sesión de la US (o el navegador) en equipos compartidos.
+- **Gestión de identidades en ajustes — fuera del alcance de esta fase**: no habrá UI para
+  vincular/desvincular identidades ni para que una cuenta SSO establezca contraseña local.
+  Dos reglas quedan fijadas para cuando se haga: (1) una cuenta SSO **sin** contraseña no
+  puede desvincular su única identidad (se quedaría sin acceso); (2) si un usuario SSO
+  establece contraseña desde ajustes, pasa a ser también cuenta local (coherente con el
+  `password` condicional del modelo).
+- **(REQUISITO NUEVO) Guardia en `UserService.login` para cuentas sin contraseña**: con un
+  usuario SSO sin `password`, `bcrypt.compare(password, undefined)` **lanza excepción**
+  ("Illegal arguments") → respuesta 500. Hay que añadir antes del `compare`:
+  `if (!user.password) throw new Error('INVALID DATA: Invalid credentials');`
+  para que el login local de una cuenta SSO devuelva 401 limpio.
 - **Variables de entorno** (no hardcodear): añadir a `.env` / `.env.*`:
   ```
   SSO_US_CAS_URL=https://sso.us.es/cas

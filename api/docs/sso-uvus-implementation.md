@@ -33,6 +33,7 @@
 | `api/src/main/config/permissions.ts` | Regla pública `/users/auth/sso/**` **antes** de `/users/**`. |
 | `api/src/main/config/container.ts` | Registrar `authProviderService`. |
 | `api/src/main/services/CacheService.ts` | Añadir método `del()`. |
+| `api/src/main/services/UserService.ts` | Guardia en `login` para cuentas sin contraseña (§2.11). |
 | `frontend/src/routes/router.tsx` | Ruta pública `/sso/callback`. |
 | `frontend/src/modules/auth/api/usersApi.ts` | `exchangeSsoCode(code)`. |
 | `frontend/src/modules/auth/components/login-form/index.tsx` | Botón "Continuar con UVUS". |
@@ -404,6 +405,27 @@ export default loadSSORoutes;
 > El botón UVUS apunta a `/users/auth/sso/us/initiate`; el de Google (futuro) a
 > `/users/auth/sso/google/initiate`. Solo hay que registrar el proveedor en el registry.
 
+### 2.11 `UserService.ts` — guardia en `login` para cuentas sin contraseña
+
+Una cuenta SSO no tiene `password`. Sin guardia, `bcrypt.compare(password, undefined)`
+**lanza excepción** ("Illegal arguments") y el login local devolvería **500** en vez de
+401. En `UserService.login`, antes del `bcrypt.compare`:
+```ts
+if (!user.password) {
+  throw new Error('INVALID DATA: Invalid credentials');
+}
+```
+
+### 2.12 Ciclo de vida del `state` (definido ahora, se usa en la fase Google)
+
+El `state` lo gestiona la **capa común** (no cada proveedor), para que Google sea drop-in:
+- `initiate`: el controlador genera `state` aleatorio y lo guarda en caché
+  (`sso:state:<state>` → `'1'`, TTL 600s) **solo si el proveedor lo necesita** (en la fase
+  UVUS puede omitirse el guardado: CAS lo ignora). Lo pasa a `buildLoginUrl(state)`.
+- `callback` (fase Google): antes de `handleCallback`, validar que `query.state` existe en
+  caché y **borrarlo** (un solo uso); si no existe/expiró → `sso_error=invalid_response`.
+- CAS (UVUS) no usa `state`: su `ticket` es de un solo uso y se valida en servidor.
+
 ---
 
 ## 3. Frontend
@@ -589,7 +611,7 @@ Normativa y docs: https://sic.us.es/servicios/cuentas-y-accesos-los-servicios/in
 
 1. [ ] `UserMongoose.ts`: `identities[]` + `password` condicional + índice único.
 2. [ ] `permissions.ts`: regla pública `/users/auth/sso/**` antes de `/users/**`.
-3. [ ] `CacheService.ts`: `del()`.
+3. [ ] `CacheService.ts`: `del()`. `UserService.login`: guardia sin-password (§2.11).
 4. [ ] Capa de identidad: `IdentityProvider`, `UsCasProvider`, `providerRegistry`.
 5. [ ] `AuthProviderService` + registro en `container.ts`.
 6. [ ] `SSOController.ts` + `SSORoutes.ts`.

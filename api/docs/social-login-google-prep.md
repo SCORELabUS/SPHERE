@@ -117,9 +117,10 @@ de CAS): crea/recupera usuario + organización personal + emite JWT una sola vez
 reutiliza exactamente esa función.
 
 ### 4.4 Parámetro `state` desde el principio
-UVUS con CAS no lo necesita, pero si el flujo genérico ya genera y valida un `state`
-(guardado en `CacheService` con TTL corto), Google no obliga a rediseñar nada: solo lo
-aprovecha para CSRF y para el `redirect` de retorno.
+UVUS con CAS no lo necesita, pero el flujo genérico ya genera el `state` en el
+controlador. Su ciclo de vida completo (guardar en caché en `initiate`, validar y borrar
+en `callback`, un solo uso, TTL 600s) está definido en `sso-uvus-implementation.md` §2.12
+y se activa en esta fase.
 
 ---
 
@@ -154,8 +155,13 @@ con UVUS/local, donde no había verificación (design §11.3). Regla propuesta:
 - Buscar por `(provider, providerId)`. Si existe → entrar.
 - Si no, y `email_verified === true` y hay una cuenta con ese email → **vincular** (añadir
   la identidad al usuario existente).
-- Si no → crear cuenta nueva (username a partir del nombre/email, sufijar si choca, y
-  crear la organización personal **antes** de que falle por colisión, igual que UVUS).
+- Si no → crear cuenta nueva. **Username**: el `sub` de Google es un número de ~21 dígitos
+  y no sirve como username legible; usar la **parte local del email** (`fran.garcia` de
+  `fran.garcia@gmail.com`) como base, sufijando si choca. Para ello, en esta fase se añade
+  un campo opcional `suggestedUsername?: string` a `ProviderProfile` y la capa común usa
+  `resolveFreeUsername(profile.suggestedUsername ?? profile.providerId)` (UVUS no lo
+  necesita: su `providerId` —el UVUS— ya es legible). El sufijado se resuelve **antes** de
+  crear la organización personal, igual que en UVUS.
 
 ---
 
@@ -218,7 +224,8 @@ debajo del formulario, separados del login local por el divisor "o".
   `callback` con `code` mockeado → crea/vincula usuario; `exchange` → JWT válido.
 - Vinculación por email verificado: cuenta local + Google mismo email → misma cuenta.
 - El test paramétrico de endpoints públicos seguirá pasando con la regla
-  `/users/auth/sso/**` (genera una ruta `sample` → 302/404, no error de auth).
+  `/users/auth/sso/**` (genera `/users/auth/sso/sample` → 404, no error de auth;
+  ver design §11.11).
 
 ---
 
@@ -236,7 +243,9 @@ debajo del formulario, separados del login local por el divisor "o".
 - [ ] Proyecto + OAuth consent screen + OAuth Client ID en Google Cloud.
 - [ ] Variables `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`.
 - [ ] `pnpm add google-auth-library`.
-- [ ] `GoogleService implements IdentityProvider` (login URL, token, verifyIdToken).
+- [ ] `GoogleProvider implements IdentityProvider` (login URL, token, verifyIdToken).
+- [ ] `suggestedUsername` en `ProviderProfile` (parte local del email como base de username).
+- [ ] Activar validación de `state` en callback (`sso-uvus-implementation.md` §2.12).
 - [ ] Registrar `google` en el *registry*.
 - [ ] Vinculación por email verificado.
 - [ ] Botón "Continuar con Google" en login y registro.
