@@ -44,3 +44,5 @@ api/scripts/.local-sso.*
 
 # SPHERE changelog data
 frontend/src/modules/presentation/pages/changelog/data
+# Github PAT secret to build changelog
+docker/gh_pat.txt

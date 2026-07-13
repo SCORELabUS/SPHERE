@@ -18,30 +18,35 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    gh \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm globally
 RUN npm install -g pnpm@9
 
-# Copy package.json and ./pnpm-lock.yaml to the container
-COPY ./package.json .
-COPY ./pnpm-lock.yaml .
+# Copy package.json and pnpm-lock.yaml to the container
+COPY package.json pnpm-lock.yaml .
 
 # Install Node.js dependencies
 RUN pnpm install
 
 # Copy the rest of the application source code to the container
+COPY ./scripts ./scripts
 COPY ./src ./src
 COPY ./public ./public
 
 # Copy config files to the container
-COPY ./tsconfig.json .
-COPY ./vite.config.ts .
-COPY ./index.html .
+COPY tsconfig.json vite.config.ts index.html .
 COPY ./.env.testing .env
 
 ENV VITE_HARVEY_URL=https://sphere.score.us.es/harvey-api
 
+RUN --mount=type=secret,id=gh_token,required <<EOF
+export GH_TOKEN=$(cat /run/secrets/gh_token)
+node ./scripts/generate-changelog.js pricing-int
+node ./scripts/generate-changelog.js sphere
+EOF
 # Build your application
 RUN pnpm run build
 RUN pnpm add -D serve
