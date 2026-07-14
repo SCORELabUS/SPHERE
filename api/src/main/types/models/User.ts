@@ -42,10 +42,18 @@ export interface LeanUser {
   firstName: string;
   lastName: string;
   email: string;
+  identities?: UserIdentity[];
   settings?: UserSettings;
   token?: string;
   tokenExpiration?: Date;
   apiKeys: ApiKey[];
+}
+
+export interface UserIdentity {
+  provider: 'us-sso' | 'google';
+  providerId: string;
+  email?: string;
+  linkedAt?: Date;
 }
 
 export type LeanUserWithApiKey = (Omit<LeanUser, 'apiKeys' | 'password'> & { apiKey: ApiKey })

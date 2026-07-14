@@ -49,6 +49,21 @@ export function registerUser(formData: RegisterFormProps, setErrors: Function = 
     });
 }
 
+export function exchangeSsoCode(code: string): Promise<{ token: string }> {
+    return fetch(`${USERS_BASE_PATH}/auth/sso/us/exchange?code=${encodeURIComponent(code)}`, {
+        method: "GET",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    }).then(async (response) => {
+        const parsedResponse = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(parsedResponse.error || "SSO exchange failed");
+        }
+        return parsedResponse;
+    });
+}
+
 export function getCurrentUser(token: string): Promise<any> {
     return fetch(`${USERS_BASE_PATH}/me`, {
         method: "GET",

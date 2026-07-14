@@ -23,6 +23,16 @@ const ApiKeySchema = new Schema(
   { _id: true }
 );
 
+const IdentitySchema = new Schema(
+  {
+    provider: { type: String, enum: ['us-sso', 'google'], required: true },
+    providerId: { type: String, required: true },
+    email: { type: String },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const UserSettingsSchema = new Schema(
   {
     phone: { type: String },
@@ -72,8 +82,16 @@ const userSchema = new Schema(
     password: {
       type: String,
       minlength: 5,
-      required: true,
+      // Solo obligatoria para cuentas locales puras: las cuentas con identidad
+      // externa (SSO UVUS, Google) no tienen contraseña.
+      required: function (this: any) {
+        return !this.identities || this.identities.length === 0;
+      },
       select: false,
+    },
+    identities: {
+      type: [IdentitySchema],
+      default: [],
     },
     role: {
       type: String,
@@ -133,7 +151,8 @@ const userSchema = new Schema(
 
 userSchema.pre('save', async function (callback) {
   const user = this;
-  if (!user.isModified('password')) return callback();
+  // SSO accounts have no password: nothing to hash.
+  if (!user.isModified('password') || !user.password) return callback();
 
   user.password = await hashPassword(user.password);
 
@@ -161,6 +180,12 @@ export interface UserDocument extends Document {
   firstName: string;
   lastName: string;
   email: string;
+  identities: {
+    provider: 'us-sso' | 'google';
+    providerId: string;
+    email?: string;
+    linkedAt?: Date;
+  }[];
   settings?: {
     phone?: string;
     avatar?: string;
@@ -197,6 +222,10 @@ export interface UserDocument extends Document {
 }
 
 userSchema.index({ 'apiKeys.key': 1 });
+userSchema.index(
+  { 'identities.provider': 1, 'identities.providerId': 1 },
+  { unique: true, sparse: true }
+);
 
 const userModel = mongoose.model<UserDocument>('User', userSchema, 'users');
 
