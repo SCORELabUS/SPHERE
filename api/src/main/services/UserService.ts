@@ -129,6 +129,11 @@ class UserService {
       }
     }
 
+    // SSO accounts have no local password; bcrypt.compare throws on undefined hashes.
+    if (!user.password) {
+      throw new Error('INVALID DATA: Invalid credentials');
+    }
+
     const passwordValid = await bcrypt.compare(password, user.password);
 
     if (!passwordValid) {

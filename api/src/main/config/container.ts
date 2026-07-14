@@ -21,6 +21,7 @@ import PermissionService from '../services/PermissionService';
 import UserSettingsService from '../services/UserSettingsService';
 import NotificationService from '../services/NotificationService';
 import ApiKeyService from '../services/ApiKeyService';
+import AuthProviderService from '../services/AuthProviderService';
 
 dotenv.config();
 
@@ -60,6 +61,7 @@ function initContainer(databaseType: string): AwilixContainer {
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
+    authProviderService: asClass(AuthProviderService).singleton(),
   });
   return container;
 }
