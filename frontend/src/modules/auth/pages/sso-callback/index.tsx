@@ -6,10 +6,10 @@ import { exchangeSsoCode } from '../../api/usersApi';
 
 // Error keys emitted by the backend SSOController in ?sso_error=
 const ERROR_MESSAGES: Record<string, string> = {
-  invalid_response: 'La validación con el proveedor de identidad falló.',
-  unknown_provider: 'Proveedor de identidad no reconocido.',
-  invalid_state: 'La sesión de autenticación expiró o no es válida. Inténtalo de nuevo.',
-  server_error: 'Error procesando el inicio de sesión.',
+  invalid_response: 'Validation with the identity provider failed.',
+  unknown_provider: 'Unknown identity provider.',
+  invalid_state: 'The authentication session expired or is invalid. Please try again.',
+  server_error: 'There was an error processing your sign in.',
 };
 
 export default function SsoCallbackPage() {
@@ -25,13 +25,13 @@ export default function SsoCallbackPage() {
 
     const ssoError = params.get('sso_error');
     if (ssoError) {
-      setError(ERROR_MESSAGES[ssoError] ?? 'Error de autenticación.');
+      setError(ERROR_MESSAGES[ssoError] ?? 'Authentication error.');
       return;
     }
 
     const code = params.get('code');
     if (!code) {
-      setError('Falta el código de autenticación.');
+      setError('Missing authentication code.');
       return;
     }
 
@@ -52,7 +52,7 @@ export default function SsoCallbackPage() {
           <p className="text-sm text-red-600 dark:text-red-400">
             {error}{' '}
             <Link to="/authentication" className="font-medium underline">
-              Volver al inicio de sesión
+              Back to sign in
             </Link>
           </p>
         </div>
@@ -62,7 +62,7 @@ export default function SsoCallbackPage() {
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
-      <p className="text-sm text-tp-steel">Iniciando sesión…</p>
+      <p className="text-sm text-tp-steel">Signing you in…</p>
     </div>
   );
 }

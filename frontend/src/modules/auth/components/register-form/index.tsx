@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { fadeUp } from '../auth-layout';
 import GoogleLoginButton from '../google-login-button';
+import UvusLoginButton from '../uvus-login-button';
 
 export type RegisterFormProps = {
   firstName: string;
@@ -77,7 +78,8 @@ const RegisterForm: React.FC = () => {
         </p>
       </motion.div>
 
-      {/* SSO first, local registration below the divider (UVUS disabled for now) */}
+      {/* SSO first, local registration below the divider */}
+      <UvusLoginButton />
       <GoogleLoginButton />
 
       <motion.div variants={fadeUp} className="my-5 flex items-center gap-3">

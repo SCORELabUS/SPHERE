@@ -88,11 +88,14 @@ La US ofrece ambos. La plataforma de e-learning de la US (`ev.us.es`) usa SAML
 detrás de la interfaz `IdentityProvider`, §5.2) para poder añadir SAML u otros proveedores
 después sin tocar controlador ni frontend.
 
-Endpoints CAS de la US (a confirmar en el alta; valores por defecto del controller del compañero):
-- Base: `https://sso.us.es/cas`
+Endpoints CAS de la US (**confirmados** en la doc oficial y en el alta de julio 2026):
+- Base producción: `https://sso.us.es/CAS` · preproducción: `https://ssopre.us.es/CAS`
+  (path `/CAS` en mayúsculas).
 - Login: `GET {base}/login?service={callbackUrlEncoded}`
-- Validación: `GET {base}/serviceValidate?ticket={ticket}&service={callbackUrlEncoded}`
-  (preferir `/p3/serviceValidate` para recibir atributos en `<cas:attributes>`).
+- Validación: `GET {base}/serviceValidate?ticket={ticket}&service={callbackUrlEncoded}`.
+  La US (adAS) soporta **CAS 1.0/2.0**: no existe `/p3/serviceValidate` (CAS 3.0); los
+  atributos llegan en la respuesta de `serviceValidate` (nombres a verificar, §11.10).
+- Estado del alta y pasos de prueba: ver `sso-uvus-implementation.md` §5.3.
 
 ---
 

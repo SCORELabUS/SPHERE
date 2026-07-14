@@ -596,7 +596,90 @@ rechaza la autenticación. **Hacerlo en paralelo desde el principio: el alta tar
 > administrativa, `schacUserStatus`, `schacPersonalUniqueId`) **no se piden**:
 > minimización de datos (RGPD).
 
-### 5.3 Qué devuelve la US al aprobar
+### 5.3 ✅ ALTA CONCEDIDA (julio 2026) — estado actual
+
+La US ha dado de alta `https://sphere.score.us.es` en el **entorno de preproducción** del
+SSO. Datos confirmados:
+
+- **CAS preproducción**: `https://ssopre.us.es/CAS` · **CAS producción**: `https://sso.us.es/CAS`
+  (path `/CAS` en **mayúsculas**; confirmado en la doc oficial de la US).
+- El SSO de la US (adAS) soporta **CAS 1.0 y 2.0** → la validación usa `/serviceValidate`
+  (no `/p3/serviceValidate`, que es CAS 3.0). Ya aplicado en `UsCasProvider`.
+- **Usuarios de prueba** (solo preproducción): `pruebapas`, `pruebapdi`, `pruebalum`
+  (contraseña = mismo nombre de usuario, según el correo del alta).
+- **Requisitos**: HTTPS obligatorio e IP pública estática.
+- El acceso a preproducción **caduca a los 2 meses**; al terminar las pruebas se solicita
+  el **paso a producción** en el enlace del correo del alta.
+
+**Pasos para la prueba real** (la app debe correr en `https://sphere.score.us.es`, porque
+el `service` registrado es ese dominio — desde localhost el CAS rechazará el service):
+1. Desplegar esta rama en el entorno de `sphere.score.us.es` con las variables de
+   `.env.production` (ya apuntan a `ssopre.us.es/CAS` y llevan `SSO_DEBUG_XML=true`).
+2. Pulsar "Continuar con UVUS" y entrar con `pruebalum`.
+3. Mirar el log del backend: el volcado `[SSO][us-cas] raw serviceValidate response`
+   muestra los **nombres de atributo reales** → ajustar `UsCasProvider.handleCallback`
+   si difieren de `cas:mail`/`cas:givenName`/`cas:schacSn1` (design §11.10).
+4. Quitar `SSO_DEBUG_XML` y repetir con los tres usuarios (alumno, PDI, PAS).
+5. Solicitar el paso a producción y cambiar `SSO_US_CAS_URL` a `https://sso.us.es/CAS`.
+
+> ✅ **RESUELTO (10/07/2026, 17:30) — la integración ES CAS y FUNCIONA.**
+> Horas después del alta (los primeros intentos, ~13:41, daban error — el SIC debió de
+> completar la configuración durante la tarde), se verificó el flujo completo contra
+> preproducción **sin desplegar nada**, por script:
+> 1. `GET https://ssopre.us.es/CAS/login?service=https://sphere.score.us.es/api/v1/users/auth/sso/us/callback`
+>    → muestra el formulario adAS (con un service inventado → error: el registro discrimina ✔).
+> 2. Login con `pruebalum` → **302 a nuestro callback exacto** con `?ticket=ST-…` ✔
+>    (adAS acepta el service por prefijo del dominio registrado).
+> 3. `GET /CAS/serviceValidate?ticket=…&service=…` → **XML real capturado**:
+>    ```xml
+>    <cas:user>pruebalum</cas:user>
+>    <cas:attributes>
+>      <cas:edupersonaffiliation>member</cas:edupersonaffiliation>
+>      <cas:edupersonaffiliation>student</cas:edupersonaffiliation>
+>      <cas:givenname>IDENTIDAD</cas:givenname>
+>      <cas:mail>pruebalum@alum.us.es</cas:mail>
+>      <cas:schacSn1>DE</cas:schacSn1>
+>      <cas:schacSn2>PRUEBAS ALUMNO</cas:schacSn2>
+>      <cas:uid>pruebalum</cas:uid>
+>    </cas:attributes>
+>    ```
+> **§11.10 del design queda RESUELTO**: los tags van en **minúsculas** (`givenname`,
+> `mail`, `uid`) salvo `schacSn1`/`schacSn2`. El parser de `UsCasProvider` ya hace
+> matching case-insensitive y hay un test dorado con este XML verbatim. El mock CAS
+> imita este formato exacto. La validación funcionó desde una IP arbitraria (sin
+> restricción por IP en `serviceValidate`).
+>
+> **Pendiente solo**: desplegar la rama en `sphere.score.us.es` para el E2E con
+> navegador (pasos 1-5 de arriba), probar los tres perfiles y pedir el paso a producción.
+>
+> <details><summary>Registro histórico: hipótesis SAML (superada)</summary>
+> Evidencia recogida al probar el alta:
+> - **Ninguna URL CAS funciona** en el SSO de la US: `/CAS/login`, `/cas/login`, `/login`,
+>   `/CAS/login.php`… devuelven todas la misma página de error de adAS, en preproducción
+>   **y en producción**, con y sin `service`, registrado o no. El error lo vio también el
+>   navegador real (identificador de error, sin formulario de login).
+> - Las **apps reales de la US usan SAML 2.0**: sevius.us.es redirige a
+>   `https://sso.us.es/SAML2/SSOService.php?SAMLRequest=…` y ese endpoint sí funciona.
+> - El correo del alta dice "se han añadido los **metadatos** de la aplicación"
+>   (vocabulario SAML).
+> - Metadatos del IdP de preproducción **verificados y activos**:
+>   `https://ssopre.us.es/metadata/saml2/` → `entityID="https://ssopre.us.es"`,
+>   SSO: `https://ssopre.us.es/SAML2/SSOService.php`,
+>   SLO: `https://ssopre.us.es/SAML2/SLOService.php`.
+>
+> **Acción: responder al ticket de SOS** preguntando: (1) ¿con qué protocolo quedó
+> integrada la aplicación, CAS o SAML 2.0?; (2) si CAS, ¿URL exacta de login y de
+> serviceValidate en preproducción y qué `service` quedó autorizado?; (3) si SAML, ¿qué
+> `entityID` y AssertionConsumerService (ACS) registraron para sphere.score.us.es y qué
+> atributos se liberan?
+>
+> **Plan B previsto por el diseño** (design §10): si es SAML, se añade un
+> `UsSamlProvider implements IdentityProvider` (con `@node-saml/node-saml`) y se registra
+> en `providerRegistry` — el controlador, rutas, modelo, one-time code y frontend **no
+> cambian**. El ACS sería la misma URL de callback actual.
+> </details>
+
+### 5.4 Qué devuelve la US al aprobar
 - Autoriza la URL de callback (`SSO_US_CALLBACK_URL`) como `service` válido.
 - Confirma los **endpoints CAS reales** y los **nombres exactos de los atributos** en la
   respuesta de `serviceValidate`. → Con eso se ajusta `UsCasProvider.handleCallback`
