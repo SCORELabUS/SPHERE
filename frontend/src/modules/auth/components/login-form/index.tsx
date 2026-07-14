@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { Link } from 'react-router-dom';
 import { fadeUp } from '../auth-layout';
+import GoogleLoginButton from '../google-login-button';
 
 export type LoginFormProps = {
   loginField: string;
@@ -61,6 +62,15 @@ const LoginForm: React.FC = () => {
         <p className="mt-2 text-sm text-tp-steel">
           Sign in to your account to continue
         </p>
+      </motion.div>
+
+      {/* SSO first, local login below the divider (UVUS disabled for now) */}
+      <GoogleLoginButton />
+
+      <motion.div variants={fadeUp} className="my-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-tp-input-border" />
+        <span className="text-xs text-tp-muted">or</span>
+        <div className="h-px flex-1 bg-tp-input-border" />
       </motion.div>
 
       {/* Error alert */}
