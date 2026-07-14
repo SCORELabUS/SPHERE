@@ -12,10 +12,10 @@ const CALLBACK_URL = () =>
  * Identity provider for the Universidad de Sevilla SSO (CAS protocol).
  *
  * The US SSO (adAS) supports CAS 1.0/2.0, so validation uses /serviceValidate.
- * Attribute names verified against the REAL preproduction response (10/07/2026, user
- * pruebalum): adAS emits them in lowercase (<cas:givenname>, <cas:mail>, <cas:uid>,
- * <cas:edupersonaffiliation>) except <cas:schacSn1>/<cas:schacSn2> — hence the
- * case-insensitive matching. Set SSO_DEBUG_XML=true to log the raw XML when debugging.
+ * Attribute names (cas:mail, cas:givenName, cas:schacSn1...) are the ones assumed by
+ * previous research and MUST be verified against the real serviceValidate response
+ * (see docs/sso-uvus-design.md §11.10). Set SSO_DEBUG_XML=true to log the raw XML
+ * during preproduction testing and adjust the parsing if names differ.
  */
 export class UsCasProvider implements IdentityProvider {
   name = 'us-sso' as const;
@@ -41,10 +41,8 @@ export class UsCasProvider implements IdentityProvider {
     const userMatch = xml.match(/<cas:user>([^<]+)<\/cas:user>/);
     if (!userMatch) return null;
 
-    // adAS emits attribute tags in lowercase (givenname, mail) but keeps camelCase in
-    // others (schacSn1): match case-insensitively to be robust against either form.
     const pick = (tag: string): string | null => {
-      const match = xml.match(new RegExp(`<cas:${tag}>([^<]+)</cas:${tag}>`, 'i'));
+      const match = xml.match(new RegExp(`<cas:${tag}>([^<]+)</cas:${tag}>`));
       return match ? match[1].trim() : null;
     };
 
