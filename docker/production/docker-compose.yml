@@ -171,6 +171,7 @@ services:
       - 8080:8080
     env_file:
       - ../../api/.env.production
+      - .env
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml
