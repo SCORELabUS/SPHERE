@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite'
 import tsconfigPaths from 'vite-tsconfig-paths';
 
+// Overridable so local setups where :8080 is taken can point at another API port.
+const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8080';
+
 export default defineConfig({
   plugins: [
     // nodePolyfills(),
@@ -23,12 +26,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: API_PROXY_TARGET,
         changeOrigin: true,
         // rewrite: path => path.replace(/^\/api/, ''),
       },
       '/static': {
-        target: 'http://localhost:8080',
+        target: API_PROXY_TARGET,
         changeOrigin: true,
         // rewrite: path => path.replace(/^\/static/, ''),
       },

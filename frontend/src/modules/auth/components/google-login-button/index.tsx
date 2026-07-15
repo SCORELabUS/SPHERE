@@ -33,7 +33,7 @@ export default function GoogleLoginButton() {
             d="M12 4.77c1.76 0 3.34.61 4.59 1.8l3.44-3.44A11.53 11.53 0 0 0 12 0 12 12 0 0 0 1.27 6.61l4.01 3.11C6.22 6.88 8.87 4.77 12 4.77Z"
           />
         </svg>
-        Continuar con Google
+        Continue with Google
       </a>
     </motion.div>
   );
