@@ -26,6 +26,7 @@ import ResearchPage from '../modules/presentation/pages/research';
 import ContributionsPage from '../modules/presentation/pages/contributions';
 import PricingListPage from '../modules/pricing/pages/list';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
+import SsoCallbackPage from '../modules/auth/pages/sso-callback';
 import CardPage from '../modules/pricing/pages/card';
 import CreatePricingPage from '../modules/pricing/pages/create';
 import CollectionCardPage from '../modules/pricing/pages/collection-card';
@@ -88,6 +89,7 @@ export default function Router() {
       ),
       children: [
         { element: <AuthenticationPage />, path: '/authentication' },
+        { element: <SsoCallbackPage />, path: '/sso/callback' },
         {
           path: '/pricings',
           element: (

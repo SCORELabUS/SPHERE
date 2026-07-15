@@ -7,7 +7,7 @@ const appPort = process.env.SERVER_PORT || 3000
 const processFileUris = (object: any, uriPropertyNames: any) => {
   
   uriPropertyNames.forEach((prop: any) => {
-    if (Object.prototype.hasOwnProperty.call(object, prop) || Object.prototype.hasOwnProperty.call(object._doc, prop)) {
+    if (Object.prototype.hasOwnProperty.call(object, prop) || Object.prototype.hasOwnProperty.call(object._doc ?? {}, prop)) {
       const uri = object[prop];
       if (uri && getUriType(uri) === 'relative') {
         const absoluteUri = getAbsoluteFileUri(uri);

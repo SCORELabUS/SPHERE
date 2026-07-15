@@ -29,6 +29,13 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['POST'],
     isPublic: true,
   },
+  // Login social (SSO UVUS, Google, …). Debe ir ANTES del catch-all /users/**:
+  // las reglas se evalúan en orden y la primera que casa gana.
+  {
+    path: '/users/auth/sso/**',
+    methods: ['GET'],
+    isPublic: true,
+  },
   {
     path: '/users/register',
     methods: ['POST'],

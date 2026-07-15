@@ -21,6 +21,14 @@ class CacheService {
     return value ? JSON.parse(value) : null;
   }
 
+  async del(key: string) {
+    if (!this.redisClient) {
+      throw new Error('ERROR: Redis client not initialized');
+    }
+
+    await this.redisClient.del(key);
+  }
+
   async set(key: string, value: any, expirationInSeconds?: number) {
     if (!this.redisClient) {
       throw new Error('ERROR: Redis client not initialized');
