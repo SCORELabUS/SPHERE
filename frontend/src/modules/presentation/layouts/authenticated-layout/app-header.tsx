@@ -21,6 +21,7 @@ const NAV_ITEMS = [
       { label: 'HARVEY', to: '/harvey' },
     ],
   },
+  { label: 'Pricing', to: '/pricing' },
   { label: 'Team', to: '/team' },
   { label: 'Research', to: '/research' },
 ];

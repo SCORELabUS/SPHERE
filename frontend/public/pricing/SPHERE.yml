@@ -1,0 +1,237 @@
+saasName: SPHERE
+syntaxVersion: "3.1"
+version: 1.0.0
+createdAt: "2026-07-16"
+currency: EUR
+features:
+  pricings:
+    description: "Store and manage your pricings in SPHERE"
+    valueType: BOOLEAN
+    defaultValue: true
+    expression: "pricingContext['features']['pricings']"
+    type: DOMAIN
+  organizations:
+    description: "Manage your organizations in SPHERE"
+    valueType: BOOLEAN
+    defaultValue: true
+    expression: "pricingContext['features']['organizations'] && subscriptionContext['maxOrganizations'] < pricingContext['usageLimits']['maxOrganizations']"
+    type: DOMAIN
+  basicPricingAnalytics:
+    description: "See the evolution on the number of configurations of your pricings"
+    valueType: BOOLEAN
+    defaultValue: false
+    expression: "pricingContext['features']['basicPricingAnalytics']"
+    type: DOMAIN
+  harvey:
+    description: "AI assisted pricing analysis"
+    valueType: BOOLEAN
+    defaultValue: false
+    expression: "pricingContext['features']['harvey'] && subscriptionContext['maxHarveyRequests'] < pricingContext['usageLimits']['maxHarveyRequests']"
+    type: DOMAIN
+  advancePricingAnalytics:
+    description: "Improve your understanding on your pricings with analytics on the evolution of optimal subscriptions"
+    valueType: BOOLEAN
+    defaultValue: false
+    expression: "pricingContext['features']['advancePricingAnalytics']"
+    type: DOMAIN
+  configurationSpaceExplorer:
+    description: "Explore the configuration space of your pricings in detail to identify unexpected configurations"
+    valueType: BOOLEAN
+    defaultValue: false
+    expression: "pricingContext['features']['configurationSpaceExplorer']"
+    type: DOMAIN
+  apiAccess:
+    description: "Programatically access the SPHERE API"
+    valueType: BOOLEAN
+    defaultValue: false
+    expression: "pricingContext['features']['apiKeys']"
+    type: DOMAIN
+  uptimeSla:
+    description: "We ensure the folllowing availability of SPHERE"
+    valueType: TEXT
+    defaultValue: "99%"
+    type: GUARANTEE
+  support:
+    description: "We are here to help!"
+    valueType: TEXT
+    defaultValue: "MONDAY-FRIDAY 9AM-5PM"
+    type: SUPPORT
+usageLimits:
+  maxOrganizations:
+    description: "Maximum number of organizations"
+    valueType: NUMERIC
+    defaultValue: 2
+    unit: organization
+    type: NON_RENEWABLE
+    trackable: true
+    linkedFeatures:
+      - organizations
+  maxMembersPerOrganizations:
+    description: "Maximum number of members per organization"
+    valueType: NUMERIC
+    defaultValue: 2
+    unit: member
+    type: NON_RENEWABLE
+    trackable: false
+    linkedFeatures:
+      - organizations
+  maxCollectionsPerOrganization:
+    description: ""
+    valueType: NUMERIC
+    defaultValue: 0
+    unit: collection
+    type: RENEWABLE
+  maxHarveyRequests:
+    description: "Maximum number of request that can be made to HARVEY"
+    valueType: NUMERIC
+    defaultValue: 0
+    unit: request
+    type: RENEWABLE
+    period:
+      value: 1
+      unit: MONTH
+    linkedFeatures:
+      - harvey
+    render: ENABLED
+plans:
+  BASIC:
+    description: "Basic plan"
+    price: 0
+    unit: user/month
+    features:
+      support:
+        value: "MON-FRI 9AM-5PM"
+      basicPricingAnalytics:
+        value: true
+      uptimeSla:
+        value: "Best effort"
+    usageLimits:
+      maxCollectionsPerOrganization:
+        value: 1
+  PRO:
+    description: "Basic plan"
+    price: 5
+    unit: user/month
+    features:
+      support:
+        value: "MON-FRI 9AM-9PM"
+      harvey:
+        value: true
+      basicPricingAnalytics:
+        value: true
+    usageLimits:
+      maxOrganizations:
+        value: 5
+      maxMembersPerOrganizations:
+        value: 2
+      maxCollectionsPerOrganization:
+        value: 2
+      maxHarveyRequests:
+        value: 10
+  TEAM:
+    description: "Basic plan"
+    price: 10
+    unit: user/month
+    features:
+      uptimeSla:
+        value: "99.5%"
+      support:
+        value: "MON-FRI 9AM-9PM"
+      harvey:
+        value: true
+      configurationSpaceExplorer:
+        value: true
+      basicPricingAnalytics:
+        value: true
+      advancePricingAnalytics:
+        value: true
+    usageLimits:
+      maxOrganizations:
+        value: 10
+      maxMembersPerOrganizations:
+        value: 10
+      maxCollectionsPerOrganization:
+        value: 5
+      maxHarveyRequests:
+        value: 20
+  BUSINESS:
+    description: "Basic plan"
+    price: 25
+    unit: user/month
+    features:
+      uptimeSla:
+        value: "99.9%"
+      support:
+        value: "MON-FRI 9AM-9PM"
+      apiAccess:
+        value: true
+      harvey:
+        value: true
+      configurationSpaceExplorer:
+        value: true
+      basicPricingAnalytics:
+        value: true
+      advancePricingAnalytics:
+        value: true
+    usageLimits:
+      maxOrganizations:
+        value: 50
+      maxMembersPerOrganizations:
+        value: 1000000000
+      maxCollectionsPerOrganization:
+        value: 1000000000
+      maxHarveyRequests:
+        value: 50
+  STUDENT:
+    description: "Plan dedicated for students. Provides limited access to the platform"
+    price: 0
+    unit: user/month
+    private: true
+    features: null
+    usageLimits:
+      maxMembersPerOrganizations:
+        value: 7
+      maxCollectionsPerOrganization:
+        value: 0
+addOns:
+  extraOrganization:
+    description: "Create custom organizations for every project you own"
+    price: 2.95
+    unit: organization/month
+    subscriptionConstraints:
+      min: 1
+      max: 20
+      step: 1
+    usageLimitsExtensions:
+      maxOrganizations:
+        value: 1
+  extraHarveyRequests:
+    description: "Need o ask more information to HARVEY? Buy an additional 100 request package"
+    availableFor:
+      - PRO
+      - TEAM
+      - BUSINESS
+      - STUDENT
+    price: 5
+    unit: "one time payment"
+    subscriptionConstraints:
+      min: 1
+      max: Infinity
+      step: 1
+    usageLimitsExtensions:
+      maxHarveyRequests:
+        value: 100
+  premiumSupport:
+    description: "We’re here for you 24/7. Feel free to reach out anytime—we’ll respond to your request within 2 hours, guaranteed."
+    availableFor:
+      - BUSINESS
+      - STUDENT
+    price: "Contact Sales"
+    unit: month
+    subscriptionConstraints:
+      min: 1
+      max: 1
+      step: 1
+    features:
+      support:
+        value: 24/7

@@ -53,6 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Collections', to: '/collections' },
     ],
   },
+  { label: 'Pricing', to: '/pricing' },
   { label: 'Team', to: '/team' },
   { label: 'Research', to: '/research' },
 ];

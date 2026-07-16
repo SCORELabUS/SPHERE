@@ -14,7 +14,7 @@ const CURRENCIES = {
   NZD: 'NZ$',
 };
 
-import AddOnElement from './components/addon-element';
+import { AddOnCard } from '../visual-editor/components/AddOnCard';
 import { useState } from 'react';
 import VariablesEditor from './components/VariablesEditor';
 
@@ -70,13 +70,46 @@ export function PricingRenderer({
               Add-Ons
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.values(pricing.addOns).map(addOn => (
-                <AddOnElement
-                  addOn={addOn}
-                  currency={resolvedCurrency}
-                  key={addOn.name}
-                />
-              ))}
+              {(() => {
+                const publicPlanKeys = Object.entries(pricing.plans ?? {})
+                  .filter(([, p]) => !p.private)
+                  .map(([k]) => k);
+                const publicPlanIndexMap = Object.fromEntries(publicPlanKeys.map((pk, i) => [pk, i]));
+                return Object.entries(pricing.addOns).map(([key, addOn]) => (
+                  <AddOnCard
+                    key={key}
+                    addOnKey={key}
+                    addOn={{
+                      description: addOn.description,
+                      price: addOn.price,
+                      unit: addOn.unit,
+                      availableFor: addOn.availableFor?.filter(pk => publicPlanKeys.includes(pk)),
+                      features: Object.fromEntries(
+                        Object.entries(addOn.features ?? {}).map(([fk, f]) => [fk, { value: (f.value as string | number | boolean) ?? false }])
+                      ),
+                      usageLimits: Object.fromEntries(
+                        Object.entries(addOn.usageLimits ?? {}).map(([uk, u]) => [uk, { value: (u.value as string | number | boolean) ?? 0 }])
+                      ),
+                      usageLimitsExtensions: Object.fromEntries(
+                        Object.entries(addOn.usageLimitsExtensions ?? {}).map(([ek, u]) => [ek, { value: (u.value as string | number | boolean) ?? 0 }])
+                      ),
+                      dependsOn: addOn.dependsOn,
+                      excludes: addOn.excludes,
+                      private: addOn.private,
+                    }}
+                    planKeys={publicPlanKeys}
+                    planIndexMap={publicPlanIndexMap}
+                    currency={resolvedCurrency}
+                    editable={false}
+                    featureMap={Object.fromEntries(
+                      Object.entries(pricing.features ?? {}).map(([fk, f]) => [fk, { valueType: f.valueType, defaultValue: f.defaultValue }])
+                    )}
+                    usageLimitMap={Object.fromEntries(
+                      Object.entries(pricing.usageLimits ?? {}).map(([uk, u]) => [uk, { valueType: u.valueType, defaultValue: u.defaultValue }])
+                    )}
+                  />
+                ));
+              })()}
             </div>
           </div>
         )}
