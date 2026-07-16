@@ -112,7 +112,7 @@ export function SortableFeatureRow({
                   <AnimatePresence mode="wait">
                     {effectiveValue ? (
                       <motion.div key="on" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>
-                        <FaCheckCircle className="text-lg text-emerald-500" />
+                        <FaCheckCircle className="text-lg text-tp-primary" />
                       </motion.div>
                     ) : (
                       <motion.div key="off" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={FAST_SPRING}>

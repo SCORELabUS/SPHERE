@@ -142,7 +142,7 @@ function InlinePrice({ price, currency, onSave }: { price: number | string; curr
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className="cursor-pointer inline-flex items-center rounded-full bg-indigo-600 px-2.5 py-1 text-sm font-bold text-white transition-opacity hover:opacity-90"
+        className="cursor-pointer inline-flex items-center rounded-full bg-tp-primary px-2.5 py-1 text-sm font-bold text-white transition-opacity hover:opacity-90"
       >{display}</span>
     );
   }
@@ -207,7 +207,7 @@ function InlineValueRow({ label, value, valueType, editable, onValueChange, onRe
         editable ? (
           <BooleanToggle value={!!value} onChange={onValueChange!} />
         ) : (
-          value ? <FaCheckCircle className="text-base text-emerald-500" /> : <FaTimesCircle className="text-base text-slate-300 dark:text-slate-600" />
+          value ? <FaCheckCircle className="text-base text-tp-primary" /> : <FaTimesCircle className="text-base text-slate-300 dark:text-slate-600" />
         )
       ) : valueType === 'NUMERIC' ? (
         editable ? (
@@ -247,7 +247,7 @@ function BooleanToggle({ value, onChange }: { value: boolean; onChange: (v: bool
         {value ? (
           <motion.div key="on" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
             transition={{ type: 'spring', stiffness: 800, damping: 35 }}>
-            <FaCheckCircle className="text-base text-emerald-500" />
+            <FaCheckCircle className="text-base text-tp-primary" />
           </motion.div>
         ) : (
           <motion.div key="off" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
@@ -430,7 +430,7 @@ function AddOnCardContent(
             </>
           ) : (
             <>
-              <span className="inline-flex items-center rounded-full bg-indigo-600 px-2.5 py-1 text-sm font-bold text-white">
+              <span className="inline-flex items-center rounded-full bg-tp-primary px-2.5 py-1 text-sm font-bold text-white">
                 {formatMoneyDisplay(addOn.price)}{typeof addOn.price === 'number' ? currency : ''}
               </span>
               {typeof addOn.price === 'number' && (

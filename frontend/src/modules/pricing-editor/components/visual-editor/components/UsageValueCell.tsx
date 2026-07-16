@@ -33,7 +33,7 @@ export function UsageValueCell({
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className="cursor-pointer inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-1.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
+        className="cursor-pointer inline-flex items-center justify-center rounded-full bg-tp-primary px-4 py-1.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
       >
         {formatUsageDisplay(value, usage)}
       </span>
