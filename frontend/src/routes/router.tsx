@@ -25,6 +25,7 @@ import EditorLayout from '../modules/pricing-editor/layouts/editor-layout';
 import ResearchPage from '../modules/presentation/pages/research';
 import ContributionsPage from '../modules/presentation/pages/contributions';
 import PricingListPage from '../modules/pricing/pages/list';
+import SpherePricingPage from '../modules/presentation/pages/pricing';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
 import SsoCallbackPage from '../modules/auth/pages/sso-callback';
 import CardPage from '../modules/pricing/pages/card';
@@ -122,6 +123,7 @@ export default function Router() {
             </Suspense>
           ),
         },
+        { element: <SpherePricingPage />, path: '/pricing' },
         { element: <TeamPage />, path: '/team' },
         { element: <ResearchPage />, path: '/research' },
         { element: <ContributionsPage />, path: '/contributions' },

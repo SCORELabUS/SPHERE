@@ -7,7 +7,9 @@ import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { NameInlineEdit } from './NameInlineEdit';
 import PALETTE from '../../pricing-renderer/shared/planPalette';
 import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
-import type { DraftAddOn, DraftFeature, DraftUsageLimit } from '../../../services/pricing2yaml';
+import { formatMoneyDisplay } from '../../pricing-renderer/shared/value-helpers';
+import type { DraftAddOn } from '../../../services/pricing2yaml';
+import type { DraggableAttributes } from '@dnd-kit/core';
 
 /* ── Searchable combobox select ── */
 function ComboboxSelect({ options, onSelect, placeholder }: {
@@ -81,14 +83,15 @@ function ComboboxSelect({ options, onSelect, placeholder }: {
 }
 
 /* ── Section header ── */
-function SectionHeader({ label, count, options, onAdd, placeholder }: {
-  label: string; count: number; options?: string[]; onAdd?: (key: string) => void; placeholder?: string;
+function SectionHeader({ label, count, editable, options, onAdd, placeholder }: {
+  label: string; count: number; editable: boolean;
+  options?: string[]; onAdd?: (key: string) => void; placeholder?: string;
 }) {
   return (
     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
       <span>{label}</span>
       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:bg-slate-700 dark:text-slate-400">{count}</span>
-      {options && options.length > 0 && onAdd && <ComboboxSelect options={options} onSelect={onAdd} placeholder={placeholder} />}
+      {editable && options && options.length > 0 && onAdd && <ComboboxSelect options={options} onSelect={onAdd} placeholder={placeholder} />}
     </div>
   );
 }
@@ -139,7 +142,7 @@ function InlinePrice({ price, currency, onSave }: { price: number | string; curr
       <span role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className="cursor-pointer inline-flex items-center rounded-full bg-indigo-600 px-2.5 py-1 text-sm font-bold text-white transition-opacity hover:opacity-90"
+        className="cursor-pointer inline-flex items-center rounded-full bg-tp-primary px-2.5 py-1 text-sm font-bold text-white transition-opacity hover:opacity-90"
       >{display}</span>
     );
   }
@@ -189,27 +192,46 @@ function InlineUnit({ value, onSave }: { value: string; onSave: (v: string) => v
 }
 
 /* ── Value row with type-aware inline editing ── */
-function InlineValueRow({ label, value, valueType, onValueChange, onRemove }: {
+function InlineValueRow({ label, value, valueType, editable, onValueChange, onRemove }: {
   label: string; value: string | number | boolean;
   valueType: 'BOOLEAN' | 'TEXT' | 'NUMERIC';
-  onValueChange: (v: string | number | boolean) => void;
-  onRemove: () => void;
+  editable: boolean;
+  onValueChange?: (v: string | number | boolean) => void;
+  onRemove?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1 text-xs group/row">
-      <span className="w-28 truncate text-slate-500 dark:text-slate-400" title={label}>{label}</span>
+    <div className={`flex items-center gap-1 text-xs ${editable ? 'group/row' : ''}`}>
+      <span className="w-28 truncate text-slate-500 dark:text-slate-400" title={label}>{camelToTitle(label)}</span>
       <span className="text-slate-300 dark:text-slate-600">·</span>
       {valueType === 'BOOLEAN' ? (
-        <BooleanToggle value={!!value} onChange={onValueChange} />
+        editable ? (
+          <BooleanToggle value={!!value} onChange={onValueChange!} />
+        ) : (
+          value ? <FaCheckCircle className="text-base text-tp-primary" /> : <FaTimesCircle className="text-base text-slate-300 dark:text-slate-600" />
+        )
       ) : valueType === 'NUMERIC' ? (
-        <NumericInlineEdit value={value} onSave={(v) => onValueChange(Number.isNaN(Number(v)) ? 0 : Number(v))} />
+        editable ? (
+          <NumericInlineEdit value={value} onSave={(v) => onValueChange!(Number.isNaN(Number(v)) ? 0 : Number(v))} />
+        ) : (
+          <span className="rounded bg-indigo-50 px-2 py-0.5 font-mono text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+            {String(value) || '0'}
+          </span>
+        )
       ) : (
-        <TextInlineEdit value={String(value)} onSave={onValueChange} />
+        editable ? (
+          <TextInlineEdit value={String(value)} onSave={onValueChange!} />
+        ) : (
+          <span className="rounded px-1 py-0.5 font-mono text-xs text-slate-700 dark:text-slate-300">
+            {String(value) || '—'}
+          </span>
+        )
       )}
-      <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        className="shrink-0 cursor-pointer rounded p-0.5 text-slate-300 opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400">
-        <FaXmark className="h-2.5 w-2.5" />
-      </button>
+      {editable && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
+          className="shrink-0 cursor-pointer rounded p-0.5 text-slate-300 opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400">
+          <FaXmark className="h-2.5 w-2.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -225,7 +247,7 @@ function BooleanToggle({ value, onChange }: { value: boolean; onChange: (v: bool
         {value ? (
           <motion.div key="on" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
             transition={{ type: 'spring', stiffness: 800, damping: 35 }}>
-            <FaCheckCircle className="text-base text-emerald-500" />
+            <FaCheckCircle className="text-base text-tp-primary" />
           </motion.div>
         ) : (
           <motion.div key="off" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
@@ -308,34 +330,39 @@ function TextInlineEdit({ value, onSave }: { value: string; onSave: (v: string |
   );
 }
 
-/* ── Main Card ── */
-export function AddOnCard({
-  addOnKey, addOn, planKeys, planIndexMap, currency, featureMap, usageLimitMap,
-  isDragging: isDraggingProp, isOverlay,
-  onEdit, onRemove, onRename, onToggleAvailableFor, onUpdate,
-}: {
-  addOnKey: string; addOn: DraftAddOn;
-  planKeys: string[]; planIndexMap: Record<string, number>; currency: string;
-  featureMap: Record<string, DraftFeature>; usageLimitMap: Record<string, DraftUsageLimit>;
-  isDragging?: boolean; isOverlay?: boolean;
-  onEdit: () => void; onRemove: () => void;
-  onRename: (oldKey: string, newKey: string) => void;
-  onToggleAvailableFor: (planKey: string) => void;
-  onUpdate: (updates: Partial<DraftAddOn>) => void;
-}) {
-  const sortable = useSortable({ id: addOnKey, disabled: isOverlay });
-  const { attributes, listeners, setNodeRef, transform, transition } = sortable;
-  const isDragging = isDraggingProp ?? sortable.isDragging;
+/* ── Shared type for add-on data ── */
+export interface AddOnCardProps {
+  addOnKey: string;
+  addOn: DraftAddOn;
+  planKeys: string[];
+  planIndexMap: Record<string, number>;
+  currency: string;
+  editable?: boolean;
+  featureMap?: Record<string, { valueType?: string; defaultValue?: unknown }>;
+  usageLimitMap?: Record<string, { valueType?: string; defaultValue?: unknown }>;
+  isDragging?: boolean;
+  isOverlay?: boolean;
+  onEdit?: () => void;
+  onRemove?: () => void;
+  onRename?: (oldKey: string, newKey: string) => void;
+  onToggleAvailableFor?: (planKey: string) => void;
+  onUpdate?: (updates: Partial<DraftAddOn>) => void;
+  containerRef?: React.Ref<HTMLElement>;
+  containerStyle?: React.CSSProperties;
+  dragListeners?: Record<string, unknown>;
+  dragAttributes?: DraggableAttributes;
+}
 
-  const style = isOverlay
-    ? { boxShadow: '0 20px 60px rgba(0,0,0,0.15), 0 8px 20px rgba(0,0,0,0.1)', cursor: 'grabbing', transform: undefined, transition: undefined, zIndex: 999 }
-    : {
-        transform: CSS.Transform.toString(transform),
-        transition: transition ?? undefined,
-        opacity: isDragging ? 0.35 : 1,
-        zIndex: isDragging ? 50 : undefined,
-      };
-
+/* ── Card content (no DnD hooks) ── */
+function AddOnCardContent(
+  {
+    addOnKey, addOn, planKeys, planIndexMap, currency,
+    editable = false,
+    featureMap = {}, usageLimitMap = {},
+    onEdit, onRemove, onRename, onToggleAvailableFor, onUpdate,
+    containerRef, containerStyle, dragListeners, dragAttributes,
+  }: AddOnCardProps,
+) {
   const isAvailableFor = (pk: string) => !addOn.availableFor || addOn.availableFor.includes(pk);
 
   const featureEntries = Object.entries(addOn.features ?? {});
@@ -352,44 +379,74 @@ export function AddOnCard({
 
   return (
     <div
-      ref={isOverlay ? undefined : setNodeRef}
-      style={style}
-      {...(isOverlay ? {} : attributes)}
+      ref={containerRef as React.Ref<HTMLDivElement>}
+      style={containerStyle}
+      {...(dragAttributes as unknown as React.HTMLAttributes<HTMLDivElement>)}
       className={`group relative flex flex-col rounded-xl border bg-white shadow-sm transition-all dark:bg-slate-900 ${
-        isDragging && !isOverlay
-          ? 'border-indigo-300 ring-2 ring-indigo-500/20 dark:border-indigo-700'
+        !editable ? 'border-slate-200 hover:shadow-md dark:border-slate-700'
           : 'border-slate-200 hover:shadow-md dark:border-slate-700'
       }`}
     >
       {/* Header */}
       <div className="flex items-start gap-2 border-b border-slate-100 px-4 pt-4 pb-3 dark:border-slate-800">
-        <div {...(isOverlay ? {} : listeners)} className="mt-1 shrink-0 cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
-          <FaGripVertical className="h-3 w-3" />
-        </div>
+        {editable && (
+          <div {...(dragListeners as unknown as React.HTMLAttributes<HTMLDivElement>)} className="mt-1 shrink-0 cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+            <FaGripVertical className="h-3 w-3" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
-          <NameInlineEdit value={addOnKey} onSave={(nk) => onRename(addOnKey, nk)}
-            className="text-sm font-bold text-slate-800 dark:text-slate-200" />
+          {editable ? (
+            <NameInlineEdit value={addOnKey} onSave={(nk) => onRename?.(addOnKey, nk)}
+              className="text-sm font-bold text-slate-800 dark:text-slate-200" />
+          ) : (
+            <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              {camelToTitle(addOnKey)}
+            </div>
+          )}
         </div>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-100 hover:text-indigo-500 dark:hover:bg-slate-800" title="Advanced settings">
-          <FaSliders className="h-3 w-3" />
-        </button>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950" title="Remove add-on">
-          <FaTrash className="h-3 w-3" />
-        </button>
+        {editable && (
+          <>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+              className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-100 hover:text-indigo-500 dark:hover:bg-slate-800" title="Advanced settings">
+              <FaSliders className="h-3 w-3" />
+            </button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
+              className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950" title="Remove add-on">
+              <FaTrash className="h-3 w-3" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Price + Description */}
       <div className="px-4 py-3">
         <div className="flex items-baseline gap-1.5">
-          <InlinePrice price={addOn.price} currency={currency}
-            onSave={(v) => { const p = v === '' ? 0 : Number(v); onUpdate({ price: Number.isNaN(p) ? 0 : p }); }} />
-          <InlineUnit value={addOn.unit ?? ''}
-            onSave={(v) => onUpdate({ unit: v || undefined })} />
+          {editable ? (
+            <>
+              <InlinePrice price={addOn.price} currency={currency}
+                onSave={(v) => { const p = v === '' ? 0 : Number(v); onUpdate?.({ price: Number.isNaN(p) ? 0 : p }); }} />
+              <InlineUnit value={addOn.unit ?? ''}
+                onSave={(v) => onUpdate?.({ unit: v || undefined })} />
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center rounded-full bg-tp-primary px-2.5 py-1 text-sm font-bold text-white">
+                {formatMoneyDisplay(addOn.price)}{typeof addOn.price === 'number' ? currency : ''}
+              </span>
+              {typeof addOn.price === 'number' && (
+                <span className="text-xs text-slate-400">
+                  {addOn.unit ? `/${addOn.unit}` : '/month'}
+                </span>
+              )}
+            </>
+          )}
         </div>
-        <InlineDescription value={addOn.description ?? ''}
-          onSave={(v) => onUpdate({ description: v || undefined })} />
+        {editable ? (
+          <InlineDescription value={addOn.description ?? ''}
+            onSave={(v) => onUpdate?.({ description: v || undefined })} />
+        ) : (
+          <p className={`mt-2 min-h-[2.5rem] px-1 py-0.5 text-xs leading-4 text-slate-500 dark:text-slate-400 ${addOn.description ? 'line-clamp-3' : ''}`}>{addOn.description || ''}</p>
+        )}
       </div>
 
       {/* Available plans */}
@@ -400,14 +457,25 @@ export function AddOnCard({
             const active = isAvailableFor(pk);
             const idx = planIndexMap[pk] ?? 0;
             const [a, b] = PALETTE[idx % PALETTE.length];
+            if (editable) {
+              return (
+                <button key={pk} type="button" onClick={() => onToggleAvailableFor?.(pk)}
+                  className={`cursor-pointer rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                    active ? 'text-white shadow-sm' : 'bg-slate-100 text-slate-400 ring-1 ring-transparent hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-400'
+                  }`}
+                  style={active ? { background: `linear-gradient(135deg, ${a}, ${b})`, boxShadow: `0 1px 3px ${a}40` } : undefined}>
+                  {pk}
+                </button>
+              );
+            }
             return (
-              <button key={pk} type="button" onClick={() => onToggleAvailableFor(pk)}
-                className={`cursor-pointer rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                  active ? 'text-white shadow-sm' : 'bg-slate-100 text-slate-400 ring-1 ring-transparent hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-400'
+              <span key={pk}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                  active ? 'text-white shadow-sm' : 'bg-slate-100 text-slate-400 ring-1 ring-transparent dark:bg-slate-800 dark:text-slate-500'
                 }`}
                 style={active ? { background: `linear-gradient(135deg, ${a}, ${b})`, boxShadow: `0 1px 3px ${a}40` } : undefined}>
                 {pk}
-              </button>
+              </span>
             );
           })}
         </div>
@@ -419,23 +487,24 @@ export function AddOnCard({
           <div className="space-y-3">
             {featureEntries.length > 0 && (
               <div>
-                <SectionHeader label="Features" count={featureEntries.length} options={availableFeatures} placeholder="Add feature..."
-                  onAdd={(key) => onUpdate({ features: { ...(addOn.features ?? {}), [key]: { value: featureMap[key]?.defaultValue ?? false } } })} />
+                <SectionHeader label="Features" count={featureEntries.length} editable={editable}
+                  options={availableFeatures} placeholder="Add feature..."
+                  onAdd={(key) => onUpdate?.({ features: { ...(addOn.features ?? {}), [key]: { value: (featureMap[key]?.defaultValue as string | number | boolean) ?? false } } })} />
                 <div className="mt-1.5 space-y-1">
                   {featureEntries.map(([k, v]) => {
-                    const vt = featureMap[k]?.valueType ?? 'BOOLEAN';
+                    const vt = (featureMap[k]?.valueType as 'BOOLEAN' | 'TEXT' | 'NUMERIC') ?? 'BOOLEAN';
                     return (
-                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt}
-                        onValueChange={(val) => {
+                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt} editable={editable}
+                        onValueChange={editable ? (val) => {
                           const f = { ...(addOn.features ?? {}) };
                           f[k] = { value: val };
-                          onUpdate({ features: f });
-                        }}
-                        onRemove={() => {
+                          onUpdate?.({ features: f });
+                        } : undefined}
+                        onRemove={editable ? () => {
                           const f = { ...(addOn.features ?? {}) };
                           delete f[k];
-                          onUpdate({ features: Object.keys(f).length > 0 ? f : undefined });
-                        }} />
+                          onUpdate?.({ features: Object.keys(f).length > 0 ? f : undefined });
+                        } : undefined} />
                     );
                   })}
                 </div>
@@ -443,23 +512,24 @@ export function AddOnCard({
             )}
             {usageEntries.length > 0 && (
               <div>
-                <SectionHeader label="Usage Limits" count={usageEntries.length} options={availableUsageLimits} placeholder="Add usage limit..."
-                  onAdd={(key) => onUpdate({ usageLimits: { ...(addOn.usageLimits ?? {}), [key]: { value: usageLimitMap[key]?.defaultValue ?? 0 } } })} />
+                <SectionHeader label="Usage Limits" count={usageEntries.length} editable={editable}
+                  options={availableUsageLimits} placeholder="Add usage limit..."
+                  onAdd={(key) => onUpdate?.({ usageLimits: { ...(addOn.usageLimits ?? {}), [key]: { value: (usageLimitMap[key]?.defaultValue as string | number | boolean) ?? 0 } } })} />
                 <div className="mt-1.5 space-y-1">
                   {usageEntries.map(([k, v]) => {
-                    const vt = usageLimitMap[k]?.valueType ?? 'NUMERIC';
+                    const vt = (usageLimitMap[k]?.valueType as 'BOOLEAN' | 'TEXT' | 'NUMERIC') ?? 'NUMERIC';
                     return (
-                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt}
-                        onValueChange={(val) => {
+                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt} editable={editable}
+                        onValueChange={editable ? (val) => {
                           const u = { ...(addOn.usageLimits ?? {}) };
                           u[k] = { value: val };
-                          onUpdate({ usageLimits: u });
-                        }}
-                        onRemove={() => {
+                          onUpdate?.({ usageLimits: u });
+                        } : undefined}
+                        onRemove={editable ? () => {
                           const u = { ...(addOn.usageLimits ?? {}) };
                           delete u[k];
-                          onUpdate({ usageLimits: Object.keys(u).length > 0 ? u : undefined });
-                        }} />
+                          onUpdate?.({ usageLimits: Object.keys(u).length > 0 ? u : undefined });
+                        } : undefined} />
                     );
                   })}
                 </div>
@@ -467,23 +537,24 @@ export function AddOnCard({
             )}
             {extensionEntries.length > 0 && (
               <div>
-                <SectionHeader label="Extensions" count={extensionEntries.length} options={availableExtensions} placeholder="Add extension..."
-                  onAdd={(key) => onUpdate({ usageLimitsExtensions: { ...(addOn.usageLimitsExtensions ?? {}), [key]: { value: usageLimitMap[key]?.defaultValue ?? 0 } } })} />
+                <SectionHeader label="Extensions" count={extensionEntries.length} editable={editable}
+                  options={availableExtensions} placeholder="Add extension..."
+                  onAdd={(key) => onUpdate?.({ usageLimitsExtensions: { ...(addOn.usageLimitsExtensions ?? {}), [key]: { value: (usageLimitMap[key]?.defaultValue as string | number | boolean) ?? 0 } } })} />
                 <div className="mt-1.5 space-y-1">
                   {extensionEntries.map(([k, v]) => {
-                    const vt = usageLimitMap[k]?.valueType ?? 'NUMERIC';
+                    const vt = (usageLimitMap[k]?.valueType as 'BOOLEAN' | 'TEXT' | 'NUMERIC') ?? 'NUMERIC';
                     return (
-                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt}
-                        onValueChange={(val) => {
+                      <InlineValueRow key={k} label={k} value={v.value} valueType={vt} editable={editable}
+                        onValueChange={editable ? (val) => {
                           const e = { ...(addOn.usageLimitsExtensions ?? {}) };
                           e[k] = { value: val };
-                          onUpdate({ usageLimitsExtensions: e });
-                        }}
-                        onRemove={() => {
+                          onUpdate?.({ usageLimitsExtensions: e });
+                        } : undefined}
+                        onRemove={editable ? () => {
                           const e = { ...(addOn.usageLimitsExtensions ?? {}) };
                           delete e[k];
-                          onUpdate({ usageLimitsExtensions: Object.keys(e).length > 0 ? e : undefined });
-                        }} />
+                          onUpdate?.({ usageLimitsExtensions: Object.keys(e).length > 0 ? e : undefined });
+                        } : undefined} />
                     );
                   })}
                 </div>
@@ -516,12 +587,78 @@ export function AddOnCard({
         </div>
       )}
 
-      {/* Empty state */}
-      {!hasAnyContent && !addOn.description && (
+      {/* Empty state (editable only) */}
+      {editable && !hasAnyContent && !addOn.description && (
         <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
           <p className="text-center text-xs italic text-slate-300 dark:text-slate-600">Click any value to edit it inline</p>
         </div>
       )}
     </div>
+  );
+}
+
+/* ── Main Card (with DnD for editor use) ── */
+export function AddOnCard({
+  editable = false,
+  addOnKey, addOn, planKeys, planIndexMap, currency, featureMap, usageLimitMap,
+  isDragging: isDraggingProp, isOverlay,
+  onEdit, onRemove, onRename, onToggleAvailableFor, onUpdate,
+}: AddOnCardProps): JSX.Element {
+  if (!editable) {
+    return (
+      <AddOnCardContent
+        addOnKey={addOnKey} addOn={addOn}
+        planKeys={planKeys} planIndexMap={planIndexMap} currency={currency}
+        editable={false}
+        featureMap={featureMap} usageLimitMap={usageLimitMap}
+      />
+    );
+  }
+
+  return (
+    <AddOnCardWithDnD
+      addOnKey={addOnKey} addOn={addOn}
+      planKeys={planKeys} planIndexMap={planIndexMap} currency={currency}
+      editable
+      featureMap={featureMap} usageLimitMap={usageLimitMap}
+      isDragging={isDraggingProp} isOverlay={isOverlay}
+      onEdit={onEdit} onRemove={onRemove} onRename={onRename}
+      onToggleAvailableFor={onToggleAvailableFor} onUpdate={onUpdate}
+    />
+  );
+}
+
+/* ── Editable wrapper with DnD integration ── */
+function AddOnCardWithDnD({
+  addOnKey, addOn, planKeys, planIndexMap, currency, featureMap, usageLimitMap,
+  isDragging: isDraggingProp, isOverlay,
+  onEdit, onRemove, onRename, onToggleAvailableFor, onUpdate,
+}: AddOnCardProps): JSX.Element {
+  const sortable = useSortable({ id: addOnKey, disabled: isOverlay });
+  const { attributes, listeners, setNodeRef, transform, transition } = sortable;
+  const isDragging = isDraggingProp ?? sortable.isDragging;
+
+  const style = isOverlay
+    ? { boxShadow: '0 20px 60px rgba(0,0,0,0.15), 0 8px 20px rgba(0,0,0,0.1)', cursor: 'grabbing', transform: undefined, transition: undefined, zIndex: 999 }
+    : {
+        transform: CSS.Transform.toString(transform),
+        transition: transition ?? undefined,
+        opacity: isDragging ? 0.35 : 1,
+        zIndex: isDragging ? 50 : undefined,
+      };
+
+  return (
+    <AddOnCardContent
+      addOnKey={addOnKey} addOn={addOn}
+      planKeys={planKeys} planIndexMap={planIndexMap} currency={currency}
+      editable
+      featureMap={featureMap} usageLimitMap={usageLimitMap}
+      onEdit={onEdit} onRemove={onRemove} onRename={onRename}
+      onToggleAvailableFor={onToggleAvailableFor} onUpdate={onUpdate}
+      containerRef={isOverlay ? undefined : setNodeRef}
+      containerStyle={style}
+      dragListeners={isOverlay ? undefined : listeners}
+      dragAttributes={isOverlay ? undefined : attributes}
+    />
   );
 }

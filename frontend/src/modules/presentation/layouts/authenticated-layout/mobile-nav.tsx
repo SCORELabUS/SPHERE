@@ -28,6 +28,7 @@ const NAV_STRUCTURE = [
       { label: 'HARVEY', to: '/harvey' },
     ],
   },
+  { label: 'Pricing', to: '/pricing' },
   { label: 'Team', to: '/team' },
   { label: 'Research', to: '/research' },
 ];

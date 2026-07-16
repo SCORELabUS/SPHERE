@@ -15,7 +15,10 @@ function indent(s: string, n: number): string {
 function serVal(v: unknown, n: number): string {
   if (v === null || v === undefined) return 'null';
   if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number') return Object.is(v, -0) ? '0' : String(v);
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return v > 0 ? '.inf' : '-.inf';
+    return Object.is(v, -0) ? '0' : String(v);
+  }
   if (typeof v === 'string') return q(v);
   if (Array.isArray(v)) {
     if (v.length === 0) return '[]';

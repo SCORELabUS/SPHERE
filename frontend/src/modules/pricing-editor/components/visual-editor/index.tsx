@@ -563,6 +563,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                     return (
                       <AddOnCard key={addOnKey} addOnKey={addOnKey} addOn={addOn}
                         planKeys={visiblePlanKeys} planIndexMap={planIndexMap} currency={resolvedCurrency}
+                        editable
                         featureMap={featureMap} usageLimitMap={usageLimitMap}
                         isDragging={activeAddOnId === addOnKey}
                         onEdit={() => setEditingAddOn(addOnKey)} onRemove={() => handleRemoveAddOn(addOnKey)}
@@ -580,6 +581,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
                   return (
                     <AddOnCard addOnKey={activeAddOnId} addOn={addOn}
                       planKeys={visiblePlanKeys} planIndexMap={planIndexMap} currency={resolvedCurrency}
+                      editable
                       featureMap={featureMap} usageLimitMap={usageLimitMap}
                       isOverlay
                       onEdit={() => {}} onRemove={() => {}}
