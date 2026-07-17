@@ -8,6 +8,7 @@ import NotificationService from './NotificationService';
 import { OrgRole } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
 import { processFileUris } from './FileService';
+import { generateSlug } from '../utils/slug-manager';
 import { OrganizationIndexByUserOptions } from '../types/services/Organization';
 
 class OrganizationService {
@@ -186,6 +187,21 @@ class OrganizationService {
   }
 
   async update(id: string, data: any) {
+    const existing: any = await this.organizationRepository.findById(id);
+    if (!existing) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    if (data.displayName && !existing.isPersonal && data.displayName !== existing.displayName) {
+      const newSlug = generateSlug(data.displayName);
+      if (newSlug.length < 3) {
+        throw new Error('INVALID DATA: The organization name must produce a slug of at least 3 characters');
+      }
+      if (newSlug !== existing.name) {
+        data.name = await this.deduplicateSlug(newSlug);
+      }
+    }
+
     const organization = await this.organizationRepository.update(id, data);
     if (!organization) {
       throw new Error('NOT FOUND: Organization not found');

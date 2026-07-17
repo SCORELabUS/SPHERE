@@ -663,6 +663,70 @@ describe('Organizations API integration', () => {
       expect(response.body.description).toBe('Updated description');
     });
 
+    it('regenerates the slug when displayName changes on a non-personal organization', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token, { displayName: 'Original Name' });
+
+      const newDisplayName = `Renamed Org ${randomSuffix()}`;
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ displayName: newDisplayName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.displayName).toBe(newDisplayName);
+      expect(response.body.name).toBe(newDisplayName.toLowerCase().replace(/\s+/g, '-'));
+    });
+
+    it('deduplicates the slug when the new name collides with an existing organization', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const takenDisplayName = `Taken Name ${randomSuffix()}`;
+      const takenSlug = takenDisplayName.toLowerCase().replace(/\s+/g, '-');
+      await createTestOrganization(owner.token, { name: takenSlug, displayName: takenDisplayName });
+      const org = await createTestOrganization(owner.token, { displayName: 'Other Org' });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ displayName: takenDisplayName });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).not.toBe(takenSlug);
+      expect(response.body.name).toMatch(new RegExp(`^${takenSlug}-\\d{1,10}$`));
+    });
+
+    it('keeps the slug when displayName does not change', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token, { displayName: 'Stable Org' });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ displayName: 'Stable Org', description: 'Only description changes' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(org.name);
+      expect(response.body.description).toBe('Only description changes');
+    });
+
+    it('does not change the slug of a personal organization when displayName changes', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const showResponse = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      const originalName = showResponse.body.name;
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ displayName: 'My Renamed Personal Org' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.displayName).toBe('My Renamed Personal Org');
+      expect(response.body.name).toBe(originalName);
+    });
+
     it('returns 403 when MEMBER (org role) tries to update', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
       const { user: member } = await createAndLoginUser('USER');
