@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Iconify from '../../../../core/components/iconify';
-import SlugPreview from '../../../../core/components/slug-preview';
 import { transitionFast } from '../../../../core/utils/motion-variants';
 import customAlert from '../../../../core/utils/custom-alert';
 import { Organization, useOrganizationsApi } from '../../../api/organizationsApi';
@@ -59,7 +58,6 @@ export default function EditOrgModal({ org, onClose, onSaved }: Props) {
               maxLength={255}
               className="rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20 dark:focus:ring-tp-primary/20"
             />
-            {!org.isPersonal && <SlugPreview value={displayName} />}
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium uppercase tracking-wide text-tp-steel">Description</label>

@@ -559,7 +559,8 @@ describe('Organizations API integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.displayName).toBe('Updated Display Name');
-      expect(response.body._id).toBe(organizationId);
+      expect(response.body.id).toBe(organizationId);
+      expect(response.body._id).toBeUndefined();
     });
 
     it('returns 200 when OWNER updates description', async () => {

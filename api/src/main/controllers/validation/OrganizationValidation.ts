@@ -45,7 +45,7 @@ const update = [
     .withMessage('The displayName must not exceed 255 characters')
     .trim(),
   check('description')
-    .optional()
+    .optional({ values: 'null' })
     .isString()
     .withMessage('The description field must be a string')
     .trim(),
