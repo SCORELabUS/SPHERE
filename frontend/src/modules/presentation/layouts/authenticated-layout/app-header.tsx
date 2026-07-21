@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { label: 'Pricing', to: '/pricing' },
   { label: 'Team', to: '/team' },
   { label: 'Research', to: '/research' },
+  { label: 'Changelog', to: '/changelog'}
 ];
 
 export default function AppHeader() {
