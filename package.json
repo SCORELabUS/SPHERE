@@ -2,6 +2,7 @@
   "name": "sphere",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "install": "cd frontend && pnpm install && cd ../api && pnpm install",
     "dev": "concurrently \"pnpm run dev:api\" \"pnpm run dev:vite\"",
@@ -14,10 +15,14 @@
     "build:api": "cd api && pnpm run build",
     "build:frontend": "cd frontend && vite build",
     "lint": "eslint .",
-    "seed:mongo-local:small": "cd api && npx tsx --tsconfig tsconfig.json scripts/seedMongo.ts"
+    "seed:mongo-local:small": "cd api && npx tsx --tsconfig tsconfig.json scripts/seedMongo.ts",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
     "concurrently": "^9.1.2",
+    "husky": "^9.1.7",
     "shadcn": "^4.7.0",
     "wait-on": "^8.0.1"
   }

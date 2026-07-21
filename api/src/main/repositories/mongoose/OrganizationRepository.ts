@@ -37,7 +37,8 @@ class OrganizationRepository extends RepositoryBase {
   }
 
   async update(id: string, data: any) {
-    return OrganizationMongoose.findOneAndUpdate({ _id: id }, data, { new: true });
+    const org = await OrganizationMongoose.findOneAndUpdate({ _id: id }, data, { new: true });
+    return org ? org.toObject() : null;
   }
 
   async destroy(id: string) {

@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,8 +16,7 @@ const loadRoutes = async function (app: express.Application) {
         return file.indexOf('.') !== 0 && file !== basename && file.slice(-3) === (["development"].includes(process.env.ENVIRONMENT ?? "") ? '.ts' : '.js');
       })
       .map(async file => {
-        const fileURL = pathToFileURL(path.join(__dirname, file)).href;
-        return import(fileURL);
+        return import(`./${file}`);
       })
   ).then(routes => {
     return routes.forEach(route => {

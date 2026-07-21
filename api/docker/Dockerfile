@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y minizinc && apt-get clean
 WORKDIR /usr/src/server
 
 # Install pnpm globally
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Copy package.json and ./pnpm-lock.yaml to the container
 COPY ./package.json .
