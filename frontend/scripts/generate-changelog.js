@@ -115,8 +115,7 @@ async function downloadChangelogsFromRepo(directory) {
   for (const tag of tags) {
     try {
       await exec(`gh release download ${tag} --dir ${directory} --pattern 'changelog-*.json'`);
-      const cleanTag = tag.startsWith('v') ? tag.slice(1) : tag;
-      const filename = `${directory}/changelog-${cleanTag}.json`;
+      const filename = `${directory}/changelog-${tag}.json`;
       files.push(filename);
     } catch (error) {
       continue;
