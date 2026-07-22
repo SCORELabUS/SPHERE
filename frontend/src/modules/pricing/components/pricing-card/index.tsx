@@ -49,8 +49,14 @@ export default function PricingCard({ data, showMenu = false, menuItems = [] }: 
   }, [menuOpen]);
 
   const handleNavigate = () => {
-    const slug = data.collection?.slug || data.collection?.name;
-    router.push(`/pricings/${data.organization.id}/${data.slug}?collection=${slug}`);
+    const pricingPath = `/pricings/${data.organization.id}/${data.slug}`;
+    const collectionSlug = data.collection?.slug || data.collection?.name;
+
+    router.push(
+      collectionSlug
+        ? `${pricingPath}?collection=${encodeURIComponent(collectionSlug)}`
+        : pricingPath
+    );
   };
 
   const symbol = getCurrency(data.currency);
