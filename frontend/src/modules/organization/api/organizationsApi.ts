@@ -70,6 +70,14 @@ export interface OrgCollection {
   organization: { id: string; name: string; displayName: string; avatar: string };
 }
 
+function extractErrorMessage(response: Response, body: any, fallback: string): string {
+  if (typeof body?.error === 'string' && body.error) return body.error;
+  if (response.status >= 400 && response.status < 500 && Array.isArray(body?.errors) && body.errors.length > 0) {
+    return body.errors.map((e: any) => e.msg).filter(Boolean).join(' ');
+  }
+  return fallback;
+}
+
 export function useOrganizationsApi() {
   const { fetchWithInterceptor, authUser } = useAuth();
   const token = authUser?.token;
@@ -114,7 +122,7 @@ export function useOrganizationsApi() {
       body: JSON.stringify(payload),
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error ?? 'Failed to create organization');
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to create organization'));
     return body as Organization;
   }, [fetchWithInterceptor, token]);
 
@@ -129,7 +137,7 @@ export function useOrganizationsApi() {
       body: JSON.stringify(payload),
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error ?? 'Failed to update organization');
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to update organization'));
     return body as Organization;
   }, [fetchWithInterceptor, token]);
 
