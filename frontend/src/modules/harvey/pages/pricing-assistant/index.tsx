@@ -16,6 +16,7 @@ import type {
   PromptPreset,
 } from '../../types/types';
 import { PROMPT_PRESETS } from '../../prompts';
+import { USE_CASES } from '../../use-cases';
 import { PricingContext } from '../../context/pricingContext';
 import {
   chatWithAgent,
@@ -207,6 +208,7 @@ function PricingAssistantPage() {
   };
 
   const handlePromptSelect = (preset: PromptPreset) => {
+    setPreset(preset);
     setQuestion(preset.question);
     if (preset.context.length > 0) {
       const mappedInput: ContextInputType[] = preset.context.map(entry =>
@@ -356,7 +358,7 @@ function PricingAssistantPage() {
                 <ChatTranscript
                   messages={messages}
                   isLoading={isLoading}
-                  promptPresets={PROMPT_PRESETS}
+                  promptPresets={playground ? USE_CASES : PROMPT_PRESETS}
                   onPresetSelect={handlePromptSelect}
                 />
 

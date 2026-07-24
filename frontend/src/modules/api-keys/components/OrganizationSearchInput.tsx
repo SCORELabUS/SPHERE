@@ -1,13 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Iconify from '../../core/components/iconify';
-import { useOrganizationsApi } from '../../organization/api/organizationsApi';
+import { Organization, useOrganizationsApi } from '../../organization/api/organizationsApi';
 
 export interface OrgSearchResult {
   id: string;
   name: string;
   displayName: string;
   avatar?: string | null;
+}
+
+function flattenOrganizations(orgs: Organization[]): Organization[] {
+  return orgs.reduce<Organization[]>((acc, org) => {
+    acc.push(org);
+    if (org.subOrganizations?.length) {
+      acc.push(...flattenOrganizations(org.subOrganizations));
+    }
+    return acc;
+  }, []);
 }
 
 interface OrganizationSearchInputProps {
@@ -58,7 +68,7 @@ export default function OrganizationSearchInput({
       const data = await getMyOrgsRef.current({ limit: 100 });
       const orgList = Array.isArray(data) ? data : data.items || [];
       setAllOrgs(
-        orgList.map((o) => ({
+        flattenOrganizations(orgList).map((o) => ({
           id: o.id,
           name: o.name,
           displayName: o.displayName,
