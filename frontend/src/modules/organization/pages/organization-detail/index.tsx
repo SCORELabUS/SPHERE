@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import Iconify from '../../../core/components/iconify';
@@ -260,6 +260,32 @@ export default function OrganizationDetailPage() {
 
       return results;
     };
+    const buildOffPathNode = async (
+      summary: Organization,
+      accessRole: OrgRole | null
+    ): Promise<TreeNode> => {
+      let hasAccess = accessRole === 'OWNER' || accessRole === 'ADMIN';
+      let fullOrg: Organization | null = null;
+      try {
+        fullOrg = await getOrganization(summary.id);
+        hasAccess = true;
+      } catch {
+        fullOrg = null;
+      }
+
+      const children = hasAccess && fullOrg ? await buildDescendants(fullOrg, accessRole) : [];
+
+      return {
+        id: summary.id,
+        displayName: summary.displayName,
+        name: summary.name,
+        avatar: summary.avatar,
+        isPersonal: summary.isPersonal,
+        _parentId: summary._parentId,
+        children,
+        hasAccess,
+      };
+    };
 
     const childNodes = await buildDescendants(org, myRole);
 
@@ -280,6 +306,13 @@ export default function OrganizationDetailPage() {
       while (currentParentId) {
         try {
           const ancestorOrg = await getOrganization(currentParentId);
+          const siblings = ancestorOrg.subOrganizations ?? [];
+          const levelChildren = await Promise.all(
+            siblings.map(sibling =>
+              sibling.id === currentNode.id ? currentNode : buildOffPathNode(sibling, myRole)
+            )
+          );
+
           const ancestorNode: TreeNode = {
             id: ancestorOrg.id,
             displayName: ancestorOrg.displayName,
@@ -287,7 +320,7 @@ export default function OrganizationDetailPage() {
             avatar: ancestorOrg.avatar,
             isPersonal: ancestorOrg.isPersonal,
             _parentId: ancestorOrg._parentId,
-            children: [currentNode],
+            children: levelChildren,
             hasAccess: true,
             isAncestor: true,
           };
@@ -306,15 +339,27 @@ export default function OrganizationDetailPage() {
     if (org && myRole) buildHierarchyTree();
   }, [org, myRole, childAccessMap]);
 
+  const autoExpandedOrgIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (hierarchyTree) {
+    if (!hierarchyTree || !org) return;
+    if (autoExpandedOrgIdRef.current === org.id) return;
+    const ancestorIds: string[] = [];
+    let node: TreeNode | null = hierarchyTree;
+    while (node && node.id !== org.id) {
+      ancestorIds.push(node.id);
+      node = node.children.find(child => child.isAncestor || child.isCurrent) ?? null;
+    }
+
+    if (node) {
+      autoExpandedOrgIdRef.current = org.id;
       setExpandedTreeIds(prev => {
         const next = new Set(prev);
-        next.add(hierarchyTree.id);
+        ancestorIds.forEach(id => next.add(id));
         return next;
       });
     }
-  }, [hierarchyTree?.id]);
+  }, [org, hierarchyTree]);
 
   /* ─── Refresh helpers ─── */
   const refreshMembers = useCallback(async () => {

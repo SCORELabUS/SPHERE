@@ -16,6 +16,7 @@ import { randomSuffix } from './utils/helpers';
 import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
 import OrganizationMongoose from '../main/repositories/mongoose/models/OrganizationMongoose';
 import OrganizationMembershipMongoose from '../main/repositories/mongoose/models/OrganizationMembershipMongoose';
+import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
 import { generateJwtToken } from '../main/utils/users/helpers';
 import mongoose from 'mongoose';
 
@@ -133,6 +134,47 @@ describe('API Keys management', () => {
       expect(response.body.apiKey.name).toBe('Test API Key');
       expect(response.body.apiKey.revoked).toBe(false);
       expect(response.body.plainKey).toMatch(/^sk-/);
+    });
+
+    it('should authenticate a newly created API key when creating a collection', async () => {
+      const keyResponse = await request(app)
+        .post(`${BASE_PATH}/users/${adminUser.username}/api-keys`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .send({
+          name: 'Collection creation key',
+          scopes: [
+            {
+              organizationId: testOrg._id.toString(),
+              scope: 'ALL',
+            },
+          ],
+        });
+
+      expect(keyResponse.status).toBe(201);
+
+      const hashResponse = await request(app)
+        .post(`${BASE_PATH}/collections/${testOrg._id.toString()}`)
+        .set('x-api-key', keyResponse.body.apiKey.key)
+        .send({ name: `rejected_hash_${randomSuffix()}` });
+
+      expect(hashResponse.status).toBe(401);
+
+      const collectionName = `api_key_collection_${randomSuffix()}`;
+
+      try {
+        const collectionResponse = await request(app)
+          .post(`${BASE_PATH}/collections/${testOrg._id.toString()}`)
+          .set('x-api-key', keyResponse.body.plainKey)
+          .send({ name: collectionName });
+
+        expect(collectionResponse.status).toBe(201);
+        expect(collectionResponse.body.name).toBe(collectionName);
+      } finally {
+        await PricingCollectionMongoose.deleteOne({
+          _organizationId: testOrg._id,
+          name: collectionName,
+        });
+      }
     });
 
     it('should allow ADMIN to create API key for another user', async () => {

@@ -32,7 +32,10 @@ import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
   const [searchParams] = useSearchParams();
-  const collectionSlug = searchParams.get('collection');
+  const collectionParam = searchParams.get('collection');
+  const collectionSlug = collectionParam && !['undefined', 'null'].includes(collectionParam)
+    ? collectionParam
+    : null;
   const router = useRouter();
   const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();

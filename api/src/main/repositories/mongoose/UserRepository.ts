@@ -2,6 +2,7 @@ import { ApiKey, LeanUser, LeanUserWithApiKey, UserFilters } from '../../types/m
 import RepositoryBase from '../RepositoryBase';
 import UserMongoose from './models/UserMongoose';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { escapeRegex } from '../../utils/regex';
 
 class UserRepository extends RepositoryBase {
@@ -118,12 +119,22 @@ class UserRepository extends RepositoryBase {
   async findByApiKey(
     apiKey: string
   ): Promise<LeanUserWithApiKey | null> {
+    let storedApiKey: string;
+
+    if (apiKey.startsWith('sk-')) {
+      storedApiKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+    } else if (apiKey.startsWith('usr_') || apiKey.startsWith('org_')) {
+      storedApiKey = apiKey;
+    } else {
+      return null;
+    }
+
     const user = await UserMongoose.aggregate([
       {
         $match: {
           apiKeys: {
             $elemMatch: {
-              key: apiKey,
+              key: storedApiKey,
               revoked: false,
               $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
             },
@@ -137,7 +148,7 @@ class UserRepository extends RepositoryBase {
               $filter: {
                 input: '$apiKeys',
                 as: 'key',
-                cond: { $eq: ['$$key.key', apiKey] },
+                cond: { $eq: ['$$key.key', storedApiKey] },
               },
             },
           },
