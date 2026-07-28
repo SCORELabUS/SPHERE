@@ -42,11 +42,10 @@ COPY ./.env.testing .env
 
 ENV VITE_HARVEY_URL=https://sphere.score.us.es/harvey-api
 
-RUN --mount=type=secret,id=gh_token,required <<EOF
-export GH_TOKEN=$(cat /run/secrets/gh_token)
-node ./scripts/generate-changelog.js pricing-int
-node ./scripts/generate-changelog.js sphere
-EOF
+RUN --mount=type=secret,id=gh_token,required \
+GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js pricing-int \
+&& GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js sphere
+
 # Build your application
 RUN pnpm run build
 RUN pnpm add -D serve
