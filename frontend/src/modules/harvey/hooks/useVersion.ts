@@ -3,7 +3,7 @@ import { PricingVersionsResult } from "../sphere";
 import { usePricingsApi } from "../../pricing/api/pricingsApi";
 
 export function usePricingVersions(
-  owner: string,
+  organizationId: string,
   slug: string,
   collectionSlug?: string | null
 ) {
@@ -15,23 +15,36 @@ export function usePricingVersions(
   const { getPricingBySlug } = usePricingsApi()
 
   useEffect(() => {
+    let ignore = false;
+
     const makeRequest = async () => {
       try {
-        setLoading(true)
-        const data = await getPricingBySlug(slug, owner, collectionSlug ?? null);
+        setLoading(true);
+        setError(undefined);
+        setVersions(undefined);
+
+        const data = await getPricingBySlug(slug, organizationId, collectionSlug ?? null);
+        if (ignore) return;
+
         if ("error" in data) {
           setError(Error(data.error));
         } else {
           setVersions(data);
         }
       } catch (error) {
+        if (ignore) return;
         setError(error as Error);
       } finally {
-        setLoading(false)
+        if (!ignore) setLoading(false);
       }
     };
+
     makeRequest();
-  }, []);
+
+    return () => {
+      ignore = true;
+    };
+  }, [collectionSlug, getPricingBySlug, organizationId, slug]);
 
   return { loading, error, versions };
 }
