@@ -70,19 +70,26 @@ function PricingAssistantPage() {
     return isLoading || !hasQuestion || (playground && messages.length > 0);
   }, [question, isLoading, messages]);
 
-  const createPricingContextItems = (contextInputItems: ContextInputType[]): PricingContextItem[] =>
-    contextInputItems
+  const createPricingContextItems = (
+    contextInputItems: ContextInputType[],
+    existingItems: PricingContextItem[] = contextItems
+  ): PricingContextItem[] => {
+    const knownItems = new Set(existingItems.map(item => `${item.kind}:${item.value.trim()}`));
+
+    return contextInputItems
       .map(item => ({
         ...item,
         value: item.value.trim(),
         id: crypto.randomUUID(),
       }))
-      .filter(
-        item =>
-          !contextItems.some(
-            stateItem => stateItem.kind === item.kind && stateItem.value === item.value
-          )
-      );
+      .filter(item => {
+        const key = `${item.kind}:${item.value}`;
+        if (knownItems.has(key)) return false;
+
+        knownItems.add(key);
+        return true;
+      });
+  };
 
   const addContextItems = (inputs: ContextInputType[]) => {
     if (inputs.length === 0) return null;
@@ -214,7 +221,12 @@ function PricingAssistantPage() {
       const mappedInput: ContextInputType[] = preset.context.map(entry =>
         mapPresetContexttoContext(entry)
       );
-      addContextItems(mappedInput);
+
+      if (playground) {
+        setContextItems(createPricingContextItems(mappedInput, []));
+      } else {
+        addContextItems(mappedInput);
+      }
     }
   };
 
