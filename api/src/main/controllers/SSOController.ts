@@ -1,13 +1,20 @@
 import crypto from 'crypto';
 import container from '../config/container';
-import AuthProviderService from '../services/AuthProviderService';
+import AuthProviderService, { IdentityOwnedByAnotherAccountError } from '../services/AuthProviderService';
 import CacheService from '../services/CacheService';
 import { getProvider } from '../services/identity/providerRegistry';
+import {
+  ACCOUNT_MERGE_CACHE_PREFIX,
+  ACCOUNT_MERGE_TTL_SECONDS,
+  AccountMergeChallenge,
+  SSO_FLOW_CACHE_PREFIX,
+  SSO_FLOW_TTL_SECONDS,
+  SsoFlow,
+} from '../services/identity/SsoFlow';
 import { handleError } from '../utils/users/helpers';
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL ?? 'http://localhost:5173';
 const SSO_CODE_TTL = 30; // seconds; single-use exchange code
-const SSO_STATE_TTL = 600; // seconds; OAuth2 CSRF state, single use
 
 /**
  * Social login controller, generic over identity providers (/users/auth/sso/:provider/*).
@@ -32,12 +39,14 @@ class SSOController {
       return res.status(404).json({ error: 'Unknown identity provider' });
     }
 
-    // `state` is consumed by OAuth2 providers (Google); CAS ignores it. Only OAuth2
-    // providers need it stored: the callback checks it for CSRF protection.
+    // Every provider carries this transaction id back. OAuth2 uses native `state`;
+    // CAS embeds it in the exact service callback URL.
     const state = crypto.randomBytes(16).toString('hex');
-    if (provider.usesState) {
-      await this.cacheService.set(`sso:state:${state}`, '1', SSO_STATE_TTL);
-    }
+    await this.cacheService.set(
+      `${SSO_FLOW_CACHE_PREFIX}${state}`,
+      { action: 'login' } satisfies SsoFlow,
+      SSO_FLOW_TTL_SECONDS
+    );
     return res.redirect(provider.buildLoginUrl(state));
   }
 
@@ -47,19 +56,30 @@ class SSOController {
       return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=unknown_provider`);
     }
 
+    let flow: SsoFlow | null = null;
     try {
-      if (provider.usesState) {
-        const state = req.query.state;
-        const known = state && (await this.cacheService.get(`sso:state:${state}`));
-        if (!known) {
-          return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=invalid_state`);
-        }
-        await this.cacheService.del(`sso:state:${state}`); // single use
+      const state = typeof req.query.state === 'string' ? req.query.state : '';
+      flow = state
+        ? await this.cacheService.get(`${SSO_FLOW_CACHE_PREFIX}${state}`)
+        : null;
+      if (!flow) {
+        return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=invalid_state`);
       }
+      await this.cacheService.del(`${SSO_FLOW_CACHE_PREFIX}${state}`); // single use
 
       const profile = await provider.handleCallback(req.query);
       if (!profile) {
         return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=invalid_response`);
+      }
+
+      if (flow.action === 'link') {
+        if (flow.provider !== req.params.provider) {
+          return res.redirect(`${FRONTEND_URL()}/me/settings?section=integrations&identity_error=invalid_state`);
+        }
+        await this.authProviderService.linkIdentity(flow.userId, profile);
+        return res.redirect(
+          `${FRONTEND_URL()}/me/settings?section=integrations&identity_linked=${encodeURIComponent(req.params.provider)}`
+        );
       }
 
       const { token } = await this.authProviderService.findOrCreateUser(profile);
@@ -72,6 +92,31 @@ class SSOController {
       return res.redirect(`${FRONTEND_URL()}/sso/callback?code=${code}`);
     } catch (err: any) {
       console.error('[SSO] callback error:', err);
+      if (flow?.action === 'link') {
+        if (err instanceof IdentityOwnedByAnotherAccountError) {
+          const mergeCode = crypto.randomBytes(24).toString('hex');
+          await this.cacheService.set(
+            `${ACCOUNT_MERGE_CACHE_PREFIX}${mergeCode}`,
+            {
+              targetUserId: flow.userId,
+              sourceUserId: err.ownerId,
+              provider: flow.provider,
+            } satisfies AccountMergeChallenge,
+            ACCOUNT_MERGE_TTL_SECONDS
+          );
+          return res.redirect(
+            `${FRONTEND_URL()}/me/settings?section=integrations&merge_code=${mergeCode}`
+          );
+        }
+        const errorCode = String(err?.message).toLowerCase().includes('already connected')
+          ? 'identity_in_use'
+          : String(err?.message).toLowerCase().includes('disconnect the current')
+            ? 'provider_already_connected'
+            : 'server_error';
+        return res.redirect(
+          `${FRONTEND_URL()}/me/settings?section=integrations&identity_error=${errorCode}`
+        );
+      }
       return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=server_error`);
     }
   }

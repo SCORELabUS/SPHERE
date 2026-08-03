@@ -27,7 +27,8 @@ const IdentitySchema = new Schema(
   {
     provider: { type: String, enum: ['us-sso', 'google'], required: true },
     providerId: { type: String, required: true },
-    email: { type: String },
+    email: { type: String, lowercase: true, trim: true },
+    emailVerified: { type: Boolean, required: true, default: false },
     linkedAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -111,6 +112,8 @@ const userSchema = new Schema(
       type: String,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address'],
     },
     settings: {
@@ -128,6 +131,14 @@ const userSchema = new Schema(
       select: false,
       default: [],
     },
+    mergedInto: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      select: false,
+    },
+    mergedAt: { type: Date, default: null, select: false },
+    disabledAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -184,6 +195,7 @@ export interface UserDocument extends Document {
     provider: 'us-sso' | 'google';
     providerId: string;
     email?: string;
+    emailVerified: boolean;
     linkedAt?: Date;
   }[];
   settings?: {
@@ -219,6 +231,9 @@ export interface UserDocument extends Document {
     expiresAt?: Date;
     revoked: boolean;
   }[];
+  mergedInto?: string;
+  mergedAt?: Date;
+  disabledAt?: Date;
 }
 
 userSchema.index({ 'apiKeys.key': 1 });

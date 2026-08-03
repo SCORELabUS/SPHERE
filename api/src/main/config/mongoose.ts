@@ -10,15 +10,21 @@ const getMongoDBConnectionURI = () => {
   const databaseUsername = process.env.DATABASE_USERNAME;
   const databasePassword = process.env.DATABASE_PASSWORD;
   const databaseName = process.env.DATABASE_NAME;
+  const replicaSet = process.env.MONGO_REPLICA_SET;
+  const directConnection = process.env.MONGO_DIRECT_CONNECTION === 'true';
   const dbCredentials = (databaseUsername && databasePassword) ? databaseUsername + ':' + databasePassword + '@' : '';
-  const authSource = databaseProtocol === 'mongodb+srv' ? '' : `?authSource=${databaseName}`;
-  const mongoDbConnectionURI = `${databaseProtocol}://${dbCredentials}${databaseHost}${databasePort}/${databaseName}${authSource}`;
+  const query = new URLSearchParams();
+  if (databaseProtocol !== 'mongodb+srv') query.set('authSource', databaseName ?? 'admin');
+  if (replicaSet) query.set('replicaSet', replicaSet);
+  if (directConnection) query.set('directConnection', 'true');
+  const queryString = query.size > 0 ? `?${query.toString()}` : '';
+  const mongoDbConnectionURI = `${databaseProtocol}://${dbCredentials}${databaseHost}${databasePort}/${databaseName}${queryString}`;
   return mongoDbConnectionURI;
 };
 
 const initMongoose = () => {
   const mongoDbConnectionURI = getMongoDBConnectionURI();
-  console.log(`Trying to connect to ${mongoDbConnectionURI}`);
+  console.log(`Trying to connect to MongoDB at ${process.env.MONGO_HOST}:${process.env.MONGO_PORT ?? '27017'}`);
   mongoose.set('strictQuery', false); // removes a deprecation warning
   // mongoose.set('debug', true)
   return mongoose.connect(mongoDbConnectionURI);

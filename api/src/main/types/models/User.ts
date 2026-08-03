@@ -47,12 +47,16 @@ export interface LeanUser {
   token?: string;
   tokenExpiration?: Date;
   apiKeys: ApiKey[];
+  mergedInto?: string;
+  mergedAt?: Date;
+  disabledAt?: Date;
 }
 
 export interface UserIdentity {
   provider: 'us-sso' | 'google';
   providerId: string;
   email?: string;
+  emailVerified: boolean;
   linkedAt?: Date;
 }
 

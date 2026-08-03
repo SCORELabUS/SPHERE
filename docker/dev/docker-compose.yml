@@ -1,15 +1,56 @@
-version: '3'
-
 services:
+  mongo-keyfile:
+      image: mongo:7.0.16
+      entrypoint: ["/bin/bash", "-c"]
+      command:
+        - |
+          if [ ! -s /keyfile/mongodb-keyfile ]; then
+            openssl rand -base64 756 > /keyfile/mongodb-keyfile
+          fi
+          chmod 400 /keyfile/mongodb-keyfile
+          chown 999:999 /keyfile/mongodb-keyfile
+      volumes:
+        - 'mongo-keyfile:/keyfile'
+
   mongodb:
       image: mongo:7.0.16
+      command: ["mongod", "--replSet", "rs0", "--keyFile", "/keyfile/mongodb-keyfile", "--bind_ip_all"]
       ports:
         - "27017:27017"
       env_file:
         - ../../api/.env.testing
+      depends_on:
+        mongo-keyfile:
+          condition: service_completed_successfully
       volumes:
         - 'dev-mongodb:/data/db'
+        - 'mongo-keyfile:/keyfile:ro'
         - '../../api/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh'
+      networks:
+        - dev-network
+      healthcheck:
+        test: ["CMD-SHELL", "mongosh --quiet --host localhost --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1"]
+        interval: 5s
+        timeout: 5s
+        retries: 20
+
+  mongo-rs-init:
+      image: mongo:7.0.16
+      env_file:
+        - ../../api/.env.testing
+      depends_on:
+        mongodb:
+          condition: service_healthy
+      entrypoint: ["/bin/bash", "-c"]
+      command:
+        - |
+          mongosh --quiet "mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@mongodb:27017/admin" --eval '
+            try {
+              rs.status();
+            } catch (error) {
+              rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongodb:27017" }] });
+            }
+          '
       networks:
         - dev-network
   redis:
@@ -22,6 +63,8 @@ services:
       - 'redis_data:/data'
 volumes:
   dev-mongodb:
+    driver: local
+  mongo-keyfile:
     driver: local
   redis_data:
     driver: local

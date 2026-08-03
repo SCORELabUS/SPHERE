@@ -337,6 +337,34 @@ describe('Users API integration', () => {
       expect(duplicateResponse.status).toBe(422);
       expect(duplicateResponse.body.error).toContain('username');
     });
+
+    it('Return 409 instead of exposing MongoDB details when an SSO email already exists.', async () => {
+      const suffix = randomSuffix();
+      const email = `google.${suffix}@example.com`;
+      const ssoUsername = `google_user_${suffix}`;
+      await UserMongoose.create({
+        firstName: 'Google',
+        lastName: 'User',
+        email,
+        username: ssoUsername,
+        role: 'USER',
+        identities: [{
+          provider: 'google',
+          providerId: `google-${suffix}`,
+          email,
+          emailVerified: true,
+        }],
+      });
+      usersToDelete.add(ssoUsername);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/users/register`)
+        .send(buildRegisterPayload({ email }));
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toContain('Sign in with its existing method');
+      expect(response.body.error).not.toContain('E11000');
+    });
   });
 
   describe('POST /api/users/login', () => {

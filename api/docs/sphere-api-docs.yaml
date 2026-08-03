@@ -226,6 +226,12 @@ paths:
                   token:
                     type: string
                     description: JWT authentication token
+        '409':
+          description: An account already exists with the supplied email. The user must authenticate with its existing method before adding a local password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -385,6 +391,218 @@ paths:
                   - $ref: '#/components/schemas/PaginatedUserOrganizations'
         '401':
           description: Authentication required — no valid token or API key provided
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/identities:
+    get:
+      summary: List current user's sign-in methods
+      description: Returns connected external identities and whether the account has a local password. Requires a user JWT; API keys cannot manage identities.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Sign-in methods retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationMethods'
+        '401':
+          description: A user session is required
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/identities/{provider}/initiate:
+    post:
+      summary: Start connecting an external identity
+      description: Creates a single-use connection transaction bound to the authenticated SPHERE user and returns the provider authorization URL.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, us]
+      responses:
+        '200':
+          description: Connection transaction created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+        '401':
+          description: A user session is required
+        '404':
+          description: Unknown identity provider
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/identities/{provider}:
+    delete:
+      summary: Disconnect an external identity
+      description: Disconnects a provider only when another sign-in method remains available.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, us]
+      responses:
+        '200':
+          description: Identity disconnected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationMethods'
+        '401':
+          description: A user session is required
+        '403':
+          description: The identity is the account's last sign-in method
+        '404':
+          description: Provider or connected identity not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/password:
+    post:
+      summary: Create a local password
+      description: Adds local username/email and password access to an account that currently has no password. Existing passwords cannot be replaced through this endpoint.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '200':
+          description: Local password created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationMethods'
+        '401':
+          description: A user session is required
+        '409':
+          description: The account already has a local password
+        '422':
+          description: Password validation failed
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/account-merge/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: Short-lived, single-use merge challenge created after signing in with an identity that belongs to another account.
+        schema:
+          type: string
+    get:
+      summary: Preview an account merge
+      description: Shows the data that will move from the secondary account into the currently authenticated canonical account. Requires a user JWT; API keys cannot merge accounts.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Merge preview retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountMergePreview'
+        '401':
+          description: A user session is required
+        '403':
+          description: Administrator accounts require a manual merge
+        '404':
+          description: The merge challenge expired, is invalid, or belongs to another user
+        '409':
+          description: The accounts cannot be merged automatically
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Confirm an account merge
+      description: Atomically transfers supported data and sign-in identities to the current account, disables the secondary account, revokes its API keys, and consumes the merge challenge. Requires MongoDB transaction support.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Accounts merged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [merged, targetUserId, sourceUserId]
+                properties:
+                  merged:
+                    type: boolean
+                    enum: [true]
+                  targetUserId:
+                    type: string
+                  sourceUserId:
+                    type: string
+        '401':
+          description: A user session is required
+        '403':
+          description: Administrator accounts require a manual merge
+        '404':
+          description: The merge challenge expired, is invalid, or belongs to another user
+        '409':
+          description: The accounts cannot be merged automatically
         default:
           description: Unexpected error
           content:
@@ -4308,6 +4526,85 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ConnectedIdentity:
+      type: object
+      required:
+        - provider
+        - emailVerified
+      properties:
+        provider:
+          type: string
+          enum: [google, us-sso]
+        email:
+          type: string
+          format: email
+          nullable: true
+        emailVerified:
+          type: boolean
+          description: Whether the identity provider verified ownership of the email address
+        linkedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AuthenticationMethods:
+      type: object
+      required:
+        - hasPassword
+        - identities
+      properties:
+        hasPassword:
+          type: boolean
+        identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectedIdentity'
+
+    AccountMergePreview:
+      type: object
+      required: [target, source, transfer, warnings]
+      properties:
+        target:
+          $ref: '#/components/schemas/AccountMergeUser'
+        source:
+          $ref: '#/components/schemas/AccountMergeUser'
+        transfer:
+          type: object
+          required: [identities, organizations, pricings, collections, permissions, notifications]
+          properties:
+            identities:
+              type: integer
+              minimum: 0
+            organizations:
+              type: integer
+              minimum: 0
+            pricings:
+              type: integer
+              minimum: 0
+            collections:
+              type: integer
+              minimum: 0
+            permissions:
+              type: integer
+              minimum: 0
+            notifications:
+              type: integer
+              minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+
+    AccountMergeUser:
+      type: object
+      required: [username, email]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
 
     UserSettings:
       type: object

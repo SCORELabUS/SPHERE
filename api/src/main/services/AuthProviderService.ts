@@ -1,8 +1,18 @@
 import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import OrganizationService from './OrganizationService';
-import { ProviderProfile } from './identity/IdentityProvider';
+import { ProviderName, ProviderProfile } from './identity/IdentityProvider';
 import { generateJwtToken, generateUserTokenDTO } from '../utils/users/helpers';
+
+export class IdentityOwnedByAnotherAccountError extends Error {
+  ownerId: string;
+
+  constructor(ownerId: string) {
+    super('CONFLICT: This identity is already connected to another SPHERE account');
+    this.name = 'IdentityOwnedByAnotherAccountError';
+    this.ownerId = ownerId;
+  }
+}
 
 /**
  * Provider-agnostic account logic for social logins: finds or creates the SPHERE user
@@ -37,7 +47,7 @@ class AuthProviderService {
       const existing = await this.userRepository.findByEmail(email);
       if (existing) {
         await this.userRepository.updateById(existing.id, {
-          $push: { identities: { provider, providerId, email } },
+          $push: { identities: { provider, providerId, email, emailVerified } },
         });
         user = await this.userRepository.findById(existing.id);
       }
@@ -50,7 +60,7 @@ class AuthProviderService {
 
       user = await this.userRepository.create({
         username,
-        identities: [{ provider, providerId, email }],
+        identities: [{ provider, providerId, email, emailVerified }],
         firstName,
         lastName,
         email,
@@ -74,6 +84,78 @@ class AuthProviderService {
 
     const token = generateJwtToken({ id: user!.id, username: user!.username, role: user!.role });
     return { token };
+  }
+
+  async getAuthenticationMethods(userId: string) {
+    const user = await this.userRepository.findByIdWithPassword(userId);
+    if (!user) throw new Error('NOT FOUND: User not found');
+
+    return {
+      hasPassword: Boolean(user.password),
+      identities: (user.identities ?? []).map(({ provider, email, emailVerified, linkedAt }) => ({
+        provider,
+        email,
+        emailVerified,
+        linkedAt,
+      })),
+    };
+  }
+
+  async linkIdentity(userId: string, profile: ProviderProfile) {
+    const identityOwner = await this.userRepository.findOne({
+      'identities.provider': profile.provider,
+      'identities.providerId': profile.providerId,
+    });
+
+    if (identityOwner && identityOwner.id !== userId) {
+      throw new IdentityOwnedByAnotherAccountError(identityOwner.id);
+    }
+
+    const user = await this.userRepository.findById(userId);
+    if (!user) throw new Error('NOT FOUND: User not found');
+
+    const existingProvider = user.identities?.find(identity => identity.provider === profile.provider);
+    if (existingProvider) {
+      if (existingProvider.providerId === profile.providerId) {
+        return this.getAuthenticationMethods(userId);
+      }
+      throw new Error('CONFLICT: Disconnect the current provider account before connecting a different one');
+    }
+
+    const updated = await this.userRepository.addIdentity(userId, {
+      provider: profile.provider,
+      providerId: profile.providerId,
+      email: profile.email.trim().toLowerCase(),
+      emailVerified: profile.emailVerified,
+      linkedAt: new Date(),
+    });
+
+    if (!updated) {
+      throw new Error('CONFLICT: The identity could not be connected because the account changed');
+    }
+    return this.getAuthenticationMethods(userId);
+  }
+
+  async unlinkIdentity(userId: string, provider: ProviderName) {
+    const user = await this.userRepository.findByIdWithPassword(userId);
+    if (!user) throw new Error('NOT FOUND: User not found');
+    if (!user.identities?.some(identity => identity.provider === provider)) {
+      throw new Error('NOT FOUND: This identity is not connected');
+    }
+    if (!user.password && user.identities.length <= 1) {
+      throw new Error('PERMISSION ERROR: Add another sign-in method before disconnecting this identity');
+    }
+
+    const updated = await this.userRepository.removeIdentity(userId, provider);
+    if (!updated) {
+      throw new Error('CONFLICT: The identity could not be disconnected because the account changed');
+    }
+    return this.getAuthenticationMethods(userId);
+  }
+
+  async setInitialPassword(userId: string, password: string) {
+    await this.userRepository.setInitialPassword(userId, password);
+    return this.getAuthenticationMethods(userId);
   }
 
   private async resolveFreeUsername(base: string): Promise<string> {

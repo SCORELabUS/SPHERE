@@ -143,4 +143,16 @@ const login = [
   check('password').exists().isString().withMessage('A password must be provided'),
 ];
 
-export { create, update, login };
+const setInitialPassword = [
+  check('password')
+    .exists()
+    .withMessage('A password must be provided')
+    .isString()
+    .withMessage('The password must be a string')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('The password must have between 8 and 128 characters')
+    .custom(value => !/\s/.test(value))
+    .withMessage('No spaces are allowed in the password'),
+];
+
+export { create, update, login, setInitialPassword };

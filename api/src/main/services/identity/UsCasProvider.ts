@@ -8,6 +8,13 @@ const CALLBACK_URL = () =>
   process.env.SSO_US_CALLBACK_URL ??
   `http://localhost:${process.env.SERVER_PORT ?? 8080}${process.env.BASE_URL_PATH ?? ''}/api/v1/users/auth/sso/us/callback`;
 
+const callbackUrlWithState = (state?: string) => {
+  if (!state) return CALLBACK_URL();
+  const url = new URL(CALLBACK_URL());
+  url.searchParams.set('state', state);
+  return url.toString();
+};
+
 /**
  * Identity provider for the Universidad de Sevilla SSO (CAS 2.0, adAS server).
  * adAS emits most attribute tags in lowercase (<cas:givenname>, <cas:mail>), so the
@@ -15,18 +22,18 @@ const CALLBACK_URL = () =>
  */
 export class UsCasProvider implements IdentityProvider {
   name = 'us-sso' as const;
-  usesState = false;
 
-  buildLoginUrl(_state: string): string {
-    // CAS does not use `state`: the ticket is single-use and validated server-side.
-    return `${CAS_BASE_URL()}/login?service=${encodeURIComponent(CALLBACK_URL())}`;
+  buildLoginUrl(state: string): string {
+    // CAS has no native OAuth2 state parameter. Including it in the exact service URL
+    // binds the callback to the one-time SPHERE login/link transaction instead.
+    return `${CAS_BASE_URL()}/login?service=${encodeURIComponent(callbackUrlWithState(state))}`;
   }
 
   async handleCallback(query: Record<string, string>): Promise<ProviderProfile | null> {
     const ticket = query.ticket;
     if (!ticket) return null;
 
-    const validateUrl = `${CAS_BASE_URL()}/serviceValidate?ticket=${encodeURIComponent(ticket)}&service=${encodeURIComponent(CALLBACK_URL())}`;
+    const validateUrl = `${CAS_BASE_URL()}/serviceValidate?ticket=${encodeURIComponent(ticket)}&service=${encodeURIComponent(callbackUrlWithState(query.state))}`;
     const response = await fetch(validateUrl);
     const xml = await response.text();
 
