@@ -25,8 +25,20 @@ export interface SphereError {
   error: string;
 }
 
+function getPricingYamlRequestUrl(url: string) {
+  const parsedUrl = new URL(url, window.location.origin);
+
+  // The API may expose local static files without the frontend/API dev ports.
+  // Keep same-host assets on the frontend origin so Vite can proxy `/static`.
+  if (parsedUrl.hostname === window.location.hostname && parsedUrl.origin !== window.location.origin) {
+    return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+  }
+
+  return parsedUrl.toString();
+}
+
 export async function fetchPricingYaml(url: string) {
-  const response = await fetch(url);
+  const response = await fetch(getPricingYamlRequestUrl(url));
   if (!response.ok) {
     throw new Error(`Response status: ${response.status}`);
   }
