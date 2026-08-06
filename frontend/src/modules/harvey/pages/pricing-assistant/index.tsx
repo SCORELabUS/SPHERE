@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChatTranscript from '../../components-new/chat-transcript';
 import ChatInput from '../../components-new/chat-input';
@@ -45,6 +45,7 @@ function PricingAssistantPage() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showMobileContext, setShowMobileContext] = useState(false);
   const [playground, setPlayground] = useState(false);
+  const sessionVersionRef = useRef(0);
 
   const urlTransformEvent: UrlTransformEvent = !playground
     ? sseUrlTransformEvent
@@ -153,9 +154,12 @@ function PricingAssistantPage() {
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    const sessionVersion = sessionVersionRef.current;
     const fileArray = Array.from(files);
     Promise.all(fileArray.map(file => file.text().then(content => ({ name: file.name, content }))))
       .then(results => {
+        if (sessionVersion !== sessionVersionRef.current) return;
+
         const inputs: ContextInputType[] = results
           .filter(result => Boolean(result.content.trim()))
           .map(result => ({
@@ -180,6 +184,8 @@ function PricingAssistantPage() {
         }
       })
       .catch(error => {
+        if (sessionVersion !== sessionVersionRef.current) return;
+
         console.error('Failed to read YAML file', error);
         setMessages(prev => [
           ...prev,
@@ -219,11 +225,20 @@ function PricingAssistantPage() {
   };
 
   const handleNewConversation = () => {
+    sessionVersionRef.current += 1;
     setMessages([]);
     setQuestion('');
     setContextItems([]);
     setIsLoading(false);
     setPreset(null);
+  };
+
+  const handlePlaygroundToggle = () => {
+    clearContext();
+    handleNewConversation();
+    setShowSearchModal(false);
+    setShowMobileContext(false);
+    setPlayground(previous => !previous);
   };
 
   const getUrlItems = () =>
@@ -238,6 +253,7 @@ function PricingAssistantPage() {
 
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
+    const sessionVersion = sessionVersionRef.current;
 
     const newlyDetected = diffPricingContextWithDetectedUrls(contextItems, detectedPricingUrls);
     let newUrls: PricingContextUrlWithId[] = [];
@@ -276,6 +292,7 @@ function PricingAssistantPage() {
         ...createContextBodyPayload([...getUrlItems(), ...newUrls], getUniqueYamlFiles()),
       };
       const data = await chatWithAgent(requestBody);
+      if (sessionVersion !== sessionVersionRef.current) return;
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -306,6 +323,8 @@ function PricingAssistantPage() {
         );
       }
     } catch (error) {
+      if (sessionVersion !== sessionVersionRef.current) return;
+
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -314,7 +333,9 @@ function PricingAssistantPage() {
       };
       setMessages(prev => [...prev, assistantMessage]);
     } finally {
-      setIsLoading(false);
+      if (sessionVersion === sessionVersionRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -345,7 +366,7 @@ function PricingAssistantPage() {
     <PlaygroundProvider playground={playground}>
       <PresetProvider presetContext={{ preset, setPreset }}>
         <PricingContext.Provider value={contextItems}>
-          <HarveyLayout isPlayground={playground} onTogglePlayground={() => setPlayground(p => !p)} onNewConversation={handleNewConversation}>
+          <HarveyLayout isPlayground={playground} onTogglePlayground={handlePlaygroundToggle} onNewConversation={handleNewConversation}>
             <div className="flex flex-1 overflow-hidden">
               {/* Chat area */}
               <div className="flex flex-1 flex-col overflow-hidden">
