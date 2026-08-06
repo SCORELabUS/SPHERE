@@ -73,6 +73,7 @@ function PricingList({ pricings, onContextAdd, onContextRemove }: PricingListPro
 
             {/* Versions */}
             <PricingVersions
+              organizationId={item.organization.id}
               owner={item.organization?.name ?? ''}
               slug={item.slug}
               collectionSlug={slug}
