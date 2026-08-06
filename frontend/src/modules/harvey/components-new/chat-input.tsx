@@ -17,10 +17,18 @@ export default function ChatInput({ question, isSubmitting, isDisabled, isSubmit
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    if (!textareaRef.current) return;
+    const el = textareaRef.current;
+    if (!question) {
+      el.style.height = 'auto';
+      el.style.overflowY = 'hidden';
+      return;
     }
+    el.style.height = 'auto';
+    const maxH = 160;
+    const newH = Math.min(el.scrollHeight, maxH);
+    el.style.height = `${newH}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
   }, [question]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -72,7 +80,7 @@ export default function ChatInput({ question, isSubmitting, isDisabled, isSubmit
           disabled={isDisabled}
           readOnly={isInputLocked}
           aria-readonly={isInputLocked}
-          className="w-full resize-none bg-transparent px-4 py-3 text-sm text-tp-ink placeholder-tp-muted focus:outline-none read-only:cursor-default disabled:opacity-50"
+          className="w-full resize-none box-border bg-transparent px-4 py-3 text-sm text-tp-ink placeholder-tp-muted focus:outline-none read-only:cursor-default disabled:opacity-50 overflow-hidden"
         />
 
         <div className="flex items-center justify-between border-t border-tp-hairline px-3 py-2">
