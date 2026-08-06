@@ -32,7 +32,6 @@ import PresetProvider from '../../components/PresetProvider';
 import {
   playgroundMockUrlTrnasformEvent,
   sseUrlTransformEvent,
-  UrlTransformEvent,
 } from '../../sse';
 import { UseCases } from '../../use-cases';
 
@@ -47,29 +46,26 @@ function PricingAssistantPage() {
   const [playground, setPlayground] = useState(false);
   const sessionVersionRef = useRef(0);
 
-  const urlTransformEvent: UrlTransformEvent = !playground
-    ? sseUrlTransformEvent
-    : playgroundMockUrlTrnasformEvent;
+  useEffect(() => {
+    const urlTransformEvent = playground
+      ? playgroundMockUrlTrnasformEvent
+      : sseUrlTransformEvent;
 
-  const handleUrlNotification = (notification: NotificationUrlEvent) =>
-    setContextItems(previous =>
-      previous.map(item =>
-        item.kind === 'url' && item.id === notification.id
-          ? { ...item, transform: 'done', value: notification.yaml_content }
-          : item
+    return urlTransformEvent.connect((notification: NotificationUrlEvent) =>
+      setContextItems(previous =>
+        previous.map(item =>
+          item.kind === 'url' && item.id === notification.id
+            ? { ...item, transform: 'done', value: notification.yaml_content }
+            : item
+        )
       )
     );
-
-  useEffect(() => {
-    return urlTransformEvent.connect(handleUrlNotification);
   }, [playground]);
 
   const detectedPricingUrls = useMemo(() => extractPricingUrls(question), [question]);
 
-  const isSubmitDisabled = useMemo(() => {
-    const hasQuestion = Boolean(question.trim());
-    return isLoading || !hasQuestion || (playground && messages.length > 0);
-  }, [question, isLoading, messages]);
+  const isSubmitDisabled =
+    isLoading || !question.trim() || (playground && messages.length > 0);
 
   const createPricingContextItems = (contextInputItems: ContextInputType[]): PricingContextItem[] =>
     contextInputItems
@@ -342,24 +338,33 @@ function PricingAssistantPage() {
   const handlePlaygroundSubmit = (event: FormEvent) => {
     event.preventDefault();
 
-    if (preset) {
-      const message: ChatMessage = {
+    if (isSubmitDisabled || !preset) return;
+
+    const createdAt = new Date().toISOString();
+    const userMessage: ChatMessage = {
+      id: `${preset.id}-user`,
+      role: 'user',
+      content: preset.question,
+      createdAt,
+    };
+    const assistantMessage: ChatMessage = {
         id: preset.id,
         role: 'assistant',
         content: preset.response?.answer ?? '',
-        createdAt: new Date().toLocaleString(),
+        createdAt,
         metadata: {
           plan: preset.response?.plan ?? {},
           result: preset.response?.result ?? {},
         },
-      };
-      if (preset.id === UseCases.AMINT) {
-        setContextItems(items =>
-          items.map(item => (item.kind === 'url' ? { ...item, transform: 'done' } : item))
-        );
-      }
-      setMessages(messages => [...messages, message]);
+    };
+
+    if (preset.id === UseCases.AMINT) {
+      setContextItems(items =>
+        items.map(item => (item.kind === 'url' ? { ...item, transform: 'done' } : item))
+      );
     }
+    setMessages([userMessage, assistantMessage]);
+    setQuestion('');
   };
 
   return (
@@ -387,6 +392,8 @@ function PricingAssistantPage() {
                   question={question}
                   isSubmitting={isLoading}
                   isDisabled={playground && messages.length > 0}
+                  isSubmitDisabled={isSubmitDisabled}
+                  isInputLocked={playground}
                   onQuestionChange={setQuestion}
                   onSubmit={!playground ? handleSubmit : handlePlaygroundSubmit}
                   onFileDrop={handleFilesSelected}
