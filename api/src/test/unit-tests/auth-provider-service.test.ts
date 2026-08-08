@@ -80,7 +80,7 @@ describe('AuthProviderService identity management', () => {
     repository.findOne.mockResolvedValue(user({ id: 'user-2' }));
 
     await expect(service.linkIdentity('user-1', googleProfile)).rejects.toThrow(
-      'already connected to another SPHERE account'
+      'already belongs to another SPHERE account'
     );
     expect(repository.addIdentity).not.toHaveBeenCalled();
   });

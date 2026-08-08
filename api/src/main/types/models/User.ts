@@ -47,9 +47,6 @@ export interface LeanUser {
   token?: string;
   tokenExpiration?: Date;
   apiKeys: ApiKey[];
-  mergedInto?: string;
-  mergedAt?: Date;
-  disabledAt?: Date;
 }
 
 export interface UserIdentity {

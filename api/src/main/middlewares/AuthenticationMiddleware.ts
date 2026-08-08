@@ -42,10 +42,6 @@ async function authenticateApiKey(req: Request, apiKey: string): Promise<void> {
     throw new Error('UNAUTHORIZED: Invalid API Key. Maybe the key is invalid, revoked, or expired');
   }
 
-  if (user.disabledAt) {
-    throw new Error('UNAUTHORIZED: This account has been merged or disabled');
-  }
-
   if (!user.apiKey || user.apiKey.revoked) {
     throw new Error('UNAUTHORIZED: API Key revoked');
   }
@@ -71,10 +67,6 @@ async function authenticateToken(req: Request, token: string): Promise<void> {
   const user = await userRepository.findById(decoded.id);
   if (!user) {
     throw new Error('UNAUTHORIZED: User not found');
-  }
-
-  if (user.disabledAt) {
-    throw new Error('UNAUTHORIZED: This account has been merged or disabled');
   }
 
   (req as any).user = user;

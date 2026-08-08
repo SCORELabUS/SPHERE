@@ -5,12 +5,9 @@ import { ProviderName, ProviderProfile } from './identity/IdentityProvider';
 import { generateJwtToken, generateUserTokenDTO } from '../utils/users/helpers';
 
 export class IdentityOwnedByAnotherAccountError extends Error {
-  ownerId: string;
-
-  constructor(ownerId: string) {
-    super('CONFLICT: This identity is already connected to another SPHERE account');
+  constructor() {
+    super('CONFLICT: This sign-in identity already belongs to another SPHERE account. Delete that account before connecting it here.');
     this.name = 'IdentityOwnedByAnotherAccountError';
-    this.ownerId = ownerId;
   }
 }
 
@@ -108,7 +105,7 @@ class AuthProviderService {
     });
 
     if (identityOwner && identityOwner.id !== userId) {
-      throw new IdentityOwnedByAnotherAccountError(identityOwner.id);
+      throw new IdentityOwnedByAnotherAccountError();
     }
 
     const user = await this.userRepository.findById(userId);

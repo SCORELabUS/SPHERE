@@ -4,9 +4,6 @@ import AuthProviderService, { IdentityOwnedByAnotherAccountError } from '../serv
 import CacheService from '../services/CacheService';
 import { getProvider } from '../services/identity/providerRegistry';
 import {
-  ACCOUNT_MERGE_CACHE_PREFIX,
-  ACCOUNT_MERGE_TTL_SECONDS,
-  AccountMergeChallenge,
   SSO_FLOW_CACHE_PREFIX,
   SSO_FLOW_TTL_SECONDS,
   SsoFlow,
@@ -93,22 +90,7 @@ class SSOController {
     } catch (err: any) {
       console.error('[SSO] callback error:', err);
       if (flow?.action === 'link') {
-        if (err instanceof IdentityOwnedByAnotherAccountError) {
-          const mergeCode = crypto.randomBytes(24).toString('hex');
-          await this.cacheService.set(
-            `${ACCOUNT_MERGE_CACHE_PREFIX}${mergeCode}`,
-            {
-              targetUserId: flow.userId,
-              sourceUserId: err.ownerId,
-              provider: flow.provider,
-            } satisfies AccountMergeChallenge,
-            ACCOUNT_MERGE_TTL_SECONDS
-          );
-          return res.redirect(
-            `${FRONTEND_URL()}/me/settings?section=integrations&merge_code=${mergeCode}`
-          );
-        }
-        const errorCode = String(err?.message).toLowerCase().includes('already connected')
+        const errorCode = err instanceof IdentityOwnedByAnotherAccountError
           ? 'identity_in_use'
           : String(err?.message).toLowerCase().includes('disconnect the current')
             ? 'provider_already_connected'

@@ -152,7 +152,7 @@ class UserService {
       user = await this.userRepository.findByEmail(loginField, "+password");
     }
 
-    if (!user || user.disabledAt) {
+    if (!user) {
       throw new Error('INVALID DATA: Invalid credentials');
     }
 

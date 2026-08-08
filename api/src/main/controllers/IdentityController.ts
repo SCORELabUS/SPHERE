@@ -2,12 +2,9 @@ import crypto from 'crypto';
 import container from '../config/container';
 import AuthProviderService from '../services/AuthProviderService';
 import CacheService from '../services/CacheService';
-import AccountMergeService from '../services/AccountMergeService';
 import { getProvider } from '../services/identity/providerRegistry';
 import { ProviderName } from '../services/identity/IdentityProvider';
 import {
-  ACCOUNT_MERGE_CACHE_PREFIX,
-  AccountMergeChallenge,
   SSO_FLOW_CACHE_PREFIX,
   SSO_FLOW_TTL_SECONDS,
   SsoFlow,
@@ -17,18 +14,14 @@ import { handleError } from '../utils/users/helpers';
 class IdentityController {
   private authProviderService: AuthProviderService;
   private cacheService: CacheService;
-  private accountMergeService: AccountMergeService;
 
   constructor() {
     this.authProviderService = container.resolve('authProviderService');
     this.cacheService = container.resolve('cacheService');
-    this.accountMergeService = container.resolve('accountMergeService');
     this.index = this.index.bind(this);
     this.initiateLink = this.initiateLink.bind(this);
     this.unlink = this.unlink.bind(this);
     this.setPassword = this.setPassword.bind(this);
-    this.previewMerge = this.previewMerge.bind(this);
-    this.confirmMerge = this.confirmMerge.bind(this);
   }
 
   private requireUserSession(req: any) {
@@ -93,37 +86,6 @@ class IdentityController {
     }
   }
 
-  private async getMergeChallenge(req: any): Promise<AccountMergeChallenge> {
-    const challenge = await this.cacheService.get(`${ACCOUNT_MERGE_CACHE_PREFIX}${req.params.code}`);
-    if (!challenge || challenge.targetUserId !== req.user.id) {
-      throw new Error('NOT FOUND: Account merge request expired or is invalid');
-    }
-    return challenge;
-  }
-
-  async previewMerge(req: any, res: any) {
-    try {
-      this.requireUserSession(req);
-      const challenge = await this.getMergeChallenge(req);
-      res.json(await this.accountMergeService.preview(challenge.targetUserId, challenge.sourceUserId));
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).json({ error: message });
-    }
-  }
-
-  async confirmMerge(req: any, res: any) {
-    try {
-      this.requireUserSession(req);
-      const challenge = await this.getMergeChallenge(req);
-      const result = await this.accountMergeService.merge(challenge.targetUserId, challenge.sourceUserId);
-      await this.cacheService.del(`${ACCOUNT_MERGE_CACHE_PREFIX}${req.params.code}`);
-      res.json(result);
-    } catch (err: any) {
-      const { status, message } = handleError(err);
-      res.status(status).json({ error: message });
-    }
-  }
 }
 
 export default IdentityController;

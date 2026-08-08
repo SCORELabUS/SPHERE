@@ -8,13 +8,11 @@ import {
   FiLock,
   FiShield,
   FiTrash2,
-  FiUsers,
 } from 'react-icons/fi';
 import { useSearchParams } from 'react-router-dom';
 import customConfirm from '../../core/utils/custom-confirm';
 import {
   AuthenticationMethods,
-  AccountMergePreview,
   ConnectedIdentity,
   useUserSettingsApi,
 } from '../api/userSettingsApi';
@@ -35,7 +33,7 @@ const PROVIDERS = [
 ];
 
 const LINK_ERRORS: Record<string, string> = {
-  identity_in_use: 'That identity already belongs to another SPHERE account.',
+  identity_in_use: 'That identity already belongs to another SPHERE account. Delete that account first, then connect the identity here.',
   provider_already_connected: 'Disconnect the current account for this provider before connecting another one.',
   invalid_state: 'The connection request expired. Please try again.',
   server_error: 'SPHERE could not connect the identity. Please try again.',
@@ -50,9 +48,6 @@ export default function IntegrationsSection() {
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mergePreview, setMergePreview] = useState<AccountMergePreview | null>(null);
-  const [mergeCode, setMergeCode] = useState<string | null>(null);
-  const [merging, setMerging] = useState(false);
 
   useEffect(() => {
     apiRef.current = api;
@@ -89,42 +84,6 @@ export default function IntegrationsSection() {
     next.delete('identity_error');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
-
-  useEffect(() => {
-    const code = searchParams.get('merge_code');
-    if (!code) return;
-    setMergeCode(code);
-    apiRef.current.previewAccountMerge(code)
-      .then(preview => {
-        setMergePreview(preview);
-        setError(null);
-      })
-      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load account merge preview'));
-  }, [searchParams]);
-
-  const clearMergeRequest = () => {
-    setMergeCode(null);
-    setMergePreview(null);
-    const next = new URLSearchParams(searchParams);
-    next.delete('merge_code');
-    setSearchParams(next, { replace: true });
-  };
-
-  const confirmMerge = async () => {
-    if (!mergeCode) return;
-    setMerging(true);
-    setError(null);
-    try {
-      await api.confirmAccountMerge(mergeCode);
-      clearMergeRequest();
-      await loadMethods();
-      setNotice('Accounts merged. All connected identities now open this SPHERE account.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to merge accounts');
-    } finally {
-      setMerging(false);
-    }
-  };
 
   const connect = async (provider: 'google' | 'us') => {
     setBusyProvider(provider);
@@ -187,15 +146,6 @@ export default function IntegrationsSection() {
         </motion.div>
       )}
 
-      {mergePreview && (
-        <MergePreviewCard
-          preview={mergePreview}
-          merging={merging}
-          onConfirm={confirmMerge}
-          onCancel={clearMergeRequest}
-        />
-      )}
-
       <div className="overflow-hidden rounded-[12px] border border-tp-hairline bg-tp-canvas">
         <div className="border-b border-tp-hairline px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -247,88 +197,6 @@ export default function IntegrationsSection() {
         />
       )}
     </div>
-  );
-}
-
-function MergePreviewCard({
-  preview,
-  merging,
-  onConfirm,
-  onCancel,
-}: {
-  preview: AccountMergePreview;
-  merging: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const transferItems = [
-    ['Identities', preview.transfer.identities],
-    ['Organizations', preview.transfer.organizations],
-    ['Pricings', preview.transfer.pricings],
-    ['Collections', preview.transfer.collections],
-    ['Permissions', preview.transfer.permissions],
-    ['Notifications', preview.transfer.notifications],
-  ];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-[12px] border border-tp-primary/30 bg-tp-canvas shadow-elevation-4"
-    >
-      <div className="flex items-start gap-4 border-b border-tp-hairline bg-tp-primary/5 px-5 py-5 sm:px-6">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-tp-primary text-tp-on-primary">
-          <FiUsers className="h-5 w-5" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-tp-ink">Merge these SPHERE accounts?</h3>
-          <p className="mt-1 text-xs leading-5 text-tp-steel">
-            <strong className="text-tp-ink">@{preview.source.username}</strong> will be merged into{' '}
-            <strong className="text-tp-ink">@{preview.target.username}</strong>. The current account remains your primary account.
-          </p>
-        </div>
-      </div>
-
-      <div className="px-5 py-5 sm:px-6">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {transferItems.map(([label, value]) => (
-            <div key={label} className="rounded-[8px] border border-tp-hairline bg-tp-surface px-3 py-2.5">
-              <p className="text-lg font-medium text-tp-ink">{value}</p>
-              <p className="text-[11px] text-tp-steel">{label}</p>
-            </div>
-          ))}
-        </div>
-
-        <ul className="mt-4 space-y-1.5 text-xs leading-5 text-tp-steel">
-          {preview.warnings.map(warning => (
-            <li key={warning} className="flex gap-2">
-              <FiShield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tp-primary" />
-              {warning}
-            </li>
-          ))}
-        </ul>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={merging}
-            className="flex cursor-pointer items-center gap-2 rounded-[8px] bg-tp-primary px-4 py-2.5 text-sm font-medium text-tp-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {merging ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUsers className="h-4 w-4" />}
-            Merge accounts
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={merging}
-            className="cursor-pointer rounded-[8px] border border-tp-hairline-strong px-4 py-2.5 text-sm font-medium text-tp-steel hover:bg-tp-surface disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Keep separate
-          </button>
-        </div>
-      </div>
-    </motion.div>
   );
 }
 

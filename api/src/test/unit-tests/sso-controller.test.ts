@@ -104,11 +104,11 @@ describe('SSOController flow transactions', () => {
     expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('sso_error=invalid_state'));
   });
 
-  it('creates a merge challenge when the proven identity belongs to another account', async () => {
+  it('rejects linking an identity that belongs to another account', async () => {
     const res = response();
     mocks.cache.get.mockResolvedValue({ action: 'link', userId: 'target-user', provider: 'google' });
     mocks.authProviderService.linkIdentity.mockRejectedValue(
-      new IdentityOwnedByAnotherAccountError('source-user')
+      new IdentityOwnedByAnotherAccountError()
     );
 
     await controller.callback(
@@ -116,17 +116,9 @@ describe('SSOController flow transactions', () => {
       res
     );
 
-    expect(mocks.cache.set).toHaveBeenCalledWith(
-      expect.stringMatching(/^account-merge:/),
-      {
-        targetUserId: 'target-user',
-        sourceUserId: 'source-user',
-        provider: 'google',
-      },
-      600
-    );
+    expect(mocks.cache.set).not.toHaveBeenCalled();
     expect(res.redirect).toHaveBeenCalledWith(
-      expect.stringMatching(/\/me\/settings\?section=integrations&merge_code=/)
+      expect.stringContaining('/me/settings?section=integrations&identity_error=identity_in_use')
     );
   });
 });

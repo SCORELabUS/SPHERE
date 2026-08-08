@@ -536,80 +536,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /users/me/account-merge/{code}:
-    parameters:
-      - name: code
-        in: path
-        required: true
-        description: Short-lived, single-use merge challenge created after signing in with an identity that belongs to another account.
-        schema:
-          type: string
-    get:
-      summary: Preview an account merge
-      description: Shows the data that will move from the secondary account into the currently authenticated canonical account. Requires a user JWT; API keys cannot merge accounts.
-      tags:
-        - Users
-      security:
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: Merge preview retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountMergePreview'
-        '401':
-          description: A user session is required
-        '403':
-          description: Administrator accounts require a manual merge
-        '404':
-          description: The merge challenge expired, is invalid, or belongs to another user
-        '409':
-          description: The accounts cannot be merged automatically
-        default:
-          description: Unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    post:
-      summary: Confirm an account merge
-      description: Atomically transfers supported data and sign-in identities to the current account, disables the secondary account, revokes its API keys, and consumes the merge challenge. Requires MongoDB transaction support.
-      tags:
-        - Users
-      security:
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: Accounts merged successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [merged, targetUserId, sourceUserId]
-                properties:
-                  merged:
-                    type: boolean
-                    enum: [true]
-                  targetUserId:
-                    type: string
-                  sourceUserId:
-                    type: string
-        '401':
-          description: A user session is required
-        '403':
-          description: Administrator accounts require a manual merge
-        '404':
-          description: The merge challenge expired, is invalid, or belongs to another user
-        '409':
-          description: The accounts cannot be merged automatically
-        default:
-          description: Unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /users/me/settings:
     get:
       summary: Get current user's settings
@@ -4560,51 +4486,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConnectedIdentity'
-
-    AccountMergePreview:
-      type: object
-      required: [target, source, transfer, warnings]
-      properties:
-        target:
-          $ref: '#/components/schemas/AccountMergeUser'
-        source:
-          $ref: '#/components/schemas/AccountMergeUser'
-        transfer:
-          type: object
-          required: [identities, organizations, pricings, collections, permissions, notifications]
-          properties:
-            identities:
-              type: integer
-              minimum: 0
-            organizations:
-              type: integer
-              minimum: 0
-            pricings:
-              type: integer
-              minimum: 0
-            collections:
-              type: integer
-              minimum: 0
-            permissions:
-              type: integer
-              minimum: 0
-            notifications:
-              type: integer
-              minimum: 0
-        warnings:
-          type: array
-          items:
-            type: string
-
-    AccountMergeUser:
-      type: object
-      required: [username, email]
-      properties:
-        username:
-          type: string
-        email:
-          type: string
-          format: email
 
     UserSettings:
       type: object

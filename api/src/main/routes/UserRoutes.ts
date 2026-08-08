@@ -81,10 +81,6 @@ const loadFileRoutes = function (app: express.Application) {
       identityController.setPassword
     );
 
-  app
-    .route(baseUrl + '/users/me/account-merge/:code')
-    .get(identityController.previewMerge)
-    .post(identityController.confirmMerge);
 
   app
     .route(baseUrl + '/users/me/settings/avatar')

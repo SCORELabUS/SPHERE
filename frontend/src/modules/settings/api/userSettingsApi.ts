@@ -45,20 +45,6 @@ export interface AuthenticationMethods {
   identities: ConnectedIdentity[];
 }
 
-export interface AccountMergePreview {
-  target: { username: string; email: string };
-  source: { username: string; email: string };
-  transfer: {
-    identities: number;
-    organizations: number;
-    pricings: number;
-    collections: number;
-    permissions: number;
-    notifications: number;
-  };
-  warnings: string[];
-}
-
 export function useUserSettingsApi() {
   const { fetchWithInterceptor } = useAuth();
 
@@ -220,25 +206,6 @@ export function useUserSettingsApi() {
     return res.json();
   }
 
-  async function previewAccountMerge(code: string): Promise<AccountMergePreview> {
-    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/account-merge/${encodeURIComponent(code)}`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Failed to load account merge preview');
-    }
-    return res.json();
-  }
-
-  async function confirmAccountMerge(code: string): Promise<void> {
-    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/account-merge/${encodeURIComponent(code)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Failed to merge accounts');
-    }
-  }
-
   return {
     getSettings,
     updateAccount,
@@ -252,7 +219,5 @@ export function useUserSettingsApi() {
     initiateIdentityLink,
     unlinkIdentity,
     setInitialPassword,
-    previewAccountMerge,
-    confirmAccountMerge,
   };
 }
