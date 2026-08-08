@@ -143,4 +143,25 @@ const login = [
   check('password').exists().isString().withMessage('A password must be provided'),
 ];
 
-export { create, update, login };
+const verifyEmail = [
+  check('token')
+    .exists()
+    .withMessage('A verification token must be provided')
+    .isString()
+    .withMessage('The verification token must be a string')
+    .isLength({ min: 1, max: 256 })
+    .withMessage('The verification token is invalid'),
+];
+
+const resendEmailVerification = [
+  check('loginField')
+    .exists()
+    .withMessage('An email address or username must be provided')
+    .isString()
+    .withMessage('The login field must be a string')
+    .isLength({ min: 3, max: 255 })
+    .withMessage('The login field is invalid')
+    .trim(),
+];
+
+export { create, update, login, verifyEmail, resendEmailVerification };

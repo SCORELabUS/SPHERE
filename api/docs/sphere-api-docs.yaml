@@ -201,7 +201,8 @@ paths:
     post:
       summary: Register a new user
       description: |
-        Registers a new user account with the provided username, email and password.
+        Registers a new local user account and sends a single-use email verification link.
+        The account cannot sign in until the email address is verified.
 
         **Authentication**: Public
 
@@ -215,7 +216,7 @@ paths:
               $ref: '#/components/requestBodies/UserRegister'
       responses:
         '201':
-          description: User registered successfully
+          description: User registered; email verification is required
           content:
             application/json:
               schema:
@@ -223,9 +224,14 @@ paths:
                 properties:
                   user:
                     $ref: '#/components/schemas/User'
-                  token:
+                  emailVerificationRequired:
+                    type: boolean
+                    enum: [true]
+                  emailSent:
+                    type: boolean
+                    description: Whether the first delivery attempt was accepted by the email provider
+                  message:
                     type: string
-                    description: JWT authentication token
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -234,6 +240,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /users/email-verification/verify:
+    post:
+      summary: Verify a registered email address
+      description: Consumes a single-use verification token. Tokens expire after 24 hours.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  maxLength: 256
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '422':
+          description: The token is invalid, expired, or has already been used
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/email-verification/resend:
+    post:
+      summary: Request another verification email
+      description: Always returns the same response to prevent account enumeration. Delivery is limited to one request per account per minute.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginField]
+              properties:
+                loginField:
+                  type: string
+                  description: Email address or username
+      responses:
+        '202':
+          description: The request was accepted whether or not a matching pending account exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 
   /users:
     get:
@@ -4282,6 +4354,13 @@ components:
         email:
           type: string
           format: email
+        emailVerified:
+          type: boolean
+          description: Whether ownership of the account email address has been verified
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
         phone:
           type: string
           nullable: true

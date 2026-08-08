@@ -218,6 +218,48 @@ class UserRepository extends RepositoryBase {
     return await this.update(username, tokenDTO);
   }
 
+  async setEmailVerificationToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+    sentAt: Date
+  ): Promise<LeanUser | null> {
+    const user = await UserMongoose.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          emailVerificationTokenHash: tokenHash,
+          emailVerificationExpiresAt: expiresAt,
+          emailVerificationSentAt: sentAt,
+        },
+      },
+      { new: true }
+    ).exec();
+
+    return user ? user.toObject() : null;
+  }
+
+  async verifyEmailByTokenHash(tokenHash: string, now: Date): Promise<LeanUser | null> {
+    const user = await UserMongoose.findOneAndUpdate(
+      {
+        emailVerified: false,
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationExpiresAt: { $gt: now },
+      },
+      {
+        $set: { emailVerified: true, emailVerifiedAt: now },
+        $unset: {
+          emailVerificationTokenHash: 1,
+          emailVerificationExpiresAt: 1,
+          emailVerificationSentAt: 1,
+        },
+      },
+      { new: true }
+    ).exec();
+
+    return user ? user.toObject() : null;
+  }
+
   async destroy(username: string): Promise<boolean> {
     const result = await UserMongoose.deleteOne({ username }).exec();
     return result?.deletedCount === 1;

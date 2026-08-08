@@ -111,8 +111,17 @@ const userSchema = new Schema(
       type: String,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address'],
     },
+    // Legacy and SSO accounts default to verified. Public registration explicitly
+    // writes false, so rolling this feature out does not lock existing users out.
+    emailVerified: { type: Boolean, default: true },
+    emailVerifiedAt: { type: Date },
+    emailVerificationTokenHash: { type: String, select: false },
+    emailVerificationExpiresAt: { type: Date, select: false },
+    emailVerificationSentAt: { type: Date, select: false },
     settings: {
       type: UserSettingsSchema,
       default: () => ({}),
@@ -180,6 +189,11 @@ export interface UserDocument extends Document {
   firstName: string;
   lastName: string;
   email: string;
+  emailVerified: boolean;
+  emailVerifiedAt?: Date;
+  emailVerificationTokenHash?: string;
+  emailVerificationExpiresAt?: Date;
+  emailVerificationSentAt?: Date;
   identities: {
     provider: 'us-sso' | 'google';
     providerId: string;

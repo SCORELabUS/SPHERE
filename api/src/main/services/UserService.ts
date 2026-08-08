@@ -7,16 +7,19 @@ import { processFileUris } from './FileService';
 import bcrypt from 'bcryptjs';
 import { generateUserTokenDTO, generateJwtToken, hashPassword } from '../utils/users/helpers';
 import OrganizationService from './OrganizationService';
+import EmailVerificationService from './EmailVerificationService';
 
 class UserService {
   private userRepository: UserRepository;
   private organizationService: OrganizationService;
   private organizationMembershipRepository: OrganizationMembershipRepository;
+  private emailVerificationService: EmailVerificationService;
 
   constructor() {
     this.userRepository = container.resolve('userRepository');
     this.organizationService = container.resolve('organizationService');
     this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
+    this.emailVerificationService = container.resolve('emailVerificationService');
   }
 
   async index(queryParams: any, userRole?: string): Promise<LeanUser[]> {
@@ -81,11 +84,29 @@ class UserService {
       );
     }
 
+    newUser.email = newUser.email.trim().toLowerCase();
+    const existingEmail = await this.userRepository.findByEmail(newUser.email);
+    if (existingEmail) {
+      throw new Error('INVALID DATA: There is already a user with that email address');
+    }
+
     if (!newUser.settings) newUser.settings = {};
     newUser.settings.avatar = newUser.settings.avatar || '';
+    newUser.emailVerified = false;
     newUser = { ...newUser, ...generateUserTokenDTO() };
 
-    const registeredUser = await this.userRepository.create(newUser);
+    let registeredUser: LeanUser;
+    try {
+      registeredUser = await this.userRepository.create(newUser);
+    } catch (error: any) {
+      if (error?.code === 11000 && error?.keyPattern?.email) {
+        throw new Error('INVALID DATA: There is already a user with that email address');
+      }
+      if (error?.code === 11000 && error?.keyPattern?.username) {
+        throw new Error('INVALID DATA: There is already a user with that username');
+      }
+      throw error;
+    }
 
     // Business rule: every user must have a personal organization they cannot delete.
     // Create it immediately after user creation.
@@ -94,9 +115,18 @@ class UserService {
       username: registeredUser.username,
     });
 
-    const token = generateJwtToken({ id: registeredUser.id, username: registeredUser.username, role: registeredUser.role });
+    const emailSent = await this.emailVerificationService.sendForUser(registeredUser);
+    const {
+      password: _password,
+      emailVerificationTokenHash: _tokenHash,
+      emailVerificationExpiresAt: _tokenExpiresAt,
+      emailVerificationSentAt: _tokenSentAt,
+      token: _legacyToken,
+      tokenExpiration: _legacyTokenExpiration,
+      ...safeUser
+    } = registeredUser;
 
-    return { registeredUser, token };
+    return { registeredUser: safeUser, emailVerificationRequired: true, emailSent };
   }
 
   async updateToken(targetUsername: string, reqUser: LeanUser) {
@@ -138,6 +168,10 @@ class UserService {
 
     if (!passwordValid) {
       throw new Error('INVALID DATA: Invalid credentials');
+    }
+
+    if (user.emailVerified === false) {
+      throw new Error('PERMISSION ERROR: Verify your email address before signing in');
     }
 
     // Generate JWT token
