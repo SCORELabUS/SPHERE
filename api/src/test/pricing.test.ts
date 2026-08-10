@@ -2280,6 +2280,70 @@ describe('Pricings API integration', () => {
   });
 
   describe('Pricing version name consistency', () => {
+    it('Return 409 with a clear message when publishing an existing pricing version.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const serviceName = `DuplicateVersion_${randomSuffix()}`;
+      const version = '1.0.0';
+
+      await createPricingForOrganization({
+        organizationId,
+        serviceName,
+        version,
+        isPrivate: false,
+      });
+
+      const duplicateFixture = await createValidPricingYaml(serviceName, version);
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('name', serviceName)
+        .field('private', 'false')
+        .attach('yaml', duplicateFixture.filePath);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe(
+        `CONFLICT: ${serviceName} version ${version} already exists. Change the version in the YAML before publishing.`
+      );
+
+      const storedVersions = await PricingMongoose.countDocuments({
+        name: serviceName,
+        version,
+        _organizationId: organizationId,
+      });
+      expect(storedVersions).toBe(1);
+    });
+
+    it('publishes a different YAML version under the existing pricing.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const serviceName = `AdditionalVersion_${randomSuffix()}`;
+
+      await createPricingForOrganization({
+        organizationId,
+        serviceName,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+
+      const nextVersionFixture = await createValidPricingYaml(serviceName, '1.0.1');
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('name', serviceName)
+        .field('private', 'false')
+        .attach('yaml', nextVersionFixture.filePath);
+
+      expect(response.status).toBe(200);
+      expect(response.body.version).toBe('1.0.1');
+      pricingsToDelete.add(response.body.id);
+
+      const storedVersions = await PricingMongoose.find({
+        name: serviceName,
+        _organizationId: organizationId,
+      });
+      expect(storedVersions).toHaveLength(2);
+      expect(storedVersions.map(pricing => pricing.version).sort()).toEqual(['1.0.0', '1.0.1']);
+    });
+
     it('should preserve the original pricing name when adding a new version', async () => {
       const { organizationId } = await createAndLoginUser('USER');
       const serviceName = `TestPricing_${randomSuffix()}`;
