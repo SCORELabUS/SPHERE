@@ -153,6 +153,11 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   // Org creation/listing: no org-context required.
   {
+    path: '/orgs/public',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  {
     path: '/orgs',
     methods: ['GET', 'POST'],
     allowedUserRoles: ['ADMIN', 'USER'],

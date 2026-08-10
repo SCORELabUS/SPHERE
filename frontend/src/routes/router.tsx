@@ -43,6 +43,7 @@ import OrganizationDetailPage from '../modules/organization/pages/organization-d
 import OrganizationJoinPage from '../modules/organization/pages/organization-join';
 import SettingsPage from '../modules/settings/pages/SettingsPage';
 import ApiKeysPage from '../modules/api-keys/pages/ApiKeysPage';
+import PublicOrganizationsPage from '../modules/organization/pages/public-organizations-list';
 
 function RootPage() {
   const { authUser } = useAuth();
@@ -92,6 +93,10 @@ export default function Router() {
       children: [
         { element: <AuthenticationPage />, path: '/authentication' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
+        {
+          path: '/organizations',
+          element: <PublicOrganizationsPage />,
+        },
         {
           path: '/pricings',
           element: (
