@@ -243,7 +243,7 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
               disabled={!canPublish}
               className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-tp-primary px-4 py-2 text-sm font-semibold text-tp-on-primary transition-all hover:bg-tp-primary-hover disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {isPublishing ? 'Publishing…' : 'Publish pricing'}
+              {isPublishing ? 'Publishing…' : 'Publish'}
               {!isPublishing ? <FiArrowUpRight className="h-4 w-4" /> : null}
             </button>
           </div>
