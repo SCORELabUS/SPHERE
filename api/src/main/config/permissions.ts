@@ -42,6 +42,16 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     isPublic: true,
   },
   {
+    path: '/users/email-verification/verify',
+    methods: ['POST'],
+    isPublic: true,
+  },
+  {
+    path: '/users/email-verification/resend',
+    methods: ['POST'],
+    isPublic: true,
+  },
+  {
     path: '/users/*/refresh-token',
     methods: ['PUT'],
     allowedUserRoles: ['ADMIN'],
@@ -152,6 +162,11 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
   // Org creation/listing: no org-context required.
+  {
+    path: '/orgs/public',
+    methods: ['GET'],
+    isPublic: true,
+  },
   {
     path: '/orgs',
     methods: ['GET', 'POST'],

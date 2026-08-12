@@ -23,14 +23,14 @@ export const headerRoutes: HeaderRoute[] = [
     ],
   },
   {
-    name: 'Organizations',
-    disabled: false,
-    to: '/me/orgs',
-  },
-  {
-    name: 'Pricings',
+    name: 'Explore',
     disabled: false,
     children: [
+      {
+        name: 'Organizations',
+        disabled: false,
+        to: '/organizations',
+      },
       {
         name: 'Pricings',
         disabled: false,

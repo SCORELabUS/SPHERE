@@ -31,6 +31,20 @@ export interface UserSettings {
   };
 }
 
+export type IdentityProvider = 'google' | 'us-sso';
+
+export interface ConnectedIdentity {
+  provider: IdentityProvider;
+  email?: string;
+  emailVerified: boolean;
+  linkedAt?: string;
+}
+
+export interface AuthenticationMethods {
+  hasPassword: boolean;
+  identities: ConnectedIdentity[];
+}
+
 export function useUserSettingsApi() {
   const { fetchWithInterceptor } = useAuth();
 
@@ -147,6 +161,51 @@ export function useUserSettingsApi() {
     return res.json();
   }
 
+  async function getAuthenticationMethods(): Promise<AuthenticationMethods> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/identities`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to load sign-in methods');
+    }
+    return res.json();
+  }
+
+  async function initiateIdentityLink(provider: 'google' | 'us'): Promise<string> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/identities/${provider}/initiate`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to start identity connection');
+    }
+    const body = await res.json();
+    return body.url;
+  }
+
+  async function unlinkIdentity(provider: 'google' | 'us'): Promise<AuthenticationMethods> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/identities/${provider}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to disconnect identity');
+    }
+    return res.json();
+  }
+
+  async function setInitialPassword(password: string): Promise<AuthenticationMethods> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to create password');
+    }
+    return res.json();
+  }
+
   return {
     getSettings,
     updateAccount,
@@ -156,5 +215,9 @@ export function useUserSettingsApi() {
     uploadAvatar,
     removeAvatar,
     updateAvatarColors,
+    getAuthenticationMethods,
+    initiateIdentityLink,
+    unlinkIdentity,
+    setInitialPassword,
   };
 }

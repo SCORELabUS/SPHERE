@@ -3,6 +3,13 @@ import { RegisterFormProps } from "../components/register-form";
 
 export const USERS_BASE_PATH = import.meta.env.VITE_API_URL + "/users";
 
+export type RegistrationResponse = {
+    user: { username: string; email: string };
+    emailVerificationRequired: true;
+    emailSent: boolean;
+    message: string;
+};
+
 export function loginUser(formData: LoginFormProps): Promise<any> {
     return fetch(`${USERS_BASE_PATH}/login`, {
         method: "POST",
@@ -22,7 +29,10 @@ export function loginUser(formData: LoginFormProps): Promise<any> {
     });
 }
 
-export function registerUser(formData: RegisterFormProps, setErrors: Function = () => {}): Promise<any> {
+export function registerUser(
+    formData: RegisterFormProps,
+    setErrors: (errors: string[]) => void = () => {}
+): Promise<RegistrationResponse> {
     return fetch(`${USERS_BASE_PATH}/register`, {
         method: "POST",
         headers: {
@@ -40,12 +50,32 @@ export function registerUser(formData: RegisterFormProps, setErrors: Function = 
         return parsedResponse;
     })
     .catch((error: Error) => {
-        if (Array.isArray(error)) {
-            setErrors(error);
-        }else{
-            setErrors([error.message]);
-        }
+        setErrors([error.message]);
         return Promise.reject(error);
+    });
+}
+
+export function verifyEmail(token: string): Promise<{ message: string }> {
+    return fetch(`${USERS_BASE_PATH}/email-verification/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+    }).then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "The verification link is invalid or has expired");
+        return body;
+    });
+}
+
+export function resendEmailVerification(loginField: string): Promise<{ message: string }> {
+    return fetch(`${USERS_BASE_PATH}/email-verification/resend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginField }),
+    }).then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Could not request another verification email");
+        return body;
     });
 }
 
