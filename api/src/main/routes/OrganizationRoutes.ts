@@ -19,6 +19,10 @@ const loadFileRoutes = function (app: express.Application) {
     .post(OrganizationValidation.create, handleValidation, organizationController.create);
 
   app
+    .route(baseUrl + '/orgs/public')
+    .get(organizationController.indexPublicRoots);
+
+  app
     .route(baseUrl + '/orgs/invitations/preview/:code')
     .get(organizationController.previewInvitation);
 

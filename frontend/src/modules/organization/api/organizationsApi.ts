@@ -4,6 +4,11 @@ import { EntityPermission, EntityType, SetPermissionPayload } from '../types/per
 
 export const ORGS_BASE_PATH = import.meta.env.VITE_API_URL + '/orgs';
 
+export type PublicOrganizationsResponse = {
+  items: Organization[];
+  total: number;
+};
+
 export type OrgRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 
 export interface Organization {
@@ -68,6 +73,20 @@ export interface OrgCollection {
   slug: string;
   numberOfPricings: number;
   organization: { id: string; name: string; displayName: string; avatar: string };
+}
+
+export async function getPublicOrganizations(
+  params: { q?: string; limit?: number; offset?: number } = {},
+  signal?: AbortSignal
+): Promise<PublicOrganizationsResponse> {
+  const query = new URLSearchParams();
+  if (params.q) query.set('q', params.q);
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+  if (params.offset !== undefined) query.set('offset', String(params.offset));
+
+  const response = await fetch(`${ORGS_BASE_PATH}/public?${query.toString()}`, { signal });
+  if (!response.ok) throw new Error('Failed to fetch public organizations');
+  return response.json();
 }
 
 function extractErrorMessage(response: Response, body: any, fallback: string): string {

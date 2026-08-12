@@ -1941,6 +1941,60 @@ paths:
   # Organization Management
   # ============================================
 
+  /orgs/public:
+    get:
+      summary: List public root organizations
+      description: |
+        Returns a paginated list of non-personal root organizations for the public
+        Explore page. Child organizations are excluded and the response does not
+        embed organization trees.
+
+        **Authentication**: Not required.
+      tags:
+        - Organizations
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+            maxLength: 100
+          description: Case-insensitive search by name, display name, or description.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 12
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Public root organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+                  total:
+                    type: integer
+                    minimum: 0
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs:
     get:
       summary: Get all organizations
