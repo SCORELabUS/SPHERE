@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChatTranscript from '../../components-new/chat-transcript';
 import ChatInput from '../../components-new/chat-input';
@@ -32,7 +32,6 @@ import PresetProvider from '../../components/PresetProvider';
 import {
   playgroundMockUrlTrnasformEvent,
   sseUrlTransformEvent,
-  UrlTransformEvent,
 } from '../../sse';
 import { UseCases } from '../../use-cases';
 
@@ -45,44 +44,51 @@ function PricingAssistantPage() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showMobileContext, setShowMobileContext] = useState(false);
   const [playground, setPlayground] = useState(false);
-
-  const urlTransformEvent: UrlTransformEvent = !playground
-    ? sseUrlTransformEvent
-    : playgroundMockUrlTrnasformEvent;
-
-  const handleUrlNotification = (notification: NotificationUrlEvent) =>
-    setContextItems(previous =>
-      previous.map(item =>
-        item.kind === 'url' && item.id === notification.id
-          ? { ...item, transform: 'done', value: notification.yaml_content }
-          : item
-      )
-    );
+  const sessionVersionRef = useRef(0);
 
   useEffect(() => {
-    return urlTransformEvent.connect(handleUrlNotification);
+    const urlTransformEvent = playground
+      ? playgroundMockUrlTrnasformEvent
+      : sseUrlTransformEvent;
+
+    return urlTransformEvent.connect((notification: NotificationUrlEvent) =>
+      setContextItems(previous =>
+        previous.map(item =>
+          item.kind === 'url' && item.id === notification.id
+            ? { ...item, transform: 'done', value: notification.yaml_content }
+            : item
+        )
+      )
+    );
   }, [playground]);
 
   const detectedPricingUrls = useMemo(() => extractPricingUrls(question), [question]);
 
-  const isSubmitDisabled = useMemo(() => {
-    const hasQuestion = Boolean(question.trim());
-    return isLoading || !hasQuestion || (playground && messages.length > 0);
-  }, [question, isLoading, messages]);
+  const isSubmitDisabled =
+    isLoading || !question.trim() || (playground && messages.length > 0);
 
-  const createPricingContextItems = (contextInputItems: ContextInputType[]): PricingContextItem[] =>
-    contextInputItems
+  const createPricingContextItems = (
+    contextInputItems: ContextInputType[],
+    existingItems: PricingContextItem[] = contextItems
+  ): PricingContextItem[] => {
+    const getItemKey = (item: ContextInputType | PricingContextItem) =>
+      item.kind === 'url' ? `url:${item.url.trim()}` : `yaml:${item.value.trim()}`;
+    const knownItems = new Set(existingItems.map(getItemKey));
+
+    return contextInputItems
       .map(item => ({
         ...item,
         value: item.value.trim(),
         id: crypto.randomUUID(),
       }))
-      .filter(
-        item =>
-          !contextItems.some(
-            stateItem => stateItem.kind === item.kind && stateItem.value === item.value
-          )
-      );
+      .filter(item => {
+        const key = getItemKey(item);
+        if (knownItems.has(key)) return false;
+
+        knownItems.add(key);
+        return true;
+      });
+  };
 
   const addContextItems = (inputs: ContextInputType[]) => {
     if (inputs.length === 0) return null;
@@ -110,6 +116,26 @@ function PricingAssistantPage() {
 
   const addContextItem = (input: ContextInputType) => {
     addContextItems([input]);
+  };
+
+  const replacePresetContextItems = (inputs: ContextInputType[]) => {
+    const retainedItems = contextItems.filter(item => item.origin !== 'preset');
+    const previousPresetItems = contextItems.filter(item => item.origin === 'preset');
+    const newPresetItems = createPricingContextItems(inputs, retainedItems);
+
+    const deletePromises = previousPresetItems
+      .filter(
+        item => item.kind === 'yaml' || (item.kind === 'url' && item.transform === 'done')
+      )
+      .map(item => deleteYamlPricing(`${item.id}.yaml`));
+    const uploadPromises = newPresetItems
+      .filter(item => item.kind === 'yaml')
+      .map(item => uploadYamlPricing(`${item.id}.yaml`, item.value));
+
+    Promise.all([...deletePromises, ...uploadPromises]).catch(err =>
+      console.error('Failed to replace preset context', err)
+    );
+    setContextItems([...retainedItems, ...newPresetItems]);
   };
 
   const removeContextItem = (id: string) => {
@@ -153,9 +179,12 @@ function PricingAssistantPage() {
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    const sessionVersion = sessionVersionRef.current;
     const fileArray = Array.from(files);
     Promise.all(fileArray.map(file => file.text().then(content => ({ name: file.name, content }))))
       .then(results => {
+        if (sessionVersion !== sessionVersionRef.current) return;
+
         const inputs: ContextInputType[] = results
           .filter(result => Boolean(result.content.trim()))
           .map(result => ({
@@ -180,6 +209,8 @@ function PricingAssistantPage() {
         }
       })
       .catch(error => {
+        if (sessionVersion !== sessionVersionRef.current) return;
+
         console.error('Failed to read YAML file', error);
         setMessages(prev => [
           ...prev,
@@ -210,20 +241,32 @@ function PricingAssistantPage() {
   const handlePromptSelect = (preset: PromptPreset) => {
     setPreset(preset);
     setQuestion(preset.question);
-    if (preset.context.length > 0) {
-      const mappedInput: ContextInputType[] = preset.context.map(entry =>
-        mapPresetContexttoContext(entry)
-      );
-      addContextItems(mappedInput);
+    const mappedInput: ContextInputType[] = preset.context.map(entry =>
+      mapPresetContexttoContext(entry)
+    );
+
+    if (playground) {
+      setContextItems(createPricingContextItems(mappedInput, []));
+    } else {
+      replacePresetContextItems(mappedInput);
     }
   };
 
   const handleNewConversation = () => {
+    sessionVersionRef.current += 1;
     setMessages([]);
     setQuestion('');
     setContextItems([]);
     setIsLoading(false);
     setPreset(null);
+  };
+
+  const handlePlaygroundToggle = () => {
+    clearContext();
+    handleNewConversation();
+    setShowSearchModal(false);
+    setShowMobileContext(false);
+    setPlayground(previous => !previous);
   };
 
   const getUrlItems = () =>
@@ -238,6 +281,7 @@ function PricingAssistantPage() {
 
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
+    const sessionVersion = sessionVersionRef.current;
 
     const newlyDetected = diffPricingContextWithDetectedUrls(contextItems, detectedPricingUrls);
     let newUrls: PricingContextUrlWithId[] = [];
@@ -276,6 +320,7 @@ function PricingAssistantPage() {
         ...createContextBodyPayload([...getUrlItems(), ...newUrls], getUniqueYamlFiles()),
       };
       const data = await chatWithAgent(requestBody);
+      if (sessionVersion !== sessionVersionRef.current) return;
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -306,6 +351,8 @@ function PricingAssistantPage() {
         );
       }
     } catch (error) {
+      if (sessionVersion !== sessionVersionRef.current) return;
+
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -314,38 +361,49 @@ function PricingAssistantPage() {
       };
       setMessages(prev => [...prev, assistantMessage]);
     } finally {
-      setIsLoading(false);
+      if (sessionVersion === sessionVersionRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   const handlePlaygroundSubmit = (event: FormEvent) => {
     event.preventDefault();
 
-    if (preset) {
-      const message: ChatMessage = {
+    if (isSubmitDisabled || !preset) return;
+
+    const createdAt = new Date().toISOString();
+    const userMessage: ChatMessage = {
+      id: `${preset.id}-user`,
+      role: 'user',
+      content: preset.question,
+      createdAt,
+    };
+    const assistantMessage: ChatMessage = {
         id: preset.id,
         role: 'assistant',
         content: preset.response?.answer ?? '',
-        createdAt: new Date().toLocaleString(),
+        createdAt,
         metadata: {
           plan: preset.response?.plan ?? {},
           result: preset.response?.result ?? {},
         },
-      };
-      if (preset.id === UseCases.AMINT) {
-        setContextItems(items =>
-          items.map(item => (item.kind === 'url' ? { ...item, transform: 'done' } : item))
-        );
-      }
-      setMessages(messages => [...messages, message]);
+    };
+
+    if (preset.id === UseCases.AMINT) {
+      setContextItems(items =>
+        items.map(item => (item.kind === 'url' ? { ...item, transform: 'done' } : item))
+      );
     }
+    setMessages([userMessage, assistantMessage]);
+    setQuestion('');
   };
 
   return (
     <PlaygroundProvider playground={playground}>
       <PresetProvider presetContext={{ preset, setPreset }}>
         <PricingContext.Provider value={contextItems}>
-          <HarveyLayout isPlayground={playground} onTogglePlayground={() => setPlayground(p => !p)} onNewConversation={handleNewConversation}>
+          <HarveyLayout isPlayground={playground} onTogglePlayground={handlePlaygroundToggle} onNewConversation={handleNewConversation}>
             <div className="flex flex-1 overflow-hidden">
               {/* Chat area */}
               <div className="flex flex-1 flex-col overflow-hidden">
@@ -366,6 +424,8 @@ function PricingAssistantPage() {
                   question={question}
                   isSubmitting={isLoading}
                   isDisabled={playground && messages.length > 0}
+                  isSubmitDisabled={isSubmitDisabled}
+                  isInputLocked={playground}
                   onQuestionChange={setQuestion}
                   onSubmit={!playground ? handleSubmit : handlePlaygroundSubmit}
                   onFileDrop={handleFilesSelected}
