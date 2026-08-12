@@ -58,6 +58,7 @@ export interface UserIdentity {
   provider: 'us-sso' | 'google';
   providerId: string;
   email?: string;
+  emailVerified: boolean;
   linkedAt?: Date;
 }
 

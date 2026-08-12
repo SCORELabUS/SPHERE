@@ -1,4 +1,4 @@
-import { ApiKey, LeanUser, LeanUserWithApiKey, UserFilters } from '../../types/models/User';
+import { ApiKey, LeanUser, LeanUserWithApiKey, UserFilters, UserIdentity } from '../../types/models/User';
 import RepositoryBase from '../RepositoryBase';
 import UserMongoose from './models/UserMongoose';
 import mongoose from 'mongoose';
@@ -81,6 +81,11 @@ class UserRepository extends RepositoryBase {
     }
   }
 
+  async findByIdWithPassword(id: string): Promise<LeanUser | null> {
+    const user = await UserMongoose.findById(id).select('+password').exec();
+    return user ? user.toObject() : null;
+  }
+
   async updateById(id: string, data: any): Promise<LeanUser | null> {
     try {
       const updatedUser = await UserMongoose.findByIdAndUpdate({ _id: id }, data, {
@@ -99,7 +104,7 @@ class UserRepository extends RepositoryBase {
 
   async findByEmail(email: string, selector: string = ''): Promise<LeanUser | null> {
     try {
-      const user = await UserMongoose.findOne({ email }).select(selector).exec();
+      const user = await UserMongoose.findOne({ email: email.trim().toLowerCase() }).select(selector).exec();
       return user ? user.toObject() : null;
     } catch (err) {
       return null;
@@ -196,6 +201,45 @@ class UserRepository extends RepositoryBase {
     const user = await new UserMongoose(businessEntity).save();
 
     return user.toObject();
+  }
+
+  async addIdentity(
+    userId: string,
+    identity: UserIdentity
+  ): Promise<LeanUser | null> {
+    const user = await UserMongoose.findOneAndUpdate(
+      {
+        _id: userId,
+        identities: { $not: { $elemMatch: { provider: identity.provider } } },
+      },
+      { $push: { identities: identity } },
+      { new: true, runValidators: true }
+    ).exec();
+    return user ? user.toObject() : null;
+  }
+
+  async removeIdentity(userId: string, provider: 'us-sso' | 'google'): Promise<LeanUser | null> {
+    const user = await UserMongoose.findOneAndUpdate(
+      {
+        _id: userId,
+        'identities.provider': provider,
+        $or: [
+          { password: { $exists: true, $ne: '' } },
+          { 'identities.1': { $exists: true } },
+        ],
+      },
+      { $pull: { identities: { provider } } },
+      { new: true, runValidators: true }
+    ).exec();
+    return user ? user.toObject() : null;
+  }
+
+  async setInitialPassword(userId: string, password: string): Promise<void> {
+    const user = await UserMongoose.findById(userId).select('+password').exec();
+    if (!user) throw new Error('NOT FOUND: User not found');
+    if (user.password) throw new Error('CONFLICT: This account already has a password');
+    user.password = password;
+    await user.save();
   }
 
   async update(username: string, businessEntity: any): Promise<LeanUser | null> {

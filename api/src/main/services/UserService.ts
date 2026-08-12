@@ -76,6 +76,15 @@ class UserService {
       throw new Error('PERMISSION ERROR: Only admins can create other admins.');
     }
 
+    newUser.email = newUser.email.trim().toLowerCase();
+
+    const existingEmail = await this.userRepository.findByEmail(newUser.email);
+    if (existingEmail) {
+      throw new Error(
+        'CONFLICT: An account already exists with this email. Sign in with its existing method, then add a SPHERE password from Settings > Integrations.'
+      );
+    }
+
     const existingUser = await this.userRepository.findByUsername(newUser.username);
 
     if (existingUser) {
@@ -154,9 +163,10 @@ class UserService {
 
     if (!user) {
       user = await this.userRepository.findByEmail(loginField, "+password");
-      if (!user) {
-        throw new Error('INVALID DATA: Invalid credentials');
-      }
+    }
+
+    if (!user) {
+      throw new Error('INVALID DATA: Invalid credentials');
     }
 
     // SSO accounts have no local password; bcrypt.compare throws on undefined hashes.

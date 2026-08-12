@@ -101,7 +101,7 @@ export function diffPricingContextWithDetectedUrls(
 ): string[] {
   const contextUrls = pricingContext
     .filter((item) => item.kind === "url")
-    .map((item) => item.value);
+    .map((item) => item.url);
   return detectedPricingUrls.filter(
     (detectedUrl) => !contextUrls.includes(detectedUrl)
   );

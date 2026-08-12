@@ -27,7 +27,8 @@ const IdentitySchema = new Schema(
   {
     provider: { type: String, enum: ['us-sso', 'google'], required: true },
     providerId: { type: String, required: true },
-    email: { type: String },
+    email: { type: String, lowercase: true, trim: true },
+    emailVerified: { type: Boolean, required: true, default: false },
     linkedAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -198,6 +199,7 @@ export interface UserDocument extends Document {
     provider: 'us-sso' | 'google';
     providerId: string;
     email?: string;
+    emailVerified: boolean;
     linkedAt?: Date;
   }[];
   settings?: {
