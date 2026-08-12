@@ -94,10 +94,6 @@ class UserService {
     }
 
     newUser.email = newUser.email.trim().toLowerCase();
-    const existingEmail = await this.userRepository.findByEmail(newUser.email);
-    if (existingEmail) {
-      throw new Error('INVALID DATA: There is already a user with that email address');
-    }
 
     if (!newUser.settings) newUser.settings = {};
     newUser.settings.avatar = newUser.settings.avatar || '';
