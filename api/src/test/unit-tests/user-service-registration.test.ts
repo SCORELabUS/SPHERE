@@ -60,7 +60,7 @@ describe('UserService registration identity conflicts', () => {
     });
 
     await expect(service.register(payload(), undefined as any)).rejects.toThrow(
-      'Sign in with its existing method'
+      'INVALID DATA: There is already a user with that email address'
     );
     await expect(service.register(payload(), undefined as any)).rejects.not.toThrow('E11000');
   });
