@@ -3095,6 +3095,12 @@ paths:
           description: Insufficient permissions (user is not a member of the organization, or lacks CREATE permission)
         '404':
           description: Organization not found
+        '409':
+          description: A pricing with the same name and version already exists in the organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -3318,6 +3324,12 @@ paths:
           description: Insufficient permissions (not a member of the organization, or lacks CREATE permission)
         '404':
           description: Organization not found
+        '409':
+          description: The requested pricing version already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
