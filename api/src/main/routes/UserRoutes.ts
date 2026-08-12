@@ -31,6 +31,18 @@ const loadFileRoutes = function (app: express.Application) {
     );
 
   app
+    .route(baseUrl + '/users/email-verification/verify')
+    .post(UserValidation.verifyEmail, handleValidation, userController.verifyEmail);
+
+  app
+    .route(baseUrl + '/users/email-verification/resend')
+    .post(
+      UserValidation.resendEmailVerification,
+      handleValidation,
+      userController.resendEmailVerification
+    );
+
+  app
     .route(baseUrl + '/users/login')
     .post(UserValidation.login, handleValidation, userController.login);
 
