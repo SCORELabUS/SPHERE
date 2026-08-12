@@ -7,11 +7,13 @@ import * as UserValidation from '../controllers/validation/UserValidation';
 import { checkEntityExists } from '../middlewares/EntityMiddleware';
 import PricingCollectionController from '../controllers/PricingCollectionController';
 import PricingController from '../controllers/PricingController';
+import IdentityController from '../controllers/IdentityController';
 
 const loadFileRoutes = function (app: express.Application) {
   const userController = new UserController();
   const pricingController = new PricingController();
   const collectionController = new PricingCollectionController();
+  const identityController = new IdentityController();
   const userService = container.resolve('userService');
   const upload = handleFileUpload(['avatar'], (process.env.SERVER_STATICS_FOLDER || 'public/') + (process.env.AVATARS_FOLDER || 'static/avatars/users'));
   const baseUrl = (process.env.BASE_URL_PATH ?? "") + '/api/v1';
@@ -58,6 +60,27 @@ const loadFileRoutes = function (app: express.Application) {
   app
     .route(baseUrl + '/users/me/settings/notifications')
     .put(userController.updateNotificationPrefs);
+
+  app
+    .route(baseUrl + '/users/me/identities')
+    .get(identityController.index);
+
+  app
+    .route(baseUrl + '/users/me/identities/:provider/initiate')
+    .post(identityController.initiateLink);
+
+  app
+    .route(baseUrl + '/users/me/identities/:provider')
+    .delete(identityController.unlink);
+
+  app
+    .route(baseUrl + '/users/me/password')
+    .post(
+      UserValidation.setInitialPassword,
+      handleValidation,
+      identityController.setPassword
+    );
+
 
   app
     .route(baseUrl + '/users/me/settings/avatar')

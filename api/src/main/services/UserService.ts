@@ -73,6 +73,15 @@ class UserService {
       throw new Error('PERMISSION ERROR: Only admins can create other admins.');
     }
 
+    newUser.email = newUser.email.trim().toLowerCase();
+
+    const existingEmail = await this.userRepository.findByEmail(newUser.email);
+    if (existingEmail) {
+      throw new Error(
+        'CONFLICT: An account already exists with this email. Sign in with its existing method, then add a SPHERE password from Settings > Integrations.'
+      );
+    }
+
     const existingUser = await this.userRepository.findByUsername(newUser.username);
 
     if (existingUser) {
@@ -85,7 +94,24 @@ class UserService {
     newUser.settings.avatar = newUser.settings.avatar || '';
     newUser = { ...newUser, ...generateUserTokenDTO() };
 
-    const registeredUser = await this.userRepository.create(newUser);
+    let registeredUser: LeanUser;
+    try {
+      registeredUser = await this.userRepository.create(newUser);
+    } catch (err: any) {
+      // The pre-check provides a useful response in the normal case. The unique
+      // index remains the authority if two registrations race each other.
+      if (err?.code === 11000 && (err?.keyPattern?.email || err?.keyValue?.email)) {
+        throw new Error(
+          'CONFLICT: An account already exists with this email. Sign in with its existing method, then add a SPHERE password from Settings > Integrations.'
+        );
+      }
+      if (err?.code === 11000 && (err?.keyPattern?.username || err?.keyValue?.username)) {
+        throw new Error(
+          'INVALID DATA: There is already a user with the username that you are trying to set'
+        );
+      }
+      throw err;
+    }
 
     // Business rule: every user must have a personal organization they cannot delete.
     // Create it immediately after user creation.
@@ -124,9 +150,10 @@ class UserService {
 
     if (!user) {
       user = await this.userRepository.findByEmail(loginField, "+password");
-      if (!user) {
-        throw new Error('INVALID DATA: Invalid credentials');
-      }
+    }
+
+    if (!user) {
+      throw new Error('INVALID DATA: Invalid credentials');
     }
 
     // SSO accounts have no local password; bcrypt.compare throws on undefined hashes.
