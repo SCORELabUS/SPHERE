@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FiUser, FiGlobe, FiLink2, FiBell, FiCreditCard, FiAlertTriangle, FiChevronDown } from 'react-icons/fi';
+import { FiUser, FiGlobe, FiLink2, FiBell, FiCreditCard, FiAlertTriangle, FiChevronDown, FiShield } from 'react-icons/fi';
+import { useSearchParams } from 'react-router-dom';
 import { type UserSettings } from '../api/userSettingsApi';
 import { useAuth } from '../../auth/hooks/useAuth';
 import AccountSection from '../components/AccountSection';
@@ -11,12 +12,14 @@ import NotificationsSection from '../components/NotificationsSection';
 import PaymentsSection from '../components/PaymentsSection';
 import DangerZoneSection from '../components/DangerZoneSection';
 import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
+import IntegrationsSection from '../components/IntegrationsSection';
 import { fadeInUp, transitionDefault } from '../../core/utils/motion-variants';
 
 const SECTIONS = [
   { id: 'account', label: 'Account', icon: FiUser },
   { id: 'profile', label: 'Public Profile', icon: FiGlobe },
   { id: 'social', label: 'Social Links', icon: FiLink2 },
+  { id: 'integrations', label: 'Integrations', icon: FiShield },
   { id: 'notifications', label: 'Notifications', icon: FiBell },
   { id: 'payments', label: 'Payments', icon: FiCreditCard },
   { id: 'danger', label: 'Danger Zone', icon: FiAlertTriangle },
@@ -39,8 +42,13 @@ function buildUserSettings(authUser: any): UserSettings | null {
 }
 
 export default function SettingsPage() {
+  const [searchParams] = useSearchParams();
   const { authUser, updateUser, updateUserSettings } = useAuth();
-  const [activeSection, setActiveSection] = useState<SectionId>('account');
+  const requestedSection = searchParams.get('section');
+  const initialSection = SECTIONS.some(section => section.id === requestedSection)
+    ? requestedSection as SectionId
+    : 'account';
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [pendingSection, setPendingSection] = useState<SectionId | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -239,6 +247,7 @@ export default function SettingsPage() {
                 {activeSection === 'social' && (
                   <SocialLinksSection settings={settings} onUpdate={updateSettings} onDirtyChange={socialDirtyChange} />
                 )}
+                {activeSection === 'integrations' && <IntegrationsSection />}
                 {activeSection === 'notifications' && (
                   <NotificationsSection settings={settings} onUpdate={updateSettings} onDirtyChange={notificationsDirtyChange} />
                 )}

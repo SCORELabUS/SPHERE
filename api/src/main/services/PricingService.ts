@@ -270,6 +270,8 @@ class PricingService {
       throw new Error('INVALID DATA: Pricing file is required');
     }
 
+    let uploadedPricing: Pricing | undefined;
+
     try {
       const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
       const batchCtx = await this.permissionService.buildBatchContext(
@@ -280,12 +282,13 @@ class PricingService {
       );
 
       const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
+      uploadedPricing = retrievePricingFromPath(filePath);
 
       const lookupSlug = overrideSlug
         ? generateSlug(overrideSlug)
         : name
           ? generateSlug(name)
-          : generateSlug(retrievePricingFromPath(filePath).saasName);
+          : generateSlug(uploadedPricing.saasName);
 
       const previousPricing = await this.pricingRepository.findOne(
         lookupSlug,
@@ -333,6 +336,16 @@ class PricingService {
         }
       }
 
+      const versionAlreadyExists = previousPricing?.versions?.some(
+        (pricingVersion: PricingModel & { version: string }) =>
+          pricingVersion.version === uploadedPricing!.version
+      );
+      if (versionAlreadyExists) {
+        throw new Error(
+          `CONFLICT: ${previousPricing.name} version ${uploadedPricing.version} already exists. Change the version in the YAML before publishing.`
+        );
+      }
+
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
       }
@@ -353,10 +366,8 @@ class PricingService {
       } else if (name) {
         pricingName = name;
       } else {
-        pricingName = retrievePricingFromPath(filePath).saasName;
+        pricingName = uploadedPricing.saasName;
       }
-
-      const uploadedPricing: Pricing = retrievePricingFromPath(filePath);
 
       let pricingSlug: string;
       if (isAddingVersion) {
@@ -430,7 +441,15 @@ class PricingService {
 
       return pricing;
     } catch (err) {
-      throw new Error((err as Error).message);
+      const error = err as Error & { code?: number };
+      if (error.code === 11000 || error.message.includes('E11000')) {
+        const pricingName = name || uploadedPricing?.saasName || 'Pricing';
+        const pricingVersion = uploadedPricing?.version || 'requested version';
+        throw new Error(
+          `CONFLICT: ${pricingName} version ${pricingVersion} already exists. Change the version in the YAML before publishing.`
+        );
+      }
+      throw new Error(error.message);
     }
   }
 

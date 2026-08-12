@@ -189,6 +189,7 @@ export function usePricingsApi() {
       })
       .catch((error: Error) => {
         setErrors([error.message]);
+        throw error;
       });
   }, [fetchWithInterceptor, token]);
 

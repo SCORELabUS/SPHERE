@@ -32,6 +32,12 @@ class OrganizationService {
     return organizations;
   }
 
+  async indexPublicRoots(options: { q?: string; limit: number; offset: number }) {
+    const result = await this.organizationRepository.findPublicRoots(options);
+    result.items.forEach((org: any) => processFileUris(org, ['avatar']));
+    return result;
+  }
+
   async indexByUser(userId: string, options: OrganizationIndexByUserOptions) {
     const result = await this.organizationMembershipRepository.findOrganizationsByUserId(userId, options);
 

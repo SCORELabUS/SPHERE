@@ -42,6 +42,11 @@ export interface LeanUser {
   firstName: string;
   lastName: string;
   email: string;
+  emailVerified?: boolean;
+  emailVerifiedAt?: Date;
+  emailVerificationTokenHash?: string;
+  emailVerificationExpiresAt?: Date;
+  emailVerificationSentAt?: Date;
   identities?: UserIdentity[];
   settings?: UserSettings;
   token?: string;
@@ -53,6 +58,7 @@ export interface UserIdentity {
   provider: 'us-sso' | 'google';
   providerId: string;
   email?: string;
+  emailVerified: boolean;
   linkedAt?: Date;
 }
 

@@ -259,8 +259,13 @@ describe('Users API integration', () => {
       expect(response.body.user.username).toBe(payload.username);
       expect(response.body.user.email).toBe(payload.email);
       expect(response.body.user.role).toBe('USER');
-      expect(typeof response.body.user.password).toBe('string');
-      expect(response.body.token).toBeDefined();
+      expect(response.body.user.password).toBeUndefined();
+      expect(response.body.user.token).toBeUndefined();
+      expect(response.body.user.tokenExpiration).toBeUndefined();
+      expect(response.body.user.emailVerified).toBe(false);
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.emailVerificationRequired).toBe(true);
+      expect(response.body.emailSent).toBe(true);
 
       usersToDelete.add(payload.username);
     });
@@ -336,6 +341,34 @@ describe('Users API integration', () => {
 
       expect(duplicateResponse.status).toBe(422);
       expect(duplicateResponse.body.error).toContain('username');
+    });
+
+    it('Return 409 instead of exposing MongoDB details when an SSO email already exists.', async () => {
+      const suffix = randomSuffix();
+      const email = `google.${suffix}@example.com`;
+      const ssoUsername = `google_user_${suffix}`;
+      await UserMongoose.create({
+        firstName: 'Google',
+        lastName: 'User',
+        email,
+        username: ssoUsername,
+        role: 'USER',
+        identities: [{
+          provider: 'google',
+          providerId: `google-${suffix}`,
+          email,
+          emailVerified: true,
+        }],
+      });
+      usersToDelete.add(ssoUsername);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/users/register`)
+        .send(buildRegisterPayload({ email }));
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toContain('Sign in with its existing method');
+      expect(response.body.error).not.toContain('E11000');
     });
   });
 
@@ -1016,7 +1049,18 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
           loginField: registerPayload.username,
           password: TEST_PASSWORD,
         });
-      expect(loginResponse.status).toBe(200);
+      await UserMongoose.updateOne(
+        { username: registerPayload.username },
+        { $set: { emailVerified: true, emailVerifiedAt: new Date() } }
+      );
+      const verifiedLoginResponse = await request(app)
+        .post(`${BASE_PATH}/users/login`)
+        .send({
+          loginField: registerPayload.username,
+          password: TEST_PASSWORD,
+        });
+      expect(loginResponse.status).toBe(403);
+      expect(verifiedLoginResponse.status).toBe(200);
 
       const personalOrg = await OrganizationMongoose.findOne({ name: registerPayload.username.toLowerCase(), isPersonal: true });
       expect(personalOrg).not.toBeNull();
@@ -1027,7 +1071,7 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
 
       const response = await request(app)
         .delete(`${BASE_PATH}/users/${registerPayload.username}`)
-        .set('Authorization', `Bearer ${loginResponse.body.token}`);
+        .set('Authorization', `Bearer ${verifiedLoginResponse.body.token}`);
 
       expect(response.status).toBe(200);
 

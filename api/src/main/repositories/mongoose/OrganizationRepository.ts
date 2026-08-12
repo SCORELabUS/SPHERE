@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { LeanOrganization } from '../../types/models/Organization';
 import RepositoryBase from '../RepositoryBase';
 import OrganizationMongoose from './models/OrganizationMongoose';
+import { escapeRegex } from '../../utils/regex';
 
 class OrganizationRepository extends RepositoryBase {
   async findAll(queryParams: any) {
@@ -11,6 +12,36 @@ class OrganizationRepository extends RepositoryBase {
     } catch {
       return [];
     }
+  }
+
+  async findPublicRoots(options: { q?: string; limit: number; offset: number }) {
+    const filter: Record<string, any> = {
+      isPersonal: false,
+      _parentId: null,
+    };
+
+    if (options.q) {
+      const search = { $regex: escapeRegex(options.q), $options: 'i' };
+      filter.$or = [{ name: search }, { displayName: search }, { description: search }];
+    }
+
+    const [organizations, total] = await Promise.all([
+      OrganizationMongoose.find(filter)
+        .select('-ancestors')
+        .sort({ displayName: 1, createdAt: -1 })
+        .skip(options.offset)
+        .limit(options.limit)
+        .lean({ getters: true, virtuals: false }),
+      OrganizationMongoose.countDocuments(filter),
+    ]);
+
+    return {
+      items: organizations.map(({ _id, __v, ...organization }: any) => ({
+        ...organization,
+        id: _id.toString(),
+      })),
+      total,
+    };
   }
   
   async findOne(filter: any) {

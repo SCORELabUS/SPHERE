@@ -18,7 +18,6 @@ const CALLBACK_URL = () =>
  */
 export class GoogleProvider implements IdentityProvider {
   name = 'google' as const;
-  usesState = true;
 
   // Built per call so env changes (tests, dotenv load order) are always picked up.
   private client(): OAuth2Client {

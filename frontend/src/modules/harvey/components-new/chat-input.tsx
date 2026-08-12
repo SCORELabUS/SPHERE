@@ -4,25 +4,36 @@ interface Props {
   question: string;
   isSubmitting: boolean;
   isDisabled: boolean;
+  isSubmitDisabled: boolean;
+  isInputLocked?: boolean;
   onQuestionChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onFileDrop: (files: FileList | null) => void;
   onOpenContext?: () => void;
 }
 
-export default function ChatInput({ question, isSubmitting, isDisabled, onQuestionChange, onSubmit, onFileDrop, onOpenContext }: Props) {
+export default function ChatInput({ question, isSubmitting, isDisabled, isSubmitDisabled, isInputLocked = false, onQuestionChange, onSubmit, onFileDrop, onOpenContext }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    if (!textareaRef.current) return;
+    const el = textareaRef.current;
+    if (!question) {
+      el.style.height = 'auto';
+      el.style.overflowY = 'hidden';
+      return;
     }
+    el.style.height = 'auto';
+    const maxH = 160;
+    const newH = Math.min(el.scrollHeight, maxH);
+    el.style.height = `${newH}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
   }, [question]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (isInputLocked) return;
     setIsDragging(true);
   };
 
@@ -33,13 +44,14 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    if (isInputLocked) return;
     onFileDrop(e.dataTransfer.files);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isDisabled && !isSubmitting) {
+      if (!isSubmitDisabled && !isSubmitting) {
         onSubmit(e as unknown as FormEvent);
       }
     }
@@ -63,15 +75,21 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
           value={question}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onQuestionChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about pricing strategies..."
+          placeholder={isInputLocked ? 'Select a predefined scenario...' : 'Ask about pricing strategies...'}
           rows={1}
           disabled={isDisabled}
-          className="w-full resize-none bg-transparent px-4 py-3 text-sm text-tp-ink placeholder-tp-muted focus:outline-none disabled:opacity-50"
+          readOnly={isInputLocked}
+          aria-readonly={isInputLocked}
+          className="w-full resize-none box-border bg-transparent px-4 py-3 text-sm text-tp-ink placeholder-tp-muted focus:outline-none read-only:cursor-default disabled:opacity-50 overflow-hidden"
         />
 
         <div className="flex items-center justify-between border-t border-tp-hairline px-3 py-2">
           <div className="flex items-center gap-1">
-            <label className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink">
+            <label className={`rounded-md p-1.5 text-tp-steel transition-colors ${
+              isInputLocked
+                ? 'cursor-not-allowed opacity-40'
+                : 'cursor-pointer hover:bg-tp-surface hover:text-tp-ink'
+            }`}>
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.939A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-8.6 8.6" />
               </svg>
@@ -80,6 +98,7 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
                 accept=".yaml,.yml"
                 multiple
                 hidden
+                disabled={isInputLocked}
                 onChange={(e) => onFileDrop(e.target.files)}
               />
             </label>
@@ -98,7 +117,7 @@ export default function ChatInput({ question, isSubmitting, isDisabled, onQuesti
 
           <button
             type="submit"
-            disabled={isDisabled || isSubmitting}
+            disabled={isSubmitDisabled || isSubmitting}
             className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isSubmitting ? (

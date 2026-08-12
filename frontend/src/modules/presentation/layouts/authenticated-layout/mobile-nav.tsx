@@ -13,6 +13,7 @@ const NAV_STRUCTURE = [
   {
     label: 'Explore',
     children: [
+      { label: 'Organizations', to: '/organizations' },
       { label: 'Pricings', to: '/pricings' },
       { label: 'Collections', to: '/collections' },
     ],

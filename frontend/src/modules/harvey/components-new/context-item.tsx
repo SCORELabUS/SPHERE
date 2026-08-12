@@ -18,6 +18,7 @@ export default function ContextItem({ item, onRemove }: Props) {
 
   const isTransforming = item.kind === 'url' && item.transform === 'pending';
   const isDone = item.kind === 'url' && item.transform === 'done';
+  const isSphereItem = item.kind === 'yaml' && item.origin === 'sphere' && 'version' in item;
 
   return (
     <motion.div
@@ -49,6 +50,11 @@ export default function ContextItem({ item, onRemove }: Props) {
           <span className={`inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium ${originColors[item.origin ?? 'user']}`}>
             {item.origin ?? 'user'}
           </span>
+          {isSphereItem && (
+            <span className="inline-flex items-center rounded border border-tp-hairline-strong bg-tp-surface px-1.5 py-0.5 font-mono text-[10px] font-medium text-tp-slate">
+              v{item.version}
+            </span>
+          )}
           {isTransforming && (
             <span className="flex items-center gap-1 text-[10px] text-tp-steel">
               <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -69,7 +75,7 @@ export default function ContextItem({ item, onRemove }: Props) {
         type="button"
         onClick={() => onRemove(item.id)}
         className="shrink-0 cursor-pointer rounded p-0.5 text-tp-muted opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-        aria-label={`Remove ${item.label}`}
+        aria-label={`Remove ${item.label}${isSphereItem ? ` version ${item.version}` : ''}`}
       >
         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
