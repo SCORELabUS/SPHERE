@@ -42,6 +42,16 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     isPublic: true,
   },
   {
+    path: '/users/email-verification/verify',
+    methods: ['POST'],
+    isPublic: true,
+  },
+  {
+    path: '/users/email-verification/resend',
+    methods: ['POST'],
+    isPublic: true,
+  },
+  {
     path: '/users/*/refresh-token',
     methods: ['PUT'],
     allowedUserRoles: ['ADMIN'],

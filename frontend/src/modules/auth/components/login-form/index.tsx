@@ -90,6 +90,14 @@ const LoginForm: React.FC = () => {
                   {error}
                 </p>
               ))}
+              {errors.some(error => error.toLowerCase().includes('verify your email')) && (
+                <Link
+                  to="/verify-email"
+                  className="mt-2 inline-block cursor-pointer text-sm font-medium text-tp-primary underline"
+                >
+                  Resend verification email
+                </Link>
+              )}
             </div>
           </motion.div>
         )}

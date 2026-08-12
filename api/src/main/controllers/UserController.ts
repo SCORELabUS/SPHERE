@@ -5,6 +5,7 @@ import ApiKeyService from '../services/ApiKeyService';
 import { LeanUser, UserFilters } from '../types/models/User';
 import { handleError } from '../utils/users/helpers';
 import multer from 'multer';
+import EmailVerificationService from '../services/EmailVerificationService';
 
 const settingsUpload = multer({
   storage: multer.memoryStorage(),
@@ -20,17 +21,21 @@ class UserController {
   private userService: UserService;
   private userSettingsService: UserSettingsService;
   private apiKeyService: ApiKeyService;
+  private emailVerificationService: EmailVerificationService;
   public settingsUploadMiddleware: any;
 
   constructor() {
     this.userService = container.resolve('userService');
     this.userSettingsService = container.resolve('userSettingsService');
     this.apiKeyService = container.resolve('apiKeyService');
+    this.emailVerificationService = container.resolve('emailVerificationService');
     this.index = this.index.bind(this);
     this.show = this.show.bind(this);
     this.getCurrentUser = this.getCurrentUser.bind(this);
     this.login = this.login.bind(this);
     this.register = this.register.bind(this);
+    this.verifyEmail = this.verifyEmail.bind(this);
+    this.resendEmailVerification = this.resendEmailVerification.bind(this);
     this.destroy = this.destroy.bind(this);
     this.update = this.update.bind(this);
     this.updateToken = this.updateToken.bind(this);
@@ -119,18 +124,49 @@ class UserController {
 
   async register(req: any, res: any) {
     try {
-      const { registeredUser, token } = await this.userService.register(req.body, req.user);
+      const result = await this.userService.register(req.body, req.user);
 
-      res.status(201).json({ user: registeredUser, token });
+      res.status(201).json({
+        user: result.registeredUser,
+        emailVerificationRequired: result.emailVerificationRequired,
+        emailSent: result.emailSent,
+        message: result.emailSent
+          ? 'Check your inbox to verify your email address.'
+          : 'Your account was created, but the verification email could not be sent. Please request another email.',
+      });
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }
   }
 
+  async verifyEmail(req: any, res: any) {
+    try {
+      await this.emailVerificationService.verify(req.body.token);
+      res.json({ message: 'Email verified successfully. You can now sign in.' });
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async resendEmailVerification(req: any, res: any) {
+    try {
+      await this.emailVerificationService.resend(req.body.loginField);
+      res.status(202).json({
+        message: 'If an unverified account matches those details, a verification email has been sent.',
+      });
+    } catch (err: any) {
+      console.error('[Email verification] Resend failed:', err);
+      res.status(202).json({
+        message: 'If an unverified account matches those details, a verification email has been sent.',
+      });
+    }
+  }
+
   async login(req: any, res: any) {
     try {
-      const { user, token } = await this.userService.login(req.body.loginField, req.body.password);
+      const { token } = await this.userService.login(req.body.loginField, req.body.password);
       res.json({ token });
     } catch (err: any) {
       if (err.message.toLowerCase().includes('invalid credentials')) {

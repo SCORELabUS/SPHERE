@@ -29,6 +29,7 @@ import PricingListPage from '../modules/pricing/pages/list';
 import SpherePricingPage from '../modules/presentation/pages/pricing';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
 import SsoCallbackPage from '../modules/auth/pages/sso-callback';
+import EmailVerificationPage from '../modules/auth/pages/email-verification';
 import CardPage from '../modules/pricing/pages/card';
 import CreatePricingPage from '../modules/pricing/pages/create';
 import CollectionCardPage from '../modules/pricing/pages/collection-card';
@@ -93,6 +94,7 @@ export default function Router() {
       children: [
         { element: <AuthenticationPage />, path: '/authentication' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
+        { element: <EmailVerificationPage />, path: '/verify-email' },
         {
           path: '/organizations',
           element: <PublicOrganizationsPage />,

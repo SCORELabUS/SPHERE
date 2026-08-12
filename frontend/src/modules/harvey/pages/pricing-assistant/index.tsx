@@ -67,19 +67,28 @@ function PricingAssistantPage() {
   const isSubmitDisabled =
     isLoading || !question.trim() || (playground && messages.length > 0);
 
-  const createPricingContextItems = (contextInputItems: ContextInputType[]): PricingContextItem[] =>
-    contextInputItems
+  const createPricingContextItems = (
+    contextInputItems: ContextInputType[],
+    existingItems: PricingContextItem[] = contextItems
+  ): PricingContextItem[] => {
+    const getItemKey = (item: ContextInputType | PricingContextItem) =>
+      item.kind === 'url' ? `url:${item.url.trim()}` : `yaml:${item.value.trim()}`;
+    const knownItems = new Set(existingItems.map(getItemKey));
+
+    return contextInputItems
       .map(item => ({
         ...item,
         value: item.value.trim(),
         id: crypto.randomUUID(),
       }))
-      .filter(
-        item =>
-          !contextItems.some(
-            stateItem => stateItem.kind === item.kind && stateItem.value === item.value
-          )
-      );
+      .filter(item => {
+        const key = getItemKey(item);
+        if (knownItems.has(key)) return false;
+
+        knownItems.add(key);
+        return true;
+      });
+  };
 
   const addContextItems = (inputs: ContextInputType[]) => {
     if (inputs.length === 0) return null;
@@ -107,6 +116,26 @@ function PricingAssistantPage() {
 
   const addContextItem = (input: ContextInputType) => {
     addContextItems([input]);
+  };
+
+  const replacePresetContextItems = (inputs: ContextInputType[]) => {
+    const retainedItems = contextItems.filter(item => item.origin !== 'preset');
+    const previousPresetItems = contextItems.filter(item => item.origin === 'preset');
+    const newPresetItems = createPricingContextItems(inputs, retainedItems);
+
+    const deletePromises = previousPresetItems
+      .filter(
+        item => item.kind === 'yaml' || (item.kind === 'url' && item.transform === 'done')
+      )
+      .map(item => deleteYamlPricing(`${item.id}.yaml`));
+    const uploadPromises = newPresetItems
+      .filter(item => item.kind === 'yaml')
+      .map(item => uploadYamlPricing(`${item.id}.yaml`, item.value));
+
+    Promise.all([...deletePromises, ...uploadPromises]).catch(err =>
+      console.error('Failed to replace preset context', err)
+    );
+    setContextItems([...retainedItems, ...newPresetItems]);
   };
 
   const removeContextItem = (id: string) => {
@@ -212,11 +241,14 @@ function PricingAssistantPage() {
   const handlePromptSelect = (preset: PromptPreset) => {
     setPreset(preset);
     setQuestion(preset.question);
-    if (preset.context.length > 0) {
-      const mappedInput: ContextInputType[] = preset.context.map(entry =>
-        mapPresetContexttoContext(entry)
-      );
-      addContextItems(mappedInput);
+    const mappedInput: ContextInputType[] = preset.context.map(entry =>
+      mapPresetContexttoContext(entry)
+    );
+
+    if (playground) {
+      setContextItems(createPricingContextItems(mappedInput, []));
+    } else {
+      replacePresetContextItems(mappedInput);
     }
   };
 
