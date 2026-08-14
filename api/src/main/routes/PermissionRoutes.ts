@@ -15,6 +15,11 @@ const loadPermissionRoutes = function (app: express.Application) {
       PermissionValidator.setPermission,
       handleValidation,
       permissionController.setPermission
+    )
+    .put(
+      PermissionValidator.setPermissionsBulk,
+      handleValidation,
+      permissionController.setPermissionsBulk
     );
 
   app
