@@ -20,6 +20,17 @@ export interface LeanOrganization {
   isPersonal: boolean;
 }
 
+export interface CreateChildOrganizationInput {
+  name: string;
+  displayName: string;
+  description?: string;
+}
+
+export interface BulkCreateChildOrganizationsResult {
+  created: number;
+  organizations: LeanOrganization[];
+}
+
 export interface LeanMembership {
   id?: string;
   _userId: string;
