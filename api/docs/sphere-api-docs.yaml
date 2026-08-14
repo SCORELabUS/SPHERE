@@ -2526,6 +2526,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+    put:
+      summary: Add multiple members to the organization
+      description: |
+        Adds between 1 and 100 users to an organization in a single request. Every user
+        and existing membership is validated before any new membership is written.
+
+        `OWNER` and `ADMIN` roles are propagated to direct child organizations according
+        to the existing organization hierarchy rules. `MEMBER` roles are only added to
+        the organization identified by `organizationId`.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can add members to any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Constraints**:
+        - The request must contain between 1 and 100 unique user IDs.
+        - Every referenced user must exist.
+        - None of the users may already be a member of the organization.
+        - Personal organizations cannot receive another `OWNER`.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        $ref: '#/components/requestBodies/BulkAddMembers'
+      responses:
+        '201':
+          description: Members added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, memberships]
+                properties:
+                  created:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    example: 2
+                  memberships:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, _userId, _organizationId, role, joinedAt]
+                      properties:
+                        id:
+                          type: string
+                          example: "68050bd09890322c57842f70"
+                        _userId:
+                          type: string
+                          example: "68050bd09890322c57842f71"
+                        _organizationId:
+                          type: string
+                          example: "68050bd09890322c57842f6f"
+                        role:
+                          type: string
+                          enum: [OWNER, ADMIN, MEMBER]
+                        joinedAt:
+                          $ref: '#/components/schemas/Date'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient organization permissions or personal organization constraint
+        '404':
+          description: Organization or one of the referenced users was not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/members/{userId}:
     put:
       summary: Update a member's role
@@ -6181,6 +6259,36 @@ components:
                   - **ADMIN**: Can manage members and invitations
                   - **MEMBER**: Basic access to organization resources
                 example: "MEMBER"
+
+    BulkAddMembers:
+      description: Request body for adding multiple users to an organization.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - members
+            properties:
+              members:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - userId
+                    - role
+                  properties:
+                    userId:
+                      type: string
+                      pattern: '^[a-fA-F0-9]{24}$'
+                      example: "68050bd09890322c57842f71"
+                    role:
+                      type: string
+                      enum: [OWNER, ADMIN, MEMBER]
+                      example: "MEMBER"
 
     UpdateMemberRole:
       description: |

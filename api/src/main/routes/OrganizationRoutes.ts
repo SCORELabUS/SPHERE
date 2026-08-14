@@ -43,7 +43,12 @@ const loadFileRoutes = function (app: express.Application) {
   app
     .route(baseUrl + '/orgs/:organizationId/members')
     .get(organizationController.listMembers)
-    .post(OrganizationValidation.addMember, handleValidation, organizationController.addMember);
+    .post(OrganizationValidation.addMember, handleValidation, organizationController.addMember)
+    .put(
+      OrganizationValidation.addMembersBulk,
+      handleValidation,
+      organizationController.addMembersBulk
+    );
 
   app
     .route(baseUrl + '/orgs/:organizationId/members/:userId')

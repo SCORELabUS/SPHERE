@@ -75,6 +75,36 @@ const addMember = [
     .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
 ];
 
+const addMembersBulk = [
+  check('members')
+    .exists()
+    .withMessage('A members array must be provided')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('The members field must contain between 1 and 100 members')
+    .custom((members: Array<{ userId?: string }>) => {
+      const userIds = members.map(member => member?.userId);
+      return new Set(userIds).size === userIds.length;
+    })
+    .withMessage('The members field cannot contain duplicate userIds'),
+  check('members.*')
+    .custom((member) => {
+      if (!member || typeof member !== 'object' || Array.isArray(member)) return false;
+      const allowedFields = new Set(['userId', 'role']);
+      return Object.keys(member).every(field => allowedFields.has(field));
+    })
+    .withMessage('Every member may only contain userId and role'),
+  check('members.*.userId')
+    .exists()
+    .withMessage('A userId must be provided for every member')
+    .isMongoId()
+    .withMessage('Every userId must be a valid MongoDB ObjectId'),
+  check('members.*.role')
+    .exists()
+    .withMessage('A role must be provided for every member')
+    .isIn(['OWNER', 'ADMIN', 'MEMBER'])
+    .withMessage('Every role must be one of: OWNER, ADMIN, MEMBER'),
+];
+
 const updateMemberRole = [
   check('role')
     .exists()
@@ -83,4 +113,4 @@ const updateMemberRole = [
     .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
 ];
 
-export { create, update, addMember, updateMemberRole };
+export { create, update, addMember, addMembersBulk, updateMemberRole };
