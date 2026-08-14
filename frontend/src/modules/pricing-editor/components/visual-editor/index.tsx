@@ -439,23 +439,25 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     <div className="flex h-full w-full flex-col overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
       {/* Header bar */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80"
+        className="flex flex-col gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-700 dark:bg-slate-900/80"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <CellInlineEdit value={draft.saasName} onSave={handleSaasNameChange}
             className="text-lg! font-bold! tracking-tight! text-slate-900! dark:text-white!" />
           <CellInlineEdit value={draft.currency ?? ''} onSave={handleCurrencyChange}
             className="rounded-full! bg-slate-100! px-2.5! py-0.5! text-xs! font-medium! text-slate-600! dark:bg-slate-800! dark:text-slate-400!" />
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex w-full min-w-0 items-center justify-between gap-3 text-[11px] text-slate-500 sm:w-auto sm:justify-end sm:text-xs dark:text-slate-400">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span>{visiblePlanKeys.length} plans</span>
           <span className="text-slate-300 dark:text-slate-600">|</span>
           <span>{featureKeys.length} features</span>
           {usageLimitKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{usageLimitKeys.length} limits</span></>}
           {addOnKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{addOnKeys.length} add-ons</span></>}
+          </div>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
             type="button" onClick={onSave} disabled={!isDirty}
-            className={`ml-3 cursor-pointer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors sm:ml-3 ${
               isDirty ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
             }`} title="Save changes (Ctrl+S)"
           ><FaFloppyDisk className="h-3 w-3" /> Save</motion.button>
@@ -463,7 +465,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       </motion.div>
 
       {/* Table */}
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-6">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }} className="mx-auto max-w-7xl">
           <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
