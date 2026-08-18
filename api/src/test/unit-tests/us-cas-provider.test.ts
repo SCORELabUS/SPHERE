@@ -42,9 +42,10 @@ describe('UsCasProvider', () => {
 
   describe('buildLoginUrl', () => {
     it('points to the CAS login with the callback as encoded service', () => {
-      const url = provider.buildLoginUrl('ignored-state');
+      const url = provider.buildLoginUrl('transaction-state');
       expect(url).toContain('/login?service=');
       expect(url).toContain(encodeURIComponent('/users/auth/sso/us/callback'));
+      expect(decodeURIComponent(url)).toContain('state=transaction-state');
     });
   });
 
@@ -69,6 +70,16 @@ describe('UsCasProvider', () => {
         firstName: 'Francisco',
         lastName: 'Capote García',
       });
+    });
+
+    it('uses the callback state in the CAS validation service URL', async () => {
+      const fetchMock = mockFetchXml(successXml());
+
+      await provider.handleCallback({ ticket: 'ST-123', state: 'link-transaction' });
+
+      const validationUrl = decodeURIComponent(fetchMock.mock.calls[0][0]);
+      expect(validationUrl).toContain('service=');
+      expect(validationUrl).toContain('state=link-transaction');
     });
 
     it('returns null on an authenticationFailure response', async () => {

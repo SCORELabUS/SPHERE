@@ -8,6 +8,7 @@ class OrganizationController {
   constructor() {
     this.organizationService = container.resolve('organizationService');
     this.index = this.index.bind(this);
+    this.indexPublicRoots = this.indexPublicRoots.bind(this);
     this.indexByUser = this.indexByUser.bind(this);
     this.show = this.show.bind(this);
     this.create = this.create.bind(this);
@@ -31,6 +32,22 @@ class OrganizationController {
         throw new Error('PERMISSION ERROR: Only ADMIN users can access all organizations');
       }
       const organizations = await this.organizationService.index();
+      res.json(organizations);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async indexPublicRoots(req: any, res: any) {
+    try {
+      const parsedLimit = Number.parseInt(req.query.limit, 10);
+      const parsedOffset = Number.parseInt(req.query.offset, 10);
+      const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 12;
+      const offset = Number.isFinite(parsedOffset) ? Math.max(parsedOffset, 0) : 0;
+      const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : undefined;
+
+      const organizations = await this.organizationService.indexPublicRoots({ q, limit, offset });
       res.json(organizations);
     } catch (err: any) {
       const { status, message } = handleError(err);

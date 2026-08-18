@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { FiArrowUpRight, FiUploadCloud } from 'react-icons/fi';
 import { useEditorValue } from '../../hooks/useEditorValue';
 import { downloadYaml } from '../../services/export.service';
 import { getClearEditorValue } from '../../services/clear.service';
@@ -8,6 +9,9 @@ import { useRouter } from '../../../core/hooks/useRouter';
 import { ensureSyntaxVersion31 } from '../../services/pricing2yaml';
 import type { EditorMode } from '../../contexts/editorValueContext';
 import ConfirmModal from '../../../core/components/confirm-modal';
+import { useAuth } from '../../../auth/hooks/useAuth';
+import EditorAccountMenu from './editor-account-menu';
+import PublishPricingModal from './publish-pricing-modal';
 
 interface Props {
   onShareLink: () => void;
@@ -16,6 +20,7 @@ interface Props {
 
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
+  const { authUser } = useAuth();
   const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -24,6 +29,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
   const [originalValue, setOriginalValue] = useState('');
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [pendingMode, setPendingMode] = useState<EditorMode | null>(null);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
 
   useEffect(() => {
     if (originalValue === '' && editorValue) {
@@ -91,7 +97,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
 
   return (
     <>
-    <header className="sticky top-0 z-40 grid min-h-12 shrink-0 grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1 border-b border-white/10 bg-tp-surface-code px-3 py-2 sm:flex sm:h-12 sm:flex-nowrap sm:px-4 sm:py-0">
+    <header className="sticky top-0 z-40 grid min-h-14 shrink-0 grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1 border-b border-white/10 bg-tp-surface-code px-3 py-2 sm:flex sm:h-14 sm:flex-nowrap sm:px-4 sm:py-0">
       {/* Left: Logo + back */}
       <div className="flex min-w-0 items-center gap-3">
         <button
@@ -103,6 +109,12 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         </button>
         <span className="hidden text-white/20 md:inline">/</span>
         <span className="hidden truncate text-xs text-white/40 md:inline">Pricing2Yaml Editor</span>
+        {authUser.isAuthenticated ? (
+          <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-300 lg:inline-flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Workspace connected
+          </span>
+        ) : null}
       </div>
 
       {/* Center: Mode toggle */}
@@ -240,12 +252,47 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         <button
           type="button"
           onClick={() => window.open('https://sphere-docs.vercel.app/docs/2.0.1/api/pricing-description-languages/Pricing2Yaml/the-pricing2yaml-syntax', '_blank')}
-          className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
+          className="hidden cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white lg:block"
         >
           Docs
         </button>
+
+        <span className="mx-1 h-5 w-px bg-white/10" />
+
+        {authUser.isLoading ? (
+          <span className="h-8 w-24 animate-pulse rounded-lg bg-white/10" />
+        ) : authUser.isAuthenticated ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setPublishModalOpen(true)}
+              className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-tp-primary px-3 py-2 text-xs font-semibold text-tp-on-primary shadow-sm transition-all hover:bg-tp-primary-hover hover:shadow-md"
+            >
+              <FiUploadCloud className="h-4 w-4" />
+              <span className="hidden sm:inline">Publish to SPHERE</span>
+              <span className="sm:hidden">Publish</span>
+              <FiArrowUpRight className="hidden h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 xl:block" />
+            </button>
+            <EditorAccountMenu />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => router.push('/authentication')}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+          >
+            Sign in
+            <FiArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </header>
+
+      <AnimatePresence>
+        {publishModalOpen ? (
+          <PublishPricingModal yaml={editorValue} onClose={() => setPublishModalOpen(false)} />
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showUnsavedConfirm && (

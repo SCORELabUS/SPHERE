@@ -122,6 +122,76 @@ describe('Organizations API integration', () => {
   });
 
   // =========================================================================
+  // GET /orgs/public
+  // =========================================================================
+  describe('GET /orgs/public', () => {
+    it('returns only non-personal root organizations without embedded children', async () => {
+      const suffix = randomSuffix();
+      const root = await OrganizationMongoose.create({
+        name: `public_root_${suffix}`,
+        displayName: 'Public Root Organization',
+        description: 'Visible in Explore',
+        isPersonal: false,
+      });
+      const child = await OrganizationMongoose.create({
+        name: `public_child_${suffix}`,
+        displayName: 'Child Organization',
+        isPersonal: false,
+        _parentId: root.id,
+        ancestors: [root.id],
+      });
+      const personal = await OrganizationMongoose.create({
+        name: `personal_root_${suffix}`,
+        displayName: 'Personal Root',
+        isPersonal: true,
+      });
+      [root.id, child.id, personal.id].forEach(id => orgsToDelete.add(id));
+
+      const response = await request(app).get(`${BASE_PATH}/orgs/public`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(1);
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body.items[0]).toMatchObject({
+        id: root.id,
+        name: root.name,
+        isPersonal: false,
+        _parentId: null,
+      });
+      expect(response.body.items[0].subOrganizations).toBeUndefined();
+    });
+
+    it('supports search and pagination without authentication', async () => {
+      const suffix = randomSuffix();
+      const alpha = await OrganizationMongoose.create({
+        name: `alpha_${suffix}`,
+        displayName: 'Alpha Research Group',
+        isPersonal: false,
+      });
+      const beta = await OrganizationMongoose.create({
+        name: `beta_${suffix}`,
+        displayName: 'Beta Laboratory',
+        isPersonal: false,
+      });
+      [alpha.id, beta.id].forEach(id => orgsToDelete.add(id));
+
+      const searchResponse = await request(app)
+        .get(`${BASE_PATH}/orgs/public`)
+        .query({ q: 'Alpha Research' });
+      const pageResponse = await request(app)
+        .get(`${BASE_PATH}/orgs/public`)
+        .query({ limit: 1, offset: 1 });
+
+      expect(searchResponse.status).toBe(200);
+      expect(searchResponse.body.total).toBe(1);
+      expect(searchResponse.body.items[0].id).toBe(alpha.id);
+      expect(pageResponse.status).toBe(200);
+      expect(pageResponse.body.total).toBe(2);
+      expect(pageResponse.body.items).toHaveLength(1);
+    });
+  });
+
+  // =========================================================================
   // POST /orgs
   // =========================================================================
   describe('POST /orgs', () => {

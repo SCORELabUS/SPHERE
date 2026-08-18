@@ -21,14 +21,9 @@ export interface IdentityProvider {
   name: ProviderName;
 
   /**
-   * Whether the provider relies on the OAuth2 `state` parameter for CSRF protection.
-   * When true, the common layer stores the state on initiate and requires a matching,
-   * unexpired state on callback (single use). CAS providers don't need it: the ticket
-   * is single-use and validated server-side.
+   * Absolute URL to redirect the browser to for login. OAuth2 transports `state`
+   * natively; CAS providers include it in their callback service URL.
    */
-  usesState: boolean;
-
-  /** Absolute URL to redirect the browser to for login. `state` is used by OAuth2 providers; CAS ignores it. */
   buildLoginUrl(state: string): string;
 
   /** Translates the callback query params (ticket | code) into a normalized profile, or null if invalid. */

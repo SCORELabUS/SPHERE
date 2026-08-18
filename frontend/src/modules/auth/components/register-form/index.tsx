@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { validateRegister } from '../../utils/validators/register-validators';
 import { registerUser } from '../../api/usersApi';
-import { useAuth } from '../../hooks/useAuth';
-import { useRouter } from '../../../core/hooks/useRouter';
 import { fadeUp } from '../auth-layout';
 import GoogleLoginButton from '../google-login-button';
 import UvusLoginButton from '../uvus-login-button';
@@ -27,8 +25,7 @@ const RegisterForm: React.FC = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { login } = useAuth();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   function handleRegister(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -56,9 +53,13 @@ const RegisterForm: React.FC = () => {
     setErrors([]);
 
     registerUser(formValues, setErrors)
-      .then(async response => {
-        await login(response.token);
-        router.push('/');
+      .then(response => {
+        navigate('/verify-email', {
+          state: {
+            loginField: formValues.email,
+            emailSent: response.emailSent,
+          },
+        });
       })
       .catch(() => {})
       .finally(() => {

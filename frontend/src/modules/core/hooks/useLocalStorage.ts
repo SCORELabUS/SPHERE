@@ -1,20 +1,20 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import CryptoJS from "crypto-js";
 
 export const useLocalStorage = () => {
     const [value, setValue] = useState<string | null>(null);
 
-    const setItem = (key: string, value: string, _encrypt = true) => {
+    const setItem = useCallback((key: string, value: string, _encrypt = true) => {
         let encryptedValue = value;
             if (_encrypt) {
                 encryptedValue = CryptoJS.AES.encrypt(value, import.meta.env.VITE_SECRET_KEY as string).toString();
             }
         localStorage.setItem(key, encryptedValue);
         setValue(value);
-    };
+    }, []);
 
-    const getItem = (key: string, _encrypt = true) => {
-        let value = localStorage.getItem(key);
+    const getItem = useCallback((key: string, _encrypt = true) => {
+        const value = localStorage.getItem(key);
         if (value) {
             try {
                 let decryptedValue = value;
@@ -29,12 +29,12 @@ export const useLocalStorage = () => {
         }
         setValue(value);
         return value;
-    };
+    }, []);
 
-    const removeItem = (key: string) => {
+    const removeItem = useCallback((key: string) => {
         localStorage.removeItem(key);
         setValue(null);
-    };
+    }, []);
 
   return { value, setItem, getItem, removeItem };
 };
