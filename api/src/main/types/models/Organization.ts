@@ -38,3 +38,13 @@ export interface LeanMembership {
   role: OrgRole;
   joinedAt: Date;
 }
+
+export interface AddOrganizationMemberInput {
+  userId: string;
+  role: OrgRole;
+}
+
+export interface BulkAddOrganizationMembersResult {
+  created: number;
+  memberships: LeanMembership[];
+}

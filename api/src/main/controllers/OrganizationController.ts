@@ -17,6 +17,7 @@ class OrganizationController {
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
     this.addMember = this.addMember.bind(this);
+    this.addMembersBulk = this.addMembersBulk.bind(this);
     this.updateMemberRole = this.updateMemberRole.bind(this);
     this.removeMember = this.removeMember.bind(this);
     this.createInvitation = this.createInvitation.bind(this);
@@ -157,6 +158,19 @@ class OrganizationController {
       const { userId, role } = req.body;
       const membership = await this.organizationService.addMember(userId, req.params.organizationId, role);
       res.status(201).json(membership);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async addMembersBulk(req: any, res: any) {
+    try {
+      const result = await this.organizationService.addMembersBulk(
+        req.params.organizationId,
+        req.body.members
+      );
+      res.status(201).json(result);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

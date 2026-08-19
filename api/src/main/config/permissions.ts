@@ -179,6 +179,12 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     isPublic: true,
   },
   {
+    path: '/orgs/*/members',
+    methods: ['POST', 'PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
+  {
     path: '/orgs/*',
     methods: ['GET'],
     isPublic: true,

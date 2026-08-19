@@ -6,6 +6,8 @@ import OrganizationInvitationRepository from '../repositories/mongoose/Organizat
 import UserRepository from '../repositories/mongoose/UserRepository';
 import NotificationService from './NotificationService';
 import {
+  AddOrganizationMemberInput,
+  BulkAddOrganizationMembersResult,
   BulkCreateChildOrganizationsResult,
   CreateChildOrganizationInput,
   LeanOrganization,
@@ -338,6 +340,74 @@ class OrganizationService {
     }
 
     return membership;
+  }
+
+  async addMembersBulk(
+    organizationId: string,
+    members: AddOrganizationMemberInput[]
+  ): Promise<BulkAddOrganizationMembersResult> {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    if (organization.isPersonal && members.some(member => member.role === 'OWNER')) {
+      throw new Error('PERMISSION ERROR: Personal organizations can only have one owner');
+    }
+
+    const userIds = members.map(member => member.userId);
+    const [users, existingRoles] = await Promise.all([
+      this.userRepository.findByIds(userIds),
+      Promise.all(
+        userIds.map(userId => this.organizationMembershipRepository.findUserRoleInOrganization(
+          userId,
+          organizationId
+        ))
+      ),
+    ]);
+
+    const existingUserIds = new Set(users.map(user => user.id));
+    const missingUserIds = userIds.filter(userId => !existingUserIds.has(userId));
+    if (missingUserIds.length > 0) {
+      throw new Error(`NOT FOUND: Users not found: ${missingUserIds.join(', ')}`);
+    }
+
+    const alreadyMemberIds = userIds.filter((_, index) => existingRoles[index] !== null);
+    if (alreadyMemberIds.length > 0) {
+      throw new Error(`INVALID DATA: Users are already members of this organization: ${alreadyMemberIds.join(', ')}`);
+    }
+
+    const now = new Date();
+    const memberships = await this.organizationMembershipRepository.createBulkStrict(
+      members.map(member => ({
+        _userId: member.userId,
+        _organizationId: organizationId,
+        role: member.role,
+        joinedAt: now,
+      }))
+    );
+
+    const inheritableMembers = members.filter(member => (
+      member.role === 'OWNER' || member.role === 'ADMIN'
+    ));
+    if (inheritableMembers.length > 0) {
+      const childIds = await this.organizationRepository.findChildOrganizationIds(organizationId);
+      if (childIds.length > 0) {
+        await this.organizationMembershipRepository.createBulk(
+          inheritableMembers.flatMap(member => childIds.map(childId => ({
+            _userId: member.userId,
+            _organizationId: childId,
+            role: member.role,
+            joinedAt: now,
+          })))
+        );
+      }
+    }
+
+    return {
+      created: memberships.length,
+      memberships,
+    };
   }
 
   async updateMemberRole(userId: string, organizationId: string, role: OrgRole, reqUser: LeanUser & {orgRole: OrgRole}) {
