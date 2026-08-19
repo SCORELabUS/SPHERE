@@ -55,7 +55,8 @@ class PermissionController {
     try {
       const result = await this.permissionService.setPermissionsBulk(
         req.params.orgId,
-        req.body.permissions,
+        req.body.permissions ?? [],
+        req.body.removePermissionIds ?? [],
         req.user.id,
         req.user.orgRole,
         req.user.role === 'ADMIN'

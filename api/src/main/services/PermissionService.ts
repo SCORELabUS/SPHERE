@@ -229,6 +229,7 @@ class PermissionService {
   async setPermissionsBulk(
     organizationId: string,
     permissionInputs: SetEntityPermissionInput[],
+    removePermissionIds: string[],
     grantedBy: string,
     granterOrgRole: OrgRole | null,
     isGlobalAdmin = false
@@ -251,7 +252,8 @@ class PermissionService {
     return this.entityPermissionRepository.upsertMany(
       organizationId,
       normalizedInputs,
-      grantedBy
+      grantedBy,
+      removePermissionIds
     );
   }
 

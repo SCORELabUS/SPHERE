@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { EntityPermission, EntityType, SetPermissionPayload } from '../types/permissions';
+import {
+  BulkSetPermissionsPayload,
+  BulkSetPermissionsResult,
+  EntityPermission,
+  EntityType,
+  SetPermissionPayload,
+} from '../types/permissions';
 
 export const ORGS_BASE_PATH = import.meta.env.VITE_API_URL + '/orgs';
 
@@ -336,6 +342,20 @@ export function useOrganizationsApi() {
     return body as EntityPermission;
   }, [fetchWithInterceptor, token]);
 
+  const setOrgPermissionsBulk = useCallback(async (
+    orgId: string,
+    payload: BulkSetPermissionsPayload
+  ): Promise<BulkSetPermissionsResult> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/permissions`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'Failed to save permission changes');
+    return body as BulkSetPermissionsResult;
+  }, [fetchWithInterceptor, token]);
+
   const removeOrgPermission = useCallback(async (orgId: string, permissionId: string): Promise<void> => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/permissions/${permissionId}`, {
       method: 'DELETE',
@@ -397,6 +417,7 @@ export function useOrganizationsApi() {
     getOrgCollections,
     getOrgPermissions,
     setOrgPermission,
+    setOrgPermissionsBulk,
     removeOrgPermission,
     getUserAccessiblePricings,
     getUserAccessibleCollections,

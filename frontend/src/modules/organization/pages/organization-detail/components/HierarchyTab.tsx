@@ -1,9 +1,8 @@
 import { motion } from 'framer-motion';
 import Iconify from '../../../../core/components/iconify';
 import { transitionDefault } from '../../../../core/utils/motion-variants';
-import { Organization, OrgRole } from '../../../api/organizationsApi';
+import { Organization } from '../../../api/organizationsApi';
 import OrgTreeNode from './OrgTreeNode';
-import ChildRolesManager from './ChildRolesManager';
 import { TreeNode } from '../types';
 
 interface Props {
@@ -14,8 +13,6 @@ interface Props {
   onToggle: (id: string) => void;
   onNavigate: (id: string) => void;
   onCreateSubOrg: () => void;
-  currentUserId: string | undefined;
-  managerRole: OrgRole | null;
 }
 
 export default function HierarchyTab({
@@ -26,8 +23,6 @@ export default function HierarchyTab({
   onToggle,
   onNavigate,
   onCreateSubOrg,
-  currentUserId,
-  managerRole,
 }: Props) {
   return (
     <motion.div
@@ -88,16 +83,6 @@ export default function HierarchyTab({
           )}
         </div>
       </div>
-
-      {canManage && managerRole && (org.subOrganizations?.length ?? 0) > 0 && (
-        <ChildRolesManager
-          parentOrgId={org.id}
-          organizations={org.subOrganizations ?? []}
-          currentUserId={currentUserId}
-          parentManagerRole={managerRole}
-          onNavigate={onNavigate}
-        />
-      )}
     </motion.div>
   );
 }
