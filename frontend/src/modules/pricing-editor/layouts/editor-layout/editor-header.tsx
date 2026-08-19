@@ -97,9 +97,9 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
 
   return (
     <>
-    <header className="sticky top-0 z-40 flex h-14 items-center border-b border-white/10 bg-tp-surface-code px-3 sm:px-4">
+    <header className="sticky top-0 z-40 grid min-h-14 shrink-0 grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1 border-b border-white/10 bg-tp-surface-code px-3 py-2 sm:flex sm:h-14 sm:flex-nowrap sm:px-4 sm:py-0">
       {/* Left: Logo + back */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={() => router.push('/')}
@@ -107,8 +107,8 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         >
           SPHERE
         </button>
-        <span className="text-white/20">/</span>
-        <span className="hidden text-xs text-white/40 sm:inline">Pricing2Yaml Editor</span>
+        <span className="hidden text-white/20 md:inline">/</span>
+        <span className="hidden truncate text-xs text-white/40 md:inline">Pricing2Yaml Editor</span>
         {authUser.isAuthenticated ? (
           <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-300 lg:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -118,7 +118,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
       </div>
 
       {/* Center: Mode toggle */}
-      <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
+      <div className="col-span-3 row-start-2 justify-self-center sm:absolute sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2">
         <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
           {(['code', 'visual'] as EditorMode[]).map((mode) => {
             const isActive = editorMode === mode;
@@ -138,11 +138,6 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
                 )}
                 <span className={`relative z-10 ${isActive ? 'text-white' : 'text-white/40 hover:text-white/60'}`}>
                   {mode === 'code' ? 'Code' : 'Visual'}
-                  {mode === 'visual' && (
-                    <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">
-                      beta
-                    </span>
-                  )}
                   {mode === 'visual' && isDirty && (
                     <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />
                   )}
@@ -154,13 +149,13 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
       </div>
 
       {/* Right: Action buttons */}
-      <div className="ml-auto flex items-center gap-1">
+      <div className="col-start-3 row-start-1 ml-auto flex items-center gap-0.5 sm:gap-1">
         {/* File menu */}
         <div ref={fileMenuRef} className="relative">
           <button
             type="button"
             onClick={() => { setFileMenuOpen(prev => !prev); setExportMenuOpen(false); }}
-            className="cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+            className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
           >
             File
           </button>
@@ -214,7 +209,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
           <button
             type="button"
             onClick={() => { setExportMenuOpen(prev => !prev); setFileMenuOpen(false); }}
-            className="cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+            className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
           >
             Export
           </button>

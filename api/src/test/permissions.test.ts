@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { shutdownApp, TestApp } from './utils/testApp';
 import { createAndLoginUser, deleteTestUser } from './utils/users/userTestUtils';
-import { createMembership } from './utils/organizations';
+import { createMembership, createOrgScopedPermission } from './utils/organizations';
 import { createPricingForOrganization } from './utils/pricings/pricingTestUtils';
 import { createTestCollection } from './utils/collections/collectionTestUtils';
 import testContainer from './utils/config/testContainer';
@@ -12,7 +12,6 @@ import { LeanUser } from '../main/types/models/User';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
 import { randomSuffix, createGlobalAdminUser } from './utils/helpers';
-import { createOrgScopedPermission } from './utils/organizations';
 
 dotenv.config();
 
@@ -154,6 +153,213 @@ describe('Entity Permissions API integration', () => {
         });
 
       expect(response.status).toBe(422);
+    });
+  });
+
+  describe('PUT /api/v1/orgs/:orgId/permissions', () => {
+    it('should create multiple permissions for an organization', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const pricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+      const collection = await createTestCollection({ _organizationId: organizationId });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          permissions: [
+            {
+              userId: member.id,
+              entityType: 'pricing',
+              entitySlug: pricing.serviceName,
+              permissions: { GET: true, PUT: true },
+            },
+            {
+              userId: member.id,
+              entityType: 'collection',
+              entitySlug: collection.slug,
+              permissions: { GET: true },
+            },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.created).toBe(2);
+      expect(response.body.updated).toBe(0);
+      expect(response.body.permissions).toHaveLength(2);
+      expect(response.body.permissions[0]).toMatchObject({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'pricing',
+        entitySlug: pricing.serviceName,
+        permissions: { GET: true, PUT: true, DELETE: false, CREATE: false },
+      });
+      expect(response.body.permissions[1]).toMatchObject({
+        _userId: member.id,
+        _organizationId: organizationId,
+        entityType: 'collection',
+        entitySlug: collection.slug,
+        permissions: { GET: true, PUT: false, DELETE: false, CREATE: false },
+      });
+    });
+
+    it('should update existing permissions and create missing permissions together', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const pricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+
+      await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          userId: member.id,
+          entityType: 'pricing',
+          entitySlug: pricing.serviceName,
+          permissions: { GET: true, PUT: false, DELETE: false, CREATE: false },
+        });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          permissions: [
+            {
+              userId: member.id,
+              entityType: 'pricing',
+              entitySlug: pricing.serviceName,
+              permissions: { GET: true, PUT: true, DELETE: true },
+            },
+            {
+              userId: member.id,
+              entityType: 'collection',
+              entitySlug: null,
+              permissions: { CREATE: true },
+            },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.created).toBe(1);
+      expect(response.body.updated).toBe(1);
+      expect(response.body.permissions[0].permissions).toEqual({
+        GET: true,
+        PUT: true,
+        DELETE: true,
+        CREATE: false,
+      });
+      expect(response.body.permissions[1]).toMatchObject({
+        entityType: 'collection',
+        entitySlug: null,
+        permissions: { GET: false, PUT: false, DELETE: false, CREATE: true },
+      });
+      expect(await EntityPermissionMongoose.countDocuments({
+        _organizationId: organizationId,
+        _userId: member.id,
+      })).toBe(2);
+    });
+
+    it('should reject duplicate permission targets', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const duplicate = {
+        userId: member.id,
+        entityType: 'pricing',
+        entitySlug: null,
+        permissions: { CREATE: true },
+      };
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ permissions: [duplicate, duplicate] });
+
+      expect(response.status).toBe(422);
+      expect(await EntityPermissionMongoose.countDocuments({})).toBe(0);
+    });
+
+    it('should validate every entity before writing any permission', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          permissions: [
+            {
+              userId: member.id,
+              entityType: 'collection',
+              entitySlug: null,
+              permissions: { CREATE: true },
+            },
+            {
+              userId: member.id,
+              entityType: 'pricing',
+              entitySlug: 'missing-pricing',
+              permissions: { GET: true },
+            },
+          ],
+        });
+
+      expect(response.status).toBe(404);
+      expect(await EntityPermissionMongoose.countDocuments({})).toBe(0);
+    });
+
+    it('should deny MEMBER users from managing permissions in bulk', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({
+          permissions: [{
+            userId: member.id,
+            entityType: 'pricing',
+            entitySlug: null,
+            permissions: { CREATE: true },
+          }],
+        });
+
+      expect(response.status).toBe(403);
+      expect(await EntityPermissionMongoose.countDocuments({})).toBe(0);
+    });
+
+    it('should allow a global ADMIN to manage organization permissions in bulk', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      const globalAdmin = await createGlobalAdminUser();
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${globalAdmin.token}`)
+        .send({
+          permissions: [{
+            userId: member.id,
+            entityType: 'pricing',
+            entitySlug: null,
+            permissions: { CREATE: true },
+          }],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.created).toBe(1);
+      expect(response.body.permissions[0].permissions.CREATE).toBe(true);
     });
   });
 

@@ -12,10 +12,12 @@ class OrganizationController {
     this.indexByUser = this.indexByUser.bind(this);
     this.show = this.show.bind(this);
     this.create = this.create.bind(this);
+    this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
     this.addMember = this.addMember.bind(this);
+    this.addMembersBulk = this.addMembersBulk.bind(this);
     this.updateMemberRole = this.updateMemberRole.bind(this);
     this.removeMember = this.removeMember.bind(this);
     this.createInvitation = this.createInvitation.bind(this);
@@ -102,6 +104,24 @@ class OrganizationController {
     }
   }
 
+  async createChildrenBulk(req: any, res: any) {
+    try {
+      const result = await this.organizationService.createChildrenBulk(
+        req.params.organizationId,
+        req.body.organizations,
+        req.user.id
+      );
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err.name?.includes('ValidationError') || err.code === 11000) {
+        res.status(422).send({ error: err.message });
+      } else {
+        const { status, message } = handleError(err);
+        res.status(status).send({ error: message });
+      }
+    }
+  }
+
   async update(req: any, res: any) {
     try {
       const organization = await this.organizationService.update(req.params.organizationId, req.body);
@@ -138,6 +158,19 @@ class OrganizationController {
       const { userId, role } = req.body;
       const membership = await this.organizationService.addMember(userId, req.params.organizationId, role);
       res.status(201).json(membership);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async addMembersBulk(req: any, res: any) {
+    try {
+      const result = await this.organizationService.addMembersBulk(
+        req.params.organizationId,
+        req.body.members
+      );
+      res.status(201).json(result);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

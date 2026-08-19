@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import RepositoryBase from '../RepositoryBase';
 import OrganizationMembershipMongoose from './models/OrganizationMembershipMongoose';
-import { OrgRole, ROLE_WEIGHT } from '../../types/models/Organization';
+import { LeanMembership, OrgRole, ROLE_WEIGHT } from '../../types/models/Organization';
 import { getUserOrganizationsByUserAggregator } from './aggregators/organizations/getUserOrganizationsByUser';
 import { OrganizationIndexByUserOptions } from '../../types/services/Organization';
 
@@ -338,6 +338,25 @@ class OrganizationMembershipRepository extends RepositoryBase {
       joinedAt: m.joinedAt,
     }));
     return OrganizationMembershipMongoose.insertMany(docs, { ordered: false }).catch(() => []);
+  }
+
+  async createBulkStrict(
+    memberships: Array<{ _userId: string; _organizationId: string; role: OrgRole; joinedAt: Date }>
+  ): Promise<LeanMembership[]> {
+    const docs = memberships.map(membership => ({
+      _userId: new mongoose.Types.ObjectId(membership._userId),
+      _organizationId: new mongoose.Types.ObjectId(membership._organizationId),
+      role: membership.role,
+      joinedAt: membership.joinedAt,
+    }));
+    const created = await OrganizationMembershipMongoose.insertMany(docs, { ordered: true });
+    return created.map(membership => ({
+      id: membership._id.toString(),
+      _userId: membership._userId!.toString(),
+      _organizationId: membership._organizationId!.toString(),
+      role: membership.role as OrgRole,
+      joinedAt: new Date(membership.joinedAt as any),
+    }));
   }
 
   async destroyByUserAndOrganizationBatch(userIds: string[], organizationId: string) {

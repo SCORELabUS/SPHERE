@@ -3,7 +3,13 @@ import RepositoryBase from '../RepositoryBase';
 import EntityPermissionMongoose from './models/EntityPermissionMongoose';
 import PricingMongoose from './models/PricingMongoose';
 import PricingCollectionMongoose from './models/PricingCollectionMongoose';
-import { EntityType, EntityPermissions, LeanEntityPermission } from '../../types/models/EntityPermission';
+import {
+  BulkSetEntityPermissionsResult,
+  EntityType,
+  EntityPermissions,
+  LeanEntityPermission,
+  SetEntityPermissionInput,
+} from '../../types/models/EntityPermission';
 
 class EntityPermissionRepository extends RepositoryBase {
   async findByUserAndOrganization(
@@ -271,6 +277,105 @@ class EntityPermissionRepository extends RepositoryBase {
     );
 
     return result.toObject({ getters: true, virtuals: true, versionKey: false }) as unknown as LeanEntityPermission;
+  }
+
+  async upsertMany(
+    organizationId: string,
+    permissionInputs: SetEntityPermissionInput[],
+    grantedBy: string
+  ): Promise<BulkSetEntityPermissionsResult> {
+    const organizationObjectId = new mongoose.Types.ObjectId(organizationId);
+    const grantedByObjectId = new mongoose.Types.ObjectId(grantedBy);
+    const resolvedSlugs = new Map<string, Promise<string>>();
+
+    const normalizedInputs = await Promise.all(permissionInputs.map(async (input) => {
+      let entitySlug: string | null = null;
+      if (input.entitySlug) {
+        const entityKey = `${input.entityType}:${input.entitySlug}`;
+        let resolvedSlug = resolvedSlugs.get(entityKey);
+        if (!resolvedSlug) {
+          resolvedSlug = this.resolveEntitySlug(input.entityType, input.entitySlug, organizationId);
+          resolvedSlugs.set(entityKey, resolvedSlug);
+        }
+        entitySlug = await resolvedSlug;
+      }
+
+      return {
+        ...input,
+        entitySlug,
+        userObjectId: new mongoose.Types.ObjectId(input.userId),
+        permissions: {
+          GET: input.permissions.GET ?? false,
+          PUT: input.permissions.PUT ?? false,
+          DELETE: input.permissions.DELETE ?? false,
+          CREATE: input.permissions.CREATE ?? false,
+        },
+      };
+    }));
+
+    const filters = normalizedInputs.map((input) => ({
+      _userId: input.userObjectId,
+      _organizationId: organizationObjectId,
+      entityType: input.entityType,
+      entitySlug: input.entitySlug,
+    }));
+
+    const result = await EntityPermissionMongoose.bulkWrite(
+      normalizedInputs.map((input, index) => ({
+        updateOne: {
+          filter: filters[index],
+          update: {
+            $set: {
+              permissions: input.permissions,
+              grantedBy: grantedByObjectId,
+            },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: true }
+    );
+
+    const documents = await EntityPermissionMongoose.find({ $or: filters }) as any[];
+    const documentsByTarget = new Map(documents.map((document: any) => {
+      const target = [
+        document._userId.toString(),
+        document.entityType,
+        document.entitySlug ?? '',
+      ].join(':');
+      return [target, document] as const;
+    }));
+
+    const permissions = normalizedInputs.map((input) => {
+      const target = [input.userId, input.entityType, input.entitySlug ?? ''].join(':');
+      const document = documentsByTarget.get(target);
+      if (!document) {
+        throw new Error(`Permission not found after bulk upsert for target ${target}`);
+      }
+
+      return {
+        id: document._id.toString(),
+        _userId: document._userId.toString(),
+        _organizationId: document._organizationId.toString(),
+        entityType: document.entityType,
+        entitySlug: document.entitySlug ?? null,
+        permissions: {
+          GET: document.permissions.GET,
+          PUT: document.permissions.PUT,
+          DELETE: document.permissions.DELETE,
+          CREATE: document.permissions.CREATE,
+        },
+        grantedBy: document.grantedBy?.toString(),
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+      } satisfies LeanEntityPermission;
+    });
+
+    return {
+      created: result.upsertedCount,
+      updated: permissionInputs.length - result.upsertedCount,
+      permissions,
+    };
   }
 
   async findByUserEntityAndOrganization(
