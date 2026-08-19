@@ -19,3 +19,16 @@ export interface LeanEntityPermission {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface SetEntityPermissionInput {
+  userId: string;
+  entityType: EntityType;
+  entitySlug: string | null;
+  permissions: Partial<EntityPermissions>;
+}
+
+export interface BulkSetEntityPermissionsResult {
+  created: number;
+  updated: number;
+  permissions: LeanEntityPermission[];
+}
