@@ -199,7 +199,7 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   {
     path: '/orgs/*/permissions',
-    methods: ['POST'],
+    methods: ['POST', 'PUT'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },
