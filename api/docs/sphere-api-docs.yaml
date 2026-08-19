@@ -2387,6 +2387,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/children:
+    post:
+      summary: Create multiple child organizations
+      description: |
+        Creates between 1 and 100 organizations as direct children of the organization
+        identified by `organizationId`. The parent ID is taken exclusively from the URL.
+
+        The authenticated user becomes the OWNER of every created child. OWNER and ADMIN
+        memberships from the parent are propagated to each child according to the existing
+        hierarchy rules. Every child receives the parent's complete ancestry path.
+
+        The complete payload is validated before creating any organization. If creation
+        fails after it begins, organizations created by this request are rolled back.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can create children under any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the parent organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        $ref: '#/components/requestBodies/BulkChildOrganizationsCreate'
+      responses:
+        '201':
+          description: Child organizations created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, organizations]
+                properties:
+                  created:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    example: 2
+                  organizations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the parent organization
+        '404':
+          description: Parent organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members
@@ -6246,6 +6306,42 @@ components:
                 nullable: true
                 description: Updated avatar URL (set to `null` to clear)
                 example: "https://sphere.score.us.es/static/avatars/orgs/new-avatar.png"
+
+    BulkChildOrganizationsCreate:
+      description: Request body for creating multiple direct child organizations.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - organizations
+            properties:
+              organizations:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - name
+                    - displayName
+                  properties:
+                    name:
+                      type: string
+                      minLength: 3
+                      maxLength: 50
+                      pattern: '^[a-z0-9_-]+$'
+                      example: "acme-research"
+                    displayName:
+                      type: string
+                      minLength: 1
+                      maxLength: 255
+                      example: "Acme Research"
+                    description:
+                      type: string
+                      example: "Research division"
 
     AddMember:
       description: |
