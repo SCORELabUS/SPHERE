@@ -28,3 +28,15 @@ export interface SetPermissionPayload {
   entitySlug: string | null;
   permissions: EntityPermissions;
 }
+
+export interface BulkSetPermissionsPayload {
+  permissions: SetPermissionPayload[];
+  removePermissionIds: string[];
+}
+
+export interface BulkSetPermissionsResult {
+  created: number;
+  updated: number;
+  deleted: number;
+  permissions: EntityPermission[];
+}

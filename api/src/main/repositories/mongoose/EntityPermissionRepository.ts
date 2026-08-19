@@ -282,7 +282,8 @@ class EntityPermissionRepository extends RepositoryBase {
   async upsertMany(
     organizationId: string,
     permissionInputs: SetEntityPermissionInput[],
-    grantedBy: string
+    grantedBy: string,
+    removePermissionIds: string[] = []
   ): Promise<BulkSetEntityPermissionsResult> {
     const organizationObjectId = new mongoose.Types.ObjectId(organizationId);
     const grantedByObjectId = new mongoose.Types.ObjectId(grantedBy);
@@ -320,23 +321,46 @@ class EntityPermissionRepository extends RepositoryBase {
       entitySlug: input.entitySlug,
     }));
 
+    const removalObjectIds = removePermissionIds.map(id => new mongoose.Types.ObjectId(id));
+    if (removalObjectIds.length > 0) {
+      const removableCount = await EntityPermissionMongoose.countDocuments({
+        _id: { $in: removalObjectIds },
+        _organizationId: organizationObjectId,
+      });
+      if (removableCount !== removalObjectIds.length) {
+        throw new Error('NOT FOUND: One or more permissions to remove do not belong to this organization');
+      }
+    }
+
     const result = await EntityPermissionMongoose.bulkWrite(
-      normalizedInputs.map((input, index) => ({
-        updateOne: {
-          filter: filters[index],
-          update: {
-            $set: {
-              permissions: input.permissions,
-              grantedBy: grantedByObjectId,
+      [
+        ...normalizedInputs.map((input, index) => ({
+          updateOne: {
+            filter: filters[index],
+            update: {
+              $set: {
+                permissions: input.permissions,
+                grantedBy: grantedByObjectId,
+              },
+            },
+            upsert: true,
+          },
+        })),
+        ...removalObjectIds.map(permissionId => ({
+          deleteOne: {
+            filter: {
+              _id: permissionId,
+              _organizationId: organizationObjectId,
             },
           },
-          upsert: true,
-        },
-      })),
+        })),
+      ],
       { ordered: true }
     );
 
-    const documents = await EntityPermissionMongoose.find({ $or: filters }) as any[];
+    const documents = filters.length > 0
+      ? await EntityPermissionMongoose.find({ $or: filters }) as any[]
+      : [];
     const documentsByTarget = new Map(documents.map((document: any) => {
       const target = [
         document._userId.toString(),
@@ -374,6 +398,7 @@ class EntityPermissionRepository extends RepositoryBase {
     return {
       created: result.upsertedCount,
       updated: permissionInputs.length - result.upsertedCount,
+      deleted: result.deletedCount,
       permissions,
     };
   }

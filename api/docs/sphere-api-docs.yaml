@@ -4123,12 +4123,12 @@ paths:
                 $ref: '#/components/schemas/Error'
 
     put:
-      summary: Create or update entity permissions in bulk
+      summary: Create, update, or remove entity permissions in bulk
       description: |
-        Creates or updates up to 100 entity permission records for an organization in
-        a single request. A permission is matched by the combination of `userId`,
-        `entityType`, and `entitySlug`; existing records are updated and missing records
-        are created.
+        Creates, updates, or removes up to 100 entity permission records for an
+        organization in a single request. A permission is matched by the combination of
+        `userId`, `entityType`, and `entitySlug`; existing records are updated and missing
+        records are created. Existing records can be removed with `removePermissionIds`.
 
         All referenced pricing and collection slugs are validated before the bulk write
         starts. Duplicate targets in the same request are rejected. Only organization
@@ -4143,7 +4143,7 @@ paths:
         $ref: '#/components/requestBodies/BulkSetPermissionsRequest'
       responses:
         '200':
-          description: Permissions created or updated successfully
+          description: Permissions created, updated, or removed successfully
           content:
             application/json:
               schema:
@@ -5877,6 +5877,7 @@ components:
       required:
         - created
         - updated
+        - deleted
         - permissions
       properties:
         created:
@@ -5888,6 +5889,11 @@ components:
           type: integer
           minimum: 0
           description: Number of existing permission records updated
+          example: 1
+        deleted:
+          type: integer
+          minimum: 0
+          description: Number of existing permission records removed
           example: 1
         permissions:
           type: array
@@ -6560,21 +6566,26 @@ components:
                 $ref: '#/components/schemas/EntityPermissions'
 
     BulkSetPermissionsRequest:
-      description: Request to create or update entity permissions in bulk
+      description: Request to create, update, or remove entity permissions in bulk
       required: true
       content:
         application/json:
           schema:
             type: object
-            required:
-              - permissions
             properties:
               permissions:
                 type: array
-                minItems: 1
                 maxItems: 100
                 items:
                   $ref: '#/components/schemas/BulkPermissionItem'
+              removePermissionIds:
+                type: array
+                maxItems: 100
+                uniqueItems: true
+                description: IDs of existing permission records to remove
+                items:
+                  type: string
+                  pattern: '^[a-f0-9]{24}$'
 
   responses:
     PricingList:

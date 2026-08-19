@@ -30,5 +30,6 @@ export interface SetEntityPermissionInput {
 export interface BulkSetEntityPermissionsResult {
   created: number;
   updated: number;
+  deleted: number;
   permissions: LeanEntityPermission[];
 }

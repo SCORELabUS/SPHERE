@@ -1,4 +1,4 @@
-import { check } from 'express-validator';
+import { body, check } from 'express-validator';
 
 const setPermission = [
   check('userId')
@@ -44,10 +44,9 @@ const setPermission = [
 
 const setPermissionsBulk = [
   check('permissions')
-    .exists()
-    .withMessage('A permissions array must be provided')
-    .isArray({ min: 1, max: 100 })
-    .withMessage('The permissions field must contain between 1 and 100 items')
+    .optional()
+    .isArray({ max: 100 })
+    .withMessage('The permissions field must contain at most 100 items')
     .custom((items) => {
       if (!Array.isArray(items)) return true;
 
@@ -100,6 +99,33 @@ const setPermissionsBulk = [
     .optional()
     .isBoolean()
     .withMessage('Every permissions.CREATE value must be a boolean'),
+  check('removePermissionIds')
+    .optional()
+    .isArray({ max: 100 })
+    .withMessage('The removePermissionIds field must contain at most 100 items')
+    .custom(items => {
+      if (!Array.isArray(items)) return true;
+      if (new Set(items).size !== items.length) {
+        throw new Error('The removePermissionIds array must not contain duplicates');
+      }
+      return true;
+    }),
+  check('removePermissionIds.*')
+    .isString()
+    .withMessage('Every permission ID to remove must be a string')
+    .matches(/^[a-f0-9]{24}$/)
+    .withMessage('Every permission ID to remove must be a valid MongoDB ObjectId'),
+  body().custom((_value, { req }) => {
+    const permissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+    const removePermissionIds = Array.isArray(req.body.removePermissionIds)
+      ? req.body.removePermissionIds
+      : [];
+    const totalChanges = permissions.length + removePermissionIds.length;
+    if (totalChanges < 1 || totalChanges > 100) {
+      throw new Error('The bulk request must contain between 1 and 100 total changes');
+    }
+    return true;
+  }),
 ];
 
 const removePermission = [

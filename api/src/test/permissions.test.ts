@@ -191,6 +191,7 @@ describe('Entity Permissions API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.created).toBe(2);
       expect(response.body.updated).toBe(0);
+      expect(response.body.deleted).toBe(0);
       expect(response.body.permissions).toHaveLength(2);
       expect(response.body.permissions[0]).toMatchObject({
         _userId: member.id,
@@ -266,6 +267,107 @@ describe('Entity Permissions API integration', () => {
         _organizationId: organizationId,
         _userId: member.id,
       })).toBe(2);
+    });
+
+    it('should create, update, and remove permissions in one request', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const pricing = await createPricingForOrganization({
+        organizationId,
+        isPrivate: false,
+      });
+      const collection = await createTestCollection({ _organizationId: organizationId });
+
+      const pricingPermission = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          userId: member.id,
+          entityType: 'pricing',
+          entitySlug: pricing.serviceName,
+          permissions: { GET: true },
+        });
+      const removedPermission = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          userId: member.id,
+          entityType: 'collection',
+          entitySlug: collection.slug,
+          permissions: { GET: true },
+        });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          permissions: [
+            {
+              userId: member.id,
+              entityType: 'pricing',
+              entitySlug: pricing.serviceName,
+              permissions: { GET: true, PUT: true },
+            },
+            {
+              userId: member.id,
+              entityType: 'collection',
+              entitySlug: null,
+              permissions: { CREATE: true },
+            },
+          ],
+          removePermissionIds: [removedPermission.body.id],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ created: 1, updated: 1, deleted: 1 });
+      expect(response.body.permissions).toHaveLength(2);
+      expect(await EntityPermissionMongoose.findById(removedPermission.body.id)).toBeNull();
+      expect(await EntityPermissionMongoose.findById(pricingPermission.body.id)).toMatchObject({
+        permissions: { GET: true, PUT: true, DELETE: false, CREATE: false },
+      });
+    });
+
+    it('should remove permissions without requiring an upsert', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const permission = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          userId: member.id,
+          entityType: 'pricing',
+          entitySlug: null,
+          permissions: { CREATE: true },
+        });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ removePermissionIds: [permission.body.id] });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        created: 0,
+        updated: 0,
+        deleted: 1,
+        permissions: [],
+      });
+      expect(await EntityPermissionMongoose.findById(permission.body.id)).toBeNull();
+    });
+
+    it('should reject an empty bulk request', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ permissions: [], removePermissionIds: [] });
+
+      expect(response.status).toBe(422);
     });
 
     it('should reject duplicate permission targets', async () => {
