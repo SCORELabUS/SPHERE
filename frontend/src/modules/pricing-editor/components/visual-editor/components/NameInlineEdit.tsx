@@ -3,9 +3,9 @@ import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
 import { toCamelCase } from '../utils/names';
 
 export function NameInlineEdit({
-  value, onSave, className, light,
+  value, onSave, className, light, truncate = true,
 }: {
-  value: string; onSave: (newKey: string) => void; className?: string; light?: boolean;
+  value: string; onSave: (newKey: string) => void; className?: string; light?: boolean; truncate?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(camelToTitle(value));
@@ -16,10 +16,10 @@ export function NameInlineEdit({
 
   if (!editing) {
     return (
-      <span role="button" tabIndex={0}
+      <span role="button" tabIndex={0} title={camelToTitle(value)}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditing(true); } }}
-        className={`cursor-pointer truncate rounded px-1 py-0.5 transition-colors ${light ? 'hover:bg-white/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'} ${className ?? ''}`}
+        className={`cursor-pointer rounded px-1 py-0.5 transition-colors ${truncate ? 'truncate' : 'whitespace-normal break-words'} ${light ? 'hover:bg-white/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'} ${className ?? ''}`}
       >{camelToTitle(value)}</span>
     );
   }

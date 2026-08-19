@@ -81,6 +81,11 @@ class UserRepository extends RepositoryBase {
     }
   }
 
+  async findByIds(ids: string[]): Promise<LeanUser[]> {
+    const users = await UserMongoose.find({ _id: { $in: ids } }).exec();
+    return users.map(user => user.toObject());
+  }
+
   async findByIdWithPassword(id: string): Promise<LeanUser | null> {
     const user = await UserMongoose.findById(id).select('+password').exec();
     return user ? user.toObject() : null;

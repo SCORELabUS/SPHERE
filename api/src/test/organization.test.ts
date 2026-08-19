@@ -616,6 +616,109 @@ describe('Organizations API integration', () => {
   });
 
   // =========================================================================
+  // POST /orgs/:organizationId/children
+  // =========================================================================
+  describe('POST /orgs/:organizationId/children', () => {
+    it('allows an OWNER to create multiple child organizations', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: parentAdmin } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      await createMembership(parentAdmin.id, parent.id, 'ADMIN');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          organizations: [
+            {
+              name: `bulk_child_a_${randomSuffix()}`,
+              displayName: 'Bulk Child A',
+              description: 'First child',
+            },
+            {
+              name: `bulk_child_b_${randomSuffix()}`,
+              displayName: 'Bulk Child B',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.created).toBe(2);
+      expect(response.body.organizations).toHaveLength(2);
+
+      for (const organization of response.body.organizations) {
+        orgsToDelete.add(organization.id);
+        expect(organization._parentId).toBe(parent.id);
+        expect(organization.ancestors).toContain(parent.id);
+        expect(organization.isPersonal).toBe(false);
+
+        const inheritedMembership = await OrganizationMembershipMongoose.findOne({
+          _userId: parentAdmin.id,
+          _organizationId: organization.id,
+        }).lean();
+        expect(inheritedMembership?.role).toBe('ADMIN');
+      }
+    });
+
+    it('allows an ADMIN of the parent to create child organizations', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: parentAdmin } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      await createMembership(parentAdmin.id, parent.id, 'ADMIN');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${parentAdmin.token}`)
+        .send({
+          organizations: [
+            { name: `admin_child_${randomSuffix()}`, displayName: 'Admin Child' },
+          ],
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.created).toBe(1);
+      orgsToDelete.add(response.body.organizations[0].id);
+    });
+
+    it('rejects the complete request when any child is invalid', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          organizations: [
+            { name: `valid_child_${randomSuffix()}`, displayName: 'Valid Child' },
+            { name: 'INVALID NAME', displayName: 'Invalid Child' },
+          ],
+        });
+
+      expect(response.status).toBe(422);
+      expect(await OrganizationMongoose.countDocuments({ _parentId: parent.id })).toBe(0);
+    });
+
+    it('does not allow a MEMBER to create child organizations', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      await createMembership(member.id, parent.id, 'MEMBER');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({
+          organizations: [
+            { name: `forbidden_child_${randomSuffix()}`, displayName: 'Forbidden Child' },
+          ],
+        });
+
+      expect(response.status).toBe(403);
+      expect(await OrganizationMongoose.countDocuments({ _parentId: parent.id })).toBe(0);
+    });
+  });
+
+  // =========================================================================
   // PUT /orgs/:organizationId
   // =========================================================================
   describe('PUT /orgs/:organizationId', () => {
@@ -1312,6 +1415,136 @@ describe('Organizations API integration', () => {
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();
+    });
+  });
+
+  // =========================================================================
+  // PUT /orgs/:organizationId/members
+  // =========================================================================
+  describe('PUT /orgs/:organizationId/members', () => {
+    it('allows an OWNER to add multiple members and propagates manager roles to children', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: newAdmin } = await createAndLoginUser('USER');
+      const { user: newMember } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: parent.id });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${parent.id}/members`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          members: [
+            { userId: newAdmin.id, role: 'ADMIN' },
+            { userId: newMember.id, role: 'MEMBER' },
+          ],
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.created).toBe(2);
+      expect(response.body.memberships).toHaveLength(2);
+      expect(response.body.memberships).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          _userId: newAdmin.id,
+          _organizationId: parent.id,
+          role: 'ADMIN',
+        }),
+        expect.objectContaining({
+          _userId: newMember.id,
+          _organizationId: parent.id,
+          role: 'MEMBER',
+        }),
+      ]));
+
+      const inheritedAdmin = await OrganizationMembershipMongoose.findOne({
+        _userId: newAdmin.id,
+        _organizationId: child.id,
+      }).lean();
+      const inheritedMember = await OrganizationMembershipMongoose.findOne({
+        _userId: newMember.id,
+        _organizationId: child.id,
+      }).lean();
+      expect(inheritedAdmin?.role).toBe('ADMIN');
+      expect(inheritedMember).toBeNull();
+    });
+
+    it('rejects duplicate users before writing memberships', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: newMember } = await createAndLoginUser('USER');
+      const duplicate = { userId: newMember.id, role: 'MEMBER' };
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/members`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ members: [duplicate, duplicate] });
+
+      expect(response.status).toBe(422);
+      expect(await OrganizationMembershipMongoose.findOne({
+        _userId: newMember.id,
+        _organizationId: organizationId,
+      })).toBeNull();
+    });
+
+    it('rejects the complete request when a user is already a member', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: existingMember } = await createAndLoginUser('USER');
+      const { user: newMember } = await createAndLoginUser('USER');
+      await createMembership(existingMember.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/members`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          members: [
+            { userId: existingMember.id, role: 'MEMBER' },
+            { userId: newMember.id, role: 'MEMBER' },
+          ],
+        });
+
+      expect(response.status).toBe(422);
+      expect(await OrganizationMembershipMongoose.findOne({
+        _userId: newMember.id,
+        _organizationId: organizationId,
+      })).toBeNull();
+    });
+
+    it('rejects the complete request when a user does not exist', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: newMember } = await createAndLoginUser('USER');
+      const missingUserId = '68050bd09890322c57842f6f';
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/members`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          members: [
+            { userId: newMember.id, role: 'MEMBER' },
+            { userId: missingUserId, role: 'MEMBER' },
+          ],
+        });
+
+      expect(response.status).toBe(404);
+      expect(await OrganizationMembershipMongoose.findOne({
+        _userId: newMember.id,
+        _organizationId: organizationId,
+      })).toBeNull();
+    });
+
+    it('does not allow an organization MEMBER to add members in bulk', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      const { user: newMember } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/members`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ members: [{ userId: newMember.id, role: 'MEMBER' }] });
+
+      expect(response.status).toBe(403);
+      expect(await OrganizationMembershipMongoose.findOne({
+        _userId: newMember.id,
+        _organizationId: organizationId,
+      })).toBeNull();
     });
   });
 

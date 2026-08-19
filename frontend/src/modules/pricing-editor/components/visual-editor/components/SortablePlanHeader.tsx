@@ -37,7 +37,7 @@ export function SortablePlanHeader({
       onMouseLeave={() => onHover(false)}
     >
       <div className="absolute inset-0 rounded-t-lg" style={{ background: `linear-gradient(135deg, ${a}, ${b})` }} />
-      <div className="relative flex flex-col items-center overflow-hidden py-4 text-center">
+      <div className="relative flex flex-col items-center overflow-hidden pb-4 pt-9 text-center md:py-4">
         <div {...listeners} className="absolute left-1 top-2 cursor-grab text-white/40 hover:text-white/80 active:cursor-grabbing">
           <FaGripVertical className="h-3 w-3" />
         </div>
@@ -53,20 +53,18 @@ export function SortablePlanHeader({
         </div>
         {plan.unit && <div className="mt-0.5 w-full truncate px-2"><HeaderInlineEdit value={plan.unit} onSave={onUnitChange} className="!text-xs !text-white/70" /></div>}
       </div>
-      {isHovered && (
-        <div className="absolute right-1 top-1 z-10 flex gap-0.5">
+      <div className={`absolute right-1 top-1 z-10 flex gap-0.5 opacity-100 transition-opacity ${isHovered ? 'md:opacity-100' : 'md:pointer-events-none md:opacity-0'}`}>
           <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
             onClick={onEdit}
-            className="cursor-pointer rounded-md bg-white/20 p-1 text-white/70 backdrop-blur-sm transition-colors hover:bg-white/30 hover:text-white"
+            className="flex size-7 cursor-pointer items-center justify-center rounded-md bg-white/20 text-white/70 backdrop-blur-sm transition-colors hover:bg-white/30 hover:text-white md:size-auto md:p-1"
             title="Edit plan details"><FaPencil className="h-2.5 w-2.5" /></motion.button>
           {canRemove && (
             <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} type="button"
               onClick={onRemove}
-              className="cursor-pointer rounded-md bg-red-500/20 p-1 text-red-200 backdrop-blur-sm transition-colors hover:bg-red-500/40 hover:text-red-100"
+              className="flex size-7 cursor-pointer items-center justify-center rounded-md bg-red-500/20 text-red-200 backdrop-blur-sm transition-colors hover:bg-red-500/40 hover:text-red-100 md:size-auto md:p-1"
               title="Remove plan"><FaTrash className="h-2.5 w-2.5" /></motion.button>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
