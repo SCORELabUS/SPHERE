@@ -17,11 +17,28 @@ import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 import EditorSkeleton from '../../../core/components/skeletons/editor-skeleton';
 import type { PricingDraft } from '../../services/pricing2yaml';
+import ProblemsPanel from '../../components/problems-panel';
+import { usePricing2YamlLinter } from '../../hooks/usePricing2YamlLinter';
+import type { LintDiagnostic, LintSeverity } from '../../services/pricing2yaml/linter';
 
 type SyntaxVersion = '3.0' | '3.1';
 
+/** Namespace under which the linter owns its markers, so it never clears anyone else's. */
+const LINTER_MARKER_OWNER = 'pricing2yaml-linter';
+
 function normalizeSyntaxVersion(value?: string): SyntaxVersion {
   return value === '3.1' ? '3.1' : '3.0';
+}
+
+function toMarkerSeverity(monacoInstance: Monaco, severity: LintSeverity): number {
+  switch (severity) {
+    case 'error':
+      return monacoInstance.MarkerSeverity.Error;
+    case 'warning':
+      return monacoInstance.MarkerSeverity.Warning;
+    default:
+      return monacoInstance.MarkerSeverity.Info;
+  }
 }
 
 // function replaceSyntaxVersionInYaml(yaml: string, version: SyntaxVersion): string {
@@ -49,6 +66,10 @@ export default function EditorPage() {
   const { mode } = useMode();
   const { editorValue, setEditorValue, editorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft } = useEditorValue();
   const {getFromCache} = useCacheApi();
+
+  const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
+  const [codeEditor, setCodeEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const lint = usePricing2YamlLinter(editorValue);
 
   const timeoutRef = useRef<any>(null);
   const requestIdRef = useRef(0);
@@ -93,13 +114,9 @@ export default function EditorPage() {
           setErrors([]);
         } catch (err) {
           if (currentRequestId !== requestIdRef.current) return;
-          const errorMessage = (err as Error).message;
-          setErrors(prevErrors => {
-            if (!prevErrors.includes(errorMessage)) {
-              return [...prevErrors, errorMessage];
-            }
-            return prevErrors;
-          });
+          // Only the current failure is relevant: the linter is what enumerates
+          // every problem, so keeping a growing pile of stale toasts here is noise.
+          setErrors([(err as Error).message]);
         }
       }, 1000);
     }
@@ -114,6 +131,28 @@ export default function EditorPage() {
       'textmate',
       TextmateTheme as monaco.editor.IStandaloneThemeData
     );
+  }
+
+  function handleEditorMounted(
+    editorInstance: monaco.editor.IStandaloneCodeEditor,
+    monacoNamespace: Monaco
+  ) {
+    setCodeEditor(editorInstance);
+    setMonacoInstance(monacoNamespace);
+  }
+
+  /** Moves the caret to a diagnostic so the user can fix it straight away. */
+  function goToDiagnostic(diagnostic: LintDiagnostic) {
+    if (!codeEditor) {
+      return;
+    }
+
+    codeEditor.revealLineInCenter(diagnostic.startLineNumber);
+    codeEditor.setPosition({
+      lineNumber: diagnostic.startLineNumber,
+      column: diagnostic.startColumn,
+    });
+    codeEditor.focus();
   }
 
   useEffect(() => {
@@ -165,13 +204,7 @@ export default function EditorPage() {
         setEditorValue(templatePricing);
         setErrors([]);
       } catch (err) {
-        const errorMessage = (err as Error).message;
-        setErrors(prevErrors => {
-          if (!prevErrors.includes(errorMessage)) {
-            return [...prevErrors, errorMessage];
-          }
-          return prevErrors;
-        });
+        setErrors([(err as Error).message]);
       }
     };
 
@@ -181,6 +214,37 @@ export default function EditorPage() {
   useEffect(() => {
     handleEditorChange(editorValue)
   }, [editorValue]);
+
+  // Publishes the linter output as editor markers, which is what draws the
+  // squiggles and the hover tooltips over the offending YAML.
+  useEffect(() => {
+    const model = codeEditor?.getModel();
+
+    if (!monacoInstance || !model) {
+      return;
+    }
+
+    monacoInstance.editor.setModelMarkers(
+      model,
+      LINTER_MARKER_OWNER,
+      lint.diagnostics.map(diagnostic => ({
+        severity: toMarkerSeverity(monacoInstance, diagnostic.severity),
+        message: diagnostic.message,
+        code: diagnostic.code,
+        source: 'Pricing2Yaml',
+        startLineNumber: diagnostic.startLineNumber,
+        startColumn: diagnostic.startColumn,
+        endLineNumber: diagnostic.endLineNumber,
+        endColumn: diagnostic.endColumn,
+      }))
+    );
+
+    return () => {
+      if (!model.isDisposed()) {
+        monacoInstance.editor.setModelMarkers(model, LINTER_MARKER_OWNER, []);
+      }
+    };
+  }, [monacoInstance, codeEditor, lint]);
 
   useEffect(() => {
     if (!editorValue) {
@@ -249,20 +313,29 @@ export default function EditorPage() {
             transition={{ duration: 0.3 }}
             className="grid h-full w-full gap-4 bg-slate-300 lg:grid-cols-2"
           >
-            <div className="relative h-full min-h-0">
-              <Editor
-                height="100%"
-                defaultLanguage="yaml"
-                onChange={handleEditorChange}
-                value={editorValue}
-                theme={mode === 'light' ? 'textmate' : 'github-dark'}
-                beforeMount={handleEditorDidMount}
-                options={{
-                  minimap: {
-                    enabled: false,
-                  },
-                  fontSize: 16,
-                }}
+            <div className="relative flex h-full min-h-0 flex-col">
+              <div className="min-h-0 flex-1">
+                <Editor
+                  height="100%"
+                  defaultLanguage="yaml"
+                  onChange={handleEditorChange}
+                  value={editorValue}
+                  theme={mode === 'light' ? 'textmate' : 'github-dark'}
+                  beforeMount={handleEditorDidMount}
+                  onMount={handleEditorMounted}
+                  options={{
+                    minimap: {
+                      enabled: false,
+                    },
+                    fontSize: 16,
+                  }}
+                />
+              </div>
+              <ProblemsPanel
+                diagnostics={lint.diagnostics}
+                errors={lint.errors}
+                warnings={lint.warnings}
+                onSelect={goToDiagnostic}
               />
             </div>
             <div className="box-border flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-200 py-2">
