@@ -201,7 +201,7 @@ function InlineValueRow({ label, value, valueType, editable, onValueChange, onRe
 }) {
   return (
     <div className={`flex items-center gap-1 text-xs ${editable ? 'group/row' : ''}`}>
-      <span className="w-28 truncate text-slate-500 dark:text-slate-400" title={label}>{camelToTitle(label)}</span>
+      <span className="min-w-0 flex-1 whitespace-normal break-words leading-snug text-slate-500 dark:text-slate-400" title={label}>{camelToTitle(label)}</span>
       <span className="text-slate-300 dark:text-slate-600">·</span>
       {valueType === 'BOOLEAN' ? (
         editable ? (
@@ -228,7 +228,8 @@ function InlineValueRow({ label, value, valueType, editable, onValueChange, onRe
       )}
       {editable && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
-          className="shrink-0 cursor-pointer rounded p-0.5 text-slate-300 opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400">
+          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded text-slate-300 opacity-100 transition-opacity hover:text-red-500 md:size-auto md:p-0.5 md:opacity-0 md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100 dark:text-slate-600 dark:hover:text-red-400"
+          aria-label={`Remove ${camelToTitle(label)}`} title={`Remove ${camelToTitle(label)}`}>
           <FaXmark className="h-2.5 w-2.5" />
         </button>
       )}
@@ -390,7 +391,7 @@ function AddOnCardContent(
       {/* Header */}
       <div className="flex items-start gap-2 border-b border-slate-100 px-4 pt-4 pb-3 dark:border-slate-800">
         {editable && (
-          <div {...(dragListeners as unknown as React.HTMLAttributes<HTMLDivElement>)} className="mt-1 shrink-0 cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+          <div {...(dragListeners as unknown as React.HTMLAttributes<HTMLDivElement>)} className="mt-1 shrink-0 cursor-grab text-slate-300 opacity-100 transition-opacity hover:text-slate-500 active:cursor-grabbing md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             <FaGripVertical className="h-3 w-3" />
           </div>
         )}
@@ -407,11 +408,11 @@ function AddOnCardContent(
         {editable && (
           <>
             <button type="button" onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
-              className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-100 hover:text-indigo-500 dark:hover:bg-slate-800" title="Advanced settings">
+              className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 opacity-100 transition-all hover:bg-slate-100 hover:text-indigo-500 md:size-auto md:p-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 dark:hover:bg-slate-800" title="Advanced settings">
               <FaSliders className="h-3 w-3" />
             </button>
             <button type="button" onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
-              className="shrink-0 cursor-pointer rounded p-1 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950" title="Remove add-on">
+              className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 opacity-100 transition-all hover:bg-red-50 hover:text-red-500 md:size-auto md:p-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 dark:hover:bg-red-950" title="Remove add-on">
               <FaTrash className="h-3 w-3" />
             </button>
           </>

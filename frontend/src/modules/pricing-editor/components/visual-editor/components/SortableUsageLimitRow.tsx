@@ -41,7 +41,7 @@ export function SortableUsageLimitRow({
     >
       <div className={`flex ${isDisabled ? 'opacity-[0.4]' : ''}`} style={{ width: '100%' }}>
         {/* Label */}
-        <div className="relative flex shrink-0 items-center gap-1.5 overflow-hidden border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50"
+        <div className="relative flex shrink-0 items-center gap-1.5 overflow-hidden border-b border-r border-slate-200 bg-slate-50/50 px-4 py-3 pr-24 md:pr-4 dark:border-slate-700 dark:bg-slate-800/50"
           style={{ width: LABEL_WIDTH }}>
           {isCreating ? (
             <CreatingNameInput
@@ -51,29 +51,30 @@ export function SortableUsageLimitRow({
             />
           ) : (
             <>
-              <div {...listeners} className="shrink-0 cursor-grab text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-slate-500 active:cursor-grabbing">
+              <div {...listeners} className="shrink-0 cursor-grab text-slate-300 opacity-100 transition-opacity hover:text-slate-500 active:cursor-grabbing md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                 <FaGripVertical className="h-3 w-3" />
               </div>
-              <div className="min-w-0 flex-1 truncate">
+              <div className="min-w-0 flex-1 leading-snug">
                 <NameInlineEdit value={usageKey} onSave={(newKey) => onRename(usageKey, newKey)}
-                  className="text-sm font-semibold text-slate-700 dark:text-slate-300" />
+                  truncate={false}
+                  className="text-left text-sm font-semibold text-slate-700 dark:text-slate-300" />
                 <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">({usage.unit})</span>
               </div>
             </>
           )}
-          <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute right-1 top-0.5 z-20 flex gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             <button type="button" onClick={() => onToggleRender('usageLimit', usageKey)}
-              className={`cursor-pointer rounded p-0.5 transition-colors ${isDisabled ? 'text-slate-300 hover:text-amber-500' : 'text-amber-500 hover:text-slate-400'}`}
-              title={isDisabled ? 'Show row' : 'Hide row'}>
-              {isDisabled ? <FaEyeSlash className="h-2.5 w-2.5" /> : <FaEye className="h-2.5 w-2.5" />}
+              className={`flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-slate-200/70 dark:hover:bg-slate-700 ${isDisabled ? 'text-slate-300 hover:text-amber-500' : 'text-amber-500 hover:text-slate-500'}`}
+              aria-label={isDisabled ? 'Show row' : 'Hide row'} title={isDisabled ? 'Show row' : 'Hide row'}>
+              {isDisabled ? <FaEyeSlash className="size-3" /> : <FaEye className="size-3" />}
             </button>
             <button type="button" onClick={onEdit}
-              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-indigo-500" title="Edit">
-              <FaPencil className="h-2.5 w-2.5" />
+              className="flex size-8 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-500 dark:hover:bg-indigo-950/50" aria-label="Edit" title="Edit">
+              <FaPencil className="size-3" />
             </button>
             <button type="button" onClick={onRemove}
-              className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:text-red-500" title="Remove">
-              <FaTrash className="h-2.5 w-2.5" />
+              className="flex size-8 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/50" aria-label="Remove" title="Remove">
+              <FaTrash className="size-3" />
             </button>
           </div>
         </div>
