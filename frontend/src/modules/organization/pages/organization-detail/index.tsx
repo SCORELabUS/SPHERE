@@ -740,6 +740,7 @@ export default function OrganizationDetailPage() {
               members={members}
               canManage={canManage}
               currentUserId={authUser.user?.id}
+              managerRole={myRole}
               onRefresh={refreshMembers}
               onAddMember={() => setAddMemberModalOpen(true)}
               onLeave={() => router.push('/')}
@@ -797,6 +798,8 @@ export default function OrganizationDetailPage() {
               onToggle={handleTreeToggle}
               onNavigate={id => router.push(`/orgs/${id}`)}
               onCreateSubOrg={() => setCreateSubOrgModalOpen(true)}
+              currentUserId={authUser.user?.id}
+              managerRole={myRole}
             />
           )}
 

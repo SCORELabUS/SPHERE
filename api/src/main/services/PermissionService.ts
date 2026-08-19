@@ -3,7 +3,14 @@ import EntityPermissionRepository from '../repositories/mongoose/EntityPermissio
 import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
 import PricingCollectionRepository from '../repositories/mongoose/PricingCollectionRepository';
-import { EntityType, EntityPermissions, LeanEntityPermission, PermissionType } from '../types/models/EntityPermission';
+import {
+  BulkSetEntityPermissionsResult,
+  EntityType,
+  EntityPermissions,
+  LeanEntityPermission,
+  PermissionType,
+  SetEntityPermissionInput,
+} from '../types/models/EntityPermission';
 import { OrgRole } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
 import { PricingIndexQueryParams } from '../types/services/PricingService';
@@ -213,6 +220,39 @@ class PermissionService {
     );
 
     return result;
+  }
+
+  /**
+   * Creates or updates multiple entity permissions in one database operation.
+   * Every referenced entity is validated before any write is performed.
+   */
+  async setPermissionsBulk(
+    organizationId: string,
+    permissionInputs: SetEntityPermissionInput[],
+    grantedBy: string,
+    granterOrgRole: OrgRole | null,
+    isGlobalAdmin = false
+  ): Promise<BulkSetEntityPermissionsResult> {
+    if (!isGlobalAdmin && granterOrgRole !== 'OWNER' && granterOrgRole !== 'ADMIN') {
+      throw new Error('PERMISSION ERROR: Only OWNER and ADMIN users can manage entity permissions');
+    }
+
+    const normalizedInputs = permissionInputs.map((input) => ({
+      ...input,
+      entitySlug: input.entitySlug ?? null,
+      permissions: {
+        GET: input.permissions.GET ?? false,
+        PUT: input.permissions.PUT ?? false,
+        DELETE: input.permissions.DELETE ?? false,
+        CREATE: input.permissions.CREATE ?? false,
+      },
+    }));
+
+    return this.entityPermissionRepository.upsertMany(
+      organizationId,
+      normalizedInputs,
+      grantedBy
+    );
   }
 
   /**

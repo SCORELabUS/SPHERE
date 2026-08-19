@@ -10,6 +10,7 @@ class PermissionController {
     this.permissionService = container.resolve('permissionService');
     this.getOrgPermissions = this.getOrgPermissions.bind(this);
     this.setPermission = this.setPermission.bind(this);
+    this.setPermissionsBulk = this.setPermissionsBulk.bind(this);
     this.removePermission = this.removePermission.bind(this);
     this.getPricingPermissions = this.getPricingPermissions.bind(this);
     this.getCollectionPermissions = this.getCollectionPermissions.bind(this);
@@ -44,6 +45,22 @@ class PermissionController {
         req.user.orgRole
       );
       res.status(201).json(result);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async setPermissionsBulk(req: any, res: any) {
+    try {
+      const result = await this.permissionService.setPermissionsBulk(
+        req.params.orgId,
+        req.body.permissions,
+        req.user.id,
+        req.user.orgRole,
+        req.user.role === 'ADMIN'
+      );
+      res.status(200).json(result);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

@@ -2387,6 +2387,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/children:
+    post:
+      summary: Create multiple child organizations
+      description: |
+        Creates between 1 and 100 organizations as direct children of the organization
+        identified by `organizationId`. The parent ID is taken exclusively from the URL.
+
+        The authenticated user becomes the OWNER of every created child. OWNER and ADMIN
+        memberships from the parent are propagated to each child according to the existing
+        hierarchy rules. Every child receives the parent's complete ancestry path.
+
+        The complete payload is validated before creating any organization. If creation
+        fails after it begins, organizations created by this request are rolled back.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can create children under any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the parent organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        $ref: '#/components/requestBodies/BulkChildOrganizationsCreate'
+      responses:
+        '201':
+          description: Child organizations created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, organizations]
+                properties:
+                  created:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    example: 2
+                  organizations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the parent organization
+        '404':
+          description: Parent organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members
@@ -2519,6 +2579,84 @@ paths:
                   summary: User already a member
                   value:
                     error: "User is already a member of this organization"
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Add multiple members to the organization
+      description: |
+        Adds between 1 and 100 users to an organization in a single request. Every user
+        and existing membership is validated before any new membership is written.
+
+        `OWNER` and `ADMIN` roles are propagated to direct child organizations according
+        to the existing organization hierarchy rules. `MEMBER` roles are only added to
+        the organization identified by `organizationId`.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can add members to any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
+
+        **Constraints**:
+        - The request must contain between 1 and 100 unique user IDs.
+        - Every referenced user must exist.
+        - None of the users may already be a member of the organization.
+        - Personal organizations cannot receive another `OWNER`.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        $ref: '#/components/requestBodies/BulkAddMembers'
+      responses:
+        '201':
+          description: Members added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, memberships]
+                properties:
+                  created:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    example: 2
+                  memberships:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, _userId, _organizationId, role, joinedAt]
+                      properties:
+                        id:
+                          type: string
+                          example: "68050bd09890322c57842f70"
+                        _userId:
+                          type: string
+                          example: "68050bd09890322c57842f71"
+                        _organizationId:
+                          type: string
+                          example: "68050bd09890322c57842f6f"
+                        role:
+                          type: string
+                          enum: [OWNER, ADMIN, MEMBER]
+                        joinedAt:
+                          $ref: '#/components/schemas/Date'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient organization permissions or personal organization constraint
+        '404':
+          description: Organization or one of the referenced users was not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         default:
           description: Unexpected error
           content:
@@ -3979,6 +4117,51 @@ paths:
                 $ref: '#/components/schemas/Error'
         '422':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Create or update entity permissions in bulk
+      description: |
+        Creates or updates up to 100 entity permission records for an organization in
+        a single request. A permission is matched by the combination of `userId`,
+        `entityType`, and `entitySlug`; existing records are updated and missing records
+        are created.
+
+        All referenced pricing and collection slugs are validated before the bulk write
+        starts. Duplicate targets in the same request are rejected. Only organization
+        OWNER and ADMIN users, and global ADMIN users, can use this endpoint.
+      tags:
+        - Permissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        $ref: '#/components/requestBodies/BulkSetPermissionsRequest'
+      responses:
+        '200':
+          description: Permissions created or updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkSetPermissionsResult'
+        '403':
+          description: Insufficient permissions (requires OWNER or ADMIN role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: A referenced pricing or collection was not found in the organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error, empty request, too many items, or duplicate targets
           content:
             application/json:
               schema:
@@ -5664,6 +5847,53 @@ components:
           description: Whether the user can create new versions or child entities
           example: false
 
+    BulkPermissionItem:
+      type: object
+      required:
+        - userId
+        - entityType
+        - permissions
+      properties:
+        userId:
+          type: string
+          pattern: '^[a-f0-9]{24}$'
+          description: The MongoDB ObjectId of the user to grant permissions to
+          example: "68050bd09890322c57842f71"
+        entityType:
+          type: string
+          enum: [pricing, collection]
+          description: The type of entity to set permissions for
+          example: "pricing"
+        entitySlug:
+          type: string
+          nullable: true
+          description: The entity slug, or null for organization-scoped permissions
+          example: "zoom"
+        permissions:
+          $ref: '#/components/schemas/EntityPermissions'
+
+    BulkSetPermissionsResult:
+      type: object
+      required:
+        - created
+        - updated
+        - permissions
+      properties:
+        created:
+          type: integer
+          minimum: 0
+          description: Number of permission records created
+          example: 2
+        updated:
+          type: integer
+          minimum: 0
+          description: Number of existing permission records updated
+          example: 1
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityPermission'
+
     UserPricingsResponse:
       type: object
       description: Response containing pricings accessible to a user with their permissions
@@ -6155,6 +6385,42 @@ components:
                 description: Updated avatar URL (set to `null` to clear)
                 example: "https://sphere.score.us.es/static/avatars/orgs/new-avatar.png"
 
+    BulkChildOrganizationsCreate:
+      description: Request body for creating multiple direct child organizations.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - organizations
+            properties:
+              organizations:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - name
+                    - displayName
+                  properties:
+                    name:
+                      type: string
+                      minLength: 3
+                      maxLength: 50
+                      pattern: '^[a-z0-9_-]+$'
+                      example: "acme-research"
+                    displayName:
+                      type: string
+                      minLength: 1
+                      maxLength: 255
+                      example: "Acme Research"
+                    description:
+                      type: string
+                      example: "Research division"
+
     AddMember:
       description: |
         Request body for adding a user to an organization. Unlike `POST /orgs/join/{code}`
@@ -6181,6 +6447,36 @@ components:
                   - **ADMIN**: Can manage members and invitations
                   - **MEMBER**: Basic access to organization resources
                 example: "MEMBER"
+
+    BulkAddMembers:
+      description: Request body for adding multiple users to an organization.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - members
+            properties:
+              members:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - userId
+                    - role
+                  properties:
+                    userId:
+                      type: string
+                      pattern: '^[a-fA-F0-9]{24}$'
+                      example: "68050bd09890322c57842f71"
+                    role:
+                      type: string
+                      enum: [OWNER, ADMIN, MEMBER]
+                      example: "MEMBER"
 
     UpdateMemberRole:
       description: |
@@ -6262,6 +6558,23 @@ components:
                 example: "zoom"
               permissions:
                 $ref: '#/components/schemas/EntityPermissions'
+
+    BulkSetPermissionsRequest:
+      description: Request to create or update entity permissions in bulk
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - permissions
+            properties:
+              permissions:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/BulkPermissionItem'
 
   responses:
     PricingList:
