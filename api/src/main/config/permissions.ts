@@ -189,6 +189,13 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET'],
     isPublic: true,
   },
+  // Bulk child creation is restricted to managers of the parent organization.
+  {
+    path: '/orgs/*/children',
+    methods: ['POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
   // Entity permission management is OWNER/ADMIN.
   {
     path: '/orgs/*/permissions',
@@ -198,7 +205,7 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   {
     path: '/orgs/*/permissions',
-    methods: ['POST'],
+    methods: ['POST', 'PUT'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },

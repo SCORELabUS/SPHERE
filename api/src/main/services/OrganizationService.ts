@@ -8,6 +8,9 @@ import NotificationService from './NotificationService';
 import {
   AddOrganizationMemberInput,
   BulkAddOrganizationMembersResult,
+  BulkCreateChildOrganizationsResult,
+  CreateChildOrganizationInput,
+  LeanOrganization,
   OrgRole,
 } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
@@ -109,6 +112,45 @@ class OrganizationService {
     }
 
     return organization;
+  }
+
+  async createChildrenBulk(
+    parentId: string,
+    children: CreateChildOrganizationInput[],
+    userId: string
+  ): Promise<BulkCreateChildOrganizationsResult> {
+    const parent = await this.organizationRepository.findById(parentId);
+    if (!parent) {
+      throw new Error('NOT FOUND: Parent organization not found');
+    }
+
+    const createdOrganizations: LeanOrganization[] = [];
+
+    try {
+      for (const child of children) {
+        const organization = await this.createWithOwner(
+          {
+            name: child.name,
+            displayName: child.displayName,
+            description: child.description,
+            isPersonal: false,
+            _parentId: parentId,
+          },
+          userId
+        );
+        createdOrganizations.push(organization as LeanOrganization);
+      }
+    } catch (error) {
+      await Promise.allSettled(
+        createdOrganizations.map(organization => this.destroy(organization.id!, true))
+      );
+      throw error;
+    }
+
+    return {
+      created: createdOrganizations.length,
+      organizations: createdOrganizations,
+    };
   }
 
   private async deduplicateSlug(baseSlug: string): Promise<string> {

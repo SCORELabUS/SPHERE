@@ -12,6 +12,7 @@ class OrganizationController {
     this.indexByUser = this.indexByUser.bind(this);
     this.show = this.show.bind(this);
     this.create = this.create.bind(this);
+    this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
@@ -93,6 +94,24 @@ class OrganizationController {
       }
       const organization = await this.organizationService.createWithOwner(req.body, req.user.id);
       res.status(201).json(organization);
+    } catch (err: any) {
+      if (err.name?.includes('ValidationError') || err.code === 11000) {
+        res.status(422).send({ error: err.message });
+      } else {
+        const { status, message } = handleError(err);
+        res.status(status).send({ error: message });
+      }
+    }
+  }
+
+  async createChildrenBulk(req: any, res: any) {
+    try {
+      const result = await this.organizationService.createChildrenBulk(
+        req.params.organizationId,
+        req.body.organizations,
+        req.user.id
+      );
+      res.status(201).json(result);
     } catch (err: any) {
       if (err.name?.includes('ValidationError') || err.code === 11000) {
         res.status(422).send({ error: err.message });
