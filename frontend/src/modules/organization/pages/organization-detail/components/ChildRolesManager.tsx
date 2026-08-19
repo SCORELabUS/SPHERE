@@ -189,12 +189,7 @@ export default function ChildRolesManager({
       <div className="border-b border-tp-hairline bg-linear-to-r from-tp-primary/8 via-tp-canvas to-tp-canvas px-5 py-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-tp-primary text-tp-on-primary">
-                <Iconify icon="mdi:account-cog-outline" width={18} />
-              </span>
-              <h2 className="font-display text-lg text-tp-ink">Child organization roles</h2>
-            </div>
+            <h2 className="mb-1 font-display text-lg text-tp-ink">Child organization roles</h2>
             <p className="text-xs text-tp-steel">
               Edit members across {organizations.length} direct child organization
               {organizations.length === 1 ? '' : 's'} and save everything at once.

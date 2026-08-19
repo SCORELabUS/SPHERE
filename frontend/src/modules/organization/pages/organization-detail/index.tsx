@@ -37,6 +37,7 @@ import InvitationsTab from './components/InvitationsTab';
 import PricingsTab from './components/PricingsTab';
 import CollectionsTab from './components/CollectionsTab';
 import HierarchyTab from './components/HierarchyTab';
+import ChildRolesManager from './components/ChildRolesManager';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -798,8 +799,6 @@ export default function OrganizationDetailPage() {
               onToggle={handleTreeToggle}
               onNavigate={id => router.push(`/orgs/${id}`)}
               onCreateSubOrg={() => setCreateSubOrgModalOpen(true)}
-              currentUserId={authUser.user?.id}
-              managerRole={myRole}
             />
           )}
 
@@ -812,6 +811,15 @@ export default function OrganizationDetailPage() {
               transition={transitionDefault}
             >
               <PermissionsTab organizationId={organizationId} canManage={canManage} />
+              {canManage && myRole && (org.subOrganizations?.length ?? 0) > 0 && (
+                <ChildRolesManager
+                  parentOrgId={org.id}
+                  organizations={org.subOrganizations ?? []}
+                  currentUserId={authUser.user?.id}
+                  parentManagerRole={myRole}
+                  onNavigate={id => router.push(`/orgs/${id}`)}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
