@@ -19,7 +19,7 @@ const SECTIONS = [
   { id: 'account', label: 'Account', icon: FiUser },
   { id: 'profile', label: 'Public Profile', icon: FiGlobe },
   { id: 'social', label: 'Social Links', icon: FiLink2 },
-  { id: 'integrations', label: 'Integrations', icon: FiShield },
+  { id: 'integrations', label: 'Sign-in & Security', icon: FiShield },
   { id: 'notifications', label: 'Notifications', icon: FiBell },
   { id: 'payments', label: 'Payments', icon: FiCreditCard },
   { id: 'danger', label: 'Danger Zone', icon: FiAlertTriangle },

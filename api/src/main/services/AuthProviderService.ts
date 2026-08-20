@@ -155,6 +155,11 @@ class AuthProviderService {
     return this.getAuthenticationMethods(userId);
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    await this.userRepository.changePassword(userId, currentPassword, newPassword);
+    return this.getAuthenticationMethods(userId);
+  }
+
   private async resolveFreeUsername(base: string): Promise<string> {
     if (!(await this.userRepository.findByUsername(base))) return base;
     if (!(await this.userRepository.findByUsername(`${base}-us`))) return `${base}-us`;

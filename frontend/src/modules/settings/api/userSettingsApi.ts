@@ -206,6 +206,19 @@ export function useUserSettingsApi() {
     return res.json();
   }
 
+  async function changePassword(data: { currentPassword: string; newPassword: string }): Promise<AuthenticationMethods> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to change password');
+    }
+    return res.json();
+  }
+
   return {
     getSettings,
     updateAccount,
@@ -219,5 +232,6 @@ export function useUserSettingsApi() {
     initiateIdentityLink,
     unlinkIdentity,
     setInitialPassword,
+    changePassword,
   };
 }
