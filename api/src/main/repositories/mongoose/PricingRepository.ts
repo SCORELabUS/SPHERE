@@ -338,6 +338,12 @@ class PricingRepository extends RepositoryBase {
     return result?.deletedCount === 1;
   }
 
+  async destroyByOrganizationId(organizationId: string): Promise<void> {
+    await PricingMongoose.deleteMany({
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    });
+  }
+
   _processPricingQueryParams(queryParams: PricingIndexQueryParams): {
     filteringPipeline: PipelineStage[];
     sortPipeline: PipelineStage[];

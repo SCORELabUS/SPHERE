@@ -244,6 +244,12 @@ class PricingCollectionRepository extends RepositoryBase {
     return resultCollections?.deletedCount === 1;
   }
 
+  async destroyByOrganizationId(organizationId: string): Promise<void> {
+    await PricingCollectionMongoose.deleteMany({
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    });
+  }
+
   _processCollectionQueryParams(queryParams: CollectionIndexQueryParams): {
     filteringPipeline: PipelineStage[];
     sortPipeline: PipelineStage[];

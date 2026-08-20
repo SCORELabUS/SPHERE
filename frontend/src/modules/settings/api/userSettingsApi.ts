@@ -206,6 +206,17 @@ export function useUserSettingsApi() {
     return res.json();
   }
 
+  async function deleteAccount(username: string): Promise<{ message: string }> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/${username}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to delete account');
+    }
+    return res.json();
+  }
+
   return {
     getSettings,
     updateAccount,
@@ -219,5 +230,6 @@ export function useUserSettingsApi() {
     initiateIdentityLink,
     unlinkIdentity,
     setInitialPassword,
+    deleteAccount,
   };
 }
