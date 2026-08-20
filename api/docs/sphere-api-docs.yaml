@@ -314,6 +314,76 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /users/password/forgot:
+    post:
+      summary: Request a password reset email
+      description: Always returns the same response to prevent account enumeration. Delivery is limited to one request per account per minute. SSO-only accounts (no local password) never receive an email.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginField]
+              properties:
+                loginField:
+                  type: string
+                  description: Email address or username
+      responses:
+        '202':
+          description: The request was accepted whether or not a matching account exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /users/password/reset:
+    post:
+      summary: Reset a password using a reset token
+      description: Consumes a single-use password reset token received by email. Tokens expire after 1 hour.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                  maxLength: 256
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '422':
+          description: The token is invalid, expired, or the password does not meet requirements
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /users:
     get:
       summary: Get all users or search users

@@ -30,6 +30,8 @@ import SpherePricingPage from '../modules/presentation/pages/pricing';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
 import SsoCallbackPage from '../modules/auth/pages/sso-callback';
 import EmailVerificationPage from '../modules/auth/pages/email-verification';
+import ForgotPasswordPage from '../modules/auth/pages/forgot-password';
+import ResetPasswordPage from '../modules/auth/pages/reset-password';
 import CardPage from '../modules/pricing/pages/card';
 import CreatePricingPage from '../modules/pricing/pages/create';
 import CollectionCardPage from '../modules/pricing/pages/collection-card';
@@ -95,6 +97,8 @@ export default function Router() {
         { element: <AuthenticationPage />, path: '/authentication' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
         { element: <EmailVerificationPage />, path: '/verify-email' },
+        { element: <ForgotPasswordPage />, path: '/forgot-password' },
+        { element: <ResetPasswordPage />, path: '/reset-password' },
         {
           path: '/organizations',
           element: <PublicOrganizationsPage />,

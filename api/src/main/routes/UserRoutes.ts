@@ -46,6 +46,14 @@ const loadFileRoutes = function (app: express.Application) {
     .route(baseUrl + '/users/login')
     .post(UserValidation.login, handleValidation, userController.login);
 
+  app
+    .route(baseUrl + '/users/password/forgot')
+    .post(UserValidation.forgotPassword, handleValidation, userController.forgotPassword);
+
+  app
+    .route(baseUrl + '/users/password/reset')
+    .post(UserValidation.resetPassword, handleValidation, userController.resetPassword);
+
   // ============================================
   // /users/me routes (must come before /users/:username)
   // ============================================

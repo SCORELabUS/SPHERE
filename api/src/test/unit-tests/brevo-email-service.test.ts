@@ -60,4 +60,34 @@ describe('BrevoEmailService', () => {
       verificationUrl: 'https://sphere.example/verify-email?token=safe-token',
     })).rejects.toThrow('BREVO_API_KEY');
   });
+
+  it('sends a transactional password reset email through the Brevo SDK', async () => {
+    const service = new BrevoEmailService();
+
+    await service.sendPasswordResetEmail({
+      recipientEmail: 'person@example.com',
+      recipientName: 'Test Person',
+      resetUrl: 'https://sphere.example/reset-password?token=safe-token',
+    });
+
+    expect(mocks.client).toHaveBeenCalledWith({ apiKey: 'test-api-key' });
+    expect(mocks.sendTransacEmail).toHaveBeenCalledWith(expect.objectContaining({
+      sender: { name: 'SPHERE', email: 'no-reply@example.com' },
+      to: [{ email: 'person@example.com', name: 'Test Person' }],
+      subject: 'Reset your SPHERE password',
+      tags: ['password-reset'],
+    }));
+  });
+
+  it('refuses to silently skip password reset delivery in production without an API key', async () => {
+    vi.stubEnv('ENVIRONMENT', 'production');
+    vi.stubEnv('BREVO_API_KEY', '');
+    const service = new BrevoEmailService();
+
+    await expect(service.sendPasswordResetEmail({
+      recipientEmail: 'person@example.com',
+      recipientName: 'Test Person',
+      resetUrl: 'https://sphere.example/reset-password?token=safe-token',
+    })).rejects.toThrow('BREVO_API_KEY');
+  });
 });

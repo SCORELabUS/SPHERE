@@ -79,6 +79,30 @@ export function resendEmailVerification(loginField: string): Promise<{ message: 
     });
 }
 
+export function forgotPassword(loginField: string): Promise<{ message: string }> {
+    return fetch(`${USERS_BASE_PATH}/password/forgot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginField }),
+    }).then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Could not request a password reset email");
+        return body;
+    });
+}
+
+export function resetPassword(token: string, password: string): Promise<{ message: string }> {
+    return fetch(`${USERS_BASE_PATH}/password/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+    }).then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "The password reset link is invalid or has expired");
+        return body;
+    });
+}
+
 export function exchangeSsoCode(code: string): Promise<{ token: string }> {
     return fetch(`${USERS_BASE_PATH}/auth/sso/us/exchange?code=${encodeURIComponent(code)}`, {
         method: "GET",

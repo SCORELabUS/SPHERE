@@ -123,6 +123,9 @@ const userSchema = new Schema(
     emailVerificationTokenHash: { type: String, select: false },
     emailVerificationExpiresAt: { type: Date, select: false },
     emailVerificationSentAt: { type: Date, select: false },
+    passwordResetTokenHash: { type: String, select: false },
+    passwordResetExpiresAt: { type: Date, select: false },
+    passwordResetSentAt: { type: Date, select: false },
     settings: {
       type: UserSettingsSchema,
       default: () => ({}),
@@ -195,6 +198,9 @@ export interface UserDocument extends Document {
   emailVerificationTokenHash?: string;
   emailVerificationExpiresAt?: Date;
   emailVerificationSentAt?: Date;
+  passwordResetTokenHash?: string;
+  passwordResetExpiresAt?: Date;
+  passwordResetSentAt?: Date;
   identities: {
     provider: 'us-sso' | 'google';
     providerId: string;

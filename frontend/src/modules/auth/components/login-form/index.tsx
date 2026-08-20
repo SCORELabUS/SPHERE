@@ -119,9 +119,17 @@ const LoginForm: React.FC = () => {
         </motion.div>
 
         <motion.div variants={fadeUp}>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-tp-ink">
-            Password
-          </label>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="password" className="block text-sm font-medium text-tp-ink">
+              Password
+            </label>
+            <Link
+              to="/forgot-password"
+              className="cursor-pointer text-sm font-medium text-tp-primary transition-colors duration-200 hover:text-tp-primary-deep"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <input
             id="password"
             placeholder="Enter your password"

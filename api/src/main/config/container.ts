@@ -24,6 +24,7 @@ import ApiKeyService from '../services/ApiKeyService';
 import AuthProviderService from '../services/AuthProviderService';
 import BrevoEmailService from '../services/email/BrevoEmailService';
 import EmailVerificationService from '../services/EmailVerificationService';
+import PasswordResetService from '../services/PasswordResetService';
 
 dotenv.config();
 
@@ -66,6 +67,7 @@ function initContainer(databaseType: string): AwilixContainer {
     authProviderService: asClass(AuthProviderService).singleton(),
     emailService: asClass(BrevoEmailService).singleton(),
     emailVerificationService: asClass(EmailVerificationService).singleton(),
+    passwordResetService: asClass(PasswordResetService).singleton(),
   });
   return container;
 }
