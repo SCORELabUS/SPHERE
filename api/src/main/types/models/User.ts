@@ -47,6 +47,9 @@ export interface LeanUser {
   emailVerificationTokenHash?: string;
   emailVerificationExpiresAt?: Date;
   emailVerificationSentAt?: Date;
+  passwordResetTokenHash?: string;
+  passwordResetExpiresAt?: Date;
+  passwordResetSentAt?: Date;
   identities?: UserIdentity[];
   settings?: UserSettings;
   token?: string;

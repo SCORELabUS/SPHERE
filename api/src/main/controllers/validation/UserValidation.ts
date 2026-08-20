@@ -176,4 +176,43 @@ const setInitialPassword = [
     .withMessage('No spaces are allowed in the password'),
 ];
 
-export { create, update, login, verifyEmail, setInitialPassword, resendEmailVerification };
+const forgotPassword = [
+  check('loginField')
+    .exists()
+    .withMessage('An email address or username must be provided')
+    .isString()
+    .withMessage('The login field must be a string')
+    .isLength({ min: 3, max: 255 })
+    .withMessage('The login field is invalid')
+    .trim(),
+];
+
+const resetPassword = [
+  check('token')
+    .exists()
+    .withMessage('A password reset token must be provided')
+    .isString()
+    .withMessage('The token must be a string')
+    .isLength({ min: 1, max: 256 })
+    .withMessage('The password reset token is invalid'),
+  check('password')
+    .exists()
+    .withMessage('A password must be provided')
+    .isString()
+    .withMessage('The password must be a string')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('The password must have between 8 and 128 characters')
+    .custom(value => !/\s/.test(value))
+    .withMessage('No spaces are allowed in the password'),
+];
+
+export {
+  create,
+  update,
+  login,
+  verifyEmail,
+  setInitialPassword,
+  resendEmailVerification,
+  forgotPassword,
+  resetPassword,
+};

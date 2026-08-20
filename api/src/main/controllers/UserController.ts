@@ -6,6 +6,7 @@ import { LeanUser, UserFilters } from '../types/models/User';
 import { handleError } from '../utils/users/helpers';
 import multer from 'multer';
 import EmailVerificationService from '../services/EmailVerificationService';
+import PasswordResetService from '../services/PasswordResetService';
 
 const settingsUpload = multer({
   storage: multer.memoryStorage(),
@@ -22,6 +23,7 @@ class UserController {
   private userSettingsService: UserSettingsService;
   private apiKeyService: ApiKeyService;
   private emailVerificationService: EmailVerificationService;
+  private passwordResetService: PasswordResetService;
   public settingsUploadMiddleware: any;
 
   constructor() {
@@ -29,6 +31,7 @@ class UserController {
     this.userSettingsService = container.resolve('userSettingsService');
     this.apiKeyService = container.resolve('apiKeyService');
     this.emailVerificationService = container.resolve('emailVerificationService');
+    this.passwordResetService = container.resolve('passwordResetService');
     this.index = this.index.bind(this);
     this.show = this.show.bind(this);
     this.getCurrentUser = this.getCurrentUser.bind(this);
@@ -36,6 +39,8 @@ class UserController {
     this.register = this.register.bind(this);
     this.verifyEmail = this.verifyEmail.bind(this);
     this.resendEmailVerification = this.resendEmailVerification.bind(this);
+    this.forgotPassword = this.forgotPassword.bind(this);
+    this.resetPassword = this.resetPassword.bind(this);
     this.destroy = this.destroy.bind(this);
     this.update = this.update.bind(this);
     this.updateToken = this.updateToken.bind(this);
@@ -161,6 +166,30 @@ class UserController {
       res.status(202).json({
         message: 'If an unverified account matches those details, a verification email has been sent.',
       });
+    }
+  }
+
+  async forgotPassword(req: any, res: any) {
+    try {
+      await this.passwordResetService.requestReset(req.body.loginField);
+      res.status(202).json({
+        message: 'If an account matches those details, a password reset email has been sent.',
+      });
+    } catch (err: any) {
+      console.error('[Password reset] Request failed:', err);
+      res.status(202).json({
+        message: 'If an account matches those details, a password reset email has been sent.',
+      });
+    }
+  }
+
+  async resetPassword(req: any, res: any) {
+    try {
+      await this.passwordResetService.reset(req.body.token, req.body.password);
+      res.json({ message: 'Password reset successfully. You can now sign in with your new password.' });
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
     }
   }
 

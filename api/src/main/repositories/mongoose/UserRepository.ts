@@ -309,6 +309,51 @@ class UserRepository extends RepositoryBase {
     return user ? user.toObject() : null;
   }
 
+  async setPasswordResetToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+    sentAt: Date
+  ): Promise<LeanUser | null> {
+    const user = await UserMongoose.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: expiresAt,
+          passwordResetSentAt: sentAt,
+        },
+      },
+      { new: true }
+    ).exec();
+
+    return user ? user.toObject() : null;
+  }
+
+  async resetPasswordByTokenHash(
+    tokenHash: string,
+    hashedPassword: string,
+    now: Date
+  ): Promise<LeanUser | null> {
+    const user = await UserMongoose.findOneAndUpdate(
+      {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { $gt: now },
+      },
+      {
+        $set: { password: hashedPassword },
+        $unset: {
+          passwordResetTokenHash: 1,
+          passwordResetExpiresAt: 1,
+          passwordResetSentAt: 1,
+        },
+      },
+      { new: true }
+    ).exec();
+
+    return user ? user.toObject() : null;
+  }
+
   async destroy(username: string): Promise<boolean> {
     const result = await UserMongoose.deleteOne({ username }).exec();
     return result?.deletedCount === 1;
