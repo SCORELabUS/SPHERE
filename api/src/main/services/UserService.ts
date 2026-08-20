@@ -1,6 +1,8 @@
 import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
+import EntityPermissionRepository from '../repositories/mongoose/EntityPermissionRepository';
+import NotificationRepository from '../repositories/mongoose/NotificationRepository';
 import { USER_ROLES } from '../types/config/permissions';
 import { LeanUser, UserFilters } from '../types/models/User';
 import { processFileUris } from './FileService';
@@ -13,12 +15,16 @@ class UserService {
   private userRepository: UserRepository;
   private organizationService: OrganizationService;
   private organizationMembershipRepository: OrganizationMembershipRepository;
+  private entityPermissionRepository: EntityPermissionRepository;
+  private notificationRepository: NotificationRepository;
   private emailVerificationService: EmailVerificationService;
 
   constructor() {
     this.userRepository = container.resolve('userRepository');
     this.organizationService = container.resolve('organizationService');
     this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
+    this.entityPermissionRepository = container.resolve('entityPermissionRepository');
+    this.notificationRepository = container.resolve('notificationRepository');
     this.emailVerificationService = container.resolve('emailVerificationService');
   }
 
@@ -299,6 +305,9 @@ class UserService {
         }
       }
     }
+
+    await this.entityPermissionRepository.destroyByUserId(userId);
+    await this.notificationRepository.destroyByUserId(userId);
 
     const result = await this.userRepository.destroy(targetUsername);
     if (!result) {

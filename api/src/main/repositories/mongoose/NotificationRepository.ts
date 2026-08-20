@@ -52,6 +52,10 @@ class NotificationRepository extends RepositoryBase {
     const result = await NotificationMongoose.deleteOne({ _id: id });
     return result.deletedCount === 1;
   }
+
+  async destroyByUserId(userId: string): Promise<void> {
+    await NotificationMongoose.deleteMany({ _userId: userId });
+  }
 }
 
 export default NotificationRepository;

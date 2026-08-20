@@ -465,6 +465,18 @@ class EntityPermissionRepository extends RepositoryBase {
     });
   }
 
+  async destroyByOrganizationId(organizationId: string): Promise<void> {
+    await EntityPermissionMongoose.deleteMany({
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    });
+  }
+
+  async destroyByUserId(userId: string): Promise<void> {
+    await EntityPermissionMongoose.deleteMany({
+      _userId: new mongoose.Types.ObjectId(userId),
+    });
+  }
+
   async countByEntity(entityType: EntityType, entitySlug: string, organizationId: string): Promise<number> {
     return EntityPermissionMongoose.countDocuments({
       entityType,

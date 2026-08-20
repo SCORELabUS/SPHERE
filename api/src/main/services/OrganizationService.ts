@@ -3,6 +3,9 @@ import container from '../config/container';
 import OrganizationRepository from '../repositories/mongoose/OrganizationRepository';
 import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
 import OrganizationInvitationRepository from '../repositories/mongoose/OrganizationInvitationRepository';
+import PricingRepository from '../repositories/mongoose/PricingRepository';
+import PricingCollectionRepository from '../repositories/mongoose/PricingCollectionRepository';
+import EntityPermissionRepository from '../repositories/mongoose/EntityPermissionRepository';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import NotificationService from './NotificationService';
 import {
@@ -22,6 +25,9 @@ class OrganizationService {
   private organizationRepository: OrganizationRepository;
   private organizationMembershipRepository: OrganizationMembershipRepository;
   private organizationInvitationRepository: OrganizationInvitationRepository;
+  private pricingRepository: PricingRepository;
+  private pricingCollectionRepository: PricingCollectionRepository;
+  private entityPermissionRepository: EntityPermissionRepository;
   private notificationService: NotificationService;
   private userRepository: UserRepository;
 
@@ -29,6 +35,9 @@ class OrganizationService {
     this.organizationRepository = container.resolve('organizationRepository');
     this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
     this.organizationInvitationRepository = container.resolve('organizationInvitationRepository');
+    this.pricingRepository = container.resolve('pricingRepository');
+    this.pricingCollectionRepository = container.resolve('pricingCollectionRepository');
+    this.entityPermissionRepository = container.resolve('entityPermissionRepository');
     this.notificationService = container.resolve('notificationService');
     this.userRepository = container.resolve('userRepository');
   }
@@ -272,6 +281,9 @@ class OrganizationService {
       throw new Error('PERMISSION ERROR: Personal organizations cannot be deleted');
     }
 
+    await this.pricingRepository.destroyByOrganizationId(id);
+    await this.pricingCollectionRepository.destroyByOrganizationId(id);
+    await this.entityPermissionRepository.destroyByOrganizationId(id);
     await this.organizationMembershipRepository.destroyByOrganizationId(id);
     await this.organizationInvitationRepository.destroyByOrganizationId(id);
     const result = await this.organizationRepository.destroy(id);
