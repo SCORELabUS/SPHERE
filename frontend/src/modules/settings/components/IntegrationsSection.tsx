@@ -124,7 +124,7 @@ export default function IntegrationsSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-medium text-tp-ink">Integrations & sign-in</h2>
+        <h2 className="text-lg font-medium text-tp-ink">Sign-in & Security</h2>
         <p className="mt-0.5 text-sm text-tp-steel">
           Bring your identities together and choose how you access SPHERE.
         </p>
@@ -187,14 +187,7 @@ export default function IntegrationsSection() {
       </div>
 
       {!loading && methods && (
-        <PasswordCard
-          hasPassword={methods.hasPassword}
-          onCreated={updated => {
-            setMethods(updated);
-            setNotice('Password access is ready. You can now sign in directly to SPHERE.');
-          }}
-          onError={setError}
-        />
+        <PasswordCard hasPassword={methods.hasPassword} onUpdated={setMethods} />
       )}
     </div>
   );
@@ -265,34 +258,56 @@ function ProviderRow({
   );
 }
 
+function InlineFeedback({ error, success }: { error: string | null; success: string | null }) {
+  if (!error && !success) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      role={error ? 'alert' : 'status'}
+      className={`sm:col-span-2 flex items-start gap-2 rounded-[8px] border px-3 py-2.5 text-xs ${
+        error
+          ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+      }`}
+    >
+      {error ? <FiShield className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <FiCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+      <span>{error ?? success}</span>
+    </motion.div>
+  );
+}
+
 function PasswordCard({
   hasPassword,
-  onCreated,
-  onError,
+  onUpdated,
 }: {
   hasPassword: boolean;
-  onCreated: (methods: AuthenticationMethods) => void;
-  onError: (message: string | null) => void;
+  onUpdated: (methods: AuthenticationMethods) => void;
 }) {
   const api = useUserSettingsApi();
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    onError(null);
-    if (password.length < 8) return onError('Use at least 8 characters for your password.');
-    if (/\s/.test(password)) return onError('The password cannot contain spaces.');
-    if (password !== confirmation) return onError('The passwords do not match.');
+    setError(null);
+    if (password.length < 8) return setError('Use at least 8 characters for your password.');
+    if (/\s/.test(password)) return setError('The password cannot contain spaces.');
+    if (password !== confirmation) return setError('The passwords do not match.');
 
     setSaving(true);
     try {
-      onCreated(await api.setInitialPassword(password));
+      onUpdated(await api.setInitialPassword(password));
       setPassword('');
       setConfirmation('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Failed to create password');
+      setError(err instanceof Error ? err.message : 'Failed to create password');
     } finally {
       setSaving(false);
     }
@@ -319,18 +334,27 @@ function PasswordCard({
               : 'Create a local password so you always have a direct way back into your account.'}
           </p>
 
-          {!hasPassword && (
+          {hasPassword ? (
+            <ChangePasswordForm onUpdated={onUpdated} />
+          ) : (
             <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-2">
               <PasswordInput label="New password" value={password} onChange={setPassword} />
               <PasswordInput label="Confirm password" value={confirmation} onChange={setConfirmation} />
+              <InlineFeedback error={error} success={saved ? 'Password created. You can now sign in directly to SPHERE.' : null} />
               <div className="sm:col-span-2">
                 <button
                   type="submit"
                   disabled={saving || !password || !confirmation}
                   className="flex cursor-pointer items-center gap-2 rounded-[8px] border border-tp-hairline-strong bg-tp-canvas px-4 py-2.5 text-sm font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {saving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiShield className="h-4 w-4" />}
-                  Create password
+                  {saving ? (
+                    <FiLoader className="h-4 w-4 animate-spin" />
+                  ) : saved ? (
+                    <FiCheck className="h-4 w-4" />
+                  ) : (
+                    <FiShield className="h-4 w-4" />
+                  )}
+                  {saved ? 'Password created' : 'Create password'}
                 </button>
               </div>
             </form>
@@ -341,7 +365,86 @@ function PasswordCard({
   );
 }
 
-function PasswordInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function ChangePasswordForm({
+  onUpdated,
+}: {
+  onUpdated: (methods: AuthenticationMethods) => void;
+}) {
+  const api = useUserSettingsApi();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (!currentPassword) return setError('Enter your current password.');
+    if (newPassword.length < 8) return setError('Use at least 8 characters for your new password.');
+    if (/\s/.test(newPassword)) return setError('The new password cannot contain spaces.');
+    if (newPassword !== confirmation) return setError('The new passwords do not match.');
+
+    setSaving(true);
+    try {
+      onUpdated(await api.changePassword({ currentPassword, newPassword }));
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmation('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change password');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <PasswordInput
+          label="Current password"
+          value={currentPassword}
+          onChange={setCurrentPassword}
+          autoComplete="current-password"
+        />
+      </div>
+      <PasswordInput label="New password" value={newPassword} onChange={setNewPassword} />
+      <PasswordInput label="Confirm new password" value={confirmation} onChange={setConfirmation} />
+      <InlineFeedback error={error} success={saved ? 'Your password has been changed.' : null} />
+      <div className="sm:col-span-2">
+        <button
+          type="submit"
+          disabled={saving || !currentPassword || !newPassword || !confirmation}
+          className="flex cursor-pointer items-center gap-2 rounded-[8px] border border-tp-hairline-strong bg-tp-canvas px-4 py-2.5 text-sm font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? (
+            <FiLoader className="h-4 w-4 animate-spin" />
+          ) : saved ? (
+            <FiCheck className="h-4 w-4" />
+          ) : (
+            <FiKey className="h-4 w-4" />
+          )}
+          {saved ? 'Password changed' : 'Change password'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PasswordInput({
+  label,
+  value,
+  onChange,
+  autoComplete = 'new-password',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete?: string;
+}) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-medium text-tp-steel">{label}</span>
@@ -349,7 +452,7 @@ function PasswordInput({ label, value, onChange }: { label: string; value: strin
         type="password"
         value={value}
         onChange={event => onChange(event.target.value)}
-        autoComplete="new-password"
+        autoComplete={autoComplete}
         className="h-11 w-full rounded-md border border-tp-input-border bg-tp-input-bg px-3.5 text-sm text-tp-ink outline-none transition-colors focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20"
       />
     </label>

@@ -609,6 +609,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+    put:
+      summary: Change the local password
+      description: Replaces an existing local password. The current password must be provided and correctly verified before the new one is applied.
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                  format: password
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationMethods'
+        '401':
+          description: A user session is required
+        '409':
+          description: The account does not have a local password yet
+        '422':
+          description: The current password is incorrect, or the new password is invalid
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /users/me/settings:
     get:
       summary: Get current user's settings

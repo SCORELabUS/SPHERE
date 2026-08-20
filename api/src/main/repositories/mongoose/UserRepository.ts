@@ -3,6 +3,7 @@ import RepositoryBase from '../RepositoryBase';
 import UserMongoose from './models/UserMongoose';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { escapeRegex } from '../../utils/regex';
 
 class UserRepository extends RepositoryBase {
@@ -244,6 +245,18 @@ class UserRepository extends RepositoryBase {
     if (!user) throw new Error('NOT FOUND: User not found');
     if (user.password) throw new Error('CONFLICT: This account already has a password');
     user.password = password;
+    await user.save();
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await UserMongoose.findById(userId).select('+password').exec();
+    if (!user) throw new Error('NOT FOUND: User not found');
+    if (!user.password) throw new Error('CONFLICT: This account does not have a password yet');
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) throw new Error('INVALID DATA: Current password is incorrect');
+
+    user.password = newPassword;
     await user.save();
   }
 

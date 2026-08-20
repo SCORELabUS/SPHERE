@@ -43,6 +43,7 @@ describe('AuthProviderService identity management', () => {
       addIdentity: vi.fn(),
       removeIdentity: vi.fn(),
       setInitialPassword: vi.fn(),
+      changePassword: vi.fn(),
     };
 
     (container.resolve as any).mockImplementation((name: string) => {
@@ -135,5 +136,23 @@ describe('AuthProviderService identity management', () => {
 
     expect(repository.setInitialPassword).toHaveBeenCalledWith('user-1', 'secure-pass');
     expect(result.hasPassword).toBe(true);
+  });
+
+  it('delegates password changes to the repository, which verifies the current password', async () => {
+    repository.changePassword.mockResolvedValue(undefined);
+    repository.findByIdWithPassword.mockResolvedValue(user({ password: 'hashed-secret' }));
+
+    const result = await service.changePassword('user-1', 'old-pass', 'new-secure-pass');
+
+    expect(repository.changePassword).toHaveBeenCalledWith('user-1', 'old-pass', 'new-secure-pass');
+    expect(result.hasPassword).toBe(true);
+  });
+
+  it('propagates the repository rejection when the current password is wrong', async () => {
+    repository.changePassword.mockRejectedValue(new Error('INVALID DATA: Current password is incorrect'));
+
+    await expect(service.changePassword('user-1', 'wrong-pass', 'new-secure-pass')).rejects.toThrow(
+      'Current password is incorrect'
+    );
   });
 });

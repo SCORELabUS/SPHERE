@@ -22,6 +22,7 @@ class IdentityController {
     this.initiateLink = this.initiateLink.bind(this);
     this.unlink = this.unlink.bind(this);
     this.setPassword = this.setPassword.bind(this);
+    this.changePassword = this.changePassword.bind(this);
   }
 
   private requireUserSession(req: any) {
@@ -80,6 +81,22 @@ class IdentityController {
     try {
       this.requireUserSession(req);
       res.json(await this.authProviderService.setInitialPassword(req.user.id, req.body.password));
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).json({ error: message });
+    }
+  }
+
+  async changePassword(req: any, res: any) {
+    try {
+      this.requireUserSession(req);
+      res.json(
+        await this.authProviderService.changePassword(
+          req.user.id,
+          req.body.currentPassword,
+          req.body.newPassword
+        )
+      );
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).json({ error: message });
