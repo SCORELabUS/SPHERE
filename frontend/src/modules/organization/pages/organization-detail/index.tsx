@@ -16,6 +16,7 @@ import {
   OrgRole,
   OrgPricing,
   OrgCollection,
+  OrgHierarchyNode,
   useOrganizationsApi,
   getPublicOrganization,
   getPublicOrgMembers,
@@ -63,7 +64,6 @@ export default function OrganizationDetailPage() {
   const [collectionSearch, setCollectionSearch] = useState('');
   const [allOrgCollections, setAllOrgCollections] = useState<OrgCollection[]>([]);
   const [accessibleCollectionNames, setAccessibleCollectionNames] = useState<Set<string> | null>(null);
-  const [childAccessMap, setChildAccessMap] = useState<Record<string, boolean>>({});
   const [hierarchyTree, setHierarchyTree] = useState<TreeNode | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +83,7 @@ export default function OrganizationDetailPage() {
     getOrgCollections,
     getUserAccessiblePricings,
     getUserAccessibleCollections,
+    getOrgHierarchy,
     removeMember,
   } = useOrganizationsApi();
 
@@ -191,25 +192,6 @@ export default function OrganizationDetailPage() {
           setCollections(collectionsData.collections);
           setCollectionsTotal(collectionsData.total);
         }
-
-        const children = orgData.subOrganizations ?? [];
-        if (userRole === 'OWNER' || userRole === 'ADMIN') {
-          const map: Record<string, boolean> = {};
-          for (const child of children) map[child.id] = true;
-          setChildAccessMap(map);
-        } else {
-          const results = await Promise.allSettled(
-            children.map(async child => {
-              await getOrganization(child.id);
-              return { id: child.id, ok: true };
-            })
-          );
-          const map: Record<string, boolean> = {};
-          children.forEach((child, i) => {
-            map[child.id] = results[i].status === 'fulfilled';
-          });
-          setChildAccessMap(map);
-        }
       }
     } catch (err: any) {
       setError(err.message ?? 'Failed to load organization');
@@ -219,128 +201,74 @@ export default function OrganizationDetailPage() {
   }, [organizationId, authUser.isAuthenticated, authUser.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Hierarchy tree ─── */
+  /**
+   * The branch arrives flat, in one request, and is nested here.
+   *
+   * It used to be walked node by node from the client — a fetch per child, per
+   * ancestor and per sibling, in series — which cost dozens of round trips to
+   * draw one tree.
+   */
   const buildHierarchyTree = useCallback(async () => {
     if (!org) return;
 
-    const buildDescendants = async (
-      nodeOrg: Organization,
-      accessRole: OrgRole | null
-    ): Promise<TreeNode[]> => {
-      const children = nodeOrg.subOrganizations ?? [];
-      const results: TreeNode[] = [];
+    let nodes: OrgHierarchyNode[];
+    try {
+      nodes = await getOrgHierarchy(org.id);
+    } catch {
+      return;
+    }
 
-      for (const child of children) {
-        let hasAccess = false;
-        if (accessRole === 'OWNER' || accessRole === 'ADMIN') {
-          hasAccess = true;
-        } else {
-          hasAccess = childAccessMap[child.id] ?? false;
-        }
+    const byId = new Map<string, TreeNode>(
+      nodes.map(node => [
+        node.id,
+        {
+          id: node.id,
+          displayName: node.displayName,
+          name: node.name,
+          avatar: node.avatar,
+          isPersonal: node.isPersonal,
+          _parentId: node._parentId,
+          children: [],
+          hasAccess: node.hasAccess,
+        },
+      ])
+    );
 
-        let childOrgData: Organization | null = null;
-        if (hasAccess) {
-          try {
-            childOrgData = await getOrganization(child.id);
-          } catch {
-            childOrgData = child;
-          }
-        }
+    const ancestorIds = new Set<string>();
+    let above = byId.get(org.id)?._parentId ?? null;
+    while (above && !ancestorIds.has(above)) {
+      ancestorIds.add(above);
+      above = byId.get(above)?._parentId ?? null;
+    }
 
-        const grandchildren =
-          hasAccess && childOrgData ? await buildDescendants(childOrgData, accessRole) : [];
+    let root: TreeNode | null = null;
+    for (const node of nodes) {
+      const treeNode = byId.get(node.id)!;
+      treeNode.isCurrent = node.id === org.id;
+      treeNode.isAncestor = ancestorIds.has(node.id);
 
-        results.push({
-          id: child.id,
-          displayName: child.displayName,
-          name: child.name,
-          avatar: child.avatar,
-          isPersonal: child.isPersonal,
-          _parentId: child._parentId,
-          children: grandchildren,
-          hasAccess,
-        });
-      }
-
-      return results;
-    };
-    const buildOffPathNode = async (
-      summary: Organization,
-      accessRole: OrgRole | null
-    ): Promise<TreeNode> => {
-      let hasAccess = accessRole === 'OWNER' || accessRole === 'ADMIN';
-      let fullOrg: Organization | null = null;
-      try {
-        fullOrg = await getOrganization(summary.id);
-        hasAccess = true;
-      } catch {
-        fullOrg = null;
-      }
-
-      const children = hasAccess && fullOrg ? await buildDescendants(fullOrg, accessRole) : [];
-
-      return {
-        id: summary.id,
-        displayName: summary.displayName,
-        name: summary.name,
-        avatar: summary.avatar,
-        isPersonal: summary.isPersonal,
-        _parentId: summary._parentId,
-        children,
-        hasAccess,
-      };
-    };
-
-    const childNodes = await buildDescendants(org, myRole);
-
-    let currentNode: TreeNode = {
-      id: org.id,
-      displayName: org.displayName,
-      name: org.name,
-      avatar: org.avatar,
-      isPersonal: org.isPersonal,
-      _parentId: org._parentId,
-      children: childNodes,
-      hasAccess: true,
-      isCurrent: true,
-    };
-
-    if (org._parentId) {
-      let currentParentId: string | null = org._parentId;
-      while (currentParentId) {
-        try {
-          const ancestorOrg = await getOrganization(currentParentId);
-          const siblings = ancestorOrg.subOrganizations ?? [];
-          const levelChildren = await Promise.all(
-            siblings.map(sibling =>
-              sibling.id === currentNode.id ? currentNode : buildOffPathNode(sibling, myRole)
-            )
-          );
-
-          const ancestorNode: TreeNode = {
-            id: ancestorOrg.id,
-            displayName: ancestorOrg.displayName,
-            name: ancestorOrg.name,
-            avatar: ancestorOrg.avatar,
-            isPersonal: ancestorOrg.isPersonal,
-            _parentId: ancestorOrg._parentId,
-            children: levelChildren,
-            hasAccess: true,
-            isAncestor: true,
-          };
-          currentNode = ancestorNode;
-          currentParentId = ancestorOrg._parentId;
-        } catch {
-          break;
-        }
+      const parent = node._parentId ? byId.get(node._parentId) : undefined;
+      if (parent) {
+        parent.children.push(treeNode);
+      } else if (!root) {
+        root = treeNode;
       }
     }
 
-    setHierarchyTree(currentNode);
-  }, [org, myRole, childAccessMap, getOrganization]);
+    // A branch the viewer cannot open stays closed: what is under it is none of
+    // their business, the same way it was hidden before.
+    for (const treeNode of byId.values()) {
+      if (!treeNode.hasAccess) {
+        treeNode.children = [];
+      }
+    }
+
+    setHierarchyTree(root ?? byId.get(org.id) ?? null);
+  }, [org, getOrgHierarchy]);
 
   useEffect(() => {
     if (org && myRole) buildHierarchyTree();
-  }, [org, myRole, childAccessMap]);
+  }, [org, myRole, buildHierarchyTree]);
 
   const autoExpandedOrgIdRef = useRef<string | null>(null);
 
