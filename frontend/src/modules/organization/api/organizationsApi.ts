@@ -166,6 +166,21 @@ export function useOrganizationsApi() {
     return body as Organization;
   }, [fetchWithInterceptor, token]);
 
+  /**
+   * Re-parents an organization: `parentId` names its new parent, or is null to
+   * move it out to the root of the tree.
+   */
+  const moveOrganization = useCallback(async (orgId: string, parentId: string | null) => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/parent`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ parentId }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to move organization'));
+    return body as Organization;
+  }, [fetchWithInterceptor, token]);
+
   const deleteOrganization = useCallback(async (orgId: string) => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}`, {
       method: 'DELETE',
@@ -401,6 +416,7 @@ export function useOrganizationsApi() {
     getOrganization,
     createOrganization,
     updateOrganization,
+    moveOrganization,
     deleteOrganization,
     getOrgMembers,
     addMember,

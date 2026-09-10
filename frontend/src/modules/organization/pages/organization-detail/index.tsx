@@ -21,6 +21,7 @@ import {
   getPublicOrgMembers,
 } from '../../api/organizationsApi';
 import { getPublicOrgPricings, getPublicOrgCollections } from '../../../pricing/api/pricingsApi';
+import { useOrganization } from '../../hooks/useOrganization';
 import PermissionsTab from '../../components/PermissionsTab';
 import OrgAvatar from '../../../core/components/org-avatar';
 import OrgDetailSkeleton from '../../../core/components/skeletons/org-detail-skeleton';
@@ -38,12 +39,14 @@ import PricingsTab from './components/PricingsTab';
 import CollectionsTab from './components/CollectionsTab';
 import HierarchyTab from './components/HierarchyTab';
 import ChildRolesManager from './components/ChildRolesManager';
+import ShareOrgMenu from './components/ShareOrgMenu';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
   const { authUser } = useAuth();
   const router = useRouter();
   const { addRecentOrganization } = useRecentItems();
+  const { refresh: refreshMyOrganizations } = useOrganization();
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
@@ -363,6 +366,17 @@ export default function OrganizationDetailPage() {
   }, [org, hierarchyTree]);
 
   /* ─── Refresh helpers ─── */
+  /**
+   * A move rewrites the tree, not just this page. "Your organizations" reads
+   * from the shared context, which nothing here would otherwise invalidate, so
+   * it has to be told as well or it keeps serving the old hierarchy until the
+   * next full page load.
+   */
+  const handleMoved = useCallback(async () => {
+    await loadOrgData();
+    refreshMyOrganizations();
+  }, [loadOrgData, refreshMyOrganizations]);
+
   const refreshMembers = useCallback(async () => {
     if (!org) return;
     try {
@@ -579,6 +593,7 @@ export default function OrganizationDetailPage() {
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-2 sm:ml-0">
+                    <ShareOrgMenu org={org} />
                     {canManage && (
                       <button
                         type="button"
@@ -799,6 +814,7 @@ export default function OrganizationDetailPage() {
               onToggle={handleTreeToggle}
               onNavigate={id => router.push(`/orgs/${id}`)}
               onCreateSubOrg={() => setCreateSubOrgModalOpen(true)}
+              onMoved={handleMoved}
             />
           )}
 

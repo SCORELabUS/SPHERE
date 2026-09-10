@@ -2560,6 +2560,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/parent:
+    put:
+      summary: Move an organization to another parent
+      description: |
+        Re-parents the organization identified by `organizationId`. A `parentId` names the
+        organization it becomes a child of; `null` moves it out to the root of the tree.
+
+        The ancestry path of every descendant is rewritten to match the new position, so the
+        whole branch moves together. Memberships are left untouched: a move never grants
+        access to anyone who did not already have it.
+
+        The move is refused when it would place an organization inside its own branch, when
+        either end is a personal organization, or when the destination does not exist.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can move any organization anywhere.
+        - **USER**: Must have the `OWNER` role in both the organization being moved and the
+          destination organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId]
+              properties:
+                parentId:
+                  type: string
+                  nullable: true
+                  pattern: '^[a-f0-9]{24}$'
+                  description: New parent organization, or null to move it to the root
+                  example: 63f74bf8eeed64058364b601
+      responses:
+        '200':
+          description: Organization moved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER of the organization or of the destination
+        '404':
+          description: Organization or destination organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members
