@@ -41,7 +41,9 @@ import {
     MdVpnKey,
     MdOutlineRemoveRedEye,
     MdOutlineShield,
+    MdNorthWest,
 } from 'react-icons/md';
+import { FaCrown } from 'react-icons/fa';
 import { IconType } from 'react-icons';
 
 const iconMap: Record<string, IconType> = {
@@ -51,6 +53,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:account-remove-outline': MdPersonRemove,
     'mdi:account-search': MdPersonSearch,
     'mdi:arrow-left': MdArrowBack,
+    'mdi:arrow-up-left': MdNorthWest,
     'mdi:bell-badge-outline': MdNotificationsActive,
     'mdi:bell-off': MdNotificationsOff,
     'mdi:bell-outline': MdNotificationsNone,
@@ -61,6 +64,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:chevron-right': MdChevronRight,
     'mdi:close': MdClose,
     'mdi:content-copy': MdContentCopy,
+    'mdi:crown-outline': FaCrown,
     'mdi:domain': MdDomain,
     'mdi:folder-off-outline': MdFolderOff,
     'mdi:graph-outline': MdAccountTree,

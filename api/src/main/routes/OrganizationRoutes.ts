@@ -51,6 +51,14 @@ const loadFileRoutes = function (app: express.Application) {
     );
 
   app
+    .route(baseUrl + '/orgs/:organizationId/owner')
+    .put(
+      OrganizationValidation.transferOwnership,
+      handleValidation,
+      organizationController.transferOwnership
+    );
+
+  app
     .route(baseUrl + '/orgs/:organizationId/parent')
     .put(
       OrganizationValidation.moveToParent,

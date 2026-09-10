@@ -721,6 +721,140 @@ describe('Organizations API integration', () => {
   // =========================================================================
   // PUT /orgs/:organizationId/parent
   // =========================================================================
+  // ─────────────────────────────────────────────────────────────
+  // PUT /orgs/:organizationId/owner
+  // ─────────────────────────────────────────────────────────────
+  describe('PUT /orgs/:organizationId/owner', () => {
+    const transfer = (orgId: string, token: string | undefined, userId: string) =>
+      request(app)
+        .put(BASE_PATH + '/orgs/' + orgId + '/owner')
+        .set('Authorization', 'Bearer ' + token)
+        .send({ userId });
+
+    const roleOf = async (userId: string, organizationId: string) => {
+      const membership = await OrganizationMembershipMongoose.findOne({
+        _userId: userId,
+        _organizationId: organizationId,
+      }).lean();
+      return membership?.role ?? null;
+    };
+
+    it('promotes the recipient and steps the caller down to ADMIN', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+      await createMembership(successor.id, org.id, 'MEMBER');
+
+      const response = await transfer(org.id, owner.token, successor.id);
+
+      expect(response.status).toBe(200);
+      expect(await roleOf(successor.id, org.id)).toBe('OWNER');
+      expect(await roleOf(owner.id, org.id)).toBe('ADMIN');
+    });
+
+    it('carries both role changes down to the child organizations', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: org.id });
+      await createMembership(successor.id, org.id, 'MEMBER');
+
+      const response = await transfer(org.id, owner.token, successor.id);
+
+      expect(response.status).toBe(200);
+      expect(await roleOf(successor.id, child.id)).toBe('OWNER');
+      expect(await roleOf(owner.id, child.id)).toBe('ADMIN');
+    });
+
+    it('leaves any other owners of the organization alone', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: coOwner } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+      await createMembership(coOwner.id, org.id, 'OWNER');
+      await createMembership(successor.id, org.id, 'MEMBER');
+
+      const response = await transfer(org.id, owner.token, successor.id);
+
+      expect(response.status).toBe(200);
+      expect(await roleOf(coOwner.id, org.id)).toBe('OWNER');
+    });
+
+    it('returns 403 when the caller is only an ADMIN of the organization', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: orgAdmin } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+      await createMembership(orgAdmin.id, org.id, 'ADMIN');
+      await createMembership(successor.id, org.id, 'MEMBER');
+
+      const response = await transfer(org.id, orgAdmin.token, successor.id);
+
+      expect(response.status).toBe(403);
+      expect(await roleOf(successor.id, org.id)).toBe('MEMBER');
+      expect(await roleOf(owner.id, org.id)).toBe('OWNER');
+    });
+
+    it('returns 403 for a platform administrator with no ownership of their own to give', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+      await createMembership(successor.id, org.id, 'MEMBER');
+
+      const response = await transfer(org.id, adminUser.token, successor.id);
+
+      expect(response.status).toBe(403);
+      expect(await roleOf(owner.id, org.id)).toBe('OWNER');
+      expect(await roleOf(successor.id, org.id)).toBe('MEMBER');
+    });
+
+    it('returns 404 when the recipient is not a member of the organization', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: stranger } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+
+      const response = await transfer(org.id, owner.token, stranger.id);
+
+      expect(response.status).toBe(404);
+      expect(await roleOf(owner.id, org.id)).toBe('OWNER');
+    });
+
+    it('refuses to hand over a personal organization', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: successor } = await createAndLoginUser('USER');
+      await createMembership(successor.id, organizationId, 'MEMBER');
+
+      const response = await transfer(organizationId, owner.token, successor.id);
+
+      expect(response.status).toBe(422);
+      expect(await roleOf(owner.id, organizationId)).toBe('OWNER');
+    });
+
+    it('refuses to hand the organization to yourself', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+
+      const response = await transfer(org.id, owner.token, owner.id);
+
+      expect(response.status).toBe(422);
+      expect(await roleOf(owner.id, org.id)).toBe('OWNER');
+    });
+
+    it('returns 422 when the userId is missing or malformed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const org = await createTestOrganization(owner.token);
+
+      const missing = await request(app)
+        .put(BASE_PATH + '/orgs/' + org.id + '/owner')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({});
+      const malformed = await transfer(org.id, owner.token, 'not-an-object-id');
+
+      expect(missing.status).toBe(422);
+      expect(malformed.status).toBe(422);
+    });
+  });
+
   describe('PUT /orgs/:organizationId/parent', () => {
     it('moves an organization under another one the caller owns', async () => {
       const { user: owner } = await createAndLoginUser('USER');

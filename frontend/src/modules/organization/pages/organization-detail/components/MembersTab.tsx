@@ -15,6 +15,8 @@ interface Props {
   currentUserId: string | undefined;
   managerRole: OrgRole | null;
   onRefresh: () => Promise<void>;
+  /** Handing the organization over changes the viewer's own role, so more than the member list has to be reloaded. */
+  onOwnershipTransferred: () => void | Promise<void>;
   onAddMember: () => void;
   onLeave: () => void;
   isPublicView?: boolean;
@@ -27,11 +29,12 @@ export default function MembersTab({
   currentUserId,
   managerRole,
   onRefresh,
+  onOwnershipTransferred,
   onAddMember,
   onLeave,
   isPublicView = false,
 }: Props) {
-  const { updateMemberRole, removeMember } = useOrganizationsApi();
+  const { updateMemberRole, removeMember, transferOwnership } = useOrganizationsApi();
   const [draftRoles, setDraftRoles] = useState<Record<string, OrgRole>>({});
   const [isSavingRoles, setIsSavingRoles] = useState(false);
 
@@ -70,6 +73,19 @@ export default function MembersTab({
               onRefresh();
             }
           })
+          .catch((err: Error) => customAlert(err.message, 'error'))
+      )
+      .catch(() => {});
+  };
+
+  const handleTransferOwnership = (member: OrgMemberWithUser) => {
+    customConfirm(
+      `Hand this organization over to @${member.user.username}? They become an owner and you stay on as an admin.`,
+      { danger: true }
+    )
+      .then(() =>
+        transferOwnership(orgId, member.user.id)
+          .then(() => onOwnershipTransferred())
           .catch((err: Error) => customAlert(err.message, 'error'))
       )
       .catch(() => {});
@@ -256,6 +272,21 @@ export default function MembersTab({
                     {ROLE_LABELS[member.role]}
                   </span>
                 )}
+                {!isPublicView &&
+                  canManage &&
+                  managerRole === 'OWNER' &&
+                  member.user.id !== currentUserId &&
+                  member.role !== 'OWNER' && (
+                    <button
+                      type="button"
+                      onClick={() => handleTransferOwnership(member)}
+                      disabled={isSavingRoles}
+                      title={`Transfer ownership to @${member.user.username}`}
+                      className="cursor-pointer text-tp-hairline-strong transition-colors hover:text-tp-primary disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Iconify icon="mdi:crown-outline" width={18} />
+                    </button>
+                  )}
                 {!isPublicView && canManage && member.user.id !== currentUserId && (
                   <button
                     type="button"

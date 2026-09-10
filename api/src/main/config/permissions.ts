@@ -199,6 +199,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET'],
     isPublic: true,
   },
+  // Handing an organization over is owner-only. The service checks that the
+  // caller's own seat is the owner's, since it is that seat being given away.
+  {
+    path: '/orgs/*/owner',
+    methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER'],
+  },
   // Re-parenting is owner-only. This guard covers the organization being moved;
   // ownership of the destination is checked by the service, which is where the
   // other end of the move is known.

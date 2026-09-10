@@ -2560,6 +2560,72 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/owner:
+    put:
+      summary: Hand an organization over to another member
+      description: |
+        Transfers the caller's ownership of the organization to the member named by `userId`.
+        The new owner is promoted to `OWNER` and the caller steps down to `ADMIN` in the same
+        call, so they keep working access to what they used to own.
+
+        This is a first-person action: it is the caller's own seat that changes hands. An
+        organization may hold several owners, and any others are left untouched — to change
+        somebody else's role, use `PUT /orgs/{organizationId}/members/{userId}` instead.
+
+        Both role changes propagate to the organization's children, the same way any other
+        role change does. The new owner is notified.
+
+        The handover is refused for personal organizations, when the caller is not an `OWNER`
+        of the organization, and when the recipient is not already a member of it.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **USER** / **ADMIN** (global): Must hold the `OWNER` role in this organization. A
+          global administrator who is not an owner here has no seat to give and is refused.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  pattern: '^[a-f0-9]{24}$'
+                  description: Member receiving the organization
+                  example: 63f74bf8eeed64058364b601
+      responses:
+        '200':
+          description: Ownership transferred; returns the organization's members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationMember'
+        '401':
+          description: Authentication required
+        '403':
+          description: The caller is not an OWNER of the organization
+        '404':
+          description: Organization not found, or the recipient is not a member of it
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/parent:
     put:
       summary: Move an organization to another parent
@@ -2844,8 +2910,9 @@ paths:
       summary: Update a member's role
       description: |
         Changes the role of an existing member within the organization. This can be used
-        to promote a MEMBER to ADMIN, demote an ADMIN to MEMBER, or transfer ownership
-        by assigning the OWNER role.
+        to promote a MEMBER to ADMIN, demote an ADMIN to MEMBER, or grant a second owner
+        by assigning the OWNER role. To hand over your own ownership and step down at the
+        same time, use `PUT /orgs/{organizationId}/owner` instead.
 
         **Authentication**: User token
 

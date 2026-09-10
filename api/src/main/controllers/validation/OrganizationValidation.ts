@@ -164,6 +164,14 @@ const moveToParent = [
     .withMessage('The parentId must be null or a valid MongoDB ObjectId'),
 ];
 
+const transferOwnership = [
+  check('userId')
+    .exists()
+    .withMessage('The userId of the member receiving the organization is required')
+    .custom((value: unknown) => /^[a-f0-9]{24}$/.test(String(value)))
+    .withMessage('The userId must be a valid MongoDB ObjectId'),
+];
+
 export {
   create,
   update,
@@ -171,5 +179,6 @@ export {
   addMembersBulk,
   createChildrenBulk,
   moveToParent,
+  transferOwnership,
   updateMemberRole,
 };

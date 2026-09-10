@@ -583,6 +583,98 @@ class OrganizationService {
     return updatedMembership;
   }
 
+  /**
+   * Hands the caller's ownership of an organization to another member.
+   *
+   * This is a first-person action: the caller promotes someone else and steps
+   * down to ADMIN in the same call, so they keep working access to the
+   * organization instead of being locked out of what they used to own. Other
+   * owners, if the organization has any, are left alone — an organization can
+   * hold several, and only the caller's own seat changes hands here.
+   *
+   * Nothing in this codebase writes inside a transaction, so this does not
+   * either: if the caller's demotion fails, the promotion is undone by hand
+   * rather than leaving them having given away a seat they also still hold.
+   */
+  async transferOwnership(
+    organizationId: string,
+    newOwnerUserId: string,
+    reqUser: LeanUser & { orgRole?: OrgRole }
+  ) {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    if (organization.isPersonal) {
+      throw new Error('INVALID DATA: Personal organizations cannot be handed to anyone else');
+    }
+
+    if (newOwnerUserId === reqUser.id) {
+      throw new Error('INVALID DATA: You already own this organization');
+    }
+
+    // Ownership is the caller's to give, so it is their own seat that has to be
+    // an owner's — a platform administrator managing someone else's
+    // organization changes roles through the member endpoints instead.
+    const currentOwnership: any = await this.organizationMembershipRepository.findByUserAndOrganization(
+      reqUser.id,
+      organizationId
+    );
+    if (!currentOwnership || currentOwnership.role !== 'OWNER') {
+      throw new Error('PERMISSION ERROR: Only an OWNER of the organization can hand it over');
+    }
+
+    const newOwnership: any = await this.organizationMembershipRepository.findByUserAndOrganization(
+      newOwnerUserId,
+      organizationId
+    );
+    if (!newOwnership) {
+      throw new Error('NOT FOUND: The new owner must already be a member of the organization');
+    }
+
+    const previousRole: OrgRole = newOwnership.role;
+
+    await this.organizationMembershipRepository.updateByUserAndOrganization(
+      newOwnerUserId,
+      organizationId,
+      { role: 'OWNER' }
+    );
+    await this.cascadeRoleChange(newOwnerUserId, organizationId, 'OWNER');
+
+    try {
+      await this.organizationMembershipRepository.updateByUserAndOrganization(
+        reqUser.id,
+        organizationId,
+        { role: 'ADMIN' }
+      );
+      await this.cascadeRoleChange(reqUser.id, organizationId, 'ADMIN');
+    } catch (err) {
+      await this.organizationMembershipRepository.updateByUserAndOrganization(
+        newOwnerUserId,
+        organizationId,
+        { role: previousRole }
+      );
+      await this.cascadeRoleChange(newOwnerUserId, organizationId, previousRole);
+      throw err;
+    }
+
+    try {
+      const orgName = organization.displayName || organization.name || 'an organization';
+      await this.notificationService.createNotification({
+        userId: newOwnerUserId,
+        kind: 'System',
+        title: 'You are now an owner',
+        message: `@${reqUser.username} handed you ownership of "${orgName}"`,
+        data: { organizationId, previousOwnerId: reqUser.id },
+      });
+    } catch {
+      // Telling the new owner is not worth undoing the transfer over
+    }
+
+    return this.listMembers(organizationId);
+  }
+
   async removeMember(userId: string, organizationId: string, reqUser?: LeanUser & {orgRole: OrgRole}) {
     const membership: any = await this.organizationMembershipRepository.findByUserAndOrganization(userId, organizationId);
     if (!membership) {
