@@ -4,6 +4,8 @@ export interface Organization {
   displayName: string;
   description?: string | null;
   avatar?: string | null;
+  avatarBgColor?: string | null;
+  avatarFgColor?: string | null;
   isPersonal: boolean;
   createdAt: Date;
   updatedAt: Date;

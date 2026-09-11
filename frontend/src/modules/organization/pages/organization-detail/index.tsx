@@ -28,6 +28,7 @@ import { Tab, TreeNode, PER_PAGE } from './types';
 import { ROLE_LABELS, ROLE_COLORS, TAB_META } from './constants';
 import { useDebouncedValue } from './hooks';
 import EditOrgModal from './components/EditOrgModal';
+import OrgAvatarModal from './components/OrgAvatarModal';
 import CreateSubOrgModal from './components/CreateSubOrgModal';
 import AddMemberModal from './components/AddMemberModal';
 import InviteModal from './components/InviteModal';
@@ -68,6 +69,7 @@ export default function OrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [createSubOrgModalOpen, setCreateSubOrgModalOpen] = useState(false);
@@ -551,15 +553,43 @@ export default function OrganizationDetailPage() {
 
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               <motion.div variants={fadeInUp} transition={transitionDefault} className="shrink-0">
-                <OrgAvatar
-                  name={org.displayName}
-                  avatar={org.avatar}
-                  avatarBgColor={org.avatarBgColor}
-                  avatarFgColor={org.avatarFgColor}
-                  size={80}
-                  square
-                  className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
-                />
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => setAvatarModalOpen(true)}
+                    title="Change the organization image"
+                    className="group relative block cursor-pointer"
+                  >
+                    <OrgAvatar
+                      name={org.displayName}
+                      avatar={org.avatar}
+                      avatarBgColor={org.avatarBgColor}
+                      avatarFgColor={org.avatarFgColor}
+                      size={80}
+                      square
+                      className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Iconify icon="mdi:camera-outline" width={22} className="text-white" />
+                    </span>
+                    {/* The dimmed overlay above only appears on hover, which leaves
+                        nothing to find for anyone who never thinks to point at the
+                        image. This badge is the standing affordance. */}
+                    <span className="absolute -right-1.5 -bottom-1.5 flex h-7 w-7 items-center justify-center rounded-full border border-tp-hairline bg-tp-canvas text-tp-slate shadow-elevation-2 transition-colors group-hover:border-tp-primary group-hover:bg-tp-primary group-hover:text-tp-on-primary">
+                      <Iconify icon="mdi:camera-outline" width={14} />
+                    </span>
+                  </button>
+                ) : (
+                  <OrgAvatar
+                    name={org.displayName}
+                    avatar={org.avatar}
+                    avatarBgColor={org.avatarBgColor}
+                    avatarFgColor={org.avatarFgColor}
+                    size={80}
+                    square
+                    className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
+                  />
+                )}
               </motion.div>
 
               <div className="min-w-0 flex-1">
@@ -835,6 +865,28 @@ export default function OrganizationDetailPage() {
               setOrg(updated);
               setEditModalOpen(false);
             }}
+          />
+        )}
+        {avatarModalOpen && org && (
+          <OrgAvatarModal
+            org={org}
+            onClose={() => setAvatarModalOpen(false)}
+            onSaved={updated =>
+              // Only the avatar fields are taken from the response: the avatar
+              // endpoints return the organization on its own, without the child
+              // organizations this page loaded separately, and replacing the
+              // whole object would drop them until the next reload.
+              setOrg(current =>
+                current
+                  ? {
+                      ...current,
+                      avatar: updated.avatar,
+                      avatarBgColor: updated.avatarBgColor,
+                      avatarFgColor: updated.avatarFgColor,
+                    }
+                  : updated
+              )
+            }
           />
         )}
         {addMemberModalOpen && org && (

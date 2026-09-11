@@ -40,6 +40,32 @@ const loadFileRoutes = function (app: express.Application) {
     )
     .delete(organizationController.destroy);
 
+  // The organization's image. Multer reports its own failures (too large, wrong
+  // type) as an error rather than a rejected request, so they are turned into a
+  // 400 here instead of surfacing as a 500.
+  app
+    .route(baseUrl + '/orgs/:organizationId/avatar')
+    .post((req, res) => {
+      organizationController.avatarUploadMiddleware(req, res, (err: any) => {
+        if (err) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: 'File size must be less than 2MB' });
+          }
+          return res.status(400).json({ error: err.message });
+        }
+        organizationController.uploadAvatar(req, res);
+      });
+    })
+    .delete(organizationController.removeAvatar);
+
+  app
+    .route(baseUrl + '/orgs/:organizationId/avatar-colors')
+    .put(
+      OrganizationValidation.updateAvatarColors,
+      handleValidation,
+      organizationController.updateAvatarColors
+    );
+
   app
     .route(baseUrl + '/orgs/:organizationId/members')
     .get(organizationController.listMembers)
