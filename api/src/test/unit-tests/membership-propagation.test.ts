@@ -41,7 +41,7 @@ function createMockMembershipRepo() {
     destroyByUserAndOrganizationBatch: vi.fn(),
     destroyByOrganizationId: vi.fn(),
     destroyByUserId: vi.fn(),
-    countOwners: vi.fn(),
+    findOwners: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -226,22 +226,20 @@ describe('OrganizationService - Membership Propagation', () => {
       expect(membershipRepo.create).not.toHaveBeenCalled();
     });
 
-    it('promoting to OWNER also creates child memberships', async () => {
+    it('refuses to promote to OWNER and touches nothing', async () => {
       orgRepo.findById.mockResolvedValue({ id: 'parent-1', isPersonal: false });
       orgRepo.findChildOrganizationIds.mockResolvedValue(['child-1']);
       membershipRepo.findByUserAndOrganization.mockResolvedValue({ role: 'ADMIN' });
-      membershipRepo.updateByUserAndOrganization.mockResolvedValue({});
-      membershipRepo.findExistingMembership.mockResolvedValue(null);
-      membershipRepo.create.mockResolvedValue({});
 
-      await service.updateMemberRole('user-1', 'parent-1', 'OWNER', {
-        id: 'owner-user',
-        orgRole: 'OWNER',
-      } as any);
+      await expect(
+        service.updateMemberRole('user-1', 'parent-1', 'OWNER', {
+          id: 'owner-user',
+          orgRole: 'OWNER',
+        } as any)
+      ).rejects.toThrow(/single owner/);
 
-      expect(membershipRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ _userId: 'user-1', _organizationId: 'child-1', role: 'OWNER' })
-      );
+      expect(membershipRepo.updateByUserAndOrganization).not.toHaveBeenCalled();
+      expect(membershipRepo.create).not.toHaveBeenCalled();
     });
 
     it('does nothing to children when org has no children', async () => {
@@ -276,19 +274,17 @@ describe('OrganizationService - Membership Propagation', () => {
   });
 
   describe('addMember - propagation to children', () => {
-    it('propagates OWNER membership to existing children', async () => {
+    it('refuses to add an OWNER and creates no membership at all', async () => {
       membershipRepo.findUserRoleInOrganization.mockResolvedValue(null);
       orgRepo.findById.mockResolvedValue({ id: 'parent-1', isPersonal: false });
-      membershipRepo.create.mockResolvedValue({});
       orgRepo.findChildOrganizationIds.mockResolvedValue(['child-1']);
 
-      await service.addMember('user-1', 'parent-1', 'OWNER');
-
-      expect(membershipRepo.createBulk).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ _userId: 'user-1', _organizationId: 'child-1', role: 'OWNER' }),
-        ])
+      await expect(service.addMember('user-1', 'parent-1', 'OWNER')).rejects.toThrow(
+        /single owner/
       );
+
+      expect(membershipRepo.create).not.toHaveBeenCalled();
+      expect(membershipRepo.createBulk).not.toHaveBeenCalled();
     });
 
     it('propagates ADMIN membership to existing children', async () => {

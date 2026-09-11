@@ -48,8 +48,14 @@ info:
     | Role | Permissions |
     |------|-------------|
     | **OWNER** | Full control: manage organization resources, members, invitations, settings, and delete the organization |
-    | **ADMIN** | Everything an OWNER can do, but cannot delete the organization or downgrade OWNERs |
+    | **ADMIN** | Everything an OWNER can do, but cannot delete the organization or hand it over |
     | **MEMBER** | Read-only access to organization data and pricings |
+
+    **Ownership:** every organization has exactly one OWNER. The role cannot be assigned or
+    revoked like the others — it is handed over, as a swap, through
+    `PUT /orgs/{organizationId}/owner`, which promotes the recipient and steps the previous
+    owner down to ADMIN. Ownership runs down the tree, so it covers the whole branch below
+    the organization it is given for.
 
     **Role Hierarchy Behavior:**
     - A user can have **different roles** in different organizations
@@ -2155,6 +2161,10 @@ paths:
         **OWNER** of the newly created organization (an `OrganizationMembership` with
         role `OWNER` is created alongside the organization).
 
+        Sub-organizations are the exception. Ownership runs down the tree, so a new child
+        belongs to whoever owns its parent; a creator who is only an `ADMIN` of the parent
+        comes in as an `ADMIN` of the child.
+
         **Authentication**: User token
 
         **Request Body**:
@@ -2173,8 +2183,8 @@ paths:
           the parent organization automatically inherit role-based access to child organizations.
 
         **Cascading Actions**:
-        - An `OrganizationMembership` record is created linking the authenticated user
-          as the OWNER of the new organization.
+        - An `OrganizationMembership` record is created linking the authenticated user to the
+          new organization, as its OWNER unless the parent already has one.
 
       tags:
         - Organizations
@@ -2507,9 +2517,11 @@ paths:
         Creates between 1 and 100 organizations as direct children of the organization
         identified by `organizationId`. The parent ID is taken exclusively from the URL.
 
-        The authenticated user becomes the OWNER of every created child. OWNER and ADMIN
-        memberships from the parent are propagated to each child according to the existing
-        hierarchy rules. Every child receives the parent's complete ancestry path.
+        Every created child belongs to the owner of the parent organization, since ownership
+        runs down the tree; an `ADMIN` of the parent creating children comes in as an `ADMIN`
+        of each. The parent's OWNER and ADMIN memberships are propagated to each child
+        according to the existing hierarchy rules, and every child receives the parent's
+        complete ancestry path.
 
         The complete payload is validated before creating any organization. If creation
         fails after it begins, organizations created by this request are rolled back.
@@ -2565,17 +2577,18 @@ paths:
       summary: Hand an organization over to another member
       description: |
         Transfers the caller's ownership of the organization to the member named by `userId`.
-        The new owner is promoted to `OWNER` and the caller steps down to `ADMIN` in the same
-        call, so they keep working access to what they used to own.
+        An organization has exactly one owner, so this is a swap rather than a promotion: the
+        recipient takes the seat and the caller steps down to `ADMIN`, keeping working access
+        to what they used to own. It is the only way the owner changes.
 
-        This is a first-person action: it is the caller's own seat that changes hands. An
-        organization may hold several owners, and any others are left untouched — to change
-        somebody else's role, use `PUT /orgs/{organizationId}/members/{userId}` instead.
+        This is a first-person action: it is the caller's own seat that changes hands.
 
-        Both role changes propagate to the organization's children, the same way any other
-        role change does. The new owner is notified.
+        Ownership runs down the tree, so the handover covers every sub-organization below
+        this one as well. Whoever held one of those seats steps down to `ADMIN` in the same
+        way, and the new owner is added to any of them they did not already belong to. The
+        new owner is notified.
 
-        The handover is refused for personal organizations, when the caller is not an `OWNER`
+        The handover is refused for personal organizations, when the caller is not the `OWNER`
         of the organization, and when the recipient is not already a member of it.
 
         **Authentication**: User token
@@ -2746,6 +2759,9 @@ paths:
         way to add members (as opposed to `POST /orgs/join/{code}` which is self-service
         via invitation codes and always assigns the `MEMBER` role).
 
+        Ownership is not granted this way: an organization has exactly one owner, and that
+        seat changes hands through `PUT /orgs/{organizationId}/owner`.
+
         **Authentication**: User token
 
         **Permission**:
@@ -2754,7 +2770,7 @@ paths:
 
         **Request Body**:
         - `userId` (required): The MongoDB ObjectId of the user to add as a member.
-        - `role` (required): The role to assign — one of `OWNER`, `ADMIN`, or `MEMBER`.
+        - `role` (required): The role to assign — either `ADMIN` or `MEMBER`.
 
         **Constraints**:
         - The target user must not already be a member of the organization. If they are,
@@ -2762,8 +2778,8 @@ paths:
         - A unique compound index on `{ userId, organizationId }` also prevents duplicates
           at the database level.
 
-        **Note**: Unlike `POST /orgs/join/{code}`, this endpoint allows assigning any role
-        (not just `MEMBER`), making it suitable for administrative member management.
+        **Note**: Unlike `POST /orgs/join/{code}`, this endpoint also allows adding somebody
+        straight as an `ADMIN`, making it suitable for administrative member management.
 
       tags:
         - Organizations
@@ -2813,7 +2829,7 @@ paths:
                   value:
                     errors:
                       - type: field
-                        msg: "Role must be one of OWNER, ADMIN, MEMBER"
+                        msg: "Role must be one of ADMIN, MEMBER"
                         path: role
                         location: body
                 alreadyMember:
@@ -2833,9 +2849,9 @@ paths:
         Adds between 1 and 100 users to an organization in a single request. Every user
         and existing membership is validated before any new membership is written.
 
-        `OWNER` and `ADMIN` roles are propagated to direct child organizations according
-        to the existing organization hierarchy rules. `MEMBER` roles are only added to
-        the organization identified by `organizationId`.
+        `ADMIN` roles are propagated to direct child organizations according to the existing
+        organization hierarchy rules. `MEMBER` roles are only added to the organization
+        identified by `organizationId`.
 
         **Authentication**: User token
 
@@ -2847,7 +2863,8 @@ paths:
         - The request must contain between 1 and 100 unique user IDs.
         - Every referenced user must exist.
         - None of the users may already be a member of the organization.
-        - Personal organizations cannot receive another `OWNER`.
+        - `OWNER` is not an assignable role: an organization has exactly one owner, handed
+          over through `PUT /orgs/{organizationId}/owner`.
       tags:
         - Organizations
       security:
@@ -2909,10 +2926,12 @@ paths:
     put:
       summary: Update a member's role
       description: |
-        Changes the role of an existing member within the organization. This can be used
-        to promote a MEMBER to ADMIN, demote an ADMIN to MEMBER, or grant a second owner
-        by assigning the OWNER role. To hand over your own ownership and step down at the
-        same time, use `PUT /orgs/{organizationId}/owner` instead.
+        Changes the role of an existing member within the organization: promotes a MEMBER to
+        ADMIN, or demotes an ADMIN to MEMBER.
+
+        Ownership is out of scope here. An organization has exactly one owner, so `OWNER`
+        cannot be assigned and the owner's own role cannot be changed — the seat moves, as a
+        swap, through `PUT /orgs/{organizationId}/owner`.
 
         **Authentication**: User token
 
@@ -2921,7 +2940,7 @@ paths:
         - **USER**: Must have the `OWNER` or `ADMIN` role within the organization.
 
         **Request Body**:
-        - `role` (required): The new role to assign — one of `OWNER`, `ADMIN`, or `MEMBER`.
+        - `role` (required): The new role to assign — either `ADMIN` or `MEMBER`.
 
         **Behavior**:
         - The system automatically recalculates an internal `_roleWeight` field
@@ -2931,6 +2950,8 @@ paths:
 
         **Constraints**:
         - The target user must already be a member of the organization.
+        - `OWNER` is rejected with **422**, as is any attempt to change the role of the
+          member who currently holds the seat.
 
       tags:
         - Organizations
@@ -2965,7 +2986,9 @@ paths:
             Organization or membership not found — either the organization does not exist
             or the target user is not a member of it
         '422':
-          description: Validation failed — e.g. invalid or missing `role` value
+          description: |
+            Validation failed — an invalid or missing `role` value, `OWNER` as the requested
+            role, or an attempt to change the current owner's role
           content:
             application/json:
               schema:
@@ -2996,8 +3019,10 @@ paths:
         **Constraints**:
         - The target user must be a member of the organization. If no membership record
           is found, the request returns **404**.
-        - The last OWNER cannot be removed from the organization (even via self-removal).
-          Ownership must be transferred before the OWNER can leave.
+        - The OWNER cannot be removed from the organization (even via self-removal); there
+          is only one, and removing them would leave nobody able to give the organization
+          away. Ownership must be handed over first, through
+          `PUT /orgs/{organizationId}/owner`.
 
       tags:
         - Organizations
@@ -6672,7 +6697,8 @@ components:
     AddMember:
       description: |
         Request body for adding a user to an organization. Unlike `POST /orgs/join/{code}`
-        (which always assigns `MEMBER` role), this endpoint allows assigning any role.
+        (which always assigns `MEMBER` role), this endpoint also allows adding somebody
+        straight as an `ADMIN`.
       required: true
       content:
         application/json:
@@ -6688,12 +6714,14 @@ components:
                 example: "68050bd09890322c57842f71"
               role:
                 type: string
-                enum: [OWNER, ADMIN, MEMBER]
+                enum: [ADMIN, MEMBER]
                 description: |
                   The role to assign to the new member:
-                  - **OWNER**: Full control over the organization
                   - **ADMIN**: Can manage members and invitations
                   - **MEMBER**: Basic access to organization resources
+
+                  `OWNER` is not assignable. An organization has exactly one owner, and that
+                  seat changes hands through `PUT /orgs/{organizationId}/owner`.
                 example: "MEMBER"
 
     BulkAddMembers:
@@ -6723,7 +6751,7 @@ components:
                       example: "68050bd09890322c57842f71"
                     role:
                       type: string
-                      enum: [OWNER, ADMIN, MEMBER]
+                      enum: [ADMIN, MEMBER]
                       example: "MEMBER"
 
     UpdateMemberRole:
@@ -6740,12 +6768,14 @@ components:
             properties:
               role:
                 type: string
-                enum: [OWNER, ADMIN, MEMBER]
+                enum: [ADMIN, MEMBER]
                 description: |
                   The new role to assign to the member:
-                  - **OWNER**: Full control over the organization
                   - **ADMIN**: Can manage members and invitations
                   - **MEMBER**: Basic access to organization resources
+
+                  `OWNER` is not assignable, and the owner's own role cannot be changed
+                  here: the seat moves through `PUT /orgs/{organizationId}/owner`.
                 example: "ADMIN"
 
     CreateInvitation:

@@ -831,7 +831,6 @@ export default function OrganizationDetailPage() {
                   parentOrgId={org.id}
                   organizations={org.subOrganizations ?? []}
                   currentUserId={authUser.user?.id}
-                  parentManagerRole={myRole}
                   onNavigate={id => router.push(`/orgs/${id}`)}
                 />
               )}

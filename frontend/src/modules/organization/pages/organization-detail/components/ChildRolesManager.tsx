@@ -16,7 +16,6 @@ interface Props {
   parentOrgId: string;
   organizations: Organization[];
   currentUserId: string | undefined;
-  parentManagerRole: OrgRole;
   onNavigate: (id: string) => void;
 }
 
@@ -26,7 +25,6 @@ export default function ChildRolesManager({
   parentOrgId,
   organizations,
   currentUserId,
-  parentManagerRole,
   onNavigate,
 }: Props) {
   const { getOrgMembers, updateMemberRole } = useOrganizationsApi();
@@ -247,8 +245,6 @@ export default function ChildRolesManager({
         {organizations.map((organization, organizationIndex) => {
           const members = membersByOrganization[organization.id] ?? [];
           const isExpanded = expandedOrganizationIds.has(organization.id);
-          const managerRole =
-            members.find(member => member.user.id === currentUserId)?.role ?? parentManagerRole;
           const pendingCount = pendingCountByOrganization[organization.id] ?? 0;
           const failed = failedOrganizationIds.has(organization.id);
 
@@ -332,9 +328,10 @@ export default function ChildRolesManager({
                         const key = roleKey(organization.id, member.user.id);
                         const displayedRole = draftRoles[key] ?? member.role;
                         const hasPendingRole = displayedRole !== member.role;
+                        // A sub-organization has one owner too, inherited from
+                        // this one, and that seat is not edited from here.
                         const canEditRole =
-                          member.user.id !== currentUserId &&
-                          (managerRole === 'OWNER' || member.role !== 'OWNER');
+                          member.user.id !== currentUserId && member.role !== 'OWNER';
 
                         return (
                           <div
@@ -382,7 +379,6 @@ export default function ChildRolesManager({
                               >
                                 <option value="MEMBER">Member</option>
                                 <option value="ADMIN">Admin</option>
-                                {managerRole === 'OWNER' && <option value="OWNER">Owner</option>}
                               </select>
                             ) : (
                               <span

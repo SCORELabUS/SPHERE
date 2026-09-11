@@ -80,7 +80,7 @@ export default function MembersTab({
 
   const handleTransferOwnership = (member: OrgMemberWithUser) => {
     customConfirm(
-      `Hand this organization over to @${member.user.username}? They become an owner and you stay on as an admin.`,
+      `Hand this organization over to @${member.user.username}? They become its owner, along with every sub-organization under it, and you stay on as an admin.`,
       { danger: true }
     )
       .then(() =>
@@ -226,9 +226,9 @@ export default function MembersTab({
           {members.map(member => {
             const displayedRole = draftRoles[member.user.id] ?? member.role;
             const hasPendingRole = displayedRole !== member.role;
-            const canEditRole =
-              member.user.id !== currentUserId &&
-              (managerRole === 'OWNER' || member.role !== 'OWNER');
+            // The owner's role is not a role anyone edits: the organization has
+            // exactly one, and that seat only moves by being handed over.
+            const canEditRole = member.user.id !== currentUserId && member.role !== 'OWNER';
 
             return (
               <div
@@ -262,7 +262,6 @@ export default function MembersTab({
                   >
                     <option value="MEMBER">Member</option>
                     <option value="ADMIN">Admin</option>
-                    {managerRole === 'OWNER' && <option value="OWNER">Owner</option>}
                   </select>
                 )}
                 {!isPublicView && (!canManage || !canEditRole) && (
@@ -272,11 +271,14 @@ export default function MembersTab({
                     {ROLE_LABELS[member.role]}
                   </span>
                 )}
+                {/* Any other member can be handed the organization, an owner
+                    included: on data written before the single-owner rule two of
+                    them can share it, and one giving it to the other is the only
+                    way left to settle that — owners can no longer be demoted. */}
                 {!isPublicView &&
                   canManage &&
                   managerRole === 'OWNER' &&
-                  member.user.id !== currentUserId &&
-                  member.role !== 'OWNER' && (
+                  member.user.id !== currentUserId && (
                     <button
                       type="button"
                       onClick={() => handleTransferOwnership(member)}
@@ -287,7 +289,7 @@ export default function MembersTab({
                       <Iconify icon="mdi:crown-outline" width={18} />
                     </button>
                   )}
-                {!isPublicView && canManage && member.user.id !== currentUserId && (
+                {!isPublicView && canManage && member.user.id !== currentUserId && member.role !== 'OWNER' && (
                   <button
                     type="button"
                     onClick={() => handleRemoveMember(member)}

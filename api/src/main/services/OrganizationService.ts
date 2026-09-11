@@ -94,12 +94,15 @@ class OrganizationService {
   }
 
   async createWithOwner(data: any, userId: string) {
+    let inheritedManagers: any[] = [];
+
     if (data._parentId) {
       const parent: any = await this.organizationRepository.findById(data._parentId);
       if (!parent) {
         throw new Error('NOT FOUND: Parent organization not found');
       }
       data.ancestors = [...(parent.ancestors ?? []), parent.id ?? parent._id?.toString()];
+      inheritedManagers = await this.findInheritableMemberships(data._parentId);
     }
 
     if (data.name && !data.isPersonal) {
@@ -109,15 +112,23 @@ class OrganizationService {
     const organization: any = await this.organizationRepository.create(data);
     const orgId = organization.id ?? organization._id?.toString();
 
+    // An organization has exactly one owner, and ownership runs down the tree:
+    // below the root the seat belongs to whoever owns the parent, so an admin
+    // creating a sub-organization on their behalf comes in as an admin of it.
+    const inheritedOwnerId = inheritedManagers
+      .find((membership: any) => membership.role === 'OWNER')?._userId?.toString() ?? null;
+    const creatorRole: OrgRole =
+      inheritedOwnerId && inheritedOwnerId !== userId ? 'ADMIN' : 'OWNER';
+
     await this.organizationMembershipRepository.create({
       _userId: userId,
       _organizationId: orgId,
-      role: 'OWNER',
+      role: creatorRole,
       joinedAt: new Date(),
     });
 
-    if (data._parentId) {
-      await this.propagateMembershipsToChild(data._parentId, orgId);
+    if (inheritedManagers.length > 0) {
+      await this.copyMembershipsToChild(inheritedManagers, orgId, inheritedOwnerId);
     }
 
     return organization;
@@ -171,27 +182,53 @@ class OrganizationService {
     return slug;
   }
 
-  private async propagateMembershipsToChild(parentId: string, childId: string) {
+  /**
+   * The memberships a new sub-organization inherits from its parent: the owner
+   * and the admins, who manage the whole branch, but not the plain members.
+   */
+  private async findInheritableMemberships(parentId: string) {
     const parentMembers = await this.organizationMembershipRepository.findDirectMemberships(parentId);
-    if (parentMembers.length === 0) return;
-
-    const eligibleMembers = parentMembers.filter(
-      (m: any) => m.role === 'OWNER' || m.role === 'ADMIN'
-    );
-
-    if (eligibleMembers.length === 0) return;
-
-    const now = new Date();
-    const memberships = eligibleMembers.map((m: any) => ({
-      _userId: m._userId.toString(),
-      _organizationId: childId,
-      role: m.role as OrgRole,
-      joinedAt: now,
-    }));
-
-    await this.organizationMembershipRepository.createBulk(memberships);
+    return parentMembers.filter((m: any) => m.role === 'OWNER' || m.role === 'ADMIN');
   }
 
+  /**
+   * Copies inherited memberships into a freshly created child.
+   *
+   * The creator's own membership is already there, and `createBulk` drops the
+   * rows the unique index rejects, so the owner of the parent creating their own
+   * sub-organization keeps the seat they were just given rather than being
+   * written twice.
+   *
+   * Only the inherited seat comes down as an owner's. A parent carrying a second
+   * owner from before the rule would otherwise hand every one of them to the
+   * child, and the child would be born as malformed as its parent — the bad
+   * state would spread through the tree instead of staying where it is. The
+   * spare owner arrives as an admin, which is what they will become in the
+   * parent too the next time it changes hands.
+   */
+  private async copyMembershipsToChild(
+    managers: any[],
+    childId: string,
+    inheritedOwnerId: string | null
+  ) {
+    const now = new Date();
+    await this.organizationMembershipRepository.createBulk(
+      managers.map((m: any) => {
+        const userId = m._userId.toString();
+        let role = m.role as OrgRole;
+        if (role === 'OWNER' && userId !== inheritedOwnerId) {
+          role = 'ADMIN';
+        }
+        return { _userId: userId, _organizationId: childId, role, joinedAt: now };
+      })
+    );
+  }
+
+  /**
+   * Carries a member's role change down to the sub-organizations they inherited
+   * it in. Ownership never comes through here — the owner's seat is swapped by
+   * transferOwnership, which walks the whole branch rather than one level of it.
+   */
   private async cascadeRoleChange(userId: string, organizationId: string, newRole: OrgRole) {
     const childIds = await this.organizationRepository.findChildOrganizationIds(organizationId);
     if (childIds.length === 0) return;
@@ -439,14 +476,13 @@ class OrganizationService {
       throw new Error('INVALID DATA: User is already a member of this organization');
     }
 
+    // Ownership is never handed out by adding someone: the seat already has a
+    // holder, and it changes hands through transferOwnership, which gives it
+    // away rather than creating a second one.
     if (role === 'OWNER') {
-      const organization: any = await this.organizationRepository.findById(organizationId);
-      if (!organization) {
-        throw new Error('NOT FOUND: Organization not found');
-      }
-      if (organization.isPersonal) {
-        throw new Error('PERMISSION ERROR: Personal organizations can only have one owner');
-      }
+      throw new Error(
+        'INVALID DATA: An organization has a single owner. Hand the organization over to that member instead'
+      );
     }
 
     const membership = await this.organizationMembershipRepository.create({
@@ -456,7 +492,9 @@ class OrganizationService {
       joinedAt: new Date(),
     });
 
-    if (role === 'OWNER' || role === 'ADMIN') {
+    // Only the owner and the admins manage the branch, and the owner never
+    // arrives this way, so an admin is the only role that reaches the children.
+    if (role === 'ADMIN') {
       const childIds = await this.organizationRepository.findChildOrganizationIds(organizationId);
       if (childIds.length > 0) {
         const now = new Date();
@@ -482,8 +520,10 @@ class OrganizationService {
       throw new Error('NOT FOUND: Organization not found');
     }
 
-    if (organization.isPersonal && members.some(member => member.role === 'OWNER')) {
-      throw new Error('PERMISSION ERROR: Personal organizations can only have one owner');
+    if (members.some(member => member.role === 'OWNER')) {
+      throw new Error(
+        'INVALID DATA: An organization has a single owner. Hand the organization over to that member instead'
+      );
     }
 
     const userIds = members.map(member => member.userId);
@@ -518,9 +558,7 @@ class OrganizationService {
       }))
     );
 
-    const inheritableMembers = members.filter(member => (
-      member.role === 'OWNER' || member.role === 'ADMIN'
-    ));
+    const inheritableMembers = members.filter(member => member.role === 'ADMIN');
     if (inheritableMembers.length > 0) {
       const childIds = await this.organizationRepository.findChildOrganizationIds(organizationId);
       if (childIds.length > 0) {
@@ -543,8 +581,12 @@ class OrganizationService {
 
   async updateMemberRole(userId: string, organizationId: string, role: OrgRole, reqUser: LeanUser & {orgRole: OrgRole}) {
 
-    if (reqUser.orgRole !== 'OWNER' && role === 'OWNER') {
-      throw new Error('PERMISSION ERROR: Only OWNER users can promote others to OWNER role');
+    // Not even the owner can promote a second one. Ownership moves as a swap, so
+    // that the organization is never left with two people able to give it away.
+    if (role === 'OWNER') {
+      throw new Error(
+        'INVALID DATA: An organization has a single owner. Hand the organization over to that member instead'
+      );
     }
 
     const organization: any = await this.organizationRepository.findById(organizationId);
@@ -552,24 +594,18 @@ class OrganizationService {
       throw new Error('NOT FOUND: Organization not found');
     }
 
-    if (role === 'OWNER' && organization.isPersonal) {
-      throw new Error('PERMISSION ERROR: Personal organizations can only have one owner');
-    }
-
     const currentMembership: any = await this.organizationMembershipRepository.findByUserAndOrganization(userId, organizationId);
     if (!currentMembership) {
       throw new Error('NOT FOUND: Organization membership not found');
     }
 
-    if (currentMembership.role === 'OWNER' && reqUser.orgRole !== 'OWNER') {
-      throw new Error('PERMISSION ERROR: Only OWNER users can modify the role of another OWNER');
-    }
-
-    if (currentMembership.role === 'OWNER' && role !== 'OWNER') {
-      const ownerCount = await this.organizationMembershipRepository.countOwners(organizationId);
-      if (ownerCount < 2) {
-        throw new Error('PERMISSION ERROR: Cannot demote the last owner of the organization');
-      }
+    // The owner is the only one there is, so stepping down is not a role change:
+    // it happens by handing the organization to somebody else, which fills the
+    // seat in the same breath as it empties it.
+    if (currentMembership.role === 'OWNER') {
+      throw new Error(
+        'INVALID DATA: The owner of an organization cannot be demoted. Hand the organization over to another member instead'
+      );
     }
 
     const updatedMembership = await this.organizationMembershipRepository.updateByUserAndOrganization(
@@ -584,17 +620,22 @@ class OrganizationService {
   }
 
   /**
-   * Hands the caller's ownership of an organization to another member.
+   * Hands an organization, and everything under it, to another member.
    *
-   * This is a first-person action: the caller promotes someone else and steps
-   * down to ADMIN in the same call, so they keep working access to the
-   * organization instead of being locked out of what they used to own. Other
-   * owners, if the organization has any, are left alone — an organization can
-   * hold several, and only the caller's own seat changes hands here.
+   * An organization has exactly one owner, so this is a swap rather than a
+   * promotion: the recipient takes the seat and the caller steps down to ADMIN,
+   * keeping working access to what they used to own instead of being locked out
+   * of it. Ownership runs down the tree, so taking over an organization takes
+   * over its sub-organizations too, and whoever held one of those seats steps
+   * down the same way.
+   *
+   * This is a first-person action. The caller gives away their own seat, which
+   * is why it is their membership that has to be the owner's — a platform
+   * administrator has nothing of their own to give here.
    *
    * Nothing in this codebase writes inside a transaction, so this does not
-   * either: if the caller's demotion fails, the promotion is undone by hand
-   * rather than leaving them having given away a seat they also still hold.
+   * either: every membership it touches is remembered as it goes and put back if
+   * a later write fails, rather than leaving a branch half handed over.
    */
   async transferOwnership(
     organizationId: string,
@@ -614,9 +655,6 @@ class OrganizationService {
       throw new Error('INVALID DATA: You already own this organization');
     }
 
-    // Ownership is the caller's to give, so it is their own seat that has to be
-    // an owner's — a platform administrator managing someone else's
-    // organization changes roles through the member endpoints instead.
     const currentOwnership: any = await this.organizationMembershipRepository.findByUserAndOrganization(
       reqUser.id,
       organizationId
@@ -625,37 +663,28 @@ class OrganizationService {
       throw new Error('PERMISSION ERROR: Only an OWNER of the organization can hand it over');
     }
 
-    const newOwnership: any = await this.organizationMembershipRepository.findByUserAndOrganization(
+    const recipientMembership: any = await this.organizationMembershipRepository.findByUserAndOrganization(
       newOwnerUserId,
       organizationId
     );
-    if (!newOwnership) {
+    if (!recipientMembership) {
       throw new Error('NOT FOUND: The new owner must already be a member of the organization');
     }
 
-    const previousRole: OrgRole = newOwnership.role;
+    const descendants = await this.organizationRepository.findDescendants(organizationId);
+    const branch = [organizationId, ...descendants.map(descendant => descendant.id)];
 
-    await this.organizationMembershipRepository.updateByUserAndOrganization(
-      newOwnerUserId,
-      organizationId,
-      { role: 'OWNER' }
-    );
-    await this.cascadeRoleChange(newOwnerUserId, organizationId, 'OWNER');
+    // A role of null means the membership did not exist and has to go away
+    // again, rather than be set back to something.
+    const applied: Array<{ organizationId: string; userId: string; role: OrgRole | null }> = [];
 
     try {
-      await this.organizationMembershipRepository.updateByUserAndOrganization(
-        reqUser.id,
-        organizationId,
-        { role: 'ADMIN' }
-      );
-      await this.cascadeRoleChange(reqUser.id, organizationId, 'ADMIN');
+      for (const branchOrganizationId of branch) {
+        await this.stepDownCurrentOwners(branchOrganizationId, newOwnerUserId, applied);
+        await this.seatNewOwner(branchOrganizationId, newOwnerUserId, applied);
+      }
     } catch (err) {
-      await this.organizationMembershipRepository.updateByUserAndOrganization(
-        newOwnerUserId,
-        organizationId,
-        { role: previousRole }
-      );
-      await this.cascadeRoleChange(newOwnerUserId, organizationId, previousRole);
+      await this.undoOwnershipWrites(applied);
       throw err;
     }
 
@@ -675,23 +704,115 @@ class OrganizationService {
     return this.listMembers(organizationId);
   }
 
+  /**
+   * Empties the owner's seat of one organization in the branch, unless the
+   * person taking it over is already sitting in it.
+   *
+   * Every owner it finds steps down, not just one. On data written under the
+   * current rule that is a single membership, but an organization carrying two
+   * from before it would otherwise keep one of them and come out of the handover
+   * exactly as it went in — and neither of the two could be demoted or removed
+   * afterwards, since owners no longer can be. Handing such an organization over
+   * is what settles it.
+   */
+  private async stepDownCurrentOwners(
+    organizationId: string,
+    newOwnerUserId: string,
+    applied: Array<{ organizationId: string; userId: string; role: OrgRole | null }>
+  ) {
+    const outgoing: any[] = await this.organizationMembershipRepository.findOwners(organizationId);
+
+    for (const membership of outgoing) {
+      const outgoingUserId = String(membership._userId);
+      if (outgoingUserId === newOwnerUserId) continue;
+
+      applied.push({ organizationId, userId: outgoingUserId, role: 'OWNER' });
+      await this.organizationMembershipRepository.updateByUserAndOrganization(
+        outgoingUserId,
+        organizationId,
+        { role: 'ADMIN' }
+      );
+    }
+  }
+
+  /**
+   * Seats the new owner in one organization of the branch, joining them to it if
+   * they were not a member: ownership of a parent carries membership of
+   * everything below it.
+   */
+  private async seatNewOwner(
+    organizationId: string,
+    newOwnerUserId: string,
+    applied: Array<{ organizationId: string; userId: string; role: OrgRole | null }>
+  ) {
+    const existing: any = await this.organizationMembershipRepository.findExistingMembership(
+      newOwnerUserId,
+      organizationId
+    );
+    if (existing?.role === 'OWNER') return;
+
+    applied.push({
+      organizationId,
+      userId: newOwnerUserId,
+      role: existing ? (existing.role as OrgRole) : null,
+    });
+
+    if (existing) {
+      await this.organizationMembershipRepository.updateByUserAndOrganization(
+        newOwnerUserId,
+        organizationId,
+        { role: 'OWNER' }
+      );
+    } else {
+      await this.organizationMembershipRepository.create({
+        _userId: newOwnerUserId,
+        _organizationId: organizationId,
+        role: 'OWNER',
+        joinedAt: new Date(),
+      });
+    }
+  }
+
+  /**
+   * Walks a half-finished handover back, most recent write first.
+   *
+   * A failure here is swallowed on purpose: the error that started the rollback
+   * is the one worth reporting, and throwing a second one would only hide it.
+   */
+  private async undoOwnershipWrites(
+    applied: Array<{ organizationId: string; userId: string; role: OrgRole | null }>
+  ) {
+    for (const write of [...applied].reverse()) {
+      try {
+        if (write.role === null) {
+          await this.organizationMembershipRepository.destroyByUserAndOrganization(
+            write.userId,
+            write.organizationId
+          );
+        } else {
+          await this.organizationMembershipRepository.updateByUserAndOrganization(
+            write.userId,
+            write.organizationId,
+            { role: write.role }
+          );
+        }
+      } catch {
+        // Nothing better to do than carry on undoing the rest
+      }
+    }
+  }
+
   async removeMember(userId: string, organizationId: string, reqUser?: LeanUser & {orgRole: OrgRole}) {
     const membership: any = await this.organizationMembershipRepository.findByUserAndOrganization(userId, organizationId);
     if (!membership) {
       throw new Error('NOT FOUND: Organization membership not found');
     }
 
-    const isSelfRemoval = reqUser && userId === reqUser.id;
-
-    if (!isSelfRemoval && membership.role === 'OWNER' && reqUser && reqUser.orgRole !== 'OWNER') {
-      throw new Error('PERMISSION ERROR: Only OWNER users can remove another OWNER from the organization');
-    }
-
+    // Removing the only owner would leave an organization nobody can give away.
     if (membership.role === 'OWNER') {
-      const ownerCount = await this.organizationMembershipRepository.countOwners(organizationId);
-      if (ownerCount < 2) {
-        throw new Error('PERMISSION ERROR: Cannot remove the last owner of the organization');
-      }
+      throw new Error(
+        'PERMISSION ERROR: The owner cannot be removed from the organization. Hand it over to another member first'
+      );
     }
 
     const result = await this.organizationMembershipRepository.destroyByUserAndOrganization(userId, organizationId);
