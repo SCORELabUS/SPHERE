@@ -3242,8 +3242,8 @@
       "width": 124.51393262707988,
       "height": 38.560240457878876,
       "angle": 4.703971358380109,
-      "strokeColor": "#1e1e1e",
-      "backgroundColor": "#ffffff",
+      "strokeColor": "#f08c00",
+      "backgroundColor": "#ffec99",
       "fillStyle": "solid",
       "strokeWidth": 2,
       "strokeStyle": "dotted",
@@ -3256,8 +3256,8 @@
         "type": 3
       },
       "seed": 795771031,
-      "version": 2975,
-      "versionNonce": 718557975,
+      "version": 2977,
+      "versionNonce": 2070096186,
       "isDeleted": false,
       "boundElements": [
         {
@@ -3273,7 +3273,7 @@
           "type": "arrow"
         }
       ],
-      "updated": 1784714272442,
+      "updated": 1789151385135,
       "link": null,
       "locked": false
     },
@@ -3297,11 +3297,11 @@
       "index": "b0a",
       "roundness": null,
       "seed": 689984951,
-      "version": 2663,
-      "versionNonce": 593665911,
+      "version": 2665,
+      "versionNonce": 1273658854,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1784714249967,
+      "updated": 1789151387330,
       "link": null,
       "locked": false,
       "text": "pricing4ts",
@@ -3832,8 +3832,8 @@
       "width": 124.51393262707988,
       "height": 38.560240457878876,
       "angle": 0.004816828163949793,
-      "strokeColor": "#1e1e1e",
-      "backgroundColor": "#ffffff",
+      "strokeColor": "#f08c00",
+      "backgroundColor": "#ffec99",
       "fillStyle": "solid",
       "strokeWidth": 2,
       "strokeStyle": "dotted",
@@ -3846,8 +3846,8 @@
         "type": 3
       },
       "seed": 1242413593,
-      "version": 3322,
-      "versionNonce": 1734491607,
+      "version": 3324,
+      "versionNonce": 1893550246,
       "isDeleted": false,
       "boundElements": [
         {
@@ -3859,7 +3859,7 @@
           "type": "arrow"
         }
       ],
-      "updated": 1784715644451,
+      "updated": 1789151376639,
       "link": null,
       "locked": false
     },
@@ -3883,11 +3883,11 @@
       "index": "b0u",
       "roundness": null,
       "seed": 73469689,
-      "version": 3010,
-      "versionNonce": 1042967287,
+      "version": 3012,
+      "versionNonce": 150602342,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1784715644451,
+      "updated": 1789151381980,
       "link": null,
       "locked": false,
       "text": "pricing4ts",
