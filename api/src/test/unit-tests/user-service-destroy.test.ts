@@ -41,6 +41,7 @@ describe('UserService.destroy (account deletion)', () => {
       destroy: vi.fn(),
       listMembers: vi.fn().mockResolvedValue([]),
       updateMemberRole: vi.fn(),
+      transferOwnership: vi.fn(),
       removeMember: vi.fn(),
     };
     organizationMembershipRepository = {
@@ -80,6 +81,48 @@ describe('UserService.destroy (account deletion)', () => {
     expect(entityPermissionRepository.destroyByUserId).toHaveBeenCalledWith('user-1');
     expect(notificationRepository.destroyByUserId).toHaveBeenCalledWith('user-1');
     expect(userRepository.destroy).toHaveBeenCalledWith('person');
+  });
+
+  it('hands a shared organization to the owner it already has, not to an admin', async () => {
+    const target = user();
+    userRepository.findByUsername.mockResolvedValue(target);
+    organizationMembershipRepository.findByUserId.mockResolvedValue([
+      { organization: { id: 'org-1', isPersonal: false }, role: 'OWNER' },
+    ]);
+    // Written before an organization had a single owner: this one carries two,
+    // and the departing user is only one of them.
+    organizationService.listMembers.mockResolvedValue([
+      { user: { id: 'admin-1' }, role: 'ADMIN' },
+      { user: { id: 'co-owner-1' }, role: 'OWNER' },
+    ]);
+
+    await service.destroy(target as any, 'person');
+
+    expect(organizationService.transferOwnership).toHaveBeenCalledWith(
+      'org-1',
+      'co-owner-1',
+      target
+    );
+  });
+
+  it('falls back to an admin when no other owner is left', async () => {
+    const target = user();
+    userRepository.findByUsername.mockResolvedValue(target);
+    organizationMembershipRepository.findByUserId.mockResolvedValue([
+      { organization: { id: 'org-1', isPersonal: false }, role: 'OWNER' },
+    ]);
+    organizationService.listMembers.mockResolvedValue([
+      { user: { id: 'member-1' }, role: 'MEMBER' },
+      { user: { id: 'admin-1' }, role: 'ADMIN' },
+    ]);
+
+    await service.destroy(target as any, 'person');
+
+    expect(organizationService.transferOwnership).toHaveBeenCalledWith(
+      'org-1',
+      'admin-1',
+      target
+    );
   });
 
   it('refuses to let a non-admin delete another user account', async () => {

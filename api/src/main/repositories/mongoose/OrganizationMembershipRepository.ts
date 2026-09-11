@@ -286,11 +286,21 @@ class OrganizationMembershipRepository extends RepositoryBase {
     );
   }
 
-  async countOwners(organizationId: string): Promise<number> {
-    return OrganizationMembershipMongoose.countDocuments({
+  /**
+   * The organization's owners.
+   *
+   * There is exactly one of them — unless the rows predate that rule, which is
+   * why this answers with a list rather than a single document. A handover has
+   * to empty every seat it finds, or an organization that arrived carrying two
+   * owners would still be carrying one of them afterwards.
+   *
+   * Returned lean because every caller only reads who holds the seat.
+   */
+  async findOwners(organizationId: string) {
+    return OrganizationMembershipMongoose.find({
       _organizationId: new mongoose.Types.ObjectId(organizationId),
       role: 'OWNER',
-    });
+    }).lean();
   }
 
   async destroyByUserAndOrganization(userId: string, organizationId: string) {

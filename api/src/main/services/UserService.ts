@@ -287,13 +287,17 @@ class UserService {
         const membersBefore = await this.organizationService.listMembers(org.id, userId);
 
         if (membershipRole === 'OWNER' && membersBefore.length > 0) {
-          const adminMember = membersBefore.find((m: any) => m.role === 'ADMIN');
-          const newOwner = adminMember ?? membersBefore[0];
-          await this.organizationService.updateMemberRole(
-            newOwner.user.id,
+          // An organization carrying a second owner from before the rule keeps
+          // it: handing the seat to an admin instead would demote somebody who
+          // already held it, over a departure that was none of their doing.
+          const newOwner =
+            membersBefore.find((m: any) => m.role === 'OWNER') ??
+            membersBefore.find((m: any) => m.role === 'ADMIN') ??
+            membersBefore[0];
+          await this.organizationService.transferOwnership(
             org.id,
-            'OWNER',
-            { ...reqUser, orgRole: 'OWNER' }
+            newOwner.user.id,
+            userToDelete
           );
         }
 

@@ -14,11 +14,13 @@ class OrganizationController {
     this.create = this.create.bind(this);
     this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
+    this.moveToParent = this.moveToParent.bind(this);
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
     this.addMember = this.addMember.bind(this);
     this.addMembersBulk = this.addMembersBulk.bind(this);
     this.updateMemberRole = this.updateMemberRole.bind(this);
+    this.transferOwnership = this.transferOwnership.bind(this);
     this.removeMember = this.removeMember.bind(this);
     this.createInvitation = this.createInvitation.bind(this);
     this.listInvitations = this.listInvitations.bind(this);
@@ -132,6 +134,20 @@ class OrganizationController {
     }
   }
 
+  async moveToParent(req: any, res: any) {
+    try {
+      const organization = await this.organizationService.moveToParent(
+        req.params.organizationId,
+        req.body.parentId ?? null,
+        req.user
+      );
+      res.json(organization);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
   async destroy(req: any, res: any) {
     try {
       const result = await this.organizationService.destroy(req.params.organizationId);
@@ -182,6 +198,20 @@ class OrganizationController {
       const { role } = req.body;
       const membership = await this.organizationService.updateMemberRole(req.params.userId, req.params.organizationId, role, req.user);
       res.json(membership);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async transferOwnership(req: any, res: any) {
+    try {
+      const members = await this.organizationService.transferOwnership(
+        req.params.organizationId,
+        req.body.userId,
+        req.user
+      );
+      res.json(members);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

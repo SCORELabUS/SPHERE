@@ -88,6 +88,42 @@ class OrganizationRepository extends RepositoryBase {
       .lean();
     return children.map((c: any) => c._id.toString());
   }
+
+  /**
+   * Every organization below the given one, at any depth. The `ancestors` array
+   * carries the whole chain, so one indexed query answers this without walking
+   * the tree level by level.
+   */
+  async findDescendants(organizationId: string): Promise<Array<{ id: string; ancestors: string[] }>> {
+    const descendants = await OrganizationMongoose.find({
+      ancestors: new mongoose.Types.ObjectId(organizationId),
+    })
+      .select('_id ancestors')
+      .lean();
+
+    return descendants.map((descendant: any) => ({
+      id: descendant._id.toString(),
+      ancestors: (descendant.ancestors ?? []).map((ancestorId: any) => ancestorId.toString()),
+    }));
+  }
+
+  /** Rewrites the ancestor chains of many organizations in a single round trip. */
+  async updateAncestorsBulk(updates: Array<{ id: string; ancestors: string[] }>): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
+
+    await OrganizationMongoose.bulkWrite(
+      updates.map(({ id, ancestors }) => ({
+        updateOne: {
+          filter: { _id: new mongoose.Types.ObjectId(id) },
+          update: {
+            $set: { ancestors: ancestors.map(ancestorId => new mongoose.Types.ObjectId(ancestorId)) },
+          },
+        },
+      }))
+    );
+  }
 }
 
 export default OrganizationRepository;

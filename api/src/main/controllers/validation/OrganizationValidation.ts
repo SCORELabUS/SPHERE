@@ -1,4 +1,8 @@
 import { check } from 'express-validator';
+import {
+  ASSIGNABLE_ORGANIZATION_ROLES,
+  SINGLE_OWNER_NOTE,
+} from '../../types/config/permissions';
 import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper';
 
 const maxFileSize = 2000000; // around 2Mb
@@ -71,8 +75,8 @@ const addMember = [
   check('role')
     .exists()
     .withMessage('A role must be provided')
-    .isIn(['OWNER', 'ADMIN', 'MEMBER'])
-    .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
+    .isIn(ASSIGNABLE_ORGANIZATION_ROLES)
+    .withMessage(`The role must be one of: ADMIN, MEMBER. ${SINGLE_OWNER_NOTE}`),
 ];
 
 const addMembersBulk = [
@@ -101,8 +105,8 @@ const addMembersBulk = [
   check('members.*.role')
     .exists()
     .withMessage('A role must be provided for every member')
-    .isIn(['OWNER', 'ADMIN', 'MEMBER'])
-    .withMessage('Every role must be one of: OWNER, ADMIN, MEMBER'),
+    .isIn(ASSIGNABLE_ORGANIZATION_ROLES)
+    .withMessage(`Every role must be one of: ADMIN, MEMBER. ${SINGLE_OWNER_NOTE}`),
 ];
 
 
@@ -150,8 +154,35 @@ const updateMemberRole = [
   check('role')
     .exists()
     .withMessage('A role must be provided')
-    .isIn(['OWNER', 'ADMIN', 'MEMBER'])
-    .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
+    .isIn(ASSIGNABLE_ORGANIZATION_ROLES)
+    .withMessage(`The role must be one of: ADMIN, MEMBER. ${SINGLE_OWNER_NOTE}`),
 ];
 
-export { create, update, addMember, addMembersBulk, createChildrenBulk, updateMemberRole };
+const moveToParent = [
+  // `exists()` keeps its default of only treating `undefined` as missing, so an
+  // explicit null goes through: that is how an organization is moved to the root.
+  check('parentId')
+    .exists()
+    .withMessage('A parentId must be provided, using null to move the organization to the root')
+    .custom((value: unknown) => value === null || /^[a-f0-9]{24}$/.test(String(value)))
+    .withMessage('The parentId must be null or a valid MongoDB ObjectId'),
+];
+
+const transferOwnership = [
+  check('userId')
+    .exists()
+    .withMessage('The userId of the member receiving the organization is required')
+    .custom((value: unknown) => /^[a-f0-9]{24}$/.test(String(value)))
+    .withMessage('The userId must be a valid MongoDB ObjectId'),
+];
+
+export {
+  create,
+  update,
+  addMember,
+  addMembersBulk,
+  createChildrenBulk,
+  moveToParent,
+  transferOwnership,
+  updateMemberRole,
+};
