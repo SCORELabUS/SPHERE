@@ -2560,6 +2560,180 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/avatar:
+    post:
+      summary: Upload an organization image
+      description: |
+        Uploads a new image for the organization. Accepts JPEG, PNG and WebP, up to 2MB.
+
+        The stored file name is derived from the organization id and the validated MIME
+        type, never from the uploaded file name, because these files are served as static
+        content. Any image this organization previously uploaded is deleted; predefined
+        avatars, which are shared between organizations, are left in place.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can change the image of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG or WebP, max 2MB)
+                avatarBgColor:
+                  type: string
+                  description: Background colour (hex), kept for the initials fallback
+                  example: "#023e8a"
+                avatarFgColor:
+                  type: string
+                  description: Foreground colour (hex), kept for the initials fallback
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          description: No file uploaded, or the file exceeds 2MB or is not an accepted type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Remove the organization image
+      description: |
+        Clears the organization's image and its colours, reverting to the initials
+        placeholder. A file this organization had uploaded is deleted from disk.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can remove the image of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Image removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/avatar-colors:
+    put:
+      summary: Choose a predefined avatar and its colours
+      description: |
+        Sets the organization's image to one of the predefined avatars, or to none at
+        all, together with the colours it is drawn in. The counterpart of an upload: no
+        file changes hands, only a choice.
+
+        `avatarPath` must be empty — meaning "use the initials" — or one of the
+        predefined avatars under `/static/avatars/users/default`. Any other value is
+        rejected, so the image cannot be pointed at an arbitrary URL. A file this
+        organization had uploaded is deleted once it is no longer referenced.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can change the avatar of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                avatarPath:
+                  type: string
+                  nullable: true
+                  description: |
+                    Path of a predefined avatar, or an empty string to fall back to the
+                    organization's initials.
+                  example: "static/avatars/users/default/avatar-1.svg"
+                avatarBgColor:
+                  type: string
+                  description: Background colour (hex)
+                  example: "#023e8a"
+                avatarFgColor:
+                  type: string
+                  description: Icon or text colour (hex)
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Avatar updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members
@@ -5565,8 +5739,25 @@ components:
         avatar:
           type: string
           nullable: true
-          description: URL to the organization's avatar image
+          description: |
+            URL to the organization's image: either an uploaded file under
+            `/static/avatars/orgs`, or one of the predefined avatars under
+            `/static/avatars/users/default`. `null` means the organization is drawn
+            with its initials.
           example: "https://sphere.score.us.es/static/avatars/orgs/org-avatar.png"
+        avatarBgColor:
+          type: string
+          nullable: true
+          description: |
+            Background colour the initials placeholder or a predefined avatar is drawn
+            over, as a hex value. Ignored when the image is an uploaded file.
+          example: "#023e8a"
+        avatarFgColor:
+          type: string
+          nullable: true
+          description: |
+            Colour of the initials, or of a predefined avatar's icon, as a hex value.
+          example: "#ffffff"
         _parentId:
           type: string
           nullable: true

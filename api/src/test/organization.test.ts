@@ -953,6 +953,337 @@ describe('Organizations API integration', () => {
   });
 
   // =========================================================================
+  // Organization avatar: upload, predefined choice, removal
+  // =========================================================================
+  describe('POST /orgs/:organizationId/avatar', () => {
+    const sourcePng = () =>
+      path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png');
+
+    const makeTempImage = () => {
+      const tmp = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(sourcePng(), tmp);
+      return tmp;
+    };
+
+    const diskPathOf = (avatarUrl: string) =>
+      path.join('public', avatarUrl.replace(/^https?:\/\/[^/]+/, ''));
+
+    it('returns 200 and stores the image when the OWNER uploads one', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toMatch(/^https?:\/\/.+\/avatars\/orgs\//);
+
+      const stored = diskPathOf(response.body.avatar);
+      expect(fs.existsSync(stored)).toBe(true);
+      // The name carries the organization id, which is what lets a later change
+      // recognise this file as one it may delete.
+      expect(path.basename(stored).startsWith(`${organizationId}-`)).toBe(true);
+
+      const reread = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(reread.body.avatar).toBe(response.body.avatar);
+
+      fs.unlinkSync(stored);
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('stores the image under an extension taken from its type, not its name', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      // The stored file is served by express.static, so letting the caller's
+      // filename pick the extension would let a PNG come back as HTML.
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng, { filename: 'payload.html', contentType: 'image/png' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toMatch(/\.png$/);
+      expect(response.body.avatar).not.toContain('.html');
+
+      fs.unlinkSync(diskPathOf(response.body.avatar));
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('deletes the previous image when a second one is uploaded', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const firstTmp = makeTempImage();
+      const secondTmp = makeTempImage();
+
+      const first = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', firstTmp);
+      const firstOnDisk = diskPathOf(first.body.avatar);
+
+      const second = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', secondTmp);
+      const secondOnDisk = diskPathOf(second.body.avatar);
+
+      expect(second.status).toBe(200);
+      expect(secondOnDisk).not.toBe(firstOnDisk);
+      expect(fs.existsSync(firstOnDisk)).toBe(false);
+      expect(fs.existsSync(secondOnDisk)).toBe(true);
+
+      fs.unlinkSync(secondOnDisk);
+      fs.unlinkSync(firstTmp);
+      fs.unlinkSync(secondTmp);
+    });
+
+    it('leaves a shared predefined avatar alone when it is replaced', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      // A predefined avatar is referenced by every organization that picked it,
+      // so it must survive any one of them uploading an image instead.
+      const predefined = 'static/avatars/users/default/avatar-1.svg';
+      await OrganizationMongoose.updateOne(
+        { _id: organizationId },
+        { $set: { avatar: predefined } }
+      );
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+
+      expect(response.status).toBe(200);
+      expect(fs.existsSync(path.join('public', predefined))).toBe(true);
+
+      fs.unlinkSync(diskPathOf(response.body.avatar));
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('returns 400 when the uploaded file is not an accepted image type', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpTxt = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.txt`);
+      fs.writeFileSync(tmpTxt, 'not an image');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpTxt);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
+
+      fs.unlinkSync(tmpTxt);
+    });
+
+    it('returns 400 when no file is attached', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
+    });
+
+    // Authorization is settled before the request body is read, so these two
+    // send no file: attaching one only races the rejection against the upload
+    // and resets the connection instead of returning the status under test.
+    it('returns 403 when a MEMBER tries to change the image', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 401 without a token', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app).post(`${BASE_PATH}/orgs/${organizationId}/avatar`);
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('PUT /orgs/:organizationId/avatar-colors', () => {
+    const PREDEFINED = 'static/avatars/users/default/avatar-3.svg';
+
+    it('returns 200 when the OWNER picks a predefined avatar and colours', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          avatarPath: PREDEFINED,
+          avatarBgColor: '#023e8a',
+          avatarFgColor: '#ffffff',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toContain('avatar-3.svg');
+      expect(response.body.avatarBgColor).toBe('#023e8a');
+      expect(response.body.avatarFgColor).toBe('#ffffff');
+    });
+
+    it('returns 200 and clears the image when the path is empty', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: PREDEFINED, avatarBgColor: '#1f1f1f', avatarFgColor: '#ffd900' });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: '', avatarBgColor: '#1f1f1f', avatarFgColor: '#ffd900' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+      // The colours stay: they are what the initials placeholder is drawn with.
+      expect(response.body.avatarBgColor).toBe('#1f1f1f');
+      expect(response.body.avatarFgColor).toBe('#ffd900');
+    });
+
+    it('deletes a previously uploaded file when a predefined avatar replaces it', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(
+        path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png'),
+        tmpPng
+      );
+      const uploaded = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+      const onDisk = path.join(
+        'public',
+        uploaded.body.avatar.replace(/^https?:\/\/[^/]+/, '')
+      );
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: PREDEFINED, avatarBgColor: '#023e8a', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(200);
+      expect(fs.existsSync(onDisk)).toBe(false);
+
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('returns 422 when the avatar path is not one of the predefined avatars', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          avatarPath: 'https://example.com/tracker.png',
+          avatarBgColor: '#023e8a',
+          avatarFgColor: '#ffffff',
+        });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 422 when a colour is not a hex value', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: '', avatarBgColor: 'red', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 403 when a MEMBER tries to change the avatar', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ avatarPath: '', avatarBgColor: '#023e8a', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('DELETE /orgs/:organizationId/avatar', () => {
+    it('returns 200, clears the image and its colours, and deletes the file', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(
+        path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png'),
+        tmpPng
+      );
+      const uploaded = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+      const onDisk = path.join(
+        'public',
+        uploaded.body.avatar.replace(/^https?:\/\/[^/]+/, '')
+      );
+      fs.unlinkSync(tmpPng);
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+      expect(response.body.avatarBgColor).toBeNull();
+      expect(response.body.avatarFgColor).toBeNull();
+      expect(fs.existsSync(onDisk)).toBe(false);
+    });
+
+    it('returns 200 when the organization has no image to begin with', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+    });
+
+    it('returns 403 when a MEMBER tries to remove the image', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 401 without a token', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app).delete(`${BASE_PATH}/orgs/${organizationId}/avatar`);
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  // =========================================================================
   // DELETE /orgs/:organizationId
   // =========================================================================
   describe('DELETE /orgs/:organizationId', () => {

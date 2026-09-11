@@ -39,6 +39,8 @@ coverage/
 .secrets
 
 api/public/static/avatars/users/
+api/public/static/avatars/orgs/
+
 # Local SSO test proxy certs
 api/scripts/.local-sso.*
 
