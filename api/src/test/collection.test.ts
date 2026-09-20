@@ -17,6 +17,7 @@ import { createMembership, createOrgScopedPermission } from './utils/organizatio
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { generateSlug } from '../main/utils/slug-manager';
+import mongoose from 'mongoose';
 
 dotenv.config();
 
@@ -54,6 +55,27 @@ describe('Pricing Collections API integration', () => {
   });
 
   describe('GET /api/v1/collections', () => {
+    it('includes legacy public collections whose private flag is missing', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const legacyId = new mongoose.Types.ObjectId();
+
+      // Simulate documents created before `private` was added. Mongoose
+      // defaults do not run for raw imports/seeders.
+      await PricingCollectionMongoose.collection.insertOne({
+        _id: legacyId,
+        name: 'IEEE TSC 2025',
+        slug: 'ieee-tsc-2025',
+        _organizationId: new mongoose.Types.ObjectId(organizationId),
+      });
+      collectionIdsToDelete.add(legacyId.toString());
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/collections?name=IEEE%20TSC%202025`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.map((collection: any) => collection.name)).toContain('IEEE TSC 2025');
+    });
+
     it('returns 200 and paginated collections list with limit and offset', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 

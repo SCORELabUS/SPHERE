@@ -106,6 +106,8 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
 
   // ============================================
+  { path: '/permalinks/**', methods: ['GET'], isPublic: true },
+  { path: '/public/pricings/**', methods: ['GET'], isPublic: true },
   // Pricing Management Routes 
   // ============================================
 

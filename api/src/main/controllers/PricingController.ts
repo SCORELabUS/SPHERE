@@ -105,19 +105,9 @@ class PricingController {
       );
       res.json(pricing[0]);
     } catch (err: any) {
-      try {
-        const file = req.file;
-        const directory = path.dirname(file.path);
-        if (fs.readdirSync(directory).length === 1) {
-          fs.rmSync(directory, { recursive: true });
-        } else {
-          fs.rmSync(file.path);
-        }
-        const { status, message } = handleError(err);
-        res.status(status).send({ error: message });
-      } catch (err) {
-        res.status(500).send({ error: (err as Error).message });
-      }
+      this.cleanupUploadedFile(req.file);
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
     }
   }
 
@@ -135,19 +125,20 @@ class PricingController {
       );
       res.json(pricing[0]);
     } catch (err: any) {
-      try {
-        const file = req.file;
-        const directory = path.dirname(file.path);
-        if (fs.readdirSync(directory).length === 1) {
-          fs.rmSync(directory, { recursive: true });
-        } else {
-          fs.rmSync(file.path);
-        }
-        const { status, message } = handleError(err);
-        res.status(status).send({ error: message });
-      } catch (err) {
-        res.status(500).send({ error: (err as Error).message });
-      }
+      this.cleanupUploadedFile(req.file);
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  private cleanupUploadedFile(file: any) {
+    if (!file?.path) return;
+    try {
+      const directory = path.dirname(file.path);
+      if (fs.existsSync(directory) && fs.readdirSync(directory).length === 1) fs.rmSync(directory, { recursive: true });
+      else if (fs.existsSync(file.path)) fs.rmSync(file.path);
+    } catch (cleanupError) {
+      console.error('Unable to clean uploaded pricing file', cleanupError);
     }
   }
 
