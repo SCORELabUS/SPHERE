@@ -2734,6 +2734,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/hierarchy:
+    get:
+      summary: Get the whole branch an organization sits in
+      description: Returns the organization branch as a flat list, including an access flag for each node.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: The branch, flat
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, displayName, isPersonal, hasAccess]
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    displayName: { type: string }
+                    avatar: { type: string, nullable: true }
+                    isPersonal: { type: boolean }
+                    _parentId: { type: string, nullable: true }
+                    hasAccess: { type: boolean }
+        '401': { description: Authentication required }
+        '403': { description: The caller is not a member of the organization }
+        '404': { description: Organization not found }
+
+  /orgs/{organizationId}/parent:
+    put:
+      summary: Move an organization to another parent
+      description: Re-parents an organization, using null to move it to the root.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId]
+              properties:
+                parentId:
+                  type: string
+                  nullable: true
+                  pattern: '^[a-f0-9]{24}$'
+      responses:
+        '200':
+          description: Organization moved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '401': { description: Authentication required }
+        '403': { description: The user is not an OWNER of the organization or destination }
+        '404': { description: Organization or destination organization not found }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members

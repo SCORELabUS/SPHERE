@@ -47,9 +47,11 @@ class OrganizationController {
     this.indexPublicRoots = this.indexPublicRoots.bind(this);
     this.indexByUser = this.indexByUser.bind(this);
     this.show = this.show.bind(this);
+    this.hierarchy = this.hierarchy.bind(this);
     this.create = this.create.bind(this);
     this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
+    this.moveToParent = this.moveToParent.bind(this);
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
     this.addMember = this.addMember.bind(this);
@@ -121,6 +123,16 @@ class OrganizationController {
     try {
       const organization = await this.organizationService.show(req.params.organizationId);
       res.json(organization);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async hierarchy(req: any, res: any) {
+    try {
+      const nodes = await this.organizationService.getHierarchy(req.params.organizationId, req.user);
+      res.json(nodes);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
@@ -229,6 +241,20 @@ class OrganizationController {
     try {
       const organization = await this.organizationService.removeAvatar(
         req.params.organizationId
+      );
+      res.json(organization);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async moveToParent(req: any, res: any) {
+    try {
+      const organization = await this.organizationService.moveToParent(
+        req.params.organizationId,
+        req.body.parentId ?? null,
+        req.user
       );
       res.json(organization);
     } catch (err: any) {

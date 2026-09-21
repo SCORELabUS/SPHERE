@@ -380,6 +380,7 @@ class PricingService {
       }
 
       const pricingData = {
+        ...(isAddingVersion && previousPricing.pricingId ? { pricingId: previousPricing.pricingId } : {}),
         name: pricingName,
         slug: pricingSlug,
         version: uploadedPricing.version,

@@ -128,6 +128,55 @@ class OrganizationService {
     return organization;
   }
 
+  /**
+   * The whole branch an organization sits in — its ancestors, its siblings and
+   * everything below it — flat, with each node marked according to whether the
+   * caller may open it.
+   *
+   * The hierarchy view needs all of this at once. Walking it from the client
+   * costs a request per node, several times over, so it is answered here in two
+   * queries: one for the branch, one for the caller's memberships.
+   */
+  async getHierarchy(organizationId: string, user: { id: string; role?: string }) {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    const ancestors = (organization.ancestors ?? []).map((id: any) => id.toString());
+    const rootId = ancestors[0] ?? organizationId;
+
+    const [branch, roles] = await Promise.all([
+      this.organizationRepository.findBranch(rootId),
+      // A platform administrator answers for every organization, so there is no
+      // point asking which ones they belong to.
+      user.role === 'ADMIN'
+        ? Promise.resolve(null)
+        : this.organizationMembershipRepository.findRolesByUserId(user.id),
+    ]);
+
+    // Management cascades down the tree, so a node is open to the caller when
+    // they hold it directly or manage anything above it.
+    const canOpen = (node: any) => {
+      if (roles === null) {
+        return true;
+      }
+      if (roles.has(node.id)) {
+        return true;
+      }
+      return node.ancestors.some((ancestorId: string) => {
+        const role = roles.get(ancestorId);
+        return role === 'OWNER' || role === 'ADMIN';
+      });
+    };
+
+    return branch.map((node: any) => {
+      processFileUris(node, ['avatar']);
+      const { ancestors: _ancestors, ...rest } = node;
+      return { ...rest, hasAccess: canOpen(node) };
+    });
+  }
+
   async createWithOwner(data: any, userId: string) {
     if (data._parentId) {
       const parent: any = await this.organizationRepository.findById(data._parentId);
@@ -307,7 +356,7 @@ class OrganizationService {
   }
 
   /**
-   * Sets the organization's image and the colours it is drawn with.
+  * Sets the organization's image and the colours it is drawn with.
    *
    * `avatarPath` is either an uploaded file, one of the predefined avatars, or
    * empty to fall back to the organization's initials. Uploads are checked by
@@ -374,6 +423,125 @@ class OrganizationService {
 
     processFileUris(updated, ['avatar']);
     return updated;
+  }
+
+  /**
+   * Moves an organization under another one, or out to the root when
+   * `parentId` is null.
+   *
+   * Only the tree changes: memberships are left alone, so re-grouping never
+   * hands anyone access they did not already have. The caller must own both
+   * ends of the move — the organization and the parent it lands under —
+   * because either side alone would let an owner attach their organization to
+   * a stranger's tree, or adopt a stranger's organization into theirs.
+   */
+  async moveToParent(
+    organizationId: string,
+    parentId: string | null,
+    user: { id: string; role?: string }
+  ) {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    if (organization.isPersonal) {
+      throw new Error('INVALID DATA: Personal organizations cannot be moved');
+    }
+
+    const currentParentId = organization._parentId ?? null;
+    if (currentParentId === parentId) {
+      processFileUris(organization, ['avatar']);
+      return organization;
+    }
+
+    let parent: any = null;
+
+    if (parentId) {
+      if (parentId === organizationId) {
+        throw new Error('INVALID DATA: An organization cannot be its own parent');
+      }
+
+      parent = await this.organizationRepository.findById(parentId);
+      if (!parent) {
+        throw new Error('NOT FOUND: Parent organization not found');
+      }
+
+      if (parent.isPersonal) {
+        throw new Error('INVALID DATA: Personal organizations cannot have children');
+      }
+
+      // Moving an organization under its own descendant would detach the whole
+      // branch from the tree and leave it pointing at itself.
+      if ((parent.ancestors ?? []).includes(organizationId)) {
+        throw new Error(
+          'INVALID DATA: An organization cannot be moved under one of its own descendants'
+        );
+      }
+
+      await this.assertUserOwns(user, parentId, 'the destination organization');
+    }
+
+    await this.assertUserOwns(user, organizationId, 'the organization being moved');
+
+    const ancestors = parent ? [...(parent.ancestors ?? []), parent.id ?? parentId] : [];
+
+    const updated = await this.organizationRepository.update(organizationId, {
+      _parentId: parentId,
+      ancestors,
+    });
+    if (!updated) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    await this.reindexDescendants(organizationId, ancestors);
+
+    processFileUris(updated, ['avatar']);
+    return updated;
+  }
+
+  /**
+   * Rewrites the ancestor chain of everything below a moved organization.
+   *
+   * Each descendant keeps the part of its chain that starts at the moved
+   * organization — its own position in the branch has not changed — and gets
+   * the branch's new prefix in front of it.
+   */
+  private async reindexDescendants(organizationId: string, ancestors: string[]) {
+    const descendants = await this.organizationRepository.findDescendants(organizationId);
+    if (descendants.length === 0) {
+      return;
+    }
+
+    const updates = descendants.map(descendant => {
+      const positionInBranch = descendant.ancestors.indexOf(organizationId);
+      const belowMovedOrganization =
+        positionInBranch === -1 ? [] : descendant.ancestors.slice(positionInBranch + 1);
+
+      return {
+        id: descendant.id,
+        ancestors: [...ancestors, organizationId, ...belowMovedOrganization],
+      };
+    });
+
+    await this.organizationRepository.updateAncestorsBulk(updates);
+  }
+
+  private async assertUserOwns(
+    user: { id: string; role?: string },
+    organizationId: string,
+    description: string
+  ) {
+    // A platform administrator answers for every organization, the same way the
+    // route guard lets them through membership checks.
+    if (user.role === 'ADMIN') {
+      return;
+    }
+
+    const role = await this.getUserOrgRole(user.id, organizationId);
+    if (role !== 'OWNER') {
+      throw new Error(`PERMISSION ERROR: You must be an OWNER of ${description} to move it`);
+    }
   }
 
   async destroy(id: string, skipPersonalCheck = false) {

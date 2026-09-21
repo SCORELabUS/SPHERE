@@ -27,7 +27,9 @@ import PricingVersionsTab from '../../components/pricing-versions-tab';
 import PricingSettingsTab from '../../components/pricing-settings-tab';
 import PricingLinkModal from '../../components/pricing-link-modal';
 import PricingImportModal from '../../components/pricing-import-modal';
+import GetPricingMenu from '../../components/get-pricing-menu';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
+import { pricingVersionNameMatches } from './pricing-version-validation';
 
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
@@ -45,6 +47,7 @@ export default function CardPage() {
   const [versions, setVersions] = useState<VersionData[]>([]);
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
   const [pricing, setPricing] = useState<Pricing & {name?: string} | null>(null);
+  const [pricingId, setPricingId] = useState<string>();
   const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -75,6 +78,7 @@ export default function CardPage() {
     setIsLoading(true);
     getPricingBySlug(slug, organizationId, collectionSlug)
       .then(async (data) => {
+        setPricingId(data.pricingId);
         setPricingName(data.name ?? slug);
         setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
@@ -232,6 +236,25 @@ export default function CardPage() {
     setShowLinkModal(true);
   };
 
+  const handleDownloadAllVersions = async () => {
+    if (!pricingId) return;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/public/pricings/${pricingId}/download`, {
+        headers: authUser?.token ? { Authorization: `Bearer ${authUser.token}` } : undefined,
+      });
+      if (!response.ok) throw new Error('Unable to download pricing versions');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${pricingName || 'pricing'}-versions.zip`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      customAlert('Unable to download pricing versions.', 'error');
+    }
+  };
+
   const handleDelete = async (v: VersionData) => {
     if (!slug) return;
     if (!confirm(`Delete version ${v.version}? This cannot be undone.`)) return;
@@ -347,13 +370,11 @@ export default function CardPage() {
         return;
       }
 
-      if (uploadedPricing.saasName !== pricing?.name){
-        customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${pricing?.name}". Do you want to proceed?`, { danger: true })
-          .then(() => {
-            _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
-          })
+      if (!pricingVersionNameMatches(uploadedPricing.saasName, pricingName)){
+        await customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${pricingName || slug}". Do you want to proceed?`, { danger: true });
+        await _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
       }else{
-        _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
+        await _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
       }
     } catch (err) {
       customAlert(`Error adding version: ${(err as Error).message}`, 'error');
@@ -361,7 +382,8 @@ export default function CardPage() {
   };
 
   async function _createPricingVersion(file: File, organizationId: string, slug: string, version: string) {
-    const formData = new FormData();
+    try {
+      const formData = new FormData();
       formData.append('yaml', file);
       formData.append('private', 'false');
 
@@ -376,6 +398,9 @@ export default function CardPage() {
           setCurrentVersion(vers[0]);
         }
       });
+    } catch (error) {
+      customAlert(`Error adding version: ${(error as Error).message}`, 'error');
+    }
   }
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
@@ -433,6 +458,13 @@ export default function CardPage() {
                   New Version
                 </button>
               )}
+              <GetPricingMenu
+                pricingId={pricingId}
+                yamlLink={currentVersion?.yaml}
+                onCopyYamlLink={() => currentVersion && handleCopyLink(currentVersion)}
+                onDownloadCurrent={() => currentVersion && handleDownload(currentVersion)}
+                onDownloadAll={handleDownloadAllVersions}
+              />
             </div>
           </div>
         </motion.div>

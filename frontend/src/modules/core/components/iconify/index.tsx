@@ -42,7 +42,9 @@ import {
     MdVpnKey,
     MdOutlineRemoveRedEye,
     MdOutlineShield,
+    MdMailOutline,
 } from 'react-icons/md';
+import { FaShareAlt, FaWhatsapp, FaMicrosoft } from 'react-icons/fa';
 import { IconType } from 'react-icons';
 
 const iconMap: Record<string, IconType> = {
@@ -62,6 +64,10 @@ const iconMap: Record<string, IconType> = {
     'mdi:chevron-right': MdChevronRight,
     'mdi:close': MdClose,
     'mdi:content-copy': MdContentCopy,
+    'mdi:email-outline': MdMailOutline,
+    'mdi:microsoft-teams': FaMicrosoft,
+    'mdi:share-variant': FaShareAlt,
+    'mdi:whatsapp': FaWhatsapp,
     'mdi:domain': MdDomain,
     'mdi:folder-off-outline': MdFolderOff,
     'mdi:graph-outline': MdAccountTree,

@@ -18,7 +18,9 @@ export function considerUserCollectionPermissionsAggregator(permissions: OrgUser
           { 'slug': { $in: permissions.collections } },
 
           // La colección es pública
-          { private: false }
+          // Missing `private` is the legacy public value for seeded/imported
+          // collections created before the flag was persisted.
+          { $or: [{ private: false }, { private: { $exists: false } }] }
         ],
       },
     };

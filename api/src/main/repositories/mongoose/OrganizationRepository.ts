@@ -88,6 +88,71 @@ class OrganizationRepository extends RepositoryBase {
       .lean();
     return children.map((c: any) => c._id.toString());
   }
+
+  /**
+   * Every organization below the given one, at any depth. The `ancestors` array
+   * carries the whole chain, so one indexed query answers this without walking
+   * the tree level by level.
+   */
+  async findDescendants(organizationId: string): Promise<Array<{ id: string; ancestors: string[] }>> {
+    const descendants = await OrganizationMongoose.find({
+      ancestors: new mongoose.Types.ObjectId(organizationId),
+    })
+      .select('_id ancestors')
+      .lean();
+
+    return descendants.map((descendant: any) => ({
+      id: descendant._id.toString(),
+      ancestors: (descendant.ancestors ?? []).map((ancestorId: any) => ancestorId.toString()),
+    }));
+  }
+
+  /**
+   * Every organization in a branch: the root itself and everything below it, at
+   * any depth.
+   *
+   * The `ancestors` array carries the whole chain, so one indexed query returns
+   * the tree a page needs — the alternative is a request per node, which is
+   * what this exists to replace.
+   */
+  async findBranch(rootId: string): Promise<any[]> {
+    const rootObjectId = new mongoose.Types.ObjectId(rootId);
+
+    const branch = await OrganizationMongoose.find({
+      $or: [{ _id: rootObjectId }, { ancestors: rootObjectId }],
+    })
+      .select('name displayName avatar isPersonal _parentId ancestors')
+      .sort({ displayName: 1 })
+      .lean();
+
+    return branch.map((organization: any) => ({
+      id: organization._id.toString(),
+      name: organization.name,
+      displayName: organization.displayName,
+      avatar: organization.avatar ?? null,
+      isPersonal: organization.isPersonal ?? false,
+      _parentId: organization._parentId ? organization._parentId.toString() : null,
+      ancestors: (organization.ancestors ?? []).map((id: any) => id.toString()),
+    }));
+  }
+
+  /** Rewrites the ancestor chains of many organizations in a single round trip. */
+  async updateAncestorsBulk(updates: Array<{ id: string; ancestors: string[] }>): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
+
+    await OrganizationMongoose.bulkWrite(
+      updates.map(({ id, ancestors }) => ({
+        updateOne: {
+          filter: { _id: new mongoose.Types.ObjectId(id) },
+          update: {
+            $set: { ancestors: ancestors.map(ancestorId => new mongoose.Types.ObjectId(ancestorId)) },
+          },
+        },
+      }))
+    );
+  }
 }
 
 export default OrganizationRepository;

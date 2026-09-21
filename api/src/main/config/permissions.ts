@@ -106,6 +106,8 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
 
   // ============================================
+  { path: '/permalinks/**', methods: ['GET'], isPublic: true },
+  { path: '/public/pricings/**', methods: ['GET'], isPublic: true },
   // Pricing Management Routes 
   // ============================================
 
@@ -198,6 +200,15 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     path: '/orgs/*',
     methods: ['GET'],
     isPublic: true,
+  },
+  // Re-parenting is owner-only. This guard covers the organization being moved;
+  // ownership of the destination is checked by the service, which is where the
+  // other end of the move is known.
+  {
+    path: '/orgs/*/parent',
+    methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER'],
   },
   // Bulk child creation is restricted to managers of the parent organization.
   {

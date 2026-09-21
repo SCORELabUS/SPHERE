@@ -1,12 +1,17 @@
 import { useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import BlockAlert from '../../../core/components/block-alert';
 import Iconify from '../../../core/components/iconify';
 import OrgAvatar from '../../../core/components/org-avatar';
 import { useOrganization } from '../../hooks/useOrganization';
 import { Organization, OrgRole } from '../../api/organizationsApi';
 import Pagination from '../../../pricing/components/pagination';
 import OrgListSkeleton from '../../../core/components/skeletons/org-list-skeleton';
+import { OrgDndProvider, OrgDragHandle, OrgRootDropZone } from '../../components/org-dnd';
+import { useOrgRowDnd } from '../../components/org-dnd/row';
+import { collectBranchIds, findInTree } from '../../components/org-dnd/tree';
+import { useOrgReparenting } from '../../hooks/useOrgReparenting';
 import {
   staggerContainer,
   fadeInUp,
@@ -45,24 +50,55 @@ function OrgTreeNode({
   level = 0,
   expandedIds,
   onToggle,
+  isDragEnabled = false,
+  blockedTargetIds,
+  isDragActive = false,
 }: {
   org: Organization;
   level?: number;
   expandedIds: Set<string>;
   onToggle: (id: string) => void;
+  /** Off while a move is in flight. */
+  isDragEnabled?: boolean;
+  /** Ids this drag may not land on: the branch being dragged, and its parent. */
+  blockedTargetIds?: Set<string>;
+  isDragActive?: boolean;
 }) {
   const children = org.subOrganizations ?? [];
   const hasChildren = children.length > 0;
   const isExpanded = expandedIds.has(org.id);
 
+  // Re-grouping is an owner's call on both ends, and personal organizations
+  // stand outside the hierarchy altogether.
+  const isOwned = org.role === 'OWNER' && !org.isPersonal;
+  const canDrag = isDragEnabled && isOwned;
+  const canDrop = canDrag && isDragActive && !blockedTargetIds?.has(org.id);
+  const dnd = useOrgRowDnd({ id: org.id, canDrag, canDrop });
+
   return (
     <div>
       <motion.div variants={fadeInUp} initial="hidden" animate="visible">
         <Link
+          ref={dnd.setNodeRef}
           to={`/orgs/${org.id}`}
-          className="group flex cursor-pointer items-center gap-4 rounded-lg border border-tp-hairline bg-tp-canvas px-5 py-4 transition-all hover:border-tp-hairline hover:shadow-(--shadow-elevation-2) dark:border-tp-hairline dark:bg-tp-surface dark:hover:border-tp-hairline-strong"
+          className={`group flex cursor-pointer items-center gap-4 rounded-lg border bg-tp-canvas px-5 py-4 transition-all hover:shadow-(--shadow-elevation-2) dark:bg-tp-surface dark:hover:border-tp-hairline-strong ${
+            dnd.isOver
+              ? 'border-tp-primary ring-1 ring-tp-primary'
+              : 'border-tp-hairline hover:border-tp-hairline dark:border-tp-hairline'
+          } ${dnd.isDragging ? 'opacity-40' : ''}`}
           style={{ marginLeft: level > 0 ? `${level * 24 + 12}px` : undefined }}
         >
+          {isDragEnabled && (
+            <OrgDragHandle
+              dnd={dnd}
+              isDisabled={!canDrag}
+              disabledReason={
+                org.isPersonal
+                  ? 'Personal organizations cannot be moved'
+                  : 'Only an owner can move this organization'
+              }
+            />
+          )}
           {hasChildren ? (
             <button
               type="button"
@@ -100,6 +136,12 @@ function OrgTreeNode({
             </p>
           </div>
 
+          {dnd.isOver && (
+            <span className="shrink-0 rounded-full bg-tp-primary/15 px-2.5 py-1 text-xs font-semibold text-tp-primary">
+              drop to move here
+            </span>
+          )}
+
           {org.role && <RoleBadge role={org.role} />}
 
           <Iconify
@@ -126,6 +168,9 @@ function OrgTreeNode({
                 level={level + 1}
                 expandedIds={expandedIds}
                 onToggle={onToggle}
+                isDragEnabled={isDragEnabled}
+                blockedTargetIds={blockedTargetIds}
+                isDragActive={isDragActive}
               />
             ))}
           </motion.div>
@@ -138,10 +183,75 @@ function OrgTreeNode({
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE COMPONENT
    ═══════════════════════════════════════════════════════════════ */
+const childrenOf = (org: Organization) => org.subOrganizations ?? [];
+
 export default function OrganizationsListPage() {
-  const { organizations, isLoading, page, totalPages, setPage } = useOrganization();
+  const { organizations, isLoading, page, totalPages, setPage, refresh } = useOrganization();
   const [search, setSearch] = useState('');
   const [expandedTreeIds, setExpandedTreeIds] = useState<Set<string>>(new Set());
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const { isMoving, error: moveError, message: moveMessage, dismissFeedback, move } =
+    useOrgReparenting(refresh);
+
+  const draggedOrg = draggedId ? findInTree(organizations, draggedId, childrenOf) : null;
+
+  // A branch cannot land inside itself, and the parent it already has is a
+  // no-op rather than a move.
+  const blockedTargetIds = useMemo(() => {
+    if (!draggedOrg) {
+      return new Set<string>();
+    }
+
+    const blocked = collectBranchIds(draggedOrg, childrenOf);
+    if (draggedOrg._parentId) {
+      blocked.add(draggedOrg._parentId);
+    }
+
+    return blocked;
+  }, [draggedOrg]);
+
+  const handleMove = useCallback(
+    (organizationId: string, parentId: string | null) => {
+      const organization = findInTree(organizations, organizationId, childrenOf);
+      if (!organization || (parentId === null && organization._parentId === null)) {
+        return;
+      }
+
+      const parent = parentId ? findInTree(organizations, parentId, childrenOf) : null;
+
+      move({
+        organizationId,
+        organizationName: organization.displayName,
+        parentId,
+        parentName: parent?.displayName ?? null,
+      });
+    },
+    [organizations, move]
+  );
+
+  const renderDragPreview = useCallback(
+    (organizationId: string) => {
+      const organization = findInTree(organizations, organizationId, childrenOf);
+      if (!organization) {
+        return null;
+      }
+
+      return (
+        <div className="flex items-center gap-3 rounded-lg border border-tp-primary/40 bg-tp-canvas px-4 py-3 shadow-(--shadow-elevation-3)">
+          <OrgAvatar
+            name={organization.displayName || organization.name}
+            avatar={organization.avatar}
+            avatarBgColor={organization.avatarBgColor}
+            avatarFgColor={organization.avatarFgColor}
+            isPersonal={organization.isPersonal}
+            size={32}
+          />
+          <span className="text-sm font-medium text-tp-ink">{organization.displayName}</span>
+        </div>
+      );
+    },
+    [organizations]
+  );
 
   const handleToggle = useCallback((id: string) => {
     setExpandedTreeIds((prev) => {
@@ -317,13 +427,33 @@ export default function OrganizationsListPage() {
           </motion.div>
         )}
 
+      {/* Move feedback */}
+      {(moveError || moveMessage) && (
+        <div className="mb-4">
+          <BlockAlert
+            variant={moveError ? 'error' : 'success'}
+            message={moveError ?? moveMessage}
+            onDismiss={dismissFeedback}
+          />
+        </div>
+      )}
+
       {/* Organization sections */}
       {!isLoading && filtered.length > 0 && (
+        <OrgDndProvider
+          onMove={handleMove}
+          onDragChange={setDraggedId}
+          renderDragPreview={renderDragPreview}
+        >
+        <OrgRootDropZone
+          label="Drop here to take it out of its parent"
+          isDisabled={!draggedOrg || draggedOrg._parentId === null}
+        />
         <motion.div
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="space-y-8"
+          className={`space-y-8 ${isMoving ? 'pointer-events-none opacity-60' : ''}`}
         >
           {/* Personal org */}
           {personalOrgs.length > 0 && (
@@ -341,6 +471,9 @@ export default function OrganizationsListPage() {
                     org={org}
                     expandedIds={expandedTreeIds}
                     onToggle={handleToggle}
+                    isDragEnabled={!isMoving}
+                    blockedTargetIds={blockedTargetIds}
+                    isDragActive={draggedId !== null}
                   />
                 ))}
               </div>
@@ -363,12 +496,16 @@ export default function OrganizationsListPage() {
                     org={org}
                     expandedIds={expandedTreeIds}
                     onToggle={handleToggle}
+                    isDragEnabled={!isMoving}
+                    blockedTargetIds={blockedTargetIds}
+                    isDragActive={draggedId !== null}
                   />
                 ))}
               </div>
             </section>
           )}
         </motion.div>
+        </OrgDndProvider>
       )}
 
       {/* Pagination */}

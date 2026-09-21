@@ -14,7 +14,10 @@ export function getCollectionsAggregator(
   const pipeline: PipelineStage[] = [];
 
   if (!permissions) {
-    pipeline.push({ $match: { private: false } });
+    // Older seeded/imported documents may not contain `private`. The schema
+    // default is not applied when mongo-seeding inserts raw documents, and a
+    // missing flag represents the historical public default.
+    pipeline.push({ $match: { $or: [{ private: false }, { private: { $exists: false } }] } });
   }
 
   if (organizationId) {

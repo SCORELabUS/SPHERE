@@ -719,6 +719,285 @@ describe('Organizations API integration', () => {
   });
 
   // =========================================================================
+  // PUT /orgs/:organizationId/parent
+  // =========================================================================
+  // ─────────────────────────────────────────────────────────────
+  // GET /orgs/:organizationId/hierarchy
+  // ─────────────────────────────────────────────────────────────
+  describe('GET /orgs/:organizationId/hierarchy', () => {
+    const hierarchy = (orgId: string, token: string | undefined) =>
+      request(app)
+        .get(BASE_PATH + '/orgs/' + orgId + '/hierarchy')
+        .set('Authorization', 'Bearer ' + token);
+
+    it('returns the whole branch in one response', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(child.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id).sort();
+      expect(ids).toEqual([root.id, child.id, grandchild.id].sort());
+    });
+
+    it('reaches the root of the branch even when asked about a leaf', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const sibling = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(grandchild.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id);
+      expect(ids).toContain(root.id);
+      expect(ids).toContain(sibling.id);
+    });
+
+    it('carries the parent of every node so the tree can be rebuilt', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id]._parentId).toBeNull();
+      expect(nodes[child.id]._parentId).toBe(root.id);
+    });
+
+    it('marks a node the caller manages from above as accessible', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id].hasAccess).toBe(true);
+      expect(nodes[child.id].hasAccess).toBe(true);
+    });
+
+    it('lists a sibling branch the caller has no part in, but marks it closed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const mine = await createTestOrganization(owner.token, { _parentId: root.id });
+      const theirs = await createTestOrganization(owner.token, { _parentId: root.id });
+      await createMembership(outsider.id, mine.id, 'MEMBER');
+
+      const response = await hierarchy(mine.id, outsider.token);
+
+      expect(response.status).toBe(200);
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[mine.id].hasAccess).toBe(true);
+      expect(nodes[theirs.id].hasAccess).toBe(false);
+    });
+
+    it('returns 404 when the organization does not exist', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+
+      const response = await hierarchy('68050bd09890322c57842f6f', owner.token);
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('PUT /orgs/:organizationId/parent', () => {
+    it('moves an organization under another one the caller owns', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+      expect(response.body._parentId).toBe(destination.id);
+      expect(response.body.ancestors).toEqual([destination.id]);
+
+      const stored = await OrganizationMongoose.findById(moved.id).lean();
+      expect(stored?._parentId?.toString()).toBe(destination.id);
+      expect(stored?.ancestors?.map((id: any) => id.toString())).toEqual([destination.id]);
+    });
+
+    it('rewrites the ancestors of every organization below the moved one', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: moved.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+
+      const storedChild = await OrganizationMongoose.findById(child.id).lean();
+      expect(storedChild?.ancestors?.map((id: any) => id.toString())).toEqual([
+        destination.id,
+        moved.id,
+      ]);
+
+      const storedGrandchild = await OrganizationMongoose.findById(grandchild.id).lean();
+      expect(storedGrandchild?.ancestors?.map((id: any) => id.toString())).toEqual([
+        destination.id,
+        moved.id,
+        child.id,
+      ]);
+    });
+
+    it('moves an organization out to the root when parentId is null', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token, { _parentId: parent.id });
+      const child = await createTestOrganization(owner.token, { _parentId: moved.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body._parentId ?? null).toBeNull();
+      expect(response.body.ancestors).toEqual([]);
+
+      const storedChild = await OrganizationMongoose.findById(child.id).lean();
+      expect(storedChild?.ancestors?.map((id: any) => id.toString())).toEqual([moved.id]);
+    });
+
+    it('leaves memberships untouched, so a move grants nobody new access', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: destinationAdmin } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+      await createMembership(destinationAdmin.id, destination.id, 'ADMIN');
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+
+      const membership = await OrganizationMembershipMongoose.findOne({
+        _userId: destinationAdmin.id,
+        _organizationId: moved.id,
+      }).lean();
+      expect(membership).toBeNull();
+    });
+
+    it('returns 403 when the caller does not own the destination', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: stranger } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(stranger.token);
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(403);
+
+      const stored = await OrganizationMongoose.findById(moved.id).lean();
+      expect(stored?._parentId ?? null).toBeNull();
+    });
+
+    it('returns 403 when the caller is only an ADMIN of the organization being moved', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: admin } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(admin.token);
+      const moved = await createTestOrganization(owner.token);
+      await createMembership(admin.id, moved.id, 'ADMIN');
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + admin.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('refuses to move an organization under one of its own descendants', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: parent.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + parent.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: child.id });
+
+      expect(response.status).toBe(422);
+
+      const stored = await OrganizationMongoose.findById(parent.id).lean();
+      expect(stored?._parentId ?? null).toBeNull();
+    });
+
+    it('refuses to make an organization its own parent', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const organization = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + organization.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: organization.id });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('refuses to move a personal organization', async () => {
+      const { user: owner, organizationId: personalOrgId } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + personalOrgId + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 404 when the destination does not exist', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: '507f1f77bcf86cd799439011' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('returns 422 when parentId is missing or malformed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const moved = await createTestOrganization(owner.token);
+
+      const missing = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({});
+      expect(missing.status).toBe(422);
+
+      const malformed = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: 'not-an-object-id' });
+      expect(malformed.status).toBe(422);
+    });
+  });
+
+  // =========================================================================
   // PUT /orgs/:organizationId
   // =========================================================================
   describe('PUT /orgs/:organizationId', () => {

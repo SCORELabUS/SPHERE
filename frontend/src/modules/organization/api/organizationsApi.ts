@@ -33,6 +33,18 @@ export interface Organization {
   createdAt?: string;
 }
 
+/** One organization of a branch, as returned flat by the hierarchy endpoint. */
+export interface OrgHierarchyNode {
+  id: string;
+  name: string;
+  displayName: string;
+  avatar: string | null;
+  isPersonal: boolean;
+  _parentId: string | null;
+  /** Whether the viewer may open this organization. */
+  hasAccess: boolean;
+}
+
 export interface OrgMemberWithUser {
   id: string;
   role: OrgRole;
@@ -223,6 +235,21 @@ export function useOrganizationsApi() {
     return body as Organization;
   }, [fetchWithInterceptor, token]);
 
+  /**
+   * Re-parents an organization: `parentId` names its new parent, or is null to
+   * move it out to the root of the tree.
+   */
+  const moveOrganization = useCallback(async (orgId: string, parentId: string | null) => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/parent`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ parentId }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to move organization'));
+    return body as Organization;
+  }, [fetchWithInterceptor, token]);
+
   const deleteOrganization = useCallback(async (orgId: string) => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}`, {
       method: 'DELETE',
@@ -332,6 +359,16 @@ export function useOrganizationsApi() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error ?? 'User not found');
     return body;
+  }, [fetchWithInterceptor, token]);
+
+  /** The organization's whole branch, flat, in one request. */
+  const getOrgHierarchy = useCallback(async (orgId: string): Promise<OrgHierarchyNode[]> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/hierarchy`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch organization hierarchy');
+    return response.json();
   }, [fetchWithInterceptor, token]);
 
   const getOrgChildren = useCallback(async (orgId: string): Promise<Organization[]> => {
@@ -461,6 +498,7 @@ export function useOrganizationsApi() {
     uploadOrgAvatar,
     updateOrgAvatarColors,
     removeOrgAvatar,
+    moveOrganization,
     deleteOrganization,
     getOrgMembers,
     addMember,
@@ -472,6 +510,7 @@ export function useOrganizationsApi() {
     previewInvitation,
     joinViaInvitation,
     lookupUserByUsername,
+    getOrgHierarchy,
     getOrgChildren,
     getOrgPricings,
     getOrgCollections,
