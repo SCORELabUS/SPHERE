@@ -70,7 +70,8 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
     { $unwind: { path: '$organization', preserveNullAndEmptyArrays: true } },
     {
       $group: {
-        _id: { name: '$name', organizationId: { $toString: '$organization._id' }, collectionSlug: '$collection.slug' },
+        _id: { $ifNull: ['$pricingId', { name: '$name', organizationId: { $toString: '$organization._id' }, collectionSlug: '$collection.slug' }] },
+        pricingId: { $first: { $toString: '$pricingId' } },
         name: { $first: '$name' },
         slug: { $first: '$slug' },
         collection: {
@@ -110,6 +111,7 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
     {
       $project: {
         _id: 0,
+        pricingId: 1,
         name: 1,
         slug: 1,
         organization: 1,

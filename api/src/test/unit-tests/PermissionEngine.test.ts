@@ -15,7 +15,7 @@ function baseCtx(overrides: Partial<PermissionContext> = {}): PermissionContext 
     userId: 'user1',
     organizationId: 'org1',
     entityType: 'pricing',
-    entityId: 'pricing1',
+    entitySlug: 'pricing1',
     action: 'GET',
     ...overrides,
   };
@@ -72,6 +72,7 @@ describe('PermissionEngine', () => {
     it('allows MEMBER with CREATE permission', () => {
       const result = engine.evaluate(baseCtx({
         action: 'CREATE',
+        entitySlug: undefined,
         userOrgRole: 'MEMBER',
         orgPermissions: FULL_PERMS,
       }));
@@ -81,6 +82,7 @@ describe('PermissionEngine', () => {
     it('denies MEMBER without CREATE permission', () => {
       const result = engine.evaluate(baseCtx({
         action: 'CREATE',
+        entitySlug: undefined,
         userOrgRole: 'MEMBER',
         orgPermissions: NO_PERMS,
       }));
@@ -90,6 +92,7 @@ describe('PermissionEngine', () => {
     it('denies MEMBER with no org permissions', () => {
       const result = engine.evaluate(baseCtx({
         action: 'CREATE',
+        entitySlug: undefined,
         userOrgRole: 'MEMBER',
         orgPermissions: undefined,
       }));
@@ -177,7 +180,7 @@ describe('PermissionEngine', () => {
         isPrivate: true,
         userOrgRole: 'MEMBER',
         entityPermissions: GET_ONLY,
-        collectionId: undefined,
+        collectionSlug: undefined,
         collectionPermissions: undefined,
       }));
       expect(result.allowed).toBe(true);
@@ -263,7 +266,7 @@ describe('PermissionEngine', () => {
         {
           key: 'public-pricing',
           context: baseCtx({
-            entityId: 'pricing1',
+            entitySlug: 'pricing1',
             isPrivate: false,
             userOrgRole: 'MEMBER',
           }),
@@ -271,7 +274,7 @@ describe('PermissionEngine', () => {
         {
           key: 'private-pricing-with-perm',
           context: baseCtx({
-            entityId: 'pricing2',
+            entitySlug: 'pricing2',
             isPrivate: true,
             userOrgRole: 'MEMBER',
             entityPermissions: GET_ONLY,
@@ -280,7 +283,7 @@ describe('PermissionEngine', () => {
         {
           key: 'private-pricing-no-perm',
           context: baseCtx({
-            entityId: 'pricing3',
+            entitySlug: 'pricing3',
             isPrivate: true,
             userOrgRole: 'MEMBER',
             entityPermissions: NO_PERMS,

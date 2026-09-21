@@ -1,8 +1,10 @@
 import mongoose, { Schema } from 'mongoose';
+import PricingIdentity from './PricingIdentityMongoose';
 import { generateSlug } from '../../../utils/slug-manager';
 
 const pricingSchema = new Schema(
   {
+    pricingId: { type: Schema.Types.ObjectId, ref: 'PricingIdentity', immutable: true },
     name: { type: String, required: true },
     slug: { type: String, required: false },
     _collectionId: { type: String, ref: 'PricingCollection', required: false },
@@ -94,6 +96,38 @@ pricingSchema.index({ name: 1, _organizationId: 1, version: 1, _collectionId: 1 
 
 // Unique slug per organization (includes version and collection to allow multiple versions of the same pricing)
 pricingSchema.index({ slug: 1, _organizationId: 1, version: 1, _collectionId: 1 }, { unique: true });
+
+pricingSchema.index({ pricingId: 1, version: 1 }, { unique: true, partialFilterExpression: { pricingId: { $type: 'objectId' } } });
+
+async function refreshIdentities(ids: any[], pricingModel: any) {
+  const identityIds = ids.filter(Boolean);
+  if (!identityIds.length) return;
+
+  // Hooks can run from ts-migrate's dedicated Connection rather than the
+  // application's default mongoose connection. Always resolve both models
+  // from the connection that executed the pricing operation; otherwise a
+  // migration would query the disconnected global model until buffering
+  // times out.
+  const connection = pricingModel.db;
+  const Model = connection.models.Pricing || connection.model('Pricing', pricingSchema, 'pricings');
+  const Identity = connection.models.PricingIdentity ||
+    connection.model('PricingIdentity', PricingIdentity.schema, 'pricingIdentities');
+  for (const id of identityIds) {
+    const current: any = await Model.findOne({ pricingId: id }).lean();
+    await Identity.updateOne({ _id: id }, current ? { $set: {
+      name: current.name, slug: current.slug, _organizationId: current._organizationId,
+      _collectionId: current._collectionId ?? null, deleted: false,
+    } } : { $set: { deleted: true } });
+  }
+}
+pricingSchema.post('save', async function(doc) { await refreshIdentities([doc.pricingId], doc.constructor); });
+for (const operation of ['updateMany', 'deleteMany', 'deleteOne', 'findOneAndDelete'] as const) {
+  pricingSchema.pre(operation, async function(this: any) {
+    const rows = await this.model.find(this.getFilter()).select('pricingId').lean();
+    this.identityIds = rows.map((row: any) => row.pricingId);
+  });
+  pricingSchema.post(operation, async function(this: any) { await refreshIdentities(this.identityIds ?? [], this.model); });
+}
 
 const pricingModel = mongoose.model('Pricing', pricingSchema, 'pricings');
 

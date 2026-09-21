@@ -4,6 +4,7 @@ dotenv.config();
 
 class CacheService {
   private redisClient: RedisClientType | null = null;
+  private readonly namespace = (process.env.REDIS_KEY_PREFIX ?? 'sphere:').replace(/:$/, '') + ':';
 
   constructor() {}
 
@@ -11,12 +12,16 @@ class CacheService {
     this.redisClient = client;
   }
 
+  private key(value: string) {
+    return `${this.namespace}${value.toLowerCase()}`;
+  }
+
   async get(key: string) {
     if (!this.redisClient) {
       throw new Error('ERROR: Redis client not initialized');
     }
 
-    const value = await this.redisClient?.get(key);
+    const value = await this.redisClient?.get(this.key(key));
 
     return value ? JSON.parse(value) : null;
   }
@@ -26,7 +31,7 @@ class CacheService {
       throw new Error('ERROR: Redis client not initialized');
     }
 
-    await this.redisClient.del(key);
+    await this.redisClient.del(this.key(key));
   }
 
   async set(key: string, value: any, expirationInSeconds?: number) {
@@ -34,12 +39,12 @@ class CacheService {
       throw new Error('ERROR: Redis client not initialized');
     }
 
-    const previousValue = await this.redisClient?.get(key);
+    const previousValue = await this.redisClient?.get(this.key(key));
     if (previousValue && previousValue !== JSON.stringify(value)) {
       throw new Error('CONFLICT: Value already exists in cache, please use a different key.');
     }
 
-    await this.redisClient?.set(key, JSON.stringify(value), {
+    await this.redisClient?.set(this.key(key), JSON.stringify(value), {
       EX: expirationInSeconds ?? 300,
     });
   }
