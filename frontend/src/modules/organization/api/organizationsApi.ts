@@ -33,6 +33,18 @@ export interface Organization {
   createdAt?: string;
 }
 
+/** One organization of a branch, as returned flat by the hierarchy endpoint. */
+export interface OrgHierarchyNode {
+  id: string;
+  name: string;
+  displayName: string;
+  avatar: string | null;
+  isPersonal: boolean;
+  _parentId: string | null;
+  /** Whether the viewer may open this organization. */
+  hasAccess: boolean;
+}
+
 export interface OrgMemberWithUser {
   id: string;
   role: OrgRole;
@@ -292,6 +304,16 @@ export function useOrganizationsApi() {
     return body;
   }, [fetchWithInterceptor, token]);
 
+  /** The organization's whole branch, flat, in one request. */
+  const getOrgHierarchy = useCallback(async (orgId: string): Promise<OrgHierarchyNode[]> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/hierarchy`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch organization hierarchy');
+    return response.json();
+  }, [fetchWithInterceptor, token]);
+
   const getOrgChildren = useCallback(async (orgId: string): Promise<Organization[]> => {
     const org = await getOrganization(orgId);
     const children = await Promise.all(
@@ -428,6 +450,7 @@ export function useOrganizationsApi() {
     previewInvitation,
     joinViaInvitation,
     lookupUserByUsername,
+    getOrgHierarchy,
     getOrgChildren,
     getOrgPricings,
     getOrgCollections,

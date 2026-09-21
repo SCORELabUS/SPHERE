@@ -93,6 +93,55 @@ class OrganizationService {
     return organization;
   }
 
+  /**
+   * The whole branch an organization sits in — its ancestors, its siblings and
+   * everything below it — flat, with each node marked according to whether the
+   * caller may open it.
+   *
+   * The hierarchy view needs all of this at once. Walking it from the client
+   * costs a request per node, several times over, so it is answered here in two
+   * queries: one for the branch, one for the caller's memberships.
+   */
+  async getHierarchy(organizationId: string, user: { id: string; role?: string }) {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    const ancestors = (organization.ancestors ?? []).map((id: any) => id.toString());
+    const rootId = ancestors[0] ?? organizationId;
+
+    const [branch, roles] = await Promise.all([
+      this.organizationRepository.findBranch(rootId),
+      // A platform administrator answers for every organization, so there is no
+      // point asking which ones they belong to.
+      user.role === 'ADMIN'
+        ? Promise.resolve(null)
+        : this.organizationMembershipRepository.findRolesByUserId(user.id),
+    ]);
+
+    // Management cascades down the tree, so a node is open to the caller when
+    // they hold it directly or manage anything above it.
+    const canOpen = (node: any) => {
+      if (roles === null) {
+        return true;
+      }
+      if (roles.has(node.id)) {
+        return true;
+      }
+      return node.ancestors.some((ancestorId: string) => {
+        const role = roles.get(ancestorId);
+        return role === 'OWNER' || role === 'ADMIN';
+      });
+    };
+
+    return branch.map((node: any) => {
+      processFileUris(node, ['avatar']);
+      const { ancestors: _ancestors, ...rest } = node;
+      return { ...rest, hasAccess: canOpen(node) };
+    });
+  }
+
   async createWithOwner(data: any, userId: string) {
     if (data._parentId) {
       const parent: any = await this.organizationRepository.findById(data._parentId);

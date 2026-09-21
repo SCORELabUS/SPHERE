@@ -721,6 +721,92 @@ describe('Organizations API integration', () => {
   // =========================================================================
   // PUT /orgs/:organizationId/parent
   // =========================================================================
+  // ─────────────────────────────────────────────────────────────
+  // GET /orgs/:organizationId/hierarchy
+  // ─────────────────────────────────────────────────────────────
+  describe('GET /orgs/:organizationId/hierarchy', () => {
+    const hierarchy = (orgId: string, token: string | undefined) =>
+      request(app)
+        .get(BASE_PATH + '/orgs/' + orgId + '/hierarchy')
+        .set('Authorization', 'Bearer ' + token);
+
+    it('returns the whole branch in one response', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(child.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id).sort();
+      expect(ids).toEqual([root.id, child.id, grandchild.id].sort());
+    });
+
+    it('reaches the root of the branch even when asked about a leaf', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const sibling = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(grandchild.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id);
+      expect(ids).toContain(root.id);
+      expect(ids).toContain(sibling.id);
+    });
+
+    it('carries the parent of every node so the tree can be rebuilt', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id]._parentId).toBeNull();
+      expect(nodes[child.id]._parentId).toBe(root.id);
+    });
+
+    it('marks a node the caller manages from above as accessible', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id].hasAccess).toBe(true);
+      expect(nodes[child.id].hasAccess).toBe(true);
+    });
+
+    it('lists a sibling branch the caller has no part in, but marks it closed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const mine = await createTestOrganization(owner.token, { _parentId: root.id });
+      const theirs = await createTestOrganization(owner.token, { _parentId: root.id });
+      await createMembership(outsider.id, mine.id, 'MEMBER');
+
+      const response = await hierarchy(mine.id, outsider.token);
+
+      expect(response.status).toBe(200);
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[mine.id].hasAccess).toBe(true);
+      expect(nodes[theirs.id].hasAccess).toBe(false);
+    });
+
+    it('returns 404 when the organization does not exist', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+
+      const response = await hierarchy('68050bd09890322c57842f6f', owner.token);
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe('PUT /orgs/:organizationId/parent', () => {
     it('moves an organization under another one the caller owns', async () => {
       const { user: owner } = await createAndLoginUser('USER');

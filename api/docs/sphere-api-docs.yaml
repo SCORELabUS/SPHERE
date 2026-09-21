@@ -2689,6 +2689,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/hierarchy:
+    get:
+      summary: Get the whole branch an organization sits in
+      description: |
+        Returns every organization in the branch — the ancestors above
+        `organizationId`, the organization itself, its siblings, and everything
+        below it at any depth — flat, in one response. The client nests it by
+        `_parentId`.
+
+        Each node carries `hasAccess`, saying whether the caller may open it: true
+        when they hold a membership on it, or manage (`OWNER` / `ADMIN`) anything
+        above it, since management cascades down the tree. A node the caller cannot
+        open is still listed, so the shape of the tree stays visible, but its own
+        descendants are theirs to hide.
+
+        This exists so drawing the hierarchy costs one request instead of one per
+        node: the `ancestors` array is indexed, so the whole branch is a single query.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Any organization; every node comes back accessible.
+        - **USER**: Must be a member of the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: The branch, flat
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: 63f74bf8eeed64058364b601
+                    name:
+                      type: string
+                      example: acme-eu
+                    displayName:
+                      type: string
+                      example: Acme Europe
+                    avatar:
+                      type: string
+                      nullable: true
+                    isPersonal:
+                      type: boolean
+                    _parentId:
+                      type: string
+                      nullable: true
+                      description: Parent organization, or null for the root of the branch
+                    hasAccess:
+                      type: boolean
+                      description: Whether the caller may open this organization
+        '401':
+          description: Authentication required
+        '403':
+          description: The caller is not a member of the organization
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/parent:
     put:
       summary: Move an organization to another parent
