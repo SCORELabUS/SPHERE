@@ -575,7 +575,7 @@ class PricingCollectionService {
         );
       }
 
-      await this.pricingRepository.removePricingFromCollection(pricingSlug, organizationId);
+      await this.pricingRepository.removePricingFromCollection(pricingSlug, organizationId, pricing.versions[0]._collectionId);
       if (pricing.versions[0]._collectionId) {
         await this.updateCollectionAnalytics(pricing.versions[0]._collectionId);
       } else {

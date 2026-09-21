@@ -8,6 +8,12 @@ interface ProblemsPanelProps {
   diagnostics: LintDiagnostic[];
   errors: number;
   warnings: number;
+  /**
+   * Failures raised by the parser that renders the preview. The linter and the
+   * parser do not cover exactly the same ground, so these are listed too rather
+   * than leaving the panel claiming the document is clean.
+   */
+  parseErrors: string[];
   /** Called with the diagnostic the user wants to jump to in the editor. */
   onSelect: (diagnostic: LintDiagnostic) => void;
 }
@@ -35,10 +41,12 @@ export default function ProblemsPanel({
   diagnostics,
   errors,
   warnings,
+  parseErrors,
   onSelect,
 }: Readonly<ProblemsPanelProps>): JSX.Element {
   const [isExpanded, setIsExpanded] = useState(true);
-  const isClean = diagnostics.length === 0;
+  const isClean = diagnostics.length === 0 && parseErrors.length === 0;
+  const errorCount = errors + parseErrors.length;
 
   return (
     <div className="flex shrink-0 flex-col border-t border-white/10 bg-tp-surface-code">
@@ -57,10 +65,10 @@ export default function ProblemsPanel({
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
-              {errors > 0 && (
+              {errorCount > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-red-400/20 bg-red-400/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-red-300">
                   <FiAlertCircle className="h-3 w-3" />
-                  {errors}
+                  {errorCount}
                 </span>
               )}
               {warnings > 0 && (
@@ -86,6 +94,17 @@ export default function ProblemsPanel({
             transition={{ duration: 0.2 }}
             className="max-h-48 overflow-y-auto border-t border-white/5"
           >
+            {parseErrors.map(message => (
+              <li key={message} className="flex items-start gap-2 px-3 py-1.5 text-left">
+                {SEVERITY_STYLES.error.icon}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] leading-snug text-white/80">{message}</span>
+                  <span className="mt-0.5 block text-[10px] font-mono text-white/35">
+                    pricing-parser
+                  </span>
+                </span>
+              </li>
+            ))}
             {diagnostics.map(diagnostic => (
               <li key={diagnosticKey(diagnostic)}>
                 <button

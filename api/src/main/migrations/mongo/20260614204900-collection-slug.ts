@@ -38,9 +38,15 @@ export async function up(db: mongoose.Connection) {
   const usedSlugsPerOrg = new Map<string, Set<string>>();
 
   for (const collection of collections) {
-    const organization = collection._ownerId
-      ? orgByOwnerId.get(collection._ownerId.toString())
+    // Newer seeded/imported documents already carry the organization
+    // reference. Preserve it; only legacy documents that still use _ownerId
+    // need owner lookup or the fallback organization.
+    const existingOrganization = collection._organizationId
+      ? organizations.find((candidate: any) => String(candidate._id) === String(collection._organizationId))
       : undefined;
+    const organization = existingOrganization ?? (collection._ownerId
+      ? orgByOwnerId.get(collection._ownerId.toString())
+      : undefined);
 
     const organizationId =
       organization?._id ?? DEFAULT_ORGANIZATION_ID;

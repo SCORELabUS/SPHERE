@@ -37,20 +37,24 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 function handleError(err: any): {status: number, message: string} {
-  if (err.message.toLowerCase().includes('unauthorized')) {
-    return { status: 401, message: err.message };
-  } else if (err.message.toLowerCase().includes('permission error')) {
-    return { status: 403, message: err.message };
-  } else if (err.message.toLowerCase().includes('not found')) {
-    return { status: 404, message: err.message };
-  } else if (err.message.toLowerCase().includes('conflict')) {
-    return { status: 409, message: err.message };
-  } else if (err.message.toLowerCase().includes('authentication timeout')) {
-    return { status: 419, message: err.message };
-  } else if (err.message.toLowerCase().includes('invalid data')) {
-    return { status: 422, message: err.message };
+  const message = String(err?.message ?? err);
+  const normalized = message.toLowerCase();
+  if (normalized.includes('unauthorized')) {
+    return { status: 401, message };
+  } else if (normalized.includes('permission error')) {
+    return { status: 403, message };
+  } else if (normalized.includes('not found')) {
+    return { status: 404, message };
+  } else if (normalized.includes('conflict')) {
+    return { status: 409, message };
+  } else if (normalized.includes('authentication timeout')) {
+    return { status: 419, message };
+  } else if (normalized.includes('invalid data')) {
+    return { status: 422, message };
+  } else if (normalized.includes('validation errors') || normalized.includes('dead features') || normalized.includes('should not be')) {
+    return { status: 400, message };
   } else {
-    return { status: 500, message: err.message };
+    return { status: 500, message };
   }
 }
 
