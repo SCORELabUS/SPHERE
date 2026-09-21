@@ -57,6 +57,7 @@ class OrganizationController {
     this.addMember = this.addMember.bind(this);
     this.addMembersBulk = this.addMembersBulk.bind(this);
     this.updateMemberRole = this.updateMemberRole.bind(this);
+    this.transferOwnership = this.transferOwnership.bind(this);
     this.removeMember = this.removeMember.bind(this);
     this.createInvitation = this.createInvitation.bind(this);
     this.listInvitations = this.listInvitations.bind(this);
@@ -313,6 +314,20 @@ class OrganizationController {
       const { role } = req.body;
       const membership = await this.organizationService.updateMemberRole(req.params.userId, req.params.organizationId, role, req.user);
       res.json(membership);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async transferOwnership(req: any, res: any) {
+    try {
+      const members = await this.organizationService.transferOwnership(
+        req.params.organizationId,
+        req.body.userId,
+        req.user
+      );
+      res.json(members);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

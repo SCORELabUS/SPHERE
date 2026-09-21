@@ -42,9 +42,10 @@ import {
     MdVpnKey,
     MdOutlineRemoveRedEye,
     MdOutlineShield,
+    MdNorthWest,
     MdMailOutline,
 } from 'react-icons/md';
-import { FaShareAlt, FaWhatsapp, FaMicrosoft } from 'react-icons/fa';
+import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
 import { IconType } from 'react-icons';
 
 const iconMap: Record<string, IconType> = {
@@ -54,6 +55,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:account-remove-outline': MdPersonRemove,
     'mdi:account-search': MdPersonSearch,
     'mdi:arrow-left': MdArrowBack,
+    'mdi:arrow-up-left': MdNorthWest,
     'mdi:bell-badge-outline': MdNotificationsActive,
     'mdi:bell-off': MdNotificationsOff,
     'mdi:bell-outline': MdNotificationsNone,
@@ -64,6 +66,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:chevron-right': MdChevronRight,
     'mdi:close': MdClose,
     'mdi:content-copy': MdContentCopy,
+    'mdi:crown-outline': FaCrown,
     'mdi:email-outline': MdMailOutline,
     'mdi:microsoft-teams': FaMicrosoft,
     'mdi:share-variant': FaShareAlt,
