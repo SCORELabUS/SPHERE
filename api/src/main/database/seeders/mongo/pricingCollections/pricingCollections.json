@@ -4,6 +4,7 @@
   },
   "name": "IEEE TSC 2025",
   "slug": "ieee-tsc-2025",
+  "private": false,
   "description": "This collection includes the dataset of real-world pricings presented in the paper [PAPER NAME], which has been submitted to the IEEE Transactions on Services Computing journal 2025 paper. Its primary objective is to serve as a replication package for the paper, enabling readers to review and experiment with the results in real time. Additionally, this dataset can serve as a benchmark for future research on pricing strategies in the context of cloud computing.",
   "_organizationId": { "$oid": "63f74bf8eeed64058364b601" },
   "analytics": {

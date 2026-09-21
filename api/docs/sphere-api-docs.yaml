@@ -127,6 +127,135 @@ tags:
     description: Redis cache operations for temporary data storage
 
 paths:
+  /permalinks/{resourceType}/{resourceId}:
+    get:
+      summary: Resolve a permanent link
+      security: []
+      description: Public visitors can resolve public resources. Authenticated visitors require the existing resource permissions for private resources.
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+          description: Previously received ETag; authorization and visibility are checked before returning 304.
+        - in: path
+          name: resourceType
+          required: true
+          schema:
+            type: string
+            enum: [pricing, collection]
+        - in: path
+          name: resourceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available resource
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [location]
+                properties:
+                  location: { type: string, description: Current relative application route }
+        "503":
+          description: Resource temporarily unavailable
+        "404":
+          description: Resource not available
+        "304":
+          description: Unchanged public content
+  /public/pricings/{pricingId}:
+    get:
+      summary: Public pricing manifest; private versions are excluded before ordering
+      security: []
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+          description: Previously received ETag; authorization and visibility are checked before returning 304.
+        - in: path
+          name: pricingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available resource
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPricingManifest'
+        "503":
+          description: Resource temporarily unavailable
+        "404":
+          description: Resource not available
+        "304":
+          description: Unchanged public content
+  /public/pricings/{pricingId}/versions/{versionId}/yaml:
+    get:
+      summary: Download a currently public YAML snapshot
+      security: []
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+          description: Previously received ETag; authorization and visibility are checked before returning 304.
+        - in: path
+          name: pricingId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: versionId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available resource
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "503":
+          description: Resource temporarily unavailable
+        "404":
+          description: Resource not available
+        "304":
+          description: Unchanged public content
+  /public/pricings/{pricingId}/download:
+    get:
+      summary: Download accessible pricing versions as a ZIP archive
+      description: Anonymous visitors receive public versions only. Authenticated visitors with permission for a private pricing receive all versions they can access.
+      security: []
+      parameters:
+        - in: header
+          name: Authorization
+          schema: { type: string }
+          description: Optional bearer token for private versions.
+        - in: path
+          name: pricingId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ZIP archive containing YAML versions
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '404':
+          description: Pricing not found or not accessible
+        '503':
+          description: Archive could not be generated
   /healthcheck:
     get:
       summary: Service health check
@@ -4826,6 +4955,26 @@ paths:
 
 components:
   schemas:
+    PublicPricingVersion:
+      type: object
+      required: [versionId, version, createdAt, contentHash]
+      properties:
+        versionId: { type: string, pattern: '^[a-f0-9]{24}$' }
+        version: { type: string }
+        createdAt: { type: string, format: date-time, description: Date supplied in the pricing YAML }
+        contentHash: { type: string, description: SHA-256 of canonical functional YAML excluding saasName }
+    PublicPricingManifest:
+      type: object
+      required: [pricingId, name, permanentUrl, latestVersionId, versions]
+      properties:
+        pricingId: { type: string }
+        name: { type: string }
+        permanentUrl: { type: string, format: uri }
+        latestVersionId: { type: string }
+        versions:
+          type: array
+          description: Public versions ordered by createdAt descending, then versionId descending.
+          items: { $ref: '#/components/schemas/PublicPricingVersion' }
 
     # ------------------------------
     # --          FIELDS          --

@@ -1,21 +1,21 @@
 {
   "name": "sphere",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.4.0",
   "type": "module",
   "scripts": {
     "install": "cd frontend && pnpm install && cd ../api && pnpm install",
     "dev": "concurrently \"pnpm run dev:api\" \"pnpm run dev:vite\"",
-    "dev:setup": "cd docker/dev && docker compose up -d && pnpm run seed:mongo-local:small",
+    "dev:setup": "bash scripts/dev-setup.sh",
     "dev:api": "cd api && npx migrate up && npx tsx --tsconfig tsconfig.json --watch src/main/backend.ts",
     "dev:vite": "cd frontend && pnpx vite",
     "test": "pnpm run test:api",
     "test:api": "cd api && npx vitest --run && cd .. && pnpm run seed:mongo-local:small",
     "build": "pnpm run build:frontend && pnpm run build:api",
     "build:api": "cd api && pnpm run build",
-    "build:frontend": "cd frontend && vite build",
+    "build:frontend": "pnpm --dir frontend run build",
     "lint": "eslint .",
-    "seed:mongo-local:small": "cd api && npx tsx --tsconfig tsconfig.json scripts/seedMongo.ts",
+    "seed:mongo-local:small": "cd api && SEED_RESET_DATABASE=true npx tsx --tsconfig tsconfig.json scripts/seedMongo.ts",
     "prepare": "husky"
   },
   "devDependencies": {

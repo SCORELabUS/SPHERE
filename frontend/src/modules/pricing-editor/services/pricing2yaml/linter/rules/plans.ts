@@ -36,6 +36,7 @@ function checkPlan(
 ): void {
   const label = `The plan "${name}"`;
 
+  checkDeclaredFeatures(context, plan, path, label);
   checkPrice(context, plan.price, [...path, 'price'], path, label);
   checkString(context, plan.description, [...path, 'description'], `${label}: description`);
   checkString(context, plan.unit, [...path, 'unit'], `${label}: unit`);
@@ -65,6 +66,29 @@ function checkPlan(
     label,
     'usageLimit',
     index
+  );
+}
+
+/**
+ * `pricing4ts` refuses to parse a plan that does not carry a `features` key —
+ * an absent one is not read as "no overrides" — so a plan without it fails with
+ * "The plan must be an object of type Plan" before the preview is rendered.
+ */
+function checkDeclaredFeatures(
+  context: LintContext,
+  plan: Record<string, unknown>,
+  path: NodePath,
+  label: string
+): void {
+  if ('features' in plan) {
+    return;
+  }
+
+  context.error(
+    'missing-required-field',
+    `${label}: features is required. Use "features: null" when the plan overrides nothing.`,
+    path,
+    'key'
   );
 }
 

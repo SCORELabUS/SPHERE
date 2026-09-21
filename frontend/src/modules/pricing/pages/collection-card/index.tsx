@@ -1,3 +1,4 @@
+import PermanentLink from '../../../core/components/permanent-link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -241,6 +242,7 @@ export default function CollectionCardPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="font-display text-2xl font-normal text-tp-ink">{collection?.name || collectionSlug}</h1>
+              <PermanentLink kind="c" id={collection?.id} />
               <p className="mt-1 text-sm text-tp-steel">
                 {collection?.organization?.displayName || collection?.organization?.name}
                 {collection?.description && <span className="ml-1">· {collection.description}</span>}
