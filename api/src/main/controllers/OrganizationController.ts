@@ -14,6 +14,7 @@ class OrganizationController {
     this.create = this.create.bind(this);
     this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
+    this.moveToParent = this.moveToParent.bind(this);
     this.destroy = this.destroy.bind(this);
     this.listMembers = this.listMembers.bind(this);
     this.addMember = this.addMember.bind(this);
@@ -125,6 +126,20 @@ class OrganizationController {
   async update(req: any, res: any) {
     try {
       const organization = await this.organizationService.update(req.params.organizationId, req.body);
+      res.json(organization);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async moveToParent(req: any, res: any) {
+    try {
+      const organization = await this.organizationService.moveToParent(
+        req.params.organizationId,
+        req.body.parentId ?? null,
+        req.user
+      );
       res.json(organization);
     } catch (err: any) {
       const { status, message } = handleError(err);

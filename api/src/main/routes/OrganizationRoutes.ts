@@ -51,6 +51,14 @@ const loadFileRoutes = function (app: express.Application) {
     );
 
   app
+    .route(baseUrl + '/orgs/:organizationId/parent')
+    .put(
+      OrganizationValidation.moveToParent,
+      handleValidation,
+      organizationController.moveToParent
+    );
+
+  app
     .route(baseUrl + '/orgs/:organizationId/children')
     .post(
       OrganizationValidation.createChildrenBulk,

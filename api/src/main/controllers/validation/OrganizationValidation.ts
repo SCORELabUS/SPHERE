@@ -154,4 +154,22 @@ const updateMemberRole = [
     .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
 ];
 
-export { create, update, addMember, addMembersBulk, createChildrenBulk, updateMemberRole };
+const moveToParent = [
+  // `exists()` keeps its default of only treating `undefined` as missing, so an
+  // explicit null goes through: that is how an organization is moved to the root.
+  check('parentId')
+    .exists()
+    .withMessage('A parentId must be provided, using null to move the organization to the root')
+    .custom((value: unknown) => value === null || /^[a-f0-9]{24}$/.test(String(value)))
+    .withMessage('The parentId must be null or a valid MongoDB ObjectId'),
+];
+
+export {
+  create,
+  update,
+  addMember,
+  addMembersBulk,
+  createChildrenBulk,
+  moveToParent,
+  updateMemberRole,
+};
