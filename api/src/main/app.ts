@@ -23,10 +23,8 @@ const initializeApp = async () => {
   const redisClient = await initRedis();
   container.resolve("cacheService").setRedisClient(redisClient);
 
-  if (['development', 'testing'].includes(process.env.ENVIRONMENT ?? '')) {
-    await redisClient.sendCommand(['FLUSHALL']);
-    console.log(`${green}➜${reset}  ${bold}Redis cache cleared.${reset}`);
-  }
+  // Redis is shared with other local applications. CacheService namespaces
+  // SPHERE keys, so startup must not issue the global FLUSHALL command.
 
   // await postInitializeDatabase(app)
   return app;
