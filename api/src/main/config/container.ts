@@ -1,3 +1,4 @@
+import PermanentLinkService from '../services/PermanentLinkService';
 // deno-lint-ignore-file no-explicit-any
 import { createContainer, asValue, asClass, AwilixContainer } from "awilix";
 import dotenv from "dotenv";
@@ -56,6 +57,7 @@ function initContainer(databaseType: string): AwilixContainer {
     entityPermissionRepository: asValue(entityPermissionRepository),
     notificationRepository: asValue(notificationRepository),
     userService: asClass(UserService).singleton(),
+    permanentLinkService: asClass(PermanentLinkService).singleton(),
     pricingService: asClass(PricingService).singleton(),
     pricingCollectionService: asClass(PricingCollectionService).singleton(),
     cacheService: asClass(CacheService).singleton(),

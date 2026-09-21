@@ -11,7 +11,8 @@ const getMongoDBConnectionURI = () => {
   const databasePassword = process.env.DATABASE_PASSWORD;
   const databaseName = process.env.DATABASE_NAME;
   const dbCredentials = (databaseUsername && databasePassword) ? databaseUsername + ':' + databasePassword + '@' : '';
-  const authSource = databaseProtocol === 'mongodb+srv' ? '' : `?authSource=${databaseName}`;
+  const authDatabase = process.env.MONGO_AUTH_SOURCE ?? databaseName;
+  const authSource = databaseProtocol === 'mongodb+srv' ? '' : `?authSource=${authDatabase}`;
   const mongoDbConnectionURI = `${databaseProtocol}://${dbCredentials}${databaseHost}${databasePort}/${databaseName}${authSource}`;
   return mongoDbConnectionURI;
 };
@@ -28,11 +29,8 @@ const disconnectMongoose = async () => {
   console.log('Disconnecting from MongoDB');
   if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
     try {
-      // Dropping the DB is only acceptable for local/dev convenience.
-      // Tests should manage their own lifecycle and should not erase external data.
-      if (process.env.ENVIRONMENT === 'development') {
-        await mongoose.connection.db.dropDatabase();
-      }
+      // MongoDB is shared by the local SPHERE/SPACE installations. Never drop
+      // a database as part of shutting down the API; tests own their cleanup.
     } catch (_error) {
       // Ignore drop errors if the session is already closed.
     }

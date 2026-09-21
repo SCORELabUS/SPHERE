@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 
 export interface LeanPricing {
+  pricingId?: Types.ObjectId | string;
   name: string;
   slug?: string;
   _organizationId?: Types.ObjectId | string;
