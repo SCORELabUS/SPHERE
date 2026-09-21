@@ -16,11 +16,13 @@ import {
   OrgRole,
   OrgPricing,
   OrgCollection,
+  OrgHierarchyNode,
   useOrganizationsApi,
   getPublicOrganization,
   getPublicOrgMembers,
 } from '../../api/organizationsApi';
 import { getPublicOrgPricings, getPublicOrgCollections } from '../../../pricing/api/pricingsApi';
+import { useOrganization } from '../../hooks/useOrganization';
 import PermissionsTab from '../../components/PermissionsTab';
 import OrgAvatar from '../../../core/components/org-avatar';
 import OrgDetailSkeleton from '../../../core/components/skeletons/org-detail-skeleton';
@@ -28,6 +30,7 @@ import { Tab, TreeNode, PER_PAGE } from './types';
 import { ROLE_LABELS, ROLE_COLORS, TAB_META } from './constants';
 import { useDebouncedValue } from './hooks';
 import EditOrgModal from './components/EditOrgModal';
+import OrgAvatarModal from './components/OrgAvatarModal';
 import CreateSubOrgModal from './components/CreateSubOrgModal';
 import AddMemberModal from './components/AddMemberModal';
 import InviteModal from './components/InviteModal';
@@ -38,12 +41,14 @@ import PricingsTab from './components/PricingsTab';
 import CollectionsTab from './components/CollectionsTab';
 import HierarchyTab from './components/HierarchyTab';
 import ChildRolesManager from './components/ChildRolesManager';
+import ShareOrgMenu from './components/ShareOrgMenu';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
   const { authUser } = useAuth();
   const router = useRouter();
   const { addRecentOrganization } = useRecentItems();
+  const { refresh: refreshMyOrganizations } = useOrganization();
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
@@ -61,13 +66,13 @@ export default function OrganizationDetailPage() {
   const [collectionSearch, setCollectionSearch] = useState('');
   const [allOrgCollections, setAllOrgCollections] = useState<OrgCollection[]>([]);
   const [accessibleCollectionNames, setAccessibleCollectionNames] = useState<Set<string> | null>(null);
-  const [childAccessMap, setChildAccessMap] = useState<Record<string, boolean>>({});
   const [hierarchyTree, setHierarchyTree] = useState<TreeNode | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [createSubOrgModalOpen, setCreateSubOrgModalOpen] = useState(false);
@@ -81,6 +86,7 @@ export default function OrganizationDetailPage() {
     getOrgCollections,
     getUserAccessiblePricings,
     getUserAccessibleCollections,
+    getOrgHierarchy,
     removeMember,
   } = useOrganizationsApi();
 
@@ -189,25 +195,6 @@ export default function OrganizationDetailPage() {
           setCollections(collectionsData.collections);
           setCollectionsTotal(collectionsData.total);
         }
-
-        const children = orgData.subOrganizations ?? [];
-        if (userRole === 'OWNER' || userRole === 'ADMIN') {
-          const map: Record<string, boolean> = {};
-          for (const child of children) map[child.id] = true;
-          setChildAccessMap(map);
-        } else {
-          const results = await Promise.allSettled(
-            children.map(async child => {
-              await getOrganization(child.id);
-              return { id: child.id, ok: true };
-            })
-          );
-          const map: Record<string, boolean> = {};
-          children.forEach((child, i) => {
-            map[child.id] = results[i].status === 'fulfilled';
-          });
-          setChildAccessMap(map);
-        }
       }
     } catch (err: any) {
       setError(err.message ?? 'Failed to load organization');
@@ -217,128 +204,74 @@ export default function OrganizationDetailPage() {
   }, [organizationId, authUser.isAuthenticated, authUser.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Hierarchy tree ─── */
+  /**
+   * The branch arrives flat, in one request, and is nested here.
+   *
+   * It used to be walked node by node from the client — a fetch per child, per
+   * ancestor and per sibling, in series — which cost dozens of round trips to
+   * draw one tree.
+   */
   const buildHierarchyTree = useCallback(async () => {
     if (!org) return;
 
-    const buildDescendants = async (
-      nodeOrg: Organization,
-      accessRole: OrgRole | null
-    ): Promise<TreeNode[]> => {
-      const children = nodeOrg.subOrganizations ?? [];
-      const results: TreeNode[] = [];
+    let nodes: OrgHierarchyNode[];
+    try {
+      nodes = await getOrgHierarchy(org.id);
+    } catch {
+      return;
+    }
 
-      for (const child of children) {
-        let hasAccess = false;
-        if (accessRole === 'OWNER' || accessRole === 'ADMIN') {
-          hasAccess = true;
-        } else {
-          hasAccess = childAccessMap[child.id] ?? false;
-        }
+    const byId = new Map<string, TreeNode>(
+      nodes.map(node => [
+        node.id,
+        {
+          id: node.id,
+          displayName: node.displayName,
+          name: node.name,
+          avatar: node.avatar,
+          isPersonal: node.isPersonal,
+          _parentId: node._parentId,
+          children: [],
+          hasAccess: node.hasAccess,
+        },
+      ])
+    );
 
-        let childOrgData: Organization | null = null;
-        if (hasAccess) {
-          try {
-            childOrgData = await getOrganization(child.id);
-          } catch {
-            childOrgData = child;
-          }
-        }
+    const ancestorIds = new Set<string>();
+    let above = byId.get(org.id)?._parentId ?? null;
+    while (above && !ancestorIds.has(above)) {
+      ancestorIds.add(above);
+      above = byId.get(above)?._parentId ?? null;
+    }
 
-        const grandchildren =
-          hasAccess && childOrgData ? await buildDescendants(childOrgData, accessRole) : [];
+    let root: TreeNode | null = null;
+    for (const node of nodes) {
+      const treeNode = byId.get(node.id)!;
+      treeNode.isCurrent = node.id === org.id;
+      treeNode.isAncestor = ancestorIds.has(node.id);
 
-        results.push({
-          id: child.id,
-          displayName: child.displayName,
-          name: child.name,
-          avatar: child.avatar,
-          isPersonal: child.isPersonal,
-          _parentId: child._parentId,
-          children: grandchildren,
-          hasAccess,
-        });
-      }
-
-      return results;
-    };
-    const buildOffPathNode = async (
-      summary: Organization,
-      accessRole: OrgRole | null
-    ): Promise<TreeNode> => {
-      let hasAccess = accessRole === 'OWNER' || accessRole === 'ADMIN';
-      let fullOrg: Organization | null = null;
-      try {
-        fullOrg = await getOrganization(summary.id);
-        hasAccess = true;
-      } catch {
-        fullOrg = null;
-      }
-
-      const children = hasAccess && fullOrg ? await buildDescendants(fullOrg, accessRole) : [];
-
-      return {
-        id: summary.id,
-        displayName: summary.displayName,
-        name: summary.name,
-        avatar: summary.avatar,
-        isPersonal: summary.isPersonal,
-        _parentId: summary._parentId,
-        children,
-        hasAccess,
-      };
-    };
-
-    const childNodes = await buildDescendants(org, myRole);
-
-    let currentNode: TreeNode = {
-      id: org.id,
-      displayName: org.displayName,
-      name: org.name,
-      avatar: org.avatar,
-      isPersonal: org.isPersonal,
-      _parentId: org._parentId,
-      children: childNodes,
-      hasAccess: true,
-      isCurrent: true,
-    };
-
-    if (org._parentId) {
-      let currentParentId: string | null = org._parentId;
-      while (currentParentId) {
-        try {
-          const ancestorOrg = await getOrganization(currentParentId);
-          const siblings = ancestorOrg.subOrganizations ?? [];
-          const levelChildren = await Promise.all(
-            siblings.map(sibling =>
-              sibling.id === currentNode.id ? currentNode : buildOffPathNode(sibling, myRole)
-            )
-          );
-
-          const ancestorNode: TreeNode = {
-            id: ancestorOrg.id,
-            displayName: ancestorOrg.displayName,
-            name: ancestorOrg.name,
-            avatar: ancestorOrg.avatar,
-            isPersonal: ancestorOrg.isPersonal,
-            _parentId: ancestorOrg._parentId,
-            children: levelChildren,
-            hasAccess: true,
-            isAncestor: true,
-          };
-          currentNode = ancestorNode;
-          currentParentId = ancestorOrg._parentId;
-        } catch {
-          break;
-        }
+      const parent = node._parentId ? byId.get(node._parentId) : undefined;
+      if (parent) {
+        parent.children.push(treeNode);
+      } else if (!root) {
+        root = treeNode;
       }
     }
 
-    setHierarchyTree(currentNode);
-  }, [org, myRole, childAccessMap, getOrganization]);
+    // A branch the viewer cannot open stays closed: what is under it is none of
+    // their business, the same way it was hidden before.
+    for (const treeNode of byId.values()) {
+      if (!treeNode.hasAccess) {
+        treeNode.children = [];
+      }
+    }
+
+    setHierarchyTree(root ?? byId.get(org.id) ?? null);
+  }, [org, getOrgHierarchy]);
 
   useEffect(() => {
     if (org && myRole) buildHierarchyTree();
-  }, [org, myRole, childAccessMap]);
+  }, [org, myRole, buildHierarchyTree]);
 
   const autoExpandedOrgIdRef = useRef<string | null>(null);
 
@@ -363,6 +296,17 @@ export default function OrganizationDetailPage() {
   }, [org, hierarchyTree]);
 
   /* ─── Refresh helpers ─── */
+  /**
+   * A move rewrites the tree, not just this page. "Your organizations" reads
+   * from the shared context, which nothing here would otherwise invalidate, so
+   * it has to be told as well or it keeps serving the old hierarchy until the
+   * next full page load.
+   */
+  const handleMoved = useCallback(async () => {
+    await loadOrgData();
+    refreshMyOrganizations();
+  }, [loadOrgData, refreshMyOrganizations]);
+
   const refreshMembers = useCallback(async () => {
     if (!org) return;
     try {
@@ -551,15 +495,43 @@ export default function OrganizationDetailPage() {
 
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               <motion.div variants={fadeInUp} transition={transitionDefault} className="shrink-0">
-                <OrgAvatar
-                  name={org.displayName}
-                  avatar={org.avatar}
-                  avatarBgColor={org.avatarBgColor}
-                  avatarFgColor={org.avatarFgColor}
-                  size={80}
-                  square
-                  className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
-                />
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => setAvatarModalOpen(true)}
+                    title="Change the organization image"
+                    className="group relative block cursor-pointer"
+                  >
+                    <OrgAvatar
+                      name={org.displayName}
+                      avatar={org.avatar}
+                      avatarBgColor={org.avatarBgColor}
+                      avatarFgColor={org.avatarFgColor}
+                      size={80}
+                      square
+                      className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Iconify icon="mdi:camera-outline" width={22} className="text-white" />
+                    </span>
+                    {/* The dimmed overlay above only appears on hover, which leaves
+                        nothing to find for anyone who never thinks to point at the
+                        image. This badge is the standing affordance. */}
+                    <span className="absolute -right-1.5 -bottom-1.5 flex h-7 w-7 items-center justify-center rounded-full border border-tp-hairline bg-tp-canvas text-tp-slate shadow-elevation-2 transition-colors group-hover:border-tp-primary group-hover:bg-tp-primary group-hover:text-tp-on-primary">
+                      <Iconify icon="mdi:camera-outline" width={14} />
+                    </span>
+                  </button>
+                ) : (
+                  <OrgAvatar
+                    name={org.displayName}
+                    avatar={org.avatar}
+                    avatarBgColor={org.avatarBgColor}
+                    avatarFgColor={org.avatarFgColor}
+                    size={80}
+                    square
+                    className="ring-2 ring-white shadow-elevation-2 sm:h-20 sm:w-20"
+                  />
+                )}
               </motion.div>
 
               <div className="min-w-0 flex-1">
@@ -579,6 +551,7 @@ export default function OrganizationDetailPage() {
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-2 sm:ml-0">
+                    <ShareOrgMenu org={org} />
                     {canManage && (
                       <button
                         type="button"
@@ -799,6 +772,7 @@ export default function OrganizationDetailPage() {
               onToggle={handleTreeToggle}
               onNavigate={id => router.push(`/orgs/${id}`)}
               onCreateSubOrg={() => setCreateSubOrgModalOpen(true)}
+              onMoved={handleMoved}
             />
           )}
 
@@ -835,6 +809,28 @@ export default function OrganizationDetailPage() {
               setOrg(updated);
               setEditModalOpen(false);
             }}
+          />
+        )}
+        {avatarModalOpen && org && (
+          <OrgAvatarModal
+            org={org}
+            onClose={() => setAvatarModalOpen(false)}
+            onSaved={updated =>
+              // Only the avatar fields are taken from the response: the avatar
+              // endpoints return the organization on its own, without the child
+              // organizations this page loaded separately, and replacing the
+              // whole object would drop them until the next reload.
+              setOrg(current =>
+                current
+                  ? {
+                      ...current,
+                      avatar: updated.avatar,
+                      avatarBgColor: updated.avatarBgColor,
+                      avatarFgColor: updated.avatarFgColor,
+                    }
+                  : updated
+              )
+            }
           />
         )}
         {addMemberModalOpen && org && (

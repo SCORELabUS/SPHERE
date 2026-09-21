@@ -1,5 +1,6 @@
 import { check } from 'express-validator';
 import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper';
+import { isHexColor, isSelectableAvatarPath } from '../../config/defaultAvatars';
 
 const maxFileSize = 2000000; // around 2Mb
 
@@ -60,6 +61,24 @@ const update = [
       return checkFileMaxSize(req, 'avatar', maxFileSize);
     })
     .withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB'),
+];
+
+const updateAvatarColors = [
+  // An empty path means "use the initials", so the field is checked against the
+  // predefined list rather than merely being required to be a string: without
+  // that, a caller could point the image anywhere they liked.
+  check('avatarPath')
+    .optional({ values: 'null' })
+    .custom(isSelectableAvatarPath)
+    .withMessage('The avatarPath must be empty or one of the predefined avatars'),
+  check('avatarBgColor')
+    .optional({ values: 'null' })
+    .custom(isHexColor)
+    .withMessage('The avatarBgColor must be a hex colour, for example #023e8a'),
+  check('avatarFgColor')
+    .optional({ values: 'null' })
+    .custom(isHexColor)
+    .withMessage('The avatarFgColor must be a hex colour, for example #ffffff'),
 ];
 
 const addMember = [
@@ -154,4 +173,23 @@ const updateMemberRole = [
     .withMessage('The role must be one of: OWNER, ADMIN, MEMBER'),
 ];
 
-export { create, update, addMember, addMembersBulk, createChildrenBulk, updateMemberRole };
+const moveToParent = [
+  // `exists()` keeps its default of only treating `undefined` as missing, so an
+  // explicit null goes through: that is how an organization is moved to the root.
+  check('parentId')
+    .exists()
+    .withMessage('A parentId must be provided, using null to move the organization to the root')
+    .custom((value: unknown) => value === null || /^[a-f0-9]{24}$/.test(String(value)))
+    .withMessage('The parentId must be null or a valid MongoDB ObjectId'),
+];
+
+export {
+  create,
+  update,
+  updateAvatarColors,
+  addMember,
+  addMembersBulk,
+  createChildrenBulk,
+  moveToParent,
+  updateMemberRole,
+};

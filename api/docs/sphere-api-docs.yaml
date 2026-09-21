@@ -127,135 +127,6 @@ tags:
     description: Redis cache operations for temporary data storage
 
 paths:
-  /permalinks/{resourceType}/{resourceId}:
-    get:
-      summary: Resolve a permanent link
-      security: []
-      description: Public visitors can resolve public resources. Authenticated visitors require the existing resource permissions for private resources.
-      parameters:
-        - in: header
-          name: If-None-Match
-          schema: { type: string }
-          description: Previously received ETag; authorization and visibility are checked before returning 304.
-        - in: path
-          name: resourceType
-          required: true
-          schema:
-            type: string
-            enum: [pricing, collection]
-        - in: path
-          name: resourceId
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Available resource
-          headers:
-            ETag:
-              schema: { type: string }
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [location]
-                properties:
-                  location: { type: string, description: Current relative application route }
-        "503":
-          description: Resource temporarily unavailable
-        "404":
-          description: Resource not available
-        "304":
-          description: Unchanged public content
-  /public/pricings/{pricingId}:
-    get:
-      summary: Public pricing manifest; private versions are excluded before ordering
-      security: []
-      parameters:
-        - in: header
-          name: If-None-Match
-          schema: { type: string }
-          description: Previously received ETag; authorization and visibility are checked before returning 304.
-        - in: path
-          name: pricingId
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Available resource
-          headers:
-            ETag:
-              schema: { type: string }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PublicPricingManifest'
-        "503":
-          description: Resource temporarily unavailable
-        "404":
-          description: Resource not available
-        "304":
-          description: Unchanged public content
-  /public/pricings/{pricingId}/versions/{versionId}/yaml:
-    get:
-      summary: Download a currently public YAML snapshot
-      security: []
-      parameters:
-        - in: header
-          name: If-None-Match
-          schema: { type: string }
-          description: Previously received ETag; authorization and visibility are checked before returning 304.
-        - in: path
-          name: pricingId
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: versionId
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Available resource
-          headers:
-            ETag:
-              schema: { type: string }
-          content:
-            application/yaml:
-              schema:
-                type: string
-        "503":
-          description: Resource temporarily unavailable
-        "404":
-          description: Resource not available
-        "304":
-          description: Unchanged public content
-  /public/pricings/{pricingId}/download:
-    get:
-      summary: Download accessible pricing versions as a ZIP archive
-      description: Anonymous visitors receive public versions only. Authenticated visitors with permission for a private pricing receive all versions they can access.
-      security: []
-      parameters:
-        - in: header
-          name: Authorization
-          schema: { type: string }
-          description: Optional bearer token for private versions.
-        - in: path
-          name: pricingId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: ZIP archive containing YAML versions
-          content:
-            application/zip:
-              schema: { type: string, format: binary }
-        '404':
-          description: Pricing not found or not accessible
-        '503':
-          description: Archive could not be generated
   /healthcheck:
     get:
       summary: Service health check
@@ -2689,6 +2560,241 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/avatar:
+    post:
+      summary: Upload an organization image
+      description: |
+        Uploads a new image for the organization. Accepts JPEG, PNG and WebP, up to 2MB.
+
+        The stored file name is derived from the organization id and the validated MIME
+        type, never from the uploaded file name, because these files are served as static
+        content. Any image this organization previously uploaded is deleted; predefined
+        avatars, which are shared between organizations, are left in place.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can change the image of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG or WebP, max 2MB)
+                avatarBgColor:
+                  type: string
+                  description: Background colour (hex), kept for the initials fallback
+                  example: "#023e8a"
+                avatarFgColor:
+                  type: string
+                  description: Foreground colour (hex), kept for the initials fallback
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          description: No file uploaded, or the file exceeds 2MB or is not an accepted type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Remove the organization image
+      description: |
+        Clears the organization's image and its colours, reverting to the initials
+        placeholder. A file this organization had uploaded is deleted from disk.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can remove the image of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Image removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/avatar-colors:
+    put:
+      summary: Choose a predefined avatar and its colours
+      description: |
+        Sets the organization's image to one of the predefined avatars, or to none at
+        all, together with the colours it is drawn in. The counterpart of an upload: no
+        file changes hands, only a choice.
+
+        `avatarPath` must be empty — meaning "use the initials" — or one of the
+        predefined avatars under `/static/avatars/users/default`. Any other value is
+        rejected, so the image cannot be pointed at an arbitrary URL. A file this
+        organization had uploaded is deleted once it is no longer referenced.
+
+        **Authentication**: User token
+
+        **Permission**:
+        - **ADMIN** (global): Can change the avatar of any organization.
+        - **USER**: Must have the `OWNER` or `ADMIN` role in the organization.
+      tags:
+        - Organizations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                avatarPath:
+                  type: string
+                  nullable: true
+                  description: |
+                    Path of a predefined avatar, or an empty string to fall back to the
+                    organization's initials.
+                  example: "static/avatars/users/default/avatar-1.svg"
+                avatarBgColor:
+                  type: string
+                  description: Background colour (hex)
+                  example: "#023e8a"
+                avatarFgColor:
+                  type: string
+                  description: Icon or text colour (hex)
+                  example: "#ffffff"
+      responses:
+        '200':
+          description: Avatar updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Authentication required
+        '403':
+          description: The user is not an OWNER or ADMIN of the organization
+        '404':
+          description: Organization not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{organizationId}/hierarchy:
+    get:
+      summary: Get the whole branch an organization sits in
+      description: Returns the organization branch as a flat list, including an access flag for each node.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: The branch, flat
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, displayName, isPersonal, hasAccess]
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    displayName: { type: string }
+                    avatar: { type: string, nullable: true }
+                    isPersonal: { type: boolean }
+                    _parentId: { type: string, nullable: true }
+                    hasAccess: { type: boolean }
+        '401': { description: Authentication required }
+        '403': { description: The caller is not a member of the organization }
+        '404': { description: Organization not found }
+
+  /orgs/{organizationId}/parent:
+    put:
+      summary: Move an organization to another parent
+      description: Re-parents an organization, using null to move it to the root.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId]
+              properties:
+                parentId:
+                  type: string
+                  nullable: true
+                  pattern: '^[a-f0-9]{24}$'
+      responses:
+        '200':
+          description: Organization moved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '401': { description: Authentication required }
+        '403': { description: The user is not an OWNER of the organization or destination }
+        '404': { description: Organization or destination organization not found }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
   /orgs/{organizationId}/members:
     get:
       summary: List organization members
@@ -4820,26 +4926,6 @@ paths:
 
 components:
   schemas:
-    PublicPricingVersion:
-      type: object
-      required: [versionId, version, createdAt, contentHash]
-      properties:
-        versionId: { type: string, pattern: '^[a-f0-9]{24}$' }
-        version: { type: string }
-        createdAt: { type: string, format: date-time, description: Date supplied in the pricing YAML }
-        contentHash: { type: string, description: SHA-256 of canonical functional YAML excluding saasName }
-    PublicPricingManifest:
-      type: object
-      required: [pricingId, name, permanentUrl, latestVersionId, versions]
-      properties:
-        pricingId: { type: string }
-        name: { type: string }
-        permanentUrl: { type: string, format: uri }
-        latestVersionId: { type: string }
-        versions:
-          type: array
-          description: Public versions ordered by createdAt descending, then versionId descending.
-          items: { $ref: '#/components/schemas/PublicPricingVersion' }
 
     # ------------------------------
     # --          FIELDS          --
@@ -5714,8 +5800,25 @@ components:
         avatar:
           type: string
           nullable: true
-          description: URL to the organization's avatar image
+          description: |
+            URL to the organization's image: either an uploaded file under
+            `/static/avatars/orgs`, or one of the predefined avatars under
+            `/static/avatars/users/default`. `null` means the organization is drawn
+            with its initials.
           example: "https://sphere.score.us.es/static/avatars/orgs/org-avatar.png"
+        avatarBgColor:
+          type: string
+          nullable: true
+          description: |
+            Background colour the initials placeholder or a predefined avatar is drawn
+            over, as a hex value. Ignored when the image is an uploaded file.
+          example: "#023e8a"
+        avatarFgColor:
+          type: string
+          nullable: true
+          description: |
+            Colour of the initials, or of a predefined avatar's icon, as a hex value.
+          example: "#ffffff"
         _parentId:
           type: string
           nullable: true

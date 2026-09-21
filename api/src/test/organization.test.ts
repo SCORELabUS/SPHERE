@@ -719,6 +719,285 @@ describe('Organizations API integration', () => {
   });
 
   // =========================================================================
+  // PUT /orgs/:organizationId/parent
+  // =========================================================================
+  // ─────────────────────────────────────────────────────────────
+  // GET /orgs/:organizationId/hierarchy
+  // ─────────────────────────────────────────────────────────────
+  describe('GET /orgs/:organizationId/hierarchy', () => {
+    const hierarchy = (orgId: string, token: string | undefined) =>
+      request(app)
+        .get(BASE_PATH + '/orgs/' + orgId + '/hierarchy')
+        .set('Authorization', 'Bearer ' + token);
+
+    it('returns the whole branch in one response', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(child.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id).sort();
+      expect(ids).toEqual([root.id, child.id, grandchild.id].sort());
+    });
+
+    it('reaches the root of the branch even when asked about a leaf', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const sibling = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await hierarchy(grandchild.id, owner.token);
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((node: any) => node.id);
+      expect(ids).toContain(root.id);
+      expect(ids).toContain(sibling.id);
+    });
+
+    it('carries the parent of every node so the tree can be rebuilt', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id]._parentId).toBeNull();
+      expect(nodes[child.id]._parentId).toBe(root.id);
+    });
+
+    it('marks a node the caller manages from above as accessible', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await hierarchy(root.id, owner.token);
+
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[root.id].hasAccess).toBe(true);
+      expect(nodes[child.id].hasAccess).toBe(true);
+    });
+
+    it('lists a sibling branch the caller has no part in, but marks it closed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const mine = await createTestOrganization(owner.token, { _parentId: root.id });
+      const theirs = await createTestOrganization(owner.token, { _parentId: root.id });
+      await createMembership(outsider.id, mine.id, 'MEMBER');
+
+      const response = await hierarchy(mine.id, outsider.token);
+
+      expect(response.status).toBe(200);
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[mine.id].hasAccess).toBe(true);
+      expect(nodes[theirs.id].hasAccess).toBe(false);
+    });
+
+    it('returns 404 when the organization does not exist', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+
+      const response = await hierarchy('68050bd09890322c57842f6f', owner.token);
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('PUT /orgs/:organizationId/parent', () => {
+    it('moves an organization under another one the caller owns', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+      expect(response.body._parentId).toBe(destination.id);
+      expect(response.body.ancestors).toEqual([destination.id]);
+
+      const stored = await OrganizationMongoose.findById(moved.id).lean();
+      expect(stored?._parentId?.toString()).toBe(destination.id);
+      expect(stored?.ancestors?.map((id: any) => id.toString())).toEqual([destination.id]);
+    });
+
+    it('rewrites the ancestors of every organization below the moved one', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: moved.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+
+      const storedChild = await OrganizationMongoose.findById(child.id).lean();
+      expect(storedChild?.ancestors?.map((id: any) => id.toString())).toEqual([
+        destination.id,
+        moved.id,
+      ]);
+
+      const storedGrandchild = await OrganizationMongoose.findById(grandchild.id).lean();
+      expect(storedGrandchild?.ancestors?.map((id: any) => id.toString())).toEqual([
+        destination.id,
+        moved.id,
+        child.id,
+      ]);
+    });
+
+    it('moves an organization out to the root when parentId is null', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token, { _parentId: parent.id });
+      const child = await createTestOrganization(owner.token, { _parentId: moved.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body._parentId ?? null).toBeNull();
+      expect(response.body.ancestors).toEqual([]);
+
+      const storedChild = await OrganizationMongoose.findById(child.id).lean();
+      expect(storedChild?.ancestors?.map((id: any) => id.toString())).toEqual([moved.id]);
+    });
+
+    it('leaves memberships untouched, so a move grants nobody new access', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: destinationAdmin } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+      const moved = await createTestOrganization(owner.token);
+      await createMembership(destinationAdmin.id, destination.id, 'ADMIN');
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(200);
+
+      const membership = await OrganizationMembershipMongoose.findOne({
+        _userId: destinationAdmin.id,
+        _organizationId: moved.id,
+      }).lean();
+      expect(membership).toBeNull();
+    });
+
+    it('returns 403 when the caller does not own the destination', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: stranger } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(stranger.token);
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(403);
+
+      const stored = await OrganizationMongoose.findById(moved.id).lean();
+      expect(stored?._parentId ?? null).toBeNull();
+    });
+
+    it('returns 403 when the caller is only an ADMIN of the organization being moved', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: admin } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(admin.token);
+      const moved = await createTestOrganization(owner.token);
+      await createMembership(admin.id, moved.id, 'ADMIN');
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + admin.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('refuses to move an organization under one of its own descendants', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: parent.id });
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + parent.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: child.id });
+
+      expect(response.status).toBe(422);
+
+      const stored = await OrganizationMongoose.findById(parent.id).lean();
+      expect(stored?._parentId ?? null).toBeNull();
+    });
+
+    it('refuses to make an organization its own parent', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const organization = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + organization.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: organization.id });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('refuses to move a personal organization', async () => {
+      const { user: owner, organizationId: personalOrgId } = await createAndLoginUser('USER');
+      const destination = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + personalOrgId + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: destination.id });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 404 when the destination does not exist', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const moved = await createTestOrganization(owner.token);
+
+      const response = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: '507f1f77bcf86cd799439011' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('returns 422 when parentId is missing or malformed', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const moved = await createTestOrganization(owner.token);
+
+      const missing = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({});
+      expect(missing.status).toBe(422);
+
+      const malformed = await request(app)
+        .put(BASE_PATH + '/orgs/' + moved.id + '/parent')
+        .set('Authorization', 'Bearer ' + owner.token)
+        .send({ parentId: 'not-an-object-id' });
+      expect(malformed.status).toBe(422);
+    });
+  });
+
+  // =========================================================================
   // PUT /orgs/:organizationId
   // =========================================================================
   describe('PUT /orgs/:organizationId', () => {
@@ -949,6 +1228,337 @@ describe('Organizations API integration', () => {
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();
+    });
+  });
+
+  // =========================================================================
+  // Organization avatar: upload, predefined choice, removal
+  // =========================================================================
+  describe('POST /orgs/:organizationId/avatar', () => {
+    const sourcePng = () =>
+      path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png');
+
+    const makeTempImage = () => {
+      const tmp = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(sourcePng(), tmp);
+      return tmp;
+    };
+
+    const diskPathOf = (avatarUrl: string) =>
+      path.join('public', avatarUrl.replace(/^https?:\/\/[^/]+/, ''));
+
+    it('returns 200 and stores the image when the OWNER uploads one', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toMatch(/^https?:\/\/.+\/avatars\/orgs\//);
+
+      const stored = diskPathOf(response.body.avatar);
+      expect(fs.existsSync(stored)).toBe(true);
+      // The name carries the organization id, which is what lets a later change
+      // recognise this file as one it may delete.
+      expect(path.basename(stored).startsWith(`${organizationId}-`)).toBe(true);
+
+      const reread = await request(app)
+        .get(`${BASE_PATH}/orgs/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(reread.body.avatar).toBe(response.body.avatar);
+
+      fs.unlinkSync(stored);
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('stores the image under an extension taken from its type, not its name', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      // The stored file is served by express.static, so letting the caller's
+      // filename pick the extension would let a PNG come back as HTML.
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng, { filename: 'payload.html', contentType: 'image/png' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toMatch(/\.png$/);
+      expect(response.body.avatar).not.toContain('.html');
+
+      fs.unlinkSync(diskPathOf(response.body.avatar));
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('deletes the previous image when a second one is uploaded', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const firstTmp = makeTempImage();
+      const secondTmp = makeTempImage();
+
+      const first = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', firstTmp);
+      const firstOnDisk = diskPathOf(first.body.avatar);
+
+      const second = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', secondTmp);
+      const secondOnDisk = diskPathOf(second.body.avatar);
+
+      expect(second.status).toBe(200);
+      expect(secondOnDisk).not.toBe(firstOnDisk);
+      expect(fs.existsSync(firstOnDisk)).toBe(false);
+      expect(fs.existsSync(secondOnDisk)).toBe(true);
+
+      fs.unlinkSync(secondOnDisk);
+      fs.unlinkSync(firstTmp);
+      fs.unlinkSync(secondTmp);
+    });
+
+    it('leaves a shared predefined avatar alone when it is replaced', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      // A predefined avatar is referenced by every organization that picked it,
+      // so it must survive any one of them uploading an image instead.
+      const predefined = 'static/avatars/users/default/avatar-1.svg';
+      await OrganizationMongoose.updateOne(
+        { _id: organizationId },
+        { $set: { avatar: predefined } }
+      );
+      const tmpPng = makeTempImage();
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+
+      expect(response.status).toBe(200);
+      expect(fs.existsSync(path.join('public', predefined))).toBe(true);
+
+      fs.unlinkSync(diskPathOf(response.body.avatar));
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('returns 400 when the uploaded file is not an accepted image type', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpTxt = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.txt`);
+      fs.writeFileSync(tmpTxt, 'not an image');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpTxt);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
+
+      fs.unlinkSync(tmpTxt);
+    });
+
+    it('returns 400 when no file is attached', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
+    });
+
+    // Authorization is settled before the request body is read, so these two
+    // send no file: attaching one only races the rejection against the upload
+    // and resets the connection instead of returning the status under test.
+    it('returns 403 when a MEMBER tries to change the image', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 401 without a token', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app).post(`${BASE_PATH}/orgs/${organizationId}/avatar`);
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('PUT /orgs/:organizationId/avatar-colors', () => {
+    const PREDEFINED = 'static/avatars/users/default/avatar-3.svg';
+
+    it('returns 200 when the OWNER picks a predefined avatar and colours', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          avatarPath: PREDEFINED,
+          avatarBgColor: '#023e8a',
+          avatarFgColor: '#ffffff',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toContain('avatar-3.svg');
+      expect(response.body.avatarBgColor).toBe('#023e8a');
+      expect(response.body.avatarFgColor).toBe('#ffffff');
+    });
+
+    it('returns 200 and clears the image when the path is empty', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: PREDEFINED, avatarBgColor: '#1f1f1f', avatarFgColor: '#ffd900' });
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: '', avatarBgColor: '#1f1f1f', avatarFgColor: '#ffd900' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+      // The colours stay: they are what the initials placeholder is drawn with.
+      expect(response.body.avatarBgColor).toBe('#1f1f1f');
+      expect(response.body.avatarFgColor).toBe('#ffd900');
+    });
+
+    it('deletes a previously uploaded file when a predefined avatar replaces it', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(
+        path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png'),
+        tmpPng
+      );
+      const uploaded = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+      const onDisk = path.join(
+        'public',
+        uploaded.body.avatar.replace(/^https?:\/\/[^/]+/, '')
+      );
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: PREDEFINED, avatarBgColor: '#023e8a', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(200);
+      expect(fs.existsSync(onDisk)).toBe(false);
+
+      fs.unlinkSync(tmpPng);
+    });
+
+    it('returns 422 when the avatar path is not one of the predefined avatars', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          avatarPath: 'https://example.com/tracker.png',
+          avatarBgColor: '#023e8a',
+          avatarFgColor: '#ffffff',
+        });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 422 when a colour is not a hex value', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ avatarPath: '', avatarBgColor: 'red', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('returns 403 when a MEMBER tries to change the avatar', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/avatar-colors`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .send({ avatarPath: '', avatarBgColor: '#023e8a', avatarFgColor: '#ffffff' });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('DELETE /orgs/:organizationId/avatar', () => {
+    it('returns 200, clears the image and its colours, and deletes the file', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const tmpPng = path.join(os.tmpdir(), `org-avatar-${randomSuffix()}.png`);
+      fs.copyFileSync(
+        path.resolve('public', 'static', 'avatars', 'users', 'default-avatar.png'),
+        tmpPng
+      );
+      const uploaded = await request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .attach('avatar', tmpPng);
+      const onDisk = path.join(
+        'public',
+        uploaded.body.avatar.replace(/^https?:\/\/[^/]+/, '')
+      );
+      fs.unlinkSync(tmpPng);
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+      expect(response.body.avatarBgColor).toBeNull();
+      expect(response.body.avatarFgColor).toBeNull();
+      expect(fs.existsSync(onDisk)).toBe(false);
+    });
+
+    it('returns 200 when the organization has no image to begin with', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeNull();
+    });
+
+    it('returns 403 when a MEMBER tries to remove the image', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${organizationId}/avatar`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 401 without a token', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app).delete(`${BASE_PATH}/orgs/${organizationId}/avatar`);
+
+      expect(response.status).toBe(401);
     });
   });
 
