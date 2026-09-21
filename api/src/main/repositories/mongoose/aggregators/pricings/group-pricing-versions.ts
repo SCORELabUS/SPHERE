@@ -2,11 +2,11 @@ import { PipelineStage } from "mongoose";
 
 export const latestPricingsByNameAggregator: PipelineStage = {
   $group: {
-    _id: {
+    _id: { $ifNull: ['$pricingId', {
       name: '$name',
       _organizationId: '$_organizationId',
       _collectionId: '$_collectionId',
-    },
+    }] },
     latestPricing: {
       $first: '$$ROOT',
     },

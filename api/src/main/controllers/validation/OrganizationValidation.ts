@@ -4,6 +4,7 @@ import {
   SINGLE_OWNER_NOTE,
 } from '../../types/config/permissions';
 import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper';
+import { isHexColor, isSelectableAvatarPath } from '../../config/defaultAvatars';
 
 const maxFileSize = 2000000; // around 2Mb
 
@@ -64,6 +65,24 @@ const update = [
       return checkFileMaxSize(req, 'avatar', maxFileSize);
     })
     .withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB'),
+];
+
+const updateAvatarColors = [
+  // An empty path means "use the initials", so the field is checked against the
+  // predefined list rather than merely being required to be a string: without
+  // that, a caller could point the image anywhere they liked.
+  check('avatarPath')
+    .optional({ values: 'null' })
+    .custom(isSelectableAvatarPath)
+    .withMessage('The avatarPath must be empty or one of the predefined avatars'),
+  check('avatarBgColor')
+    .optional({ values: 'null' })
+    .custom(isHexColor)
+    .withMessage('The avatarBgColor must be a hex colour, for example #023e8a'),
+  check('avatarFgColor')
+    .optional({ values: 'null' })
+    .custom(isHexColor)
+    .withMessage('The avatarFgColor must be a hex colour, for example #ffffff'),
 ];
 
 const addMember = [
@@ -179,6 +198,7 @@ const transferOwnership = [
 export {
   create,
   update,
+  updateAvatarColors,
   addMember,
   addMembersBulk,
   createChildrenBulk,

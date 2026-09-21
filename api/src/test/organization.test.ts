@@ -958,6 +958,44 @@ describe('Organizations API integration', () => {
     });
   });
 
+  describe('GET /orgs/:organizationId/hierarchy', () => {
+    it('returns the entire branch, including siblings and descendants', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const sibling = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await request(app)
+        .get(BASE_PATH + '/orgs/' + child.id + '/hierarchy')
+        .set('Authorization', 'Bearer ' + owner.token);
+
+      expect(response.status).toBe(200);
+      expect(response.body.map((node: any) => node.id).sort()).toEqual(
+        [root.id, child.id, sibling.id, grandchild.id].sort()
+      );
+      expect(response.body.every((node: any) => node.hasAccess)).toBe(true);
+    });
+
+    it('shows inaccessible sibling branches without granting access', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const mine = await createTestOrganization(owner.token, { _parentId: root.id });
+      const theirs = await createTestOrganization(owner.token, { _parentId: root.id });
+      await createMembership(outsider.id, mine.id, 'MEMBER');
+
+      const response = await request(app)
+        .get(BASE_PATH + '/orgs/' + mine.id + '/hierarchy')
+        .set('Authorization', 'Bearer ' + outsider.token);
+
+      expect(response.status).toBe(200);
+      const nodes = Object.fromEntries(response.body.map((node: any) => [node.id, node]));
+      expect(nodes[mine.id].hasAccess).toBe(true);
+      expect(nodes[theirs.id].hasAccess).toBe(false);
+    });
+  });
+
   describe('PUT /orgs/:organizationId/parent', () => {
     it('moves an organization under another one the caller owns', async () => {
       const { user: owner } = await createAndLoginUser('USER');

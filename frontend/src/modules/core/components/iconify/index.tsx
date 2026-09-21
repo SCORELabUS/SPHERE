@@ -30,6 +30,7 @@ import {
     MdAdd,
     MdAddCircleOutline,
     MdEdit,
+    MdPhotoCamera,
     MdSend,
     MdVerifiedUser,
     MdSecurity,
@@ -42,8 +43,9 @@ import {
     MdOutlineRemoveRedEye,
     MdOutlineShield,
     MdNorthWest,
+    MdMailOutline,
 } from 'react-icons/md';
-import { FaCrown } from 'react-icons/fa';
+import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
 import { IconType } from 'react-icons';
 
 const iconMap: Record<string, IconType> = {
@@ -65,6 +67,10 @@ const iconMap: Record<string, IconType> = {
     'mdi:close': MdClose,
     'mdi:content-copy': MdContentCopy,
     'mdi:crown-outline': FaCrown,
+    'mdi:email-outline': MdMailOutline,
+    'mdi:microsoft-teams': FaMicrosoft,
+    'mdi:share-variant': FaShareAlt,
+    'mdi:whatsapp': FaWhatsapp,
     'mdi:domain': MdDomain,
     'mdi:folder-off-outline': MdFolderOff,
     'mdi:graph-outline': MdAccountTree,
@@ -79,6 +85,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:plus': MdAdd,
     'mdi:plus-circle-outline': MdAddCircleOutline,
     'mdi:pencil-outline': MdEdit,
+    'mdi:camera-outline': MdPhotoCamera,
     'mdi:send': MdSend,
     'mdi:shield-check-outline': MdVerifiedUser,
     'mdi:shield-lock-outline': MdSecurity,

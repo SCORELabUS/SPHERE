@@ -1,3 +1,4 @@
+import PermanentLinkPage from '../modules/pricing/pages/permalink';
 import { Navigate, Outlet, useRoutes } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import LoadingView from '../modules/core/pages/loading';
@@ -94,6 +95,8 @@ export default function Router() {
         </AppLayout>
       ),
       children: [
+        { element: <PermanentLinkPage kind="pricing" />, path: '/p/:id' },
+        { element: <PermanentLinkPage kind="collection" />, path: '/c/:id' },
         { element: <AuthenticationPage />, path: '/authentication' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
         { element: <EmailVerificationPage />, path: '/verify-email' },

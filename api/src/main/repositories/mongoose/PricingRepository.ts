@@ -1,3 +1,4 @@
+import PricingIdentity from './models/PricingIdentityMongoose';
 import RepositoryBase from '../RepositoryBase';
 import PricingMongoose from './models/PricingMongoose';
 import { PricingAnalytics } from '../../types/database/Pricing';
@@ -212,6 +213,15 @@ class PricingRepository extends RepositoryBase {
       }
     });
 
+    for (const item of data) {
+      if (!item.pricingId) {
+        const locator = { slug: item.slug, _organizationId: item._organizationId, _collectionId: item._collectionId ?? null, deleted: false };
+        const identity = await PricingIdentity.findOneAndUpdate(locator,
+          { $setOnInsert: { ...locator, name: item.name } }, { upsert: true, new: true });
+        item.pricingId = identity!._id;
+      }
+    }
+
     return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
   }
 
@@ -240,25 +250,36 @@ class PricingRepository extends RepositoryBase {
     return result.modifiedCount === pricingsToUpdate.length;
   }
 
-  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        slug: pricingSlug,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-      },
-      {
-        $set: { _collectionId: collectionId },
+  private async familyId(slug: string, organizationId: string, collectionId?: string | null) {
+    const families = await PricingIdentity.find({ slug, _organizationId: organizationId, deleted: false,
+      ...(collectionId !== undefined ? { _collectionId: collectionId } : {}) }).select('_id').lean();
+    if (families.length !== 1) throw new Error(families.length ? 'CONFLICT: Ambiguous pricing family' : 'NOT FOUND: Pricing identity');
+    return families[0]._id;
+  }
+
+  private async moveFamilies(ids: mongoose.Types.ObjectId[], collectionId: string | null) {
+    const families = await PricingIdentity.find({ _id: { $in: ids } }).lean();
+    const destinations = new Set<string>();
+    for (const family of families) {
+      const destination = `${family._organizationId}:${family.slug}`;
+      if (destinations.has(destination) || await PricingIdentity.exists({ _id: { $ne: family._id },
+        _organizationId: family._organizationId, slug: family.slug, _collectionId: collectionId, deleted: false })) {
+        throw new Error('CONFLICT: Moving these pricings would merge separate permanent identities');
       }
-    );
+      destinations.add(destination);
+    }
+    return PricingMongoose.updateMany({ pricingId: { $in: ids } }, collectionId
+      ? { $set: { _collectionId: collectionId } } : { $unset: { _collectionId: 1 } });
+  }
+
+  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string) {
+    return this.moveFamilies([await this.familyId(pricingSlug, organizationId)], collectionId);
   }
 
   async addPricingsToCollection(collectionId: string, organizationId: string, pricings: string[]) {
-    const result = await PricingMongoose.updateMany(
-      { slug: { $in: pricings }, _organizationId: new mongoose.Types.ObjectId(organizationId) },
-      { $set: { _collectionId: collectionId } }
-    );
-
-    return result.modifiedCount === pricings.length;
+    const ids = await Promise.all(pricings.map(slug => this.familyId(slug, organizationId)));
+    await this.moveFamilies(ids, collectionId);
+    return true;
   }
 
   async update(id: string, data: any) {
@@ -273,49 +294,19 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject();
   }
 
-  async removePricingFromCollection(pricingSlug: string, organizationId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        slug: pricingSlug,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-      },
-      {
-        $unset: { _collectionId: 1 },
-      }
-    );
+  async removePricingFromCollection(pricingSlug: string, organizationId: string, collectionId?: string) {
+    return this.moveFamilies([await this.familyId(pricingSlug, organizationId, collectionId)], null);
   }
 
   async removePricingsFromCollection(collectionId: string) {
-    return await PricingMongoose.updateMany(
-      {
-        _collectionId: collectionId,
-      },
-      {
-        $unset: { _collectionId: 1 },
-      }
-    );
+    const families = await PricingIdentity.find({ _collectionId: collectionId, deleted: false }).select('_id').lean();
+    return this.moveFamilies(families.map(family => family._id), null);
   }
 
-  async destroyBySlugOrganizationAndCollectionId(
-    slug: string,
-    organizationId: string,
-    collectionId?: string
-  ) {
-    if (collectionId) {
-      const result = await PricingMongoose.deleteMany({
-        slug: slug,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-        _collectionId: collectionId,
-      });
-      return result.deletedCount >= 1;
-    } else {
-      const result = await PricingMongoose.deleteMany({
-        slug: slug,
-        _organizationId: new mongoose.Types.ObjectId(organizationId),
-        _collectionId: { $exists: false },
-      });
-      return result.deletedCount >= 1;
-    }
+  async destroyBySlugOrganizationAndCollectionId(slug: string, organizationId: string, collectionId?: string) {
+    const pricingId = await this.familyId(slug, organizationId, collectionId ?? null);
+    const result = await PricingMongoose.deleteMany({ pricingId });
+    return result.deletedCount >= 1;
   }
 
   async destroyVersionBySlugAndOrganization(
@@ -325,8 +316,7 @@ class PricingRepository extends RepositoryBase {
     ...args: any
   ) {
     const result = await PricingMongoose.deleteOne({
-      slug: slug,
-      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      pricingId: await this.familyId(slug, organizationId),
       version: version,
     });
 

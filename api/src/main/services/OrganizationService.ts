@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import container from '../config/container';
 import OrganizationRepository from '../repositories/mongoose/OrganizationRepository';
 import OrganizationMembershipRepository from '../repositories/mongoose/OrganizationMembershipRepository';
@@ -18,8 +20,41 @@ import {
 } from '../types/models/Organization';
 import { LeanUser } from '../types/models/User';
 import { processFileUris } from './FileService';
+import { isSelectableAvatarPath } from '../config/defaultAvatars';
 import { generateSlug } from '../utils/slug-manager';
 import { OrganizationIndexByUserOptions } from '../types/services/Organization';
+
+/** Default colours for an organization that has never picked any. */
+const DEFAULT_AVATAR_BG_COLOR = '#023e8a';
+const DEFAULT_AVATAR_FG_COLOR = '#ffffff';
+
+/** Where uploaded organization images are written, relative to the process cwd. */
+const orgAvatarFolder = () =>
+  (process.env.SERVER_STATICS_FOLDER || 'public/') +
+  (process.env.ORG_AVATARS_FOLDER || 'static/avatars/orgs');
+
+/**
+ * Deletes an image this application uploaded for one organization.
+ *
+ * Uploads are named `<organizationId>-<timestamp>.<ext>`, and only a file
+ * matching that shape for this organization is removed. That is what keeps a
+ * predefined avatar — one file shared by every organization that picked it —
+ * from being deleted the moment any one of them changes its mind, and the same
+ * for a seeded default. Failure is ignored: the database has already stopped
+ * pointing at the file, which is what mattered.
+ */
+function deleteOwnedAvatarFile(storedPath: unknown, organizationId: string) {
+  if (typeof storedPath !== 'string' || !storedPath) return;
+
+  const filename = path.basename(storedPath);
+  if (!filename.startsWith(`${organizationId}-`)) return;
+
+  try {
+    fs.unlinkSync(path.join(orgAvatarFolder(), filename));
+  } catch {
+    // Already gone, or never written where we expect.
+  }
+}
 
 class OrganizationService {
   private organizationRepository: OrganizationRepository;
@@ -91,6 +126,55 @@ class OrganizationService {
     }
     processFileUris(organization, ['avatar']);
     return organization;
+  }
+
+  /**
+   * The whole branch an organization sits in — its ancestors, its siblings and
+   * everything below it — flat, with each node marked according to whether the
+   * caller may open it.
+   *
+   * The hierarchy view needs all of this at once. Walking it from the client
+   * costs a request per node, several times over, so it is answered here in two
+   * queries: one for the branch, one for the caller's memberships.
+   */
+  async getHierarchy(organizationId: string, user: { id: string; role?: string }) {
+    const organization: any = await this.organizationRepository.findById(organizationId);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    const ancestors = (organization.ancestors ?? []).map((id: any) => id.toString());
+    const rootId = ancestors[0] ?? organizationId;
+
+    const [branch, roles] = await Promise.all([
+      this.organizationRepository.findBranch(rootId),
+      // A platform administrator answers for every organization, so there is no
+      // point asking which ones they belong to.
+      user.role === 'ADMIN'
+        ? Promise.resolve(null)
+        : this.organizationMembershipRepository.findRolesByUserId(user.id),
+    ]);
+
+    // Management cascades down the tree, so a node is open to the caller when
+    // they hold it directly or manage anything above it.
+    const canOpen = (node: any) => {
+      if (roles === null) {
+        return true;
+      }
+      if (roles.has(node.id)) {
+        return true;
+      }
+      return node.ancestors.some((ancestorId: string) => {
+        const role = roles.get(ancestorId);
+        return role === 'OWNER' || role === 'ADMIN';
+      });
+    };
+
+    return branch.map((node: any) => {
+      processFileUris(node, ['avatar']);
+      const { ancestors: _ancestors, ...rest } = node;
+      return { ...rest, hasAccess: canOpen(node) };
+    });
   }
 
   async createWithOwner(data: any, userId: string) {
@@ -306,6 +390,76 @@ class OrganizationService {
     }
     processFileUris(organization, ['avatar']);
     return organization;
+  }
+
+  /**
+  * Sets the organization's image and the colours it is drawn with.
+   *
+   * `avatarPath` is either an uploaded file, one of the predefined avatars, or
+   * empty to fall back to the organization's initials. Uploads are checked by
+   * the route that wrote them; anything else has to be a path from the
+   * predefined list, so a caller cannot point the image at a URL of their own.
+   *
+   * A previously uploaded file is deleted once it is no longer referenced.
+   */
+  async updateAvatar(
+    organizationId: string,
+    data: {
+      avatarPath?: string | null;
+      avatarBgColor?: string | null;
+      avatarFgColor?: string | null;
+      isUpload?: boolean;
+    }
+  ) {
+    const existing: any = await this.organizationRepository.findById(organizationId);
+    if (!existing) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    const avatarPath = data.avatarPath ? data.avatarPath : null;
+    if (!data.isUpload && !isSelectableAvatarPath(data.avatarPath)) {
+      throw new Error('INVALID DATA: The avatar must be one of the predefined avatars');
+    }
+
+    const updated = await this.organizationRepository.update(organizationId, {
+      avatar: avatarPath,
+      avatarBgColor: data.avatarBgColor ?? DEFAULT_AVATAR_BG_COLOR,
+      avatarFgColor: data.avatarFgColor ?? DEFAULT_AVATAR_FG_COLOR,
+    });
+    if (!updated) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    // Two uploads inside the same millisecond would produce the same name, and
+    // deleting "the old one" would then delete the file just written.
+    if (existing.avatar !== avatarPath) {
+      deleteOwnedAvatarFile(existing.avatar, organizationId);
+    }
+
+    processFileUris(updated, ['avatar']);
+    return updated;
+  }
+
+  /** Clears the image and its colours, leaving the initials placeholder. */
+  async removeAvatar(organizationId: string) {
+    const existing: any = await this.organizationRepository.findById(organizationId);
+    if (!existing) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    const updated = await this.organizationRepository.update(organizationId, {
+      avatar: null,
+      avatarBgColor: null,
+      avatarFgColor: null,
+    });
+    if (!updated) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+
+    deleteOwnedAvatarFile(existing.avatar, organizationId);
+
+    processFileUris(updated, ['avatar']);
+    return updated;
   }
 
   /**

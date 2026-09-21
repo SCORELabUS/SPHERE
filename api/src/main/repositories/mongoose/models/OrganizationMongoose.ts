@@ -6,6 +6,8 @@ const organizationSchema = new Schema(
     displayName: { type: String, required: true },
     description: { type: String, required: false, default: null },
     avatar: { type: String, required: false, default: null },
+    avatarBgColor: { type: String, required: false, default: null },
+    avatarFgColor: { type: String, required: false, default: null },
     _parentId: {
       type: Schema.Types.ObjectId,
       ref: 'Organization',

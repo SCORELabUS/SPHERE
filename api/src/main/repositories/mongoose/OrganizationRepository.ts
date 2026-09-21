@@ -107,6 +107,35 @@ class OrganizationRepository extends RepositoryBase {
     }));
   }
 
+  /**
+   * Every organization in a branch: the root itself and everything below it, at
+   * any depth.
+   *
+   * The `ancestors` array carries the whole chain, so one indexed query returns
+   * the tree a page needs — the alternative is a request per node, which is
+   * what this exists to replace.
+   */
+  async findBranch(rootId: string): Promise<any[]> {
+    const rootObjectId = new mongoose.Types.ObjectId(rootId);
+
+    const branch = await OrganizationMongoose.find({
+      $or: [{ _id: rootObjectId }, { ancestors: rootObjectId }],
+    })
+      .select('name displayName avatar isPersonal _parentId ancestors')
+      .sort({ displayName: 1 })
+      .lean();
+
+    return branch.map((organization: any) => ({
+      id: organization._id.toString(),
+      name: organization.name,
+      displayName: organization.displayName,
+      avatar: organization.avatar ?? null,
+      isPersonal: organization.isPersonal ?? false,
+      _parentId: organization._parentId ? organization._parentId.toString() : null,
+      ancestors: (organization.ancestors ?? []).map((id: any) => id.toString()),
+    }));
+  }
+
   /** Rewrites the ancestor chains of many organizations in a single round trip. */
   async updateAncestorsBulk(updates: Array<{ id: string; ancestors: string[] }>): Promise<void> {
     if (updates.length === 0) {

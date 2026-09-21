@@ -33,6 +33,18 @@ export interface Organization {
   createdAt?: string;
 }
 
+/** One organization of a branch, as returned flat by the hierarchy endpoint. */
+export interface OrgHierarchyNode {
+  id: string;
+  name: string;
+  displayName: string;
+  avatar: string | null;
+  isPersonal: boolean;
+  _parentId: string | null;
+  /** Whether the viewer may open this organization. */
+  hasAccess: boolean;
+}
+
 export interface OrgMemberWithUser {
   id: string;
   role: OrgRole;
@@ -163,6 +175,63 @@ export function useOrganizationsApi() {
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to update organization'));
+    return body as Organization;
+  }, [fetchWithInterceptor, token]);
+
+  /**
+   * Uploads a new image for the organization.
+   *
+   * Sent as multipart form data, so `Content-Type` is deliberately left off:
+   * the browser has to set it itself to add the multipart boundary, and naming
+   * it here would produce a body the server cannot parse.
+   */
+  const uploadOrgAvatar = useCallback(async (
+    orgId: string,
+    file: File,
+    colors?: { avatarBgColor?: string; avatarFgColor?: string }
+  ) => {
+    const body = new FormData();
+    body.append('avatar', file);
+    if (colors?.avatarBgColor) body.append('avatarBgColor', colors.avatarBgColor);
+    if (colors?.avatarFgColor) body.append('avatarFgColor', colors.avatarFgColor);
+
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, payload, 'Failed to upload image'));
+    return payload as Organization;
+  }, [fetchWithInterceptor, token]);
+
+  /**
+   * Picks a predefined avatar and the colours it is drawn in. An empty
+   * `avatarPath` falls back to the organization's initials.
+   */
+  const updateOrgAvatarColors = useCallback(async (orgId: string, payload: {
+    avatarPath: string;
+    avatarBgColor: string;
+    avatarFgColor: string;
+  }) => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/avatar-colors`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to save the avatar'));
+    return body as Organization;
+  }, [fetchWithInterceptor, token]);
+
+  /** Clears the image and its colours, leaving the initials placeholder. */
+  const removeOrgAvatar = useCallback(async (orgId: string) => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/avatar`, {
+      method: 'DELETE',
+      headers,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to remove image'));
     return body as Organization;
   }, [fetchWithInterceptor, token]);
 
@@ -303,6 +372,16 @@ export function useOrganizationsApi() {
     return body;
   }, [fetchWithInterceptor, token]);
 
+  /** The organization's whole branch, flat, in one request. */
+  const getOrgHierarchy = useCallback(async (orgId: string): Promise<OrgHierarchyNode[]> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/hierarchy`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to fetch organization hierarchy');
+    return response.json();
+  }, [fetchWithInterceptor, token]);
+
   const getOrgChildren = useCallback(async (orgId: string): Promise<Organization[]> => {
     const org = await getOrganization(orgId);
     const children = await Promise.all(
@@ -427,6 +506,9 @@ export function useOrganizationsApi() {
     getOrganization,
     createOrganization,
     updateOrganization,
+    uploadOrgAvatar,
+    updateOrgAvatarColors,
+    removeOrgAvatar,
     moveOrganization,
     deleteOrganization,
     getOrgMembers,
@@ -440,6 +522,7 @@ export function useOrganizationsApi() {
     previewInvitation,
     joinViaInvitation,
     lookupUserByUsername,
+    getOrgHierarchy,
     getOrgChildren,
     getOrgPricings,
     getOrgCollections,

@@ -14,6 +14,8 @@ export interface LeanOrganization {
   displayName: string;
   description: string | null;
   avatar: string;
+  avatarBgColor?: string | null;
+  avatarFgColor?: string | null;
   _parentId: mongoose.Types.ObjectId | null;
   ancestors: string[];
   subOrganizations?: LeanOrganization[];
