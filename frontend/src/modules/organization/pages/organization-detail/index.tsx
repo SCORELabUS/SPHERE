@@ -297,12 +297,12 @@ export default function OrganizationDetailPage() {
 
   /* ─── Refresh helpers ─── */
   /**
-   * A move rewrites the tree, not just this page. "Your organizations" reads
-   * from the shared context, which nothing here would otherwise invalidate, so
-   * it has to be told as well or it keeps serving the old hierarchy until the
-   * next full page load.
+   * A move or an ownership handover rewrites more than this page. "Your
+   * organizations" reads from the shared context, which nothing here would
+   * otherwise invalidate, so it has to be told as well or it keeps serving the
+   * old hierarchy and the old roles until the next full page load.
    */
-  const handleMoved = useCallback(async () => {
+  const handleOrgChanged = useCallback(async () => {
     await loadOrgData();
     refreshMyOrganizations();
   }, [loadOrgData, refreshMyOrganizations]);
@@ -716,6 +716,7 @@ export default function OrganizationDetailPage() {
               currentUserId={authUser.user?.id}
               managerRole={myRole}
               onRefresh={refreshMembers}
+              onOwnershipTransferred={handleOrgChanged}
               onAddMember={() => setAddMemberModalOpen(true)}
               onLeave={() => router.push('/')}
               isPublicView={isPublicView}
@@ -772,7 +773,7 @@ export default function OrganizationDetailPage() {
               onToggle={handleTreeToggle}
               onNavigate={id => router.push(`/orgs/${id}`)}
               onCreateSubOrg={() => setCreateSubOrgModalOpen(true)}
-              onMoved={handleMoved}
+              onMoved={handleOrgChanged}
             />
           )}
 
@@ -790,7 +791,6 @@ export default function OrganizationDetailPage() {
                   parentOrgId={org.id}
                   organizations={org.subOrganizations ?? []}
                   currentUserId={authUser.user?.id}
-                  parentManagerRole={myRole}
                   onNavigate={id => router.push(`/orgs/${id}`)}
                 />
               )}

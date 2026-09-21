@@ -2734,6 +2734,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /orgs/{organizationId}/owner:
+    put:
+      summary: Transfer organization ownership
+      description: Transfers ownership to an existing member and demotes prior owners to ADMIN across the organization branch.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  pattern: '^[a-f0-9]{24}$'
+      responses:
+        '200':
+          description: Ownership transferred
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrganizationMember' }
+        '401': { description: Authentication required }
+        '403': { description: The caller is not an OWNER of the organization }
+        '404': { description: Organization not found, or recipient is not a member }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
   /orgs/{organizationId}/hierarchy:
     get:
       summary: Get the whole branch an organization sits in

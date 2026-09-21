@@ -291,6 +291,17 @@ export function useOrganizationsApi() {
     return body;
   }, [fetchWithInterceptor, token]);
 
+  const transferOwnership = useCallback(async (orgId: string, userId: string): Promise<OrgMemberWithUser[]> => {
+    const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/owner`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ userId }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(extractErrorMessage(response, body, 'Failed to transfer ownership'));
+    return body as OrgMemberWithUser[];
+  }, [fetchWithInterceptor, token]);
+
   const removeMember = useCallback(async (orgId: string, userId: string) => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/members/${userId}`, {
       method: 'DELETE',
@@ -503,6 +514,7 @@ export function useOrganizationsApi() {
     getOrgMembers,
     addMember,
     updateMemberRole,
+    transferOwnership,
     removeMember,
     listInvitations,
     createInvitation,
