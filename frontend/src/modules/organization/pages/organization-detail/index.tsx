@@ -40,6 +40,7 @@ import PricingsTab from './components/PricingsTab';
 import CollectionsTab from './components/CollectionsTab';
 import HierarchyTab from './components/HierarchyTab';
 import ChildRolesManager from './components/ChildRolesManager';
+import ShareOrgMenu from './components/ShareOrgMenu';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -520,6 +521,7 @@ export default function OrganizationDetailPage() {
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-2 sm:ml-0">
+                    <ShareOrgMenu org={org} />
                     {canManage && (
                       <button
                         type="button"
