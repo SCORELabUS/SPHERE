@@ -31,6 +31,15 @@ const update = [
     .optional()
     .isBoolean()
     .withMessage('The private field must be boolean'),
+  check('visibilityScope')
+    .optional()
+    .isIn(['all', 'current'])
+    .withMessage('visibilityScope must be either all or current'),
+  check('version')
+    .optional()
+    .isString()
+    .withMessage('version must be a string')
+    .trim(),
   check('_collectionId')
     .optional()
     .isString()

@@ -129,15 +129,51 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
   ) {
-    if (reqUser) {
-      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      queryParams.includePrivate = reqUser.role === 'ADMIN' || role !== null;
-    }
-
     const pricing: { name: string; slug: string; versions: PricingModel[] } | null =
-      await this.pricingRepository.findOne(slug, organizationId, queryParams);
+      await this.pricingRepository.findOne(slug, organizationId, {
+        ...queryParams,
+        // Fetch the versions once, then apply the GET policy below. This keeps
+        // public versions visible to everyone while admitting private versions
+        // only when their pricing/collection GET permission allows it.
+        includePrivate: true,
+      });
 
     if (!pricing) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
+    if (reqUser) {
+      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+      const batchCtx = await this.permissionService.buildBatchContext(
+        reqUser.id,
+        organizationId,
+        orgRole,
+        reqUser.role === 'ADMIN'
+      );
+      const collectionSlug = (pricing as any).collection?.slug;
+
+      pricing.versions = pricing.versions.filter((version: any) =>
+        this.permissionEngine.evaluate({
+          userId: reqUser.id,
+          organizationId,
+          entityType: 'pricing',
+          entitySlug: slug,
+          action: 'GET',
+          isPrivate: version.private,
+          userOrgRole: orgRole,
+          isGlobalAdmin: reqUser.role === 'ADMIN',
+          entityPermissions: batchCtx.entityPermissions.get(`pricing:${slug}`),
+          collectionSlug,
+          collectionPermissions: collectionSlug
+            ? batchCtx.collectionPermissions.get(collectionSlug)
+            : undefined,
+        }).allowed
+      );
+    } else {
+      pricing.versions = pricing.versions.filter((version: any) => !version.private);
+    }
+
+    if (pricing.versions.length === 0) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
@@ -521,6 +557,17 @@ class PricingService {
     data: any,
     queryParams: { collectionSlug?: string; organizationId?: string } = {}
   ) {
+    const { visibilityScope, version: versionToUpdate, ...updateData } = data;
+    if (visibilityScope !== undefined && visibilityScope !== 'all' && visibilityScope !== 'current') {
+      throw new Error('INVALID DATA: visibilityScope must be either all or current');
+    }
+    if (visibilityScope === 'current' && !Object.prototype.hasOwnProperty.call(updateData, 'private')) {
+      throw new Error('INVALID DATA: visibilityScope current can only be used when changing private');
+    }
+    if (visibilityScope === 'current' && !versionToUpdate) {
+      throw new Error('INVALID DATA: version is required when visibilityScope is current');
+    }
+
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
@@ -558,18 +605,26 @@ class PricingService {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
     }
 
-    if (data.name) {
-      const baseSlug = generateSlug(data.name);
-      data.slug = await deduplicateSlug(baseSlug, async (slug) => {
+    if (updateData.name) {
+      const baseSlug = generateSlug(updateData.name);
+      updateData.slug = await deduplicateSlug(baseSlug, async (slug) => {
         return this.pricingRepository.findExistingSlug(slug, effectiveOrgId);
       });
     }
 
-    for (const pricingVersion of pricing.versions) {
-      await this.pricingRepository.update(pricingVersion.id, data);
+    const versionsToUpdate = visibilityScope === 'current'
+      ? pricing.versions.filter((pricingVersion: any) => pricingVersion.version === versionToUpdate)
+      : pricing.versions;
+
+    if (versionsToUpdate.length === 0) {
+      throw new Error('NOT FOUND: Pricing version not found');
     }
 
-    if (data.name) {
+    for (const pricingVersion of versionsToUpdate) {
+      await this.pricingRepository.update(pricingVersion.id, updateData);
+    }
+
+    if (updateData.name) {
       const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
       const processedPaths = new Set<string>();
 
@@ -585,13 +640,13 @@ class PricingService {
         const yamlContent = fs.readFileSync(absolutePath, 'utf8');
         const yamlData = yaml.load(yamlContent) as Record<string, any>;
         if (yamlData && typeof yamlData === 'object') {
-          yamlData['saasName'] = data.name;
+          yamlData['saasName'] = updateData.name;
           fs.writeFileSync(absolutePath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
         }
       }
     }
 
-    const effectiveSlug = data.slug || pricingSlug;
+    const effectiveSlug = updateData.slug || pricingSlug;
     const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
       ...queryParams,
       includePrivate: true,

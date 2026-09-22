@@ -267,14 +267,25 @@ export default function CardPage() {
     }
   };
 
-  const handleVisibilityChange = () => {
+  const handleVisibilityChange = (nextVisibility: string, visibilityScope: 'all' | 'current') => {
     if (!slug) return;
     customConfirm('Are you sure you want to change the visibility of this pricing?', { danger: true })
       .then(() => {
-        const pricingUpdateBody = { private: visibility === 'Public' };
-        updatePricing(organizationId!, slug, collectionSlug ?? '', pricingUpdateBody)
-          .then(() => {
-            setVisibility(visibility === 'Private' ? 'Public' : 'Private');
+        const nextPrivate = nextVisibility === 'Private';
+        const pricingUpdateBody = {
+          private: nextPrivate,
+          visibilityScope,
+          ...(visibilityScope === 'current' ? { version: currentVersion?.version } : {}),
+        };
+        updatePricing(organizationId!, slug, collectionSlug, pricingUpdateBody)
+          .then((updatedPricing: { versions?: VersionData[] }) => {
+            const updatedVersions = updatedPricing.versions ?? [];
+            setVersions(updatedVersions);
+            const selectedVersion = updatedVersions.find(version => version.id === currentVersion?.id)
+              ?? updatedVersions[0]
+              ?? null;
+            setCurrentVersion(selectedVersion);
+            setVisibility(selectedVersion?.private ? 'Private' : 'Public');
             customAlert('Pricing visibility updated successfully', 'success');
           })
           .catch((error: Error) => {
@@ -290,7 +301,7 @@ export default function CardPage() {
       `Are you sure you want to rename this pricing to "${newName}"? You'll be redirected to the new URL.`,
       { danger: false }
     ).then(() => {
-      updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName })
+      updatePricing(organizationId!, slug, collectionSlug, { name: newName })
         .then((data: any) => {
           if (data?.error) {
             customAlert(`Error: ${data.error}`, 'error');

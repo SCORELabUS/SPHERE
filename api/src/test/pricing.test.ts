@@ -129,6 +129,29 @@ describe('Pricings API integration', () => {
       expect(response.body.pricings[0].name).toBe(publicPricing.serviceName);
     });
 
+    it('lists a pricing when its latest version is private but another version is public.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const publicVersion = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privateFixture = await createValidPricingYaml(publicVersion.serviceName);
+
+      const createPrivateVersion = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${publicVersion.serviceName}/${privateFixture.version}`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('private', 'true')
+        .attach('yaml', privateFixture.filePath);
+      expect(createPrivateVersion.status).toBe(200);
+
+      const response = await request(app).get(
+        `${BASE_PATH}/pricings?name=${encodeURIComponent(publicVersion.serviceName)}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(1);
+      expect(response.body.pricings).toHaveLength(1);
+      expect(response.body.pricings[0].version).toBe(publicVersion.version);
+      expect(response.body.pricings[0].private).toBe(false);
+    });
+
     it('Return 200 and only PUBLIC pricings if USER make the request.', async () => {
       const { organizationId } = await createTestUser('USER');
 
@@ -1394,6 +1417,43 @@ describe('Pricings API integration', () => {
       expect(version.organization.avatar).toMatch(/^https?:\/\//);
     });
 
+    it('returns only public versions unless the member has explicit GET permission.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicVersion = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const privateFixture = await createValidPricingYaml(publicVersion.serviceName);
+      const createPrivateVersion = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${publicVersion.serviceName}/${privateFixture.version}`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('private', 'true')
+        .attach('yaml', privateFixture.filePath);
+      expect(createPrivateVersion.status).toBe(200);
+
+      const anonymousResponse = await request(app).get(
+        `${BASE_PATH}/pricings/${organizationId}/${publicVersion.serviceName}`
+      );
+      expect(anonymousResponse.status).toBe(200);
+      expect(anonymousResponse.body.versions).toHaveLength(1);
+      expect(anonymousResponse.body.versions[0].version).toBe(publicVersion.version);
+
+      await createEntityScopedPermission(member.id, organizationId, publicVersion.serviceName, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+      const authorizedResponse = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${publicVersion.serviceName}`)
+        .set('Authorization', `Bearer ${member.token}`);
+      expect(authorizedResponse.status).toBe(200);
+      expect(authorizedResponse.body.versions).toHaveLength(2);
+      expect(authorizedResponse.body.versions.map((version: any) => version.version)).toEqual(
+        expect.arrayContaining([publicVersion.version, privateFixture.version])
+      );
+    });
+
     it('Return 404 and error object with non-existing pricing name.', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 
@@ -1519,6 +1579,30 @@ describe('Pricings API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body).toBeDefined();
       expect(Array.isArray(response.body.versions)).toBe(true);
+    });
+
+    it('updates visibility for only the selected version when visibilityScope is current.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const firstVersion = await createPricingForOrganization({ organizationId, isPrivate: false });
+      const secondFixture = await createValidPricingYaml(firstVersion.serviceName);
+      const createSecondVersion = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${firstVersion.serviceName}/${secondFixture.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', secondFixture.filePath);
+      expect(createSecondVersion.status).toBe(200);
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${firstVersion.serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ private: true, visibilityScope: 'current', version: secondFixture.version });
+
+      expect(response.status).toBe(200);
+      const visibilityByVersion = Object.fromEntries(
+        response.body.versions.map((version: any) => [version.version, version.private])
+      );
+      expect(visibilityByVersion[firstVersion.version]).toBe(false);
+      expect(visibilityByVersion[secondFixture.version]).toBe(true);
     });
 
     it('Return 200 and updated pricing details when ADMIN updates another user pricing.', async () => {

@@ -3632,7 +3632,7 @@ paths:
     get:
       summary: Get public pricing details.
       description: |
-        Retrieves a pricing by slug for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
+        Retrieves a pricing by slug for a given user. The response includes every public version and, for authorized users, private versions with GET permission. A pricing remains retrievable whenever it has at least one public version.
 
         **Authentication**: Public
 
@@ -3670,7 +3670,7 @@ paths:
     put:
       summary: Update metadata of a pricing.
       description: |
-        Updates the metadata of all pricing versions of a given pricing. If a pricing is inside a collection, **you have to provide the `collection` query parameter**
+        Updates pricing metadata. By default, changes affect all versions. Visibility changes may set `visibilityScope: current` together with `version` to affect only that version. If a pricing is inside a collection, **you have to provide the `collection` query parameter**
 
         **Authentication**: User API Key
 
@@ -6492,6 +6492,14 @@ components:
                 maxLength: 255
               private:
                 type: boolean
+              visibilityScope:
+                type: string
+                enum: [all, current]
+                default: all
+                description: When changing `private`, choose whether the change affects every version or only `version`.
+              version:
+                type: string
+                description: Required when `visibilityScope` is `current`.
               _collectionId:
                 type: string
                 description: MongoDB ObjectId reference

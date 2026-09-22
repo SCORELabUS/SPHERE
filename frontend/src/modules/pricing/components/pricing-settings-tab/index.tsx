@@ -9,7 +9,7 @@ interface PricingSettingsTabProps {
   visibility: string;
   pricingName: string;
   currentVersion: VersionData | null;
-  onVisibilityChange: () => void;
+  onVisibilityChange: (visibility: string, visibilityScope: 'all' | 'current') => void;
   onRename: (newName: string) => void;
   onDeleteCurrentVersion: () => void;
   onDeletePricing: () => void;
@@ -26,10 +26,15 @@ export default function PricingSettingsTab({
   onDeletePricing,
 }: PricingSettingsTabProps) {
   const [nameValue, setNameValue] = useState(pricingName);
+  const [pendingVisibility, setPendingVisibility] = useState(visibility);
 
   useEffect(() => {
     setNameValue(pricingName);
   }, [pricingName]);
+
+  useEffect(() => {
+    setPendingVisibility(visibility);
+  }, [visibility]);
 
   function handleRename() {
     const newName = nameValue.trim();
@@ -64,7 +69,30 @@ export default function PricingSettingsTab({
 
           <h3 className="mb-2 text-sm font-medium text-tp-ink">Visibility</h3>
           <div className="pl-4">
-            <VisibilityOptions value={visibility} onChange={onVisibilityChange} />
+            <VisibilityOptions value={pendingVisibility} onChange={setPendingVisibility} />
+            {currentVersion && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-tp-steel">Apply the visibility change to:</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onVisibilityChange(pendingVisibility, 'current')}
+                    disabled={pendingVisibility === visibility}
+                    className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-default disabled:opacity-40"
+                  >
+                    Version {currentVersion.version} only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onVisibilityChange(pendingVisibility, 'all')}
+                    disabled={pendingVisibility === visibility}
+                    className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface disabled:cursor-default disabled:opacity-40"
+                  >
+                    All versions
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

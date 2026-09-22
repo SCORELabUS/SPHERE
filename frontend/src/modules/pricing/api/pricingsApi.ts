@@ -232,8 +232,9 @@ export function usePricingsApi() {
   }, [fetchWithInterceptor, basicHeaders, authUser]);
 
    
-  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any) => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collection=${collectionSlug}`, {
+  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string | null, pricingData: any) => {
+    const collectionQuery = collectionSlug ? `?collection=${encodeURIComponent(collectionSlug)}` : '';
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}${collectionQuery}`, {
       method: 'PUT',
       headers: basicHeaders,
       body: JSON.stringify(pricingData),
