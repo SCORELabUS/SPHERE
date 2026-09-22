@@ -28,6 +28,7 @@ import PricingSettingsTab from '../../components/pricing-settings-tab';
 import PricingLinkModal from '../../components/pricing-link-modal';
 import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
+import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 
@@ -39,7 +40,7 @@ export default function CardPage() {
     ? collectionParam
     : null;
   const router = useRouter();
-  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion } = usePricingsApi();
+  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion, forkPricing } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
@@ -64,6 +65,7 @@ export default function CardPage() {
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showForkModal, setShowForkModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -403,6 +405,22 @@ export default function CardPage() {
     }
   }
 
+  const handleFork = async (targetOrganizationId: string, name?: string, confirm?: boolean) => {
+    if (!organizationId || !slug || !currentVersion) throw new Error('Pricing not loaded yet');
+    return forkPricing(organizationId, slug, currentVersion.version, targetOrganizationId, name, confirm);
+  };
+
+  const handleViewOrigin = (forkedFrom: NonNullable<VersionData['forkedFrom']>) => {
+    const url = `/pricings/${forkedFrom.organizationId}/${forkedFrom.slug}${forkedFrom.collectionSlug ? `?collection=${forkedFrom.collectionSlug}` : ''}`;
+    router.push(url);
+  };
+
+  const handleForkSuccess = (result: { slug: string; _organizationId: string }) => {
+    setShowForkModal(false);
+    customAlert('Pricing forked successfully', 'success');
+    router.push(`/pricings/${result._organizationId}/${result.slug}`);
+  };
+
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
   const isPrivateNoAccess = !entityPermissions?.GET && !currentVersion;
 
@@ -440,6 +458,17 @@ export default function CardPage() {
             <div>
               <h1 className="font-display text-2xl font-normal text-tp-ink">{pricingName}</h1>
               {currentVersion && <p className="mt-1 text-sm text-tp-steel">Updated {formatDistanceToNow(parseISO(currentVersion.createdAt))} ago</p>}
+              {currentVersion?.forkedFrom && (
+                <button
+                  type="button"
+                  onClick={() => handleViewOrigin(currentVersion.forkedFrom!)}
+                  className="mt-1 cursor-pointer text-left text-xs text-tp-steel underline decoration-dotted hover:text-tp-ink"
+                >
+                  Forked from {currentVersion.forkedFrom.name} (version {currentVersion.forkedFrom.version})
+                  {currentVersion.forkedFrom.collectionName ? ` in ${currentVersion.forkedFrom.collectionName}` : ''}
+                  {' · '}{currentVersion.forkedFrom.organizationDisplayName}
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {versions.length > 1 && (
@@ -456,6 +485,18 @@ export default function CardPage() {
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                   New Version
+                </button>
+              )}
+              {authUser.isAuthenticated && currentVersion && (
+                <button
+                  type="button"
+                  onClick={() => setShowForkModal(true)}
+                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-xs text-tp-ink transition-colors hover:bg-tp-surface focus:border-tp-primary focus:outline-none"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5zm0 0v3.75m0 0a2.25 2.25 0 102.25 2.25M8.25 10.5a2.25 2.25 0 002.25 2.25m6-9v3.75m0 0a2.25 2.25 0 11-2.25 2.25m2.25-2.25a2.25 2.25 0 00-2.25 2.25m0 0v5.25a2.25 2.25 0 01-2.25 2.25h-1.5" />
+                  </svg>
+                  Fork
                 </button>
               )}
               <GetPricingMenu
@@ -663,6 +704,7 @@ export default function CardPage() {
                 onOpenInEditor={handleOpenInEditor}
                 onCopyLink={handleCopyLink}
                 onDelete={handleDelete}
+                onViewOrigin={handleViewOrigin}
               />
               )}
             </motion.div>
@@ -698,6 +740,18 @@ export default function CardPage() {
             pricingName={pricingName}
             onImport={handleImportVersion}
             onClose={() => setShowImportModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* FORK MODAL */}
+      <AnimatePresence>
+        {showForkModal && (
+          <ForkPricingModal
+            pricingName={pricingName}
+            onFork={handleFork}
+            onClose={() => setShowForkModal(false)}
+            onSuccess={handleForkSuccess}
           />
         )}
       </AnimatePresence>

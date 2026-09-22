@@ -15,6 +15,24 @@ const pricingSchema = new Schema(
     currency: { type: String, required: true },
     yaml: { type: String, required: true },
     private: { type: Boolean, required: true, default: false },
+    // Identifies which pricing this one was forked from, alongside organization/collection/name.
+    // Used to match a re-fork of the same origin to the fork already living in the target org,
+    // instead of creating a duplicate pricing every time the origin gets a new version.
+    forkedFrom: {
+      type: {
+        pricingId: { type: Schema.Types.ObjectId, ref: 'PricingIdentity', required: true },
+        organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
+        organizationName: { type: String, required: true },
+        organizationDisplayName: { type: String, required: true },
+        collectionId: { type: String, ref: 'PricingCollection', required: false },
+        collectionName: { type: String, required: false },
+        collectionSlug: { type: String, required: false },
+        slug: { type: String, required: true },
+        name: { type: String, required: true },
+        version: { type: String, required: true },
+      },
+      required: false,
+    },
     analytics: {
       numberOfFeatures: { type: Number, required: false },
       numberOfInformationFeatures: { type: Number, required: false },

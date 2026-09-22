@@ -6,6 +6,17 @@ export interface VersionData {
   private: boolean;
   collection: { id: string; name: string; slug: string } | null;
   analytics: Record<string, number> | null;
+  forkedFrom: {
+    organizationId: string;
+    organizationName: string;
+    organizationDisplayName: string;
+    collectionId?: string;
+    collectionName?: string;
+    collectionSlug?: string;
+    slug: string;
+    name: string;
+    version: string;
+  } | null;
 }
 
 export type Tab = 'overview' | 'analytics' | 'config-space' | 'versions' | 'settings';

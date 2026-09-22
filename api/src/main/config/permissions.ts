@@ -133,8 +133,16 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // Forking a pricing into another organization. PricingService.forkPricing does its
+  // own authorization (source visibility + target org CREATE); this only requires login.
+  {
+    path: '/pricing-forks',
+    methods: ['POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
-  // Collection Management Routes 
+  // Collection Management Routes
   // ============================================
 
   // Collection entity permissions
