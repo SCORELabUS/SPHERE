@@ -3897,6 +3897,119 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /pricing-forks:
+    post:
+      summary: Fork a pricing version into another organization
+      description: |
+        Copies one version of an existing pricing into a target organization, keeping a
+        reference to where it came from (`forkedFrom`). The copied version's `createdAt`
+        is the moment of the fork, not the date of the original version.
+
+        The fork is added as a **new version of an existing pricing** in the target
+        organization, rather than creating a duplicate, when either:
+        - the target organization already holds a pricing forked from the same origin, or
+        - the target organization already holds a pricing with the same name as the source.
+
+        In that case a request without `confirm: true` performs no write and responds with
+        `needsConfirmation`, so the client can ask the user before proceeding and optionally
+        rename the destination pricing through `name`.
+
+        **Authentication**: Required
+
+        **Permission**:
+        - The source pricing must be visible to the caller: PUBLIC pricings can be forked by
+          any authenticated user, PRIVATE ones only by members of the source organization
+          (or a global ADMIN).
+        - The caller needs `CREATE` permission for pricings in the target organization, or
+          entity-level `CREATE` on the existing pricing when the fork is added as a new version.
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceOrganizationId
+                - sourceSlug
+                - sourceVersion
+                - targetOrganizationId
+              properties:
+                sourceOrganizationId:
+                  type: string
+                  description: ID of the organization owning the pricing being forked
+                  example: "63f74bf8eeed64058364b601"
+                sourceSlug:
+                  type: string
+                  description: Slug of the pricing being forked
+                  example: "dropbox"
+                sourceVersion:
+                  type: string
+                  description: Version of the source pricing to copy
+                  example: "2024"
+                targetOrganizationId:
+                  type: string
+                  description: ID of the organization that will hold the fork
+                  example: "63f74bf8eeed64058364b602"
+                name:
+                  type: string
+                  description: |
+                    Optional name for the forked pricing. When the fork is added to an existing
+                    pricing, supplying a different name renames that pricing.
+                  example: "Dropbox (internal)"
+                confirm:
+                  type: boolean
+                  description: |
+                    Must be `true` to add the fork as a new version of an already existing
+                    pricing. Without it the request is answered with `needsConfirmation`.
+                  default: false
+      responses:
+        '200':
+          description: |
+            Either the created pricing version, or a confirmation request when the target
+            organization already holds a matching pricing.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Pricing'
+                  - type: object
+                    properties:
+                      needsConfirmation:
+                        type: boolean
+                        example: true
+                      existingPricing:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: "Dropbox"
+                          slug:
+                            type: string
+                            example: "dropbox"
+                      sourceVersion:
+                        type: string
+                        example: "2024"
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient permissions in the target organization
+        '404':
+          description: Source pricing or its YAML file not found
+        '409':
+          description: That version of the source pricing was already forked into the organization
+        '422':
+          description: Missing required fields, or the source and target organizations are the same
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /collections:
     get:
       summary: Get all public collections.
@@ -5443,6 +5556,45 @@ components:
           type: boolean
           description: Whether the pricing is private (only accessible to users with explicit permissions)
           default: false
+        forkedFrom:
+          type: object
+          nullable: true
+          description: |
+            Origin of this version when it was created by forking another organization's pricing.
+            Absent on versions that were not forked.
+          properties:
+            pricingId:
+              type: string
+              description: Permanent identifier of the pricing this version was forked from
+            organizationId:
+              type: string
+            organizationName:
+              type: string
+              example: "demo-org"
+            organizationDisplayName:
+              type: string
+              example: "Demo Organization"
+            collectionId:
+              type: string
+              nullable: true
+            collectionName:
+              type: string
+              nullable: true
+              example: "IEEE TSC 2025"
+            collectionSlug:
+              type: string
+              nullable: true
+              example: "ieee-tsc-2025"
+            slug:
+              type: string
+              example: "dropbox"
+            name:
+              type: string
+              example: "Dropbox"
+            version:
+              type: string
+              description: Version of the origin pricing that was copied, as labelled there
+              example: "2024"
         analytics:
           type: object
           nullable: true

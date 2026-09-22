@@ -161,6 +161,21 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject<LeanPricing>();
   }
 
+  /**
+   * Finds the pricing (if any) that a previous fork of `originPricingId` created inside
+   * `targetOrganizationId`. Forks re-use this match instead of the usual name/slug lookup,
+   * since the user may rename the forked copy after creating it.
+   */
+  async findForkOfOrigin(targetOrganizationId: string, originPricingId: string) {
+    const doc = await PricingMongoose.findOne({
+      _organizationId: new mongoose.Types.ObjectId(targetOrganizationId),
+      'forkedFrom.pricingId': new mongoose.Types.ObjectId(originPricingId),
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    return doc as LeanPricing | null;
+  }
+
   async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
     const existing = await PricingMongoose.findOne({
       slug,
