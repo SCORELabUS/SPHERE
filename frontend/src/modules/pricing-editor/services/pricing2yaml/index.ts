@@ -20,6 +20,12 @@ import {
   updateAddOnProps,
   toggleAddOnAvailableFor,
   setAddOnCellValue,
+  getFeatureGroups,
+  orderFeaturesByGroup,
+  addFeatureGroup,
+  renameFeatureGroup,
+  removeFeatureGroup,
+  moveFeatureToGroup,
 } from './mutations';
 
 export type { PricingDraft, DraftFeature, DraftUsageLimit, DraftPlan, DraftAddOn };
@@ -43,6 +49,12 @@ export {
   updateAddOnProps,
   toggleAddOnAvailableFor,
   setAddOnCellValue,
+  getFeatureGroups,
+  orderFeaturesByGroup,
+  addFeatureGroup,
+  renameFeatureGroup,
+  removeFeatureGroup,
+  moveFeatureToGroup,
 };
 
 export function ensureSyntaxVersion31(yamlStr: string): string {

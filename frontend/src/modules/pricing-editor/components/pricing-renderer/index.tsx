@@ -62,6 +62,7 @@ export function PricingRenderer({
           usageLimits={pricing.usageLimits ?? {}}
           addOns={pricing.addOns ?? {}}
           currency={resolvedCurrency}
+          tags={pricing.tags}
         />
 
         {pricing.addOns && Object.values(pricing.addOns).length > 0 && (

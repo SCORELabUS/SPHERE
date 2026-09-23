@@ -309,3 +309,81 @@ export function setAddOnCellValue(
 
   return result;
 }
+
+/* ── Feature group (tag) mutations ── */
+
+export function getFeatureGroups(d: PricingDraft): string[] {
+  const groups = [...(d.tags ?? [])];
+  for (const f of Object.values(d.features)) {
+    if (f.tag && !groups.includes(f.tag)) groups.push(f.tag);
+  }
+  return groups;
+}
+
+export function orderFeaturesByGroup(d: PricingDraft, order: string[] = Object.keys(d.features)): string[] {
+  const groups = getFeatureGroups(d);
+  const rank = (k: string) => {
+    const tag = d.features[k]?.tag;
+    return tag ? groups.indexOf(tag) + 1 : 0;
+  };
+  return order
+    .filter(k => d.features[k])
+    .map((k, i) => ({ k, i, r: rank(k) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map(e => e.k);
+}
+
+function reorderFeatures(result: PricingDraft, order: string[]): void {
+  const reordered: PricingDraft['features'] = {};
+  for (const k of orderFeaturesByGroup(result, order)) reordered[k] = result.features[k];
+  result.features = reordered;
+}
+
+export function addFeatureGroup(d: PricingDraft, tag: string): PricingDraft {
+  const result = structuredClone(d);
+  const groups = getFeatureGroups(result);
+  if (!tag || groups.includes(tag)) return result;
+  result.tags = [...groups, tag];
+  return result;
+}
+
+export function renameFeatureGroup(d: PricingDraft, oldTag: string, newTag: string): PricingDraft {
+  const result = structuredClone(d);
+  const groups = getFeatureGroups(result);
+  if (!newTag || oldTag === newTag || groups.includes(newTag)) return result;
+  result.tags = groups.map(t => (t === oldTag ? newTag : t));
+  for (const f of Object.values(result.features)) {
+    if (f.tag === oldTag) f.tag = newTag;
+  }
+  return result;
+}
+
+export function removeFeatureGroup(d: PricingDraft, tag: string): PricingDraft {
+  const result = structuredClone(d);
+  result.tags = getFeatureGroups(result).filter(t => t !== tag);
+  for (const f of Object.values(result.features)) {
+    if (f.tag === tag) delete f.tag;
+  }
+  reorderFeatures(result, Object.keys(result.features));
+  return result;
+}
+
+export function moveFeatureToGroup(
+  d: PricingDraft,
+  featureKey: string,
+  tag: string | undefined,
+  order: string[] = Object.keys(d.features)
+): PricingDraft {
+  const result = structuredClone(d);
+  const feature = result.features[featureKey];
+  if (!feature) return result;
+  if (tag) {
+    result.tags = getFeatureGroups(result);
+    if (!result.tags.includes(tag)) result.tags.push(tag);
+    feature.tag = tag;
+  } else {
+    delete feature.tag;
+  }
+  reorderFeatures(result, order);
+  return result;
+}
