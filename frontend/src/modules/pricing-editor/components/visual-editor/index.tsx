@@ -12,6 +12,7 @@ import {
   parseDraftFromYaml, toggleFeatureValue, setCellValue, updatePlanProps, updateRenderMode, updateField,
   addPlan, removePlan, removeUsageLimit, ensureSyntaxVersion31,
   addAddOn, removeAddOn, renameAddOn, updateAddOnProps, toggleAddOnAvailableFor,
+  getFeatureGroups, orderFeaturesByGroup, addFeatureGroup, renameFeatureGroup, removeFeatureGroup, moveFeatureToGroup,
 } from '../../services/pricing2yaml';
 import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit, DraftAddOn } from '../../services/pricing2yaml';
 
@@ -25,7 +26,8 @@ import { PlanSidePanel } from './components/PlanSidePanel';
 import { FeatureSidePanel } from './components/FeatureSidePanel';
 import { UsageLimitSidePanel } from './components/UsageLimitSidePanel';
 import { AddOnSidePanel } from './components/AddOnSidePanel';
-import { CURRENCIES, LABEL_WIDTH, TRAILING_WIDTH } from './utils/constants';
+import { FeatureGroupHeader, FeaturesSectionHeader } from './components/FeatureGroupHeader';
+import { CURRENCIES, GROUP_DROP_PREFIX, LABEL_WIDTH, TRAILING_WIDTH } from './utils/constants';
 import { getNextName } from './utils/names';
 
 interface VisualPricingEditorProps {
@@ -45,7 +47,8 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   const [creatingUsageLimit, setCreatingUsageLimit] = useState(false);
 
   const [planOrder, setPlanOrder] = useState<string[] | null>(null);
-  const [featureOrder, setFeatureOrder] = useState<string[] | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [newGroupTag, setNewGroupTag] = useState<string | null>(null);
   const [usageLimitOrder, setUsageLimitOrder] = useState<string[] | null>(null);
   const [addOnOrder, setAddOnOrder] = useState<string[] | null>(null);
   const [activeAddOnId, setActiveAddOnId] = useState<string | null>(null);
@@ -62,11 +65,18 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
     return base;
   }, [draft.plans, planOrder]);
 
-  const featureKeys = useMemo(() => {
-    const base = Object.keys(draft.features ?? {});
-    if (featureOrder) return featureOrder.filter(k => base.includes(k)).concat(base.filter(k => !featureOrder.includes(k)));
-    return base;
-  }, [draft.features, featureOrder]);
+  const featureGroups = useMemo(() => getFeatureGroups(draft), [draft]);
+  const featureKeys = useMemo(() => orderFeaturesByGroup(draft), [draft]);
+  const ungroupedFeatureKeys = useMemo(() => featureKeys.filter(k => !draft.features[k].tag), [featureKeys, draft.features]);
+  const groupedFeatureKeys = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const tag of featureGroups) m[tag] = featureKeys.filter(k => draft.features[k].tag === tag);
+    return m;
+  }, [featureGroups, featureKeys, draft.features]);
+  const visibleFeatureKeys = useMemo(
+    () => featureKeys.filter(k => { const tag = draft.features[k].tag; return !tag || !collapsedGroups.has(tag); }),
+    [featureKeys, draft.features, collapsedGroups],
+  );
 
   const usageLimitKeys = useMemo(() => {
     const base = Object.keys(draft.usageLimits ?? {});
@@ -191,23 +201,22 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   }, [draft, applyMutation]);
 
   /* ── Feature / Usage limit operations ── */
-  const handleAddFeature = useCallback((afterIndex?: number) => {
+  const handleAddFeature = useCallback((afterKey: string | null, tag?: string) => {
     const name = getNextName('feature', Object.keys(draft.features));
     const mutated = structuredClone(draft);
+    mutated.features[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN', ...(tag ? { tag } : {}) };
+    // Without an anchor the new row goes first in its group (the group order is stable).
+    const order = [...featureKeys];
+    order.splice(afterKey ? order.indexOf(afterKey) + 1 : 0, 0, name);
     const newFeatures: Record<string, DraftFeature> = {};
-    const keys = Object.keys(mutated.features);
-    const insertAt = afterIndex !== undefined ? afterIndex + 1 : keys.length;
-    for (let i = 0; i <= keys.length; i++) {
-      if (i === insertAt) newFeatures[name] = { valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN' };
-      if (i < keys.length) newFeatures[keys[i]] = mutated.features[keys[i]];
-    }
+    for (const k of orderFeaturesByGroup(mutated, order)) newFeatures[k] = mutated.features[k];
     mutated.features = newFeatures;
     for (const plan of Object.values(mutated.plans)) {
       if (plan.features !== null && plan.features !== undefined) plan.features[name] = { value: false };
     }
     applyMutation(mutated);
     setCreatingRowKey(name);
-  }, [draft, applyMutation]);
+  }, [draft, featureKeys, applyMutation]);
 
   const handleAddUsageLimitInline = useCallback((afterIndex?: number) => {
     const name = getNextName('usageLimit', Object.keys(draft.usageLimits ?? {}));
@@ -315,22 +324,60 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
   }, [draft, applyMutation]);
 
   const handleSaveEntity = useCallback((key: string, updates: Record<string, unknown>) => {
-    const mutated = structuredClone(draft);
+    let mutated = structuredClone(draft);
     if (mutated.features[key]) {
-      Object.assign(mutated.features[key], updates);
-      const newName = updates.name as string | undefined;
+      const { name: newName, tag, ...rest } = updates as { name?: string; tag?: string } & Record<string, unknown>;
+      Object.assign(mutated.features[key], rest);
+      let finalKey = key;
       if (newName && newName !== key && !mutated.features[newName]) {
-        mutated.features[newName] = mutated.features[key];
-        delete mutated.features[key];
+        const nf: Record<string, DraftFeature> = {};
+        for (const k of Object.keys(mutated.features)) nf[k === key ? newName : k] = mutated.features[k];
+        mutated.features = nf;
         for (const plan of Object.values(mutated.plans)) {
           if (plan.features?.[key]) { plan.features[newName] = plan.features[key]; delete plan.features[key]; }
         }
+        if (mutated.usageLimits) {
+          for (const ul of Object.values(mutated.usageLimits)) {
+            if (ul.linkedFeatures) ul.linkedFeatures = ul.linkedFeatures.map(f => f === key ? newName : f);
+          }
+        }
+        finalKey = newName;
       }
+      mutated = moveFeatureToGroup(mutated, finalKey, tag);
     } else if (mutated.usageLimits?.[key]) {
       Object.assign(mutated.usageLimits[key], updates);
     }
     applyMutation(mutated);
   }, [draft, applyMutation]);
+
+  /* ── Feature group operations ── */
+  const handleAddGroup = useCallback(() => {
+    let i = 1;
+    while (featureGroups.includes(`Group ${i}`)) i++;
+    const tag = `Group ${i}`;
+    applyMutation(addFeatureGroup(draft, tag));
+    setNewGroupTag(tag);
+  }, [draft, featureGroups, applyMutation]);
+
+  const handleRenameGroup = useCallback((oldTag: string, newTag: string) => {
+    applyMutation(renameFeatureGroup(draft, oldTag, newTag));
+    setCollapsedGroups(prev => {
+      if (!prev.has(oldTag)) return prev;
+      const next = new Set(prev); next.delete(oldTag); next.add(newTag); return next;
+    });
+  }, [draft, applyMutation]);
+
+  const handleRemoveGroup = useCallback((tag: string) => {
+    applyMutation(removeFeatureGroup(draft, tag));
+  }, [draft, applyMutation]);
+
+  const handleToggleGroup = useCallback((tag: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  }, []);
 
   /* ── Add-on operations ── */
   const handleAddAddOn = useCallback(() => {
@@ -396,12 +443,16 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
       applyMutation({ ...draft, plans: reordered });
       return;
     }
+    if (featureKeys.includes(activeId) && overId.startsWith(GROUP_DROP_PREFIX)) {
+      // Dropped on a group header: the feature joins that group as its first row.
+      const tag = overId.slice(GROUP_DROP_PREFIX.length) || undefined;
+      const order = [activeId, ...featureKeys.filter(k => k !== activeId)];
+      applyMutation(moveFeatureToGroup(draft, activeId, tag, order));
+      return;
+    }
     if (featureKeys.includes(activeId) && featureKeys.includes(overId)) {
       const newOrder = arrayMove(featureKeys, featureKeys.indexOf(activeId), featureKeys.indexOf(overId));
-      setFeatureOrder(newOrder);
-      const reordered: Record<string, DraftFeature> = {};
-      for (const k of newOrder) reordered[k] = draft.features[k];
-      applyMutation({ ...draft, features: reordered });
+      applyMutation(moveFeatureToGroup(draft, activeId, draft.features[overId].tag, newOrder));
       return;
     }
     if (usageLimitKeys.includes(activeId) && usageLimitKeys.includes(overId)) {
@@ -452,6 +503,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
           <span>{visiblePlanKeys.length} plans</span>
           <span className="text-slate-300 dark:text-slate-600">|</span>
           <span>{featureKeys.length} features</span>
+          {featureGroups.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{featureGroups.length} groups</span></>}
           {usageLimitKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{usageLimitKeys.length} limits</span></>}
           {addOnKeys.length > 0 && <><span className="text-slate-300 dark:text-slate-600">|</span><span>{addOnKeys.length} add-ons</span></>}
           </div>
@@ -494,22 +546,40 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
               {/* Body */}
               <div className="flex flex-col" style={{ minWidth: 'min-content' }}>
                 {/* Features section */}
-                <div className="flex shrink-0 items-center border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Features</span>
-                </div>
-                <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(-1)} />
-                <SortableContext items={featureKeys} strategy={verticalListSortingStrategy}>
-                  {featureKeys.map((featureKey, fIdx) => {
-                    const feature = featureMap[featureKey];
-                    if (!feature) return null;
+                <FeaturesSectionHeader onAddGroup={handleAddGroup} />
+                <SortableContext items={visibleFeatureKeys} strategy={verticalListSortingStrategy}>
+                  {[undefined, ...featureGroups].map(tag => {
+                    const keys = tag ? groupedFeatureKeys[tag] ?? [] : ungroupedFeatureKeys;
+                    const collapsed = !!tag && collapsedGroups.has(tag);
                     return (
-                      <Fragment key={featureKey}>
-                        <SortableFeatureRow featureKey={featureKey} feature={feature} planKeys={visiblePlanKeys} draft={draft}
-                          onToggle={handleToggleFeature} onSetCellValue={handleSetCellValue}
-                          onEdit={() => setEditingFeature(featureKey)} onRemove={() => handleRemoveFeature(featureKey)}
-                          onToggleRender={handleToggleRender} onRename={(ok, nk) => handleRename('feature', ok, nk)}
-                          isCreating={creatingRowKey === featureKey} onCreatingConfirm={handleCreatingConfirm} onCreatingCancel={handleCreatingCancel} />
-                        <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(fIdx)} />
+                      <Fragment key={tag ?? GROUP_DROP_PREFIX}>
+                        {tag && (
+                          <FeatureGroupHeader tag={tag} count={keys.length} collapsed={collapsed}
+                            existingGroups={featureGroups} autoEdit={newGroupTag === tag}
+                            onToggle={() => handleToggleGroup(tag)}
+                            onRename={(nt) => handleRenameGroup(tag, nt)}
+                            onRemove={() => handleRemoveGroup(tag)}
+                            onEditDone={() => setNewGroupTag(null)} />
+                        )}
+                        {!collapsed && (
+                          <>
+                            <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(null, tag)} />
+                            {keys.map(featureKey => {
+                              const feature = featureMap[featureKey];
+                              if (!feature) return null;
+                              return (
+                                <Fragment key={featureKey}>
+                                  <SortableFeatureRow featureKey={featureKey} feature={feature} planKeys={visiblePlanKeys} draft={draft}
+                                    onToggle={handleToggleFeature} onSetCellValue={handleSetCellValue}
+                                    onEdit={() => setEditingFeature(featureKey)} onRemove={() => handleRemoveFeature(featureKey)}
+                                    onToggleRender={handleToggleRender} onRename={(ok, nk) => handleRename('feature', ok, nk)}
+                                    isCreating={creatingRowKey === featureKey} onCreatingConfirm={handleCreatingConfirm} onCreatingCancel={handleCreatingCancel} />
+                                  <AddRowTrigger label="Add feature" onAdd={() => handleAddFeature(featureKey, tag)} />
+                                </Fragment>
+                              );
+                            })}
+                          </>
+                        )}
                       </Fragment>
                     );
                   })}
@@ -607,6 +677,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
         )}
         {editingFeature && editingFeatureData && (
           <FeatureSidePanel entityKey={editingFeature} entity={editingFeatureData} isFeature={editingFeatureIsFeature} featureKeys={featureKeys}
+            featureGroups={featureGroups}
             onClose={() => setEditingFeature(null)} onSave={handleSaveEntity} onConvert={handleConvertEntity} />
         )}
         {creatingUsageLimit && (
