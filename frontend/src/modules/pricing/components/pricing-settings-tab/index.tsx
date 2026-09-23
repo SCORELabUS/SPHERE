@@ -9,7 +9,7 @@ interface PricingSettingsTabProps {
   visibility: string;
   pricingName: string;
   currentVersion: VersionData | null;
-  onVisibilityChange: () => void;
+  onVisibilityChange: (value: string) => void;
   onRename: (newName: string) => void;
   onDeleteCurrentVersion: () => void;
   onDeletePricing: () => void;
@@ -62,7 +62,10 @@ export default function PricingSettingsTab({
             </div>
           </div>
 
-          <h3 className="mb-2 text-sm font-medium text-tp-ink">Visibility</h3>
+          <h3 className="mb-1 text-sm font-medium text-tp-ink">Visibility</h3>
+          {currentVersion && (
+            <p className="mb-2 text-xs text-tp-steel">Showing version {currentVersion.version}. You can apply a change to this version only or to the whole pricing.</p>
+          )}
           <div className="pl-4">
             <VisibilityOptions value={visibility} onChange={onVisibilityChange} />
           </div>

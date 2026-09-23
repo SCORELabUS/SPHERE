@@ -129,15 +129,21 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
   ) {
-    if (reqUser) {
-      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      queryParams.includePrivate = reqUser.role === 'ADMIN' || role !== null;
+    const pricing: {
+      name: string;
+      slug: string;
+      collection?: { slug?: string };
+      versions: (PricingModel & { private?: boolean })[];
+    } | null = await this.pricingRepository.findOne(slug, organizationId, {
+      ...queryParams,
+      includePrivate: true,
+    });
+
+    if (pricing && !(await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))) {
+      pricing.versions = pricing.versions.filter(version => !version.private);
     }
 
-    const pricing: { name: string; slug: string; versions: PricingModel[] } | null =
-      await this.pricingRepository.findOne(slug, organizationId, queryParams);
-
-    if (!pricing) {
+    if (!pricing || pricing.versions.length === 0) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
@@ -146,6 +152,36 @@ class PricingService {
     }
 
     return pricing;
+  }
+
+  /**
+   * Whether the user may see the private versions of a pricing, on the same
+   * grounds the listings use: global admin, OWNER/ADMIN of its organization, or
+   * an explicit GET permission on the pricing or on its collection. Anyone else
+   * only gets the public versions.
+   */
+  private async _canSeePrivateVersions(
+    reqUser: LeanUser | undefined,
+    organizationId: string,
+    pricingSlug: string,
+    collectionSlug?: string
+  ): Promise<boolean> {
+    if (!reqUser) return false;
+    if (reqUser.role === 'ADMIN') return true;
+
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    if (!orgRole) return false;
+
+    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
+      reqUser,
+      orgRole,
+      organizationId
+    );
+    return (
+      permissions.adminOrgIds.includes(organizationId) ||
+      permissions.pricings.includes(pricingSlug) ||
+      (!!collectionSlug && permissions.collections.includes(collectionSlug))
+    );
   }
 
   async getConfigurationSpace(
@@ -169,22 +205,20 @@ class PricingService {
       offset: queryParams?.offset ? parseInt(queryParams.offset) : undefined,
     };
 
-    let includePrivate = false;
-    if (reqUser) {
-      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      includePrivate = reqUser.role === 'ADMIN' || role !== null;
-    }
-
     const retrievedPricing = await this.pricingRepository.findOne(
       pricingSlug,
       organizationId,
       {
         ...queryParams,
         version: pricingVersion,
-        includePrivate,
+        includePrivate: true,
       }
     );
-    if (!retrievedPricing) {
+    const canSeeVersion = retrievedPricing && (
+      !retrievedPricing.versions[0]?.private ||
+      await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, retrievedPricing.collection?.slug)
+    );
+    if (!retrievedPricing || !canSeeVersion) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
@@ -598,6 +632,59 @@ class PricingService {
     });
 
     return updatedPricing;
+  }
+
+  /**
+   * Changes the visibility of one version only. The rest of the pricing keeps
+   * its own; `update` is what changes every version at once.
+   */
+  async updateVersionVisibility(
+    pricingSlug: string,
+    pricingVersion: string,
+    organizationId: string,
+    reqUser: LeanUser,
+    isPrivate: boolean
+  ) {
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+
+    const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
+      includePrivate: true,
+    });
+    const target = pricing?.versions.find(
+      (version: { version: string }) =>
+        [pricingVersion, pricingVersion.replace('_', '.')].some(
+          candidate => version.version.toLowerCase() === candidate.toLowerCase()
+        )
+    );
+    if (!pricing || !target) {
+      throw new Error('NOT FOUND: Pricing version not found');
+    }
+
+    const batchCtx = await this.permissionService.buildBatchContext(
+      reqUser.id,
+      organizationId,
+      orgRole,
+      reqUser.role === 'ADMIN'
+    );
+
+    const updateResult = this.permissionEngine.evaluate({
+      userId: reqUser.id,
+      organizationId,
+      entityType: 'pricing',
+      entitySlug: pricingSlug,
+      action: 'PUT',
+      isPrivate: target.private === true,
+      userOrgRole: orgRole,
+      isGlobalAdmin: reqUser.role === 'ADMIN',
+      entityPermissions: batchCtx.entityPermissions.get(`pricing:${pricingSlug}`),
+    });
+    if (!updateResult.allowed) {
+      throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
+    }
+
+    await this.pricingRepository.update(target.id, { private: isPrivate });
+
+    return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
   }
 
   async updateVersion(pricingString: string) {

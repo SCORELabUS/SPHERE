@@ -251,6 +251,25 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders, username]);
 
+  const updatePricingVersionVisibility = useCallback((organizationId: string, pricingSlug: string, pricingVersion: string, isPrivate: boolean) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`, {
+      method: 'PUT',
+      headers: basicHeaders,
+      body: JSON.stringify({ private: isPrivate }),
+    })
+      .then(response => {
+        if (!response.ok) {
+          return Promise.reject(response);
+        } else {
+          return response.json();
+        }
+      })
+      .catch(async error => {
+        const body = await (error as Response).json().catch(() => ({}));
+        return Promise.reject({message: body.error});
+      });
+  }, [fetchWithInterceptor, basicHeaders]);
+
   const updateClientPricingVersion = useCallback(async (pricingString: string) => {
     return fetchWithInterceptor(`${PRICINGS_BASE_PATH}`, {
       method: 'PUT',
@@ -349,6 +368,7 @@ export function usePricingsApi() {
       removePricingFromCollection,
       removePricingBySlug,
       updatePricing,
+      updatePricingVersionVisibility,
       updateClientPricingVersion,
       removePricingVersion,
     }),
@@ -364,6 +384,7 @@ export function usePricingsApi() {
       removePricingFromCollection,
       removePricingBySlug,
       updatePricing,
+      updatePricingVersionVisibility,
       updateClientPricingVersion,
       removePricingVersion,
     ]
