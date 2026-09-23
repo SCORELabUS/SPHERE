@@ -10,6 +10,14 @@ export const latestPricingsByNameAggregator: PipelineStage = {
     latestPricing: {
       $first: '$$ROOT',
     },
+    // The newest public version (the newest private one only when there is no
+    // public version at all), for viewers who cannot see private versions.
+    latestPublicPricing: {
+      $top: {
+        sortBy: { private: 1, createdAt: -1 },
+        output: '$$ROOT',
+      },
+    },
     latestCreatedAt: {
       $max: '$createdAt',
     },
@@ -18,6 +26,31 @@ export const latestPricingsByNameAggregator: PipelineStage = {
 
 export const refactorRootAggregator = {
   $replaceRoot: {
-    newRoot: '$latestPricing',
+    newRoot: { $mergeObjects: ['$latestPricing', { _latestPublicPricing: '$latestPublicPricing' }] },
   },
 };
+
+/**
+ * Swaps a pricing for its newest public version unless `canSeePrivate` holds,
+ * so a pricing whose newest version is private still lists its public one. A
+ * pricing with no public version stays private and is filtered out afterwards.
+ */
+export const pickVisibleVersionAggregator = (canSeePrivate: unknown) => [
+  {
+    $replaceRoot: {
+      newRoot: {
+        $cond: [
+          { $or: [{ $ne: ['$private', true] }, canSeePrivate] },
+          '$$ROOT',
+          {
+            $mergeObjects: [
+              '$_latestPublicPricing',
+              { collection: '$collection', organization: '$organization' },
+            ],
+          },
+        ],
+      },
+    },
+  },
+  { $unset: '_latestPublicPricing' },
+];

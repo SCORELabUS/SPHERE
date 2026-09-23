@@ -34,6 +34,7 @@ const loadFileRoutes = function (app: express.Application) {
     .route(baseUrl + '/pricings/:organizationId/:pricingSlug/:pricingVersion')
     .get(pricingController.getConfigurationSpace)
     .post(upload, PricingValidator.create, handleValidation, pricingController.createVersion)
+    .put(PricingValidator.updateVersion, handleValidation, pricingController.updateVersionVisibility)
     .delete(pricingController.destroyVersionByNameAndOrganization);
 };
 

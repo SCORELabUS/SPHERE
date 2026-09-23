@@ -9,6 +9,7 @@ interface PricingVersionsTabProps {
   onOpenInEditor: (v: VersionData) => void;
   onCopyLink: (v: VersionData) => void;
   onDelete: (v: VersionData) => void;
+  onSelect: (v: VersionData) => void;
 }
 
 export default function PricingVersionsTab({
@@ -19,6 +20,7 @@ export default function PricingVersionsTab({
   onOpenInEditor,
   onCopyLink,
   onDelete,
+  onSelect,
 }: PricingVersionsTabProps) {
   return (
     <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
@@ -26,7 +28,7 @@ export default function PricingVersionsTab({
         {versions.map(v => (
           <div key={v.id} className={`flex flex-col gap-3 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${v.id === currentVersion?.id ? 'bg-tp-primary/5' : ''}`}>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-tp-ink">{v.version}</span>
+              <button type="button" onClick={() => onSelect(v)} title="View this version" className="cursor-pointer text-sm font-medium text-tp-ink hover:text-tp-primary hover:underline">{v.version}</button>
               {v.id === currentVersion?.id && <span className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[10px] font-medium text-tp-primary">Current</span>}
               {v.private && <span className="rounded-full bg-tp-surface px-2 py-0.5 text-[10px] font-medium text-tp-steel">Private</span>}
               <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>

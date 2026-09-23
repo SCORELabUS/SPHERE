@@ -25,6 +25,7 @@ import PricingTree from '../../components/pricing-tree';
 import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
 import PricingVersionsTab from '../../components/pricing-versions-tab';
 import PricingSettingsTab from '../../components/pricing-settings-tab';
+import VisibilityScopeModal, { type VisibilityScope } from '../../components/visibility-scope-modal';
 import PricingLinkModal from '../../components/pricing-link-modal';
 import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
@@ -39,7 +40,7 @@ export default function CardPage() {
     ? collectionParam
     : null;
   const router = useRouter();
-  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, createPricingVersion } = usePricingsApi();
+  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, updatePricingVersionVisibility, createPricingVersion } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
@@ -60,7 +61,8 @@ export default function CardPage() {
   const [linkUrl, setLinkUrl] = useState('');
   const [canDelete, setCanDelete] = useState(false);
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
-  const [visibility, setVisibility] = useState('Public');
+  const [pendingVisibility, setPendingVisibility] = useState<'Public' | 'Private' | null>(null);
+  const [isSavingVisibility, setIsSavingVisibility] = useState(false);
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -85,7 +87,6 @@ export default function CardPage() {
         setVersions(vers);
         if (vers.length > 0) {
           setCurrentVersion(vers[0]);
-          setVisibility(vers[0].private ? 'Private' : 'Public');
         }
         try {
           const members = await getOrgMembers(organizationId);
@@ -267,20 +268,45 @@ export default function CardPage() {
     }
   };
 
-  const handleVisibilityChange = () => {
-    if (!slug) return;
-    customConfirm('Are you sure you want to change the visibility of this pricing?', { danger: true })
-      .then(() => {
-        const pricingUpdateBody = { private: visibility === 'Public' };
-        updatePricing(organizationId!, slug, collectionSlug ?? '', pricingUpdateBody)
-          .then(() => {
-            setVisibility(visibility === 'Private' ? 'Public' : 'Private');
-            customAlert('Pricing visibility updated successfully', 'success');
-          })
-          .catch((error: Error) => {
-            customAlert(`Error: ${error.message}`, 'error');
-          });
-      })
+  // Visibility belongs to each version, so the settings show the selected one's.
+  const visibility = currentVersion?.private ? 'Private' : 'Public';
+
+  const applyVisibility = async (target: 'Public' | 'Private', scope: VisibilityScope) => {
+    if (!slug || !organizationId || !currentVersion) return;
+    const isPrivate = target === 'Private';
+    setIsSavingVisibility(true);
+    try {
+      if (scope === 'version') {
+        await updatePricingVersionVisibility(organizationId, slug, currentVersion.version, isPrivate);
+      } else {
+        await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate });
+      }
+      const affected = (v: VersionData) => scope === 'pricing' || v.id === currentVersion.id;
+      setVersions(prev => prev.map(v => (affected(v) ? { ...v, private: isPrivate } : v)));
+      setCurrentVersion({ ...currentVersion, private: isPrivate });
+      setPendingVisibility(null);
+      customAlert(
+        scope === 'version'
+          ? `Version ${currentVersion.version} is now ${target.toLowerCase()}`
+          : `All versions are now ${target.toLowerCase()}`,
+        'success'
+      );
+    } catch (error) {
+      customAlert(`Error: ${(error as Error).message}`, 'error');
+    } finally {
+      setIsSavingVisibility(false);
+    }
+  };
+
+  const handleVisibilityChange = (value: string) => {
+    const target = value === 'Private' ? 'Private' : 'Public';
+    if (target === visibility) return;
+    if (versions.length > 1) {
+      setPendingVisibility(target);
+      return;
+    }
+    customConfirm(`Are you sure you want to make this pricing ${target.toLowerCase()}?`, { danger: true })
+      .then(() => applyVisibility(target, 'pricing'))
       .catch(() => {});
   };
 
@@ -663,6 +689,7 @@ export default function CardPage() {
                 onOpenInEditor={handleOpenInEditor}
                 onCopyLink={handleCopyLink}
                 onDelete={handleDelete}
+                onSelect={v => { setCurrentVersion(v); setTab('overview'); }}
               />
               )}
             </motion.div>
@@ -690,6 +717,20 @@ export default function CardPage() {
       {showLinkModal && (
         <PricingLinkModal linkUrl={linkUrl} onClose={() => { setShowLinkModal(false); }} />
       )}
+
+      {/* VISIBILITY SCOPE MODAL */}
+      <AnimatePresence>
+        {pendingVisibility && currentVersion && (
+          <VisibilityScopeModal
+            targetVisibility={pendingVisibility}
+            versionLabel={currentVersion.version}
+            versionCount={versions.length}
+            isSubmitting={isSavingVisibility}
+            onConfirm={scope => applyVisibility(pendingVisibility, scope)}
+            onClose={() => setPendingVisibility(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* IMPORT MODAL */}
       <AnimatePresence>
