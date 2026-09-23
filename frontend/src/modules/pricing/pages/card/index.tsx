@@ -384,6 +384,10 @@ export default function CardPage() {
   async function _createPricingVersion(file: File, organizationId: string, slug: string, version: string) {
     try {
       const formData = new FormData();
+      // Multer chooses the file path while parsing multipart data, so these fields
+      // must precede the file.
+      formData.append('saasName', pricingName || slug);
+      formData.append('version', version);
       formData.append('yaml', file);
       formData.append('private', 'false');
 
