@@ -47,8 +47,15 @@ const handlePricingUpload = (pricingFieldNames: string[], baseFolder: string): R
   const storage = multer.diskStorage({
     destination: (req, _file, cb) => {
       try {
-        const saasName = sanitizePathSegment(req.body?.saasName, "unknown-saas");
-        const targetDir = path.resolve(baseFolder, saasName);
+        // Route params are available before Multer processes the file.  Prefer them
+        // for version uploads, and namespace every upload by organization so two
+        // groups cannot overwrite each other's PetClinic 1.0.0 YAML.
+        const organizationId = sanitizePathSegment(req.params?.organizationId, "unknown-organization");
+        const pricingName = sanitizePathSegment(
+          req.params?.pricingSlug ?? req.body?.saasName,
+          "unknown-saas"
+        );
+        const targetDir = path.resolve(baseFolder, organizationId, pricingName);
 
         // Ensure the directory exists
         fs.mkdirSync(targetDir, { recursive: true });
@@ -66,7 +73,7 @@ const handlePricingUpload = (pricingFieldNames: string[], baseFolder: string): R
           return;
         }
 
-        const version = sanitizePathSegment(req.body?.version, "0.0.0");
+        const version = sanitizePathSegment(req.params?.pricingVersion ?? req.body?.version, "0.0.0");
 
         // Keep original extension (including .yml / .yaml)
         const ext = path.extname(file.originalname) || ".yml";
