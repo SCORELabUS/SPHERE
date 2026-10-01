@@ -204,22 +204,27 @@ export default function EditorPage() {
       
       let templatePricing: string = '';
 
-      if (pricingUrlParam){
-        const response = await fetch(pricingUrlParam);
-        templatePricing = await response.text();
-      }else if (!pricingParam) {
-        templatePricing = TEMPLATE_PETCLINIC_PRICING;
-      } else {
-        if (pricingParam.length > 36){ // It is greater that UUID          
-          templatePricing = parseEncodedYamlToStringYaml(pricingParam);
-        }else{
-          const cachedPricing = await getFromCache(pricingParam);
-
-          templatePricing = parseEncodedYamlToStringYaml(cachedPricing);
-        }
-      }
-
       try {
+        if (pricingUrlParam){
+          const response = await fetch(pricingUrlParam);
+          templatePricing = await response.text();
+        }else if (!pricingParam) {
+          templatePricing = TEMPLATE_PETCLINIC_PRICING;
+        } else {
+          if (pricingParam.length > 36){ // It is greater that UUID
+            templatePricing = parseEncodedYamlToStringYaml(pricingParam);
+          }else{
+            const cachedPricing = await getFromCache(pricingParam);
+
+            templatePricing = parseEncodedYamlToStringYaml(cachedPricing);
+          }
+        }
+
+        // Shown as soon as it's known, even if parsing below fails: otherwise a
+        // pricing that fails validation (e.g. an invalid currency code) leaves
+        // the editor blank instead of showing the YAML the user needs to fix.
+        setEditorValue(templatePricing);
+
         const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
         const syntaxVersion = templatePricing.match(regex)?.[1];
         let parsedPricing: Pricing;
@@ -240,9 +245,8 @@ export default function EditorPage() {
         }else{
           parsedPricing = retrievePricingFromYaml(templatePricing);
         }
-        
+
         setPricing(parsedPricing);
-        setEditorValue(templatePricing);
         setErrors([]);
       } catch (err) {
         setErrors([(err as Error).message]);
