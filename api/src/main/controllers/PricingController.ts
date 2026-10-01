@@ -17,6 +17,7 @@ class PricingController {
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
     this.createVersion = this.createVersion.bind(this);
+    this.fork = this.fork.bind(this);
     this.update = this.update.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
@@ -126,6 +127,30 @@ class PricingController {
       res.json(pricing[0]);
     } catch (err: any) {
       this.cleanupUploadedFile(req.file);
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async fork(req: any, res: any) {
+    try {
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name, confirm } = req.body;
+      if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
+        throw new Error(
+          'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
+        );
+      }
+
+      const result = await this.pricingService.forkPricing(
+        sourceOrganizationId,
+        sourceSlug,
+        sourceVersion,
+        targetOrganizationId,
+        req.user,
+        { name, confirm: confirm === true }
+      );
+      res.json(Array.isArray(result) ? result[0] : result);
+    } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }

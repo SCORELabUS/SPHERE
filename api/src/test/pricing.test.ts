@@ -2601,4 +2601,253 @@ describe('Pricings API integration', () => {
       expect(deleteResponse.body.message).toBeDefined();
     });
   });
+
+  // Each fork case seeds two organizations, a source pricing and then the fork itself,
+  // which parses and analyses two YAML files: slower than the 5s default.
+  describe('POST /api/v1/pricing-forks', { timeout: 20000 }, () => {
+    const trackFork = (body: any) => {
+      if (body?.id) {
+        pricingsToDelete.add(body.id);
+      }
+      if (typeof body?.yaml === 'string') {
+        const relativePath = body.yaml.replace(/^https?:\/\/[^/]+\//, '');
+        generatedFilesToDelete.add(path.resolve(process.cwd(), 'public', relativePath));
+      }
+    };
+
+    const forkRequest = (token: string, payload: Record<string, unknown>) =>
+      request(app)
+        .post(`${BASE_PATH}/pricing-forks`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(payload);
+
+    it('Return 200 and a new pricing carrying its origin when the target organization has no match.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+      });
+      trackFork(response.body);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(source.serviceName);
+      expect(response.body._organizationId).toBe(targetOrganizationId);
+      expect(response.body.forkedFrom).toMatchObject({
+        organizationId: sourceOrganizationId,
+        name: source.serviceName,
+        version: source.version,
+      });
+      expect(response.body.forkedFrom.organizationName).toBeTruthy();
+    });
+
+    it('Return a forked version whose createdAt is the moment of the fork, not the origin version date.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const originVersion = await PricingMongoose.findOne({ _id: source.id }).lean();
+      const forkedAfter = Date.now();
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+      });
+      trackFork(response.body);
+
+      expect(response.status).toBe(200);
+      const forkedCreatedAt = new Date(response.body.createdAt).getTime();
+      expect(forkedCreatedAt).toBeGreaterThanOrEqual(forkedAfter - 1000);
+      expect(forkedCreatedAt).not.toBe(new Date(originVersion!.createdAt).getTime());
+    });
+
+    it('Ask for confirmation when the target organization already has a pricing with the same name.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+
+      const sharedName = `pricing_${randomSuffix()}`;
+      const source = await createPricingForOrganization({
+        organizationId: sourceOrganizationId,
+        serviceName: sharedName,
+        version: '1.0.0',
+      });
+      await createPricingForOrganization({
+        organizationId: targetOrganizationId,
+        serviceName: sharedName,
+        version: '2.0.0',
+      });
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.needsConfirmation).toBe(true);
+      expect(response.body.existingPricing.name).toBe(sharedName);
+    });
+
+    it('Add the fork as a new version of the same-named pricing once confirmed.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+
+      const sharedName = `pricing_${randomSuffix()}`;
+      const source = await createPricingForOrganization({
+        organizationId: sourceOrganizationId,
+        serviceName: sharedName,
+        version: '1.0.0',
+      });
+      const existing = await createPricingForOrganization({
+        organizationId: targetOrganizationId,
+        serviceName: sharedName,
+        version: '2.0.0',
+      });
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+        confirm: true,
+      });
+      trackFork(response.body);
+
+      expect(response.status).toBe(200);
+      expect(response.body.needsConfirmation).toBeUndefined();
+
+      const existingDocument = await PricingMongoose.findOne({ _id: existing.id }).lean();
+      expect(String(response.body.pricingId)).toBe(String(existingDocument!.pricingId));
+      expect(response.body.version).toBe('1.0.0');
+    });
+
+    it('Return 409 when the same origin version was already forked into the organization.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const first = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+      });
+      trackFork(first.body);
+      expect(first.status).toBe(200);
+
+      const second = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+        confirm: true,
+      });
+
+      expect(second.status).toBe(409);
+      expect(second.body.error).toContain('CONFLICT');
+    });
+
+    it('Return 422 when forking a pricing into its own organization.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId });
+
+      const response = await forkRequest(owner.token, {
+        sourceOrganizationId: organizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: organizationId,
+      });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toContain('INVALID DATA');
+    });
+
+    it('Return 422 when required fields are missing.', async () => {
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+
+      const response = await forkRequest(forker.token, { targetOrganizationId });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toContain('INVALID DATA');
+    });
+
+    it('Return 404 when the source pricing does not exist.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: `missing_${randomSuffix()}`,
+        sourceVersion: '1.0.0',
+        targetOrganizationId,
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('Return 401 without an Authorization header.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricing-forks`)
+        .send({
+          sourceOrganizationId,
+          sourceSlug: source.serviceName,
+          sourceVersion: source.version,
+          targetOrganizationId,
+        });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('Return 403 when the forker is not allowed to create pricings in the target organization.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { organizationId: foreignOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: foreignOrganizationId,
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('PERMISSION ERROR');
+    });
+
+    it('Leave the origin YAML file untouched after forking.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const originDocument = await PricingMongoose.findOne({ _id: source.id }).lean();
+      const originPath = path.resolve(
+        process.env.SERVER_STATICS_FOLDER || 'public/',
+        originDocument!.yaml
+      );
+      const originalContent = await fs.readFile(originPath, 'utf8');
+
+      const response = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+      });
+      trackFork(response.body);
+
+      expect(response.status).toBe(200);
+      expect(await fs.readFile(originPath, 'utf8')).toBe(originalContent);
+    });
+  });
 });

@@ -312,6 +312,37 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
+  const forkPricing = useCallback(async (
+    sourceOrganizationId: string,
+    sourceSlug: string,
+    sourceVersion: string,
+    targetOrganizationId: string,
+    name?: string,
+    confirm?: boolean
+  ) => {
+    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-forks`, {
+      method: 'POST',
+      headers: basicHeaders,
+      body: JSON.stringify({
+        sourceOrganizationId,
+        sourceSlug,
+        sourceVersion,
+        targetOrganizationId,
+        name,
+        confirm,
+      }),
+    })
+      .then(async response => {
+        const parsedResponse = await response.json();
+
+        if (!response.ok) {
+          throw new Error(parsedResponse.error);
+        }
+
+        return parsedResponse;
+      });
+  }, [fetchWithInterceptor, basicHeaders]);
+
   const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
@@ -345,6 +376,7 @@ export function usePricingsApi() {
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
+      forkPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,
@@ -360,6 +392,7 @@ export function usePricingsApi() {
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
+      forkPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,

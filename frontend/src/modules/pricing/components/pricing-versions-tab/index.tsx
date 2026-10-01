@@ -12,6 +12,7 @@ interface PricingVersionsTabProps {
   onOpenInEditor: (v: VersionData) => void;
   onCopyLink: (v: VersionData) => void;
   onDelete: (v: VersionData) => void;
+  onViewOrigin: (forkedFrom: NonNullable<VersionData['forkedFrom']>) => void;
 }
 
 export default function PricingVersionsTab({
@@ -22,6 +23,7 @@ export default function PricingVersionsTab({
   onOpenInEditor,
   onCopyLink,
   onDelete,
+  onViewOrigin,
 }: PricingVersionsTabProps) {
   const [comparePair, setComparePair] = useState<{ from: string; to: string } | null>(null);
 
@@ -58,11 +60,26 @@ export default function PricingVersionsTab({
       <div className="divide-y divide-tp-hairline">
         {versions.map(v => (
           <div key={v.id} className={`flex flex-col gap-3 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${v.id === currentVersion?.id ? 'bg-tp-primary/5' : ''}`}>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-tp-ink">{v.version}</span>
-              {v.id === currentVersion?.id && <span className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[10px] font-medium text-tp-primary">Current</span>}
-              {v.private && <span className="rounded-full bg-tp-surface px-2 py-0.5 text-[10px] font-medium text-tp-steel">Private</span>}
-              <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium text-tp-ink">{v.version}</span>
+                {v.id === currentVersion?.id && <span className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[10px] font-medium text-tp-primary">Current</span>}
+                {v.private && <span className="rounded-full bg-tp-surface px-2 py-0.5 text-[10px] font-medium text-tp-steel">Private</span>}
+                {v.forkedFrom && <span className="rounded-full bg-tp-surface px-2 py-0.5 text-[10px] font-medium text-tp-steel">Forked</span>}
+                <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>
+              </div>
+              {v.forkedFrom && (
+                <button
+                  type="button"
+                  onClick={() => onViewOrigin(v.forkedFrom!)}
+                  className="mt-1 cursor-pointer text-left text-[11px] text-tp-steel underline decoration-dotted hover:text-tp-ink"
+                >
+                  Forked from <span className="font-medium">{v.forkedFrom.name}</span> (version {v.forkedFrom.version})
+                  {v.forkedFrom.collectionName ? <> in <span className="font-medium">{v.forkedFrom.collectionName}</span></> : null}
+                  {' · '}
+                  <span className="font-medium">{v.forkedFrom.organizationDisplayName}</span>
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {canCompare && <button type="button" onClick={() => setComparePair(pairFor(v))} title="Compare with the previous version" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><FiColumns className="h-4 w-4" /></button>}
