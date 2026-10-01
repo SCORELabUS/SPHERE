@@ -4,8 +4,8 @@ import { INPUT_CLS, FEATURE_TYPES, VALUE_TYPES, USAGE_LIMIT_TYPES } from '../uti
 import { FeatureMultiSelect } from './FeatureMultiSelect';
 import type { DraftFeature, DraftUsageLimit } from '../../../services/pricing2yaml';
 
-export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, onClose, onSave, onConvert }: {
-  entityKey: string; entity: DraftFeature | DraftUsageLimit; isFeature: boolean; featureKeys: string[];
+export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, featureGroups, onClose, onSave, onConvert }: {
+  entityKey: string; entity: DraftFeature | DraftUsageLimit; isFeature: boolean; featureKeys: string[]; featureGroups: string[];
   onClose: () => void;
   onSave: (key: string, updates: Record<string, unknown>) => void;
   onConvert: (key: string, toType: 'feature' | 'usageLimit') => void;
@@ -18,6 +18,7 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, on
   const [defaultValue, setDefaultValue] = useState(String(f?.defaultValue ?? ''));
   const [featureType, setFeatureType] = useState(f?.type ?? 'DOMAIN');
   const [expression, setExpression] = useState(f?.expression ?? '');
+  const [group, setGroup] = useState(f?.tag ?? '');
 
   const u = !isFeature ? entity as DraftUsageLimit : null;
   const [ulValueType, setUlValueType] = useState(u?.valueType ?? 'NUMERIC');
@@ -32,7 +33,7 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, on
         <button type="button" onClick={onClose} className="cursor-pointer flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Cancel</button>
         <button type="button" onClick={() => {
           if (isFeature) {
-            onSave(name, { description, valueType, defaultValue: valueType === 'BOOLEAN' ? defaultValue === 'true' : valueType === 'NUMERIC' ? Number(defaultValue) || 0 : defaultValue, type: featureType, expression: expression || undefined });
+            onSave(name, { description, valueType, defaultValue: valueType === 'BOOLEAN' ? defaultValue === 'true' : valueType === 'NUMERIC' ? Number(defaultValue) || 0 : defaultValue, type: featureType, expression: expression || undefined, tag: group.trim() || undefined });
           } else {
             onSave(name, { description, valueType: ulValueType, defaultValue: ulValueType === 'NUMERIC' ? Number(ulDefault) || 0 : ulDefault, unit, type: ulType, linkedFeatures });
           }
@@ -58,6 +59,14 @@ export function FeatureSidePanel({ entityKey, entity, isFeature, featureKeys, on
 
         {isFeature ? (
           <>
+            <Field label="Group">
+              <input value={group} onChange={(e) => setGroup(e.target.value)} list="feature-group-options"
+                placeholder="No group" className={INPUT_CLS} />
+              <datalist id="feature-group-options">
+                {featureGroups.map(g => <option key={g} value={g} />)}
+              </datalist>
+              <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">Pick a group or type a new one. Saved as the feature's tag.</p>
+            </Field>
             <Field label="Value Type">
               <select value={valueType} onChange={(e) => setValueType(e.target.value as typeof valueType)} className={INPUT_CLS}>
                 {VALUE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}

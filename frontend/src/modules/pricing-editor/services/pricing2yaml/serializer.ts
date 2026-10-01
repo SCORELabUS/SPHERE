@@ -1,7 +1,17 @@
+import jsYaml from 'js-yaml';
 import type { PricingDraft, DraftPlan, DraftFeature, DraftUsageLimit, DraftAddOn } from './types';
 
+// Plain scalars YAML would read back as something else ("1.0", "2024", "true", "~").
+function isAmbiguousScalar(s: string): boolean {
+  try {
+    return jsYaml.load(s) !== s;
+  } catch {
+    return true;
+  }
+}
+
 function q(s: string): string {
-  if (/[:{}[\],&*?|>!%@`#\-\s]/.test(s) || s === '' || s === 'null' || /^['"]/.test(s)) {
+  if (/[:{}[\],&*?|>!%@`#\-\s]/.test(s) || s === '' || s === 'null' || /^['"]/.test(s) || isAmbiguousScalar(s)) {
     return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   }
   return s;
