@@ -1,5 +1,8 @@
+import { useMemo, useState } from 'react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import { FiColumns } from 'react-icons/fi';
 import type { VersionData } from '../../types/card';
+import PricingVersionDiff from '../pricing-version-diff';
 
 interface PricingVersionsTabProps {
   versions: VersionData[];
@@ -20,7 +23,37 @@ export default function PricingVersionsTab({
   onCopyLink,
   onDelete,
 }: PricingVersionsTabProps) {
+  const [comparePair, setComparePair] = useState<{ from: string; to: string } | null>(null);
+
+  // Oldest first, so a version's neighbour is the one released right before it.
+  const byDate = useMemo(
+    () => [...versions].sort((a, b) => parseISO(a.createdAt).getTime() - parseISO(b.createdAt).getTime()),
+    [versions]
+  );
+  const pairFor = (target: VersionData) => {
+    const index = byDate.findIndex(v => v.id === target.id);
+    const base = byDate[index - 1] ?? byDate[index + 1];
+    return { from: base.id, to: target.id };
+  };
+  const canCompare = versions.length > 1;
+
   return (
+    <div className="space-y-4">
+      {canCompare && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-tp-steel">Pick two versions to see what changed between them.</p>
+          <button
+            type="button"
+            onClick={() => setComparePair(current => (current ? null : pairFor(currentVersion ?? byDate[byDate.length - 1])))}
+            aria-pressed={comparePair !== null}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${comparePair ? 'border-tp-primary bg-tp-primary/5 text-tp-primary' : 'border-tp-hairline-strong text-tp-ink hover:border-tp-primary/40'}`}
+          >
+            <FiColumns className="h-3.5 w-3.5" />
+            {comparePair ? 'Hide comparison' : 'Compare versions'}
+          </button>
+        </div>
+      )}
+      {comparePair && <PricingVersionDiff versions={versions} initialPair={comparePair} />}
     <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
       <div className="divide-y divide-tp-hairline">
         {versions.map(v => (
@@ -32,6 +65,7 @@ export default function PricingVersionsTab({
               <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>
             </div>
             <div className="flex items-center gap-1">
+              {canCompare && <button type="button" onClick={() => setComparePair(pairFor(v))} title="Compare with the previous version" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><FiColumns className="h-4 w-4" /></button>}
               <button type="button" onClick={() => onDownload(v)} title="Download YAML" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg></button>
               <button type="button" onClick={() => onOpenInEditor(v)} title="Open in editor" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg></button>
               <button type="button" onClick={() => onCopyLink(v)} title="Copy link" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg></button>
@@ -40,6 +74,7 @@ export default function PricingVersionsTab({
           </div>
         ))}
       </div>
+    </div>
     </div>
   );
 }
