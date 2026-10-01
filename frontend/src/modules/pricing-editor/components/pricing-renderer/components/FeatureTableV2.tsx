@@ -13,6 +13,7 @@ interface FeatureTableV2Props {
   usageLimits: Record<string, UsageLimit> | undefined;
   addOns: Record<string, AddOn> | undefined;
   currency?: string | undefined;
+  tags?: string[];
 }
 
 type Row = { id: string; type: 'feature' | 'usageLimit'; key: string };
@@ -40,7 +41,7 @@ function hasNonEmptyValue(value: unknown): boolean {
   return true;
 }
 
-export function FeatureTableV2({ plans, features, usageLimits, addOns, currency }: Readonly<FeatureTableV2Props>) {
+export function FeatureTableV2({ plans, features, usageLimits, addOns, currency, tags }: Readonly<FeatureTableV2Props>) {
   const planKeys = Object.keys(plans);
   const featureKeys = Object.keys(features);
   const addOnKeys = Object.keys(addOns ?? {});
@@ -238,7 +239,12 @@ export function FeatureTableV2({ plans, features, usageLimits, addOns, currency 
     }
   }
 
-  const sortedTags = Object.keys(tagToFeatureKeys).sort((a, b) => a.localeCompare(b));
+  // Declared tags keep the author's order; undeclared ones follow alphabetically.
+  const declaredTags = (tags ?? []).filter(t => tagToFeatureKeys[t]);
+  const sortedTags = [
+    ...declaredTags,
+    ...Object.keys(tagToFeatureKeys).filter(t => !declaredTags.includes(t)).sort((a, b) => a.localeCompare(b)),
+  ];
   const [openTags, setOpenTags] = useState<Record<string, boolean>>({});
 
   function isTagOpen(tag: string, index: number): boolean {
