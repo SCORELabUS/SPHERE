@@ -4,13 +4,17 @@ import {
   FiArrowRight,
   FiCheckCircle,
   FiChevronDown,
+  FiCode,
+  FiEdit3,
+  FiList,
   FiMinusCircle,
   FiPlusCircle,
   FiRepeat,
-  FiEdit3,
+  FiX,
 } from 'react-icons/fi';
 import type { IconType } from 'react-icons';
 import type { VersionData } from '../../types/card';
+import FileDiffView from './file-diff-view';
 import {
   diffPricings,
   formatDiffValue,
@@ -27,9 +31,19 @@ interface PricingVersionDiffProps {
   initialPair: { from: string; to: string };
 }
 
+type ViewMode = 'structured' | 'file';
+
 const KIND_STYLES: Record<
   ChangeKind,
-  { label: string; icon: IconType; badge: string; dot: string; tile: string; number: string }
+  {
+    label: string;
+    icon: IconType;
+    badge: string;
+    dot: string;
+    tile: string;
+    number: string;
+    ring: string;
+  }
 > = {
   added: {
     label: 'Added',
@@ -38,6 +52,7 @@ const KIND_STYLES: Record<
     dot: 'bg-emerald-500',
     tile: 'border-emerald-200 bg-emerald-50',
     number: 'text-emerald-700',
+    ring: 'ring-emerald-500',
   },
   removed: {
     label: 'Removed',
@@ -46,6 +61,7 @@ const KIND_STYLES: Record<
     dot: 'bg-red-500',
     tile: 'border-red-200 bg-red-50',
     number: 'text-red-700',
+    ring: 'ring-red-500',
   },
   changed: {
     label: 'Changed',
@@ -54,8 +70,14 @@ const KIND_STYLES: Record<
     dot: 'bg-amber-500',
     tile: 'border-amber-200 bg-amber-50',
     number: 'text-amber-800',
+    ring: 'ring-amber-500',
   },
 };
+
+interface LoadedVersion {
+  text: string;
+  parsed: unknown;
+}
 
 const API_BASE = import.meta.env.VITE_API_URL.replace('/api/v1', '');
 
@@ -85,11 +107,34 @@ function KindBadge({ kind }: { kind: ChangeKind }) {
   );
 }
 
-function SummaryTile({ kind, count }: { kind: ChangeKind; count: number }) {
+/** A count that doubles as a filter: pressing it keeps only that kind of change. */
+function SummaryTile({
+  kind,
+  count,
+  active,
+  onToggle,
+}: {
+  kind: ChangeKind;
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+}) {
   const style = KIND_STYLES[kind];
   const Icon = style.icon;
+  const disabled = count === 0;
   return (
-    <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${style.tile}`}>
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={active}
+      title={active ? 'Show all changes' : `Show only ${style.label.toLowerCase()}`}
+      className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${style.tile} ${
+        disabled
+          ? 'cursor-default opacity-50'
+          : 'cursor-pointer hover:shadow-sm focus-visible:outline-none focus-visible:ring-2'
+      } ${active ? `ring-2 ring-offset-2 ${style.ring}` : ''} ${disabled ? '' : style.ring}`}
+    >
       <Icon className={`h-5 w-5 shrink-0 ${style.number}`} />
       <div>
         <p className={`text-2xl font-semibold leading-none tabular-nums ${style.number}`}>
@@ -97,7 +142,7 @@ function SummaryTile({ kind, count }: { kind: ChangeKind; count: number }) {
         </p>
         <p className="mt-1 text-sm text-tp-slate">{style.label}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -218,7 +263,25 @@ function Section({ section }: { section: SectionDiff }) {
   );
 }
 
-function DiffResult({ diff }: { diff: PricingDiff }) {
+function DiffResult({
+  diff,
+  filter,
+  onFilterChange,
+}: {
+  diff: PricingDiff;
+  filter: ChangeKind | null;
+  onFilterChange: (filter: ChangeKind | null) => void;
+}) {
+  // Changes in the top-level fields (currency, billing…) count as "changed".
+  const showGeneral = diff.general.length > 0 && (filter === null || filter === 'changed');
+  const sections = diff.sections
+    .map(section => ({
+      ...section,
+      entries: filter ? section.entries.filter(entry => entry.kind === filter) : section.entries,
+    }))
+    .filter(section => section.entries.length > 0);
+  const toggle = (kind: ChangeKind) => onFilterChange(filter === kind ? null : kind);
+
   if (diff.isEmpty) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-tp-hairline-strong px-4 py-10 text-center">
@@ -233,11 +296,33 @@ function DiffResult({ diff }: { diff: PricingDiff }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryTile kind="added" count={diff.totals.added} />
-        <SummaryTile kind="removed" count={diff.totals.removed} />
-        <SummaryTile kind="changed" count={diff.totals.changed} />
+        {(['added', 'removed', 'changed'] as const).map(kind => (
+          <SummaryTile
+            key={kind}
+            kind={kind}
+            count={diff.totals[kind]}
+            active={filter === kind}
+            onToggle={() => toggle(kind)}
+          />
+        ))}
       </div>
-      {diff.general.length > 0 ? (
+      {filter ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-tp-surface px-3 py-2 text-sm text-tp-slate">
+          <span>
+            Showing only{' '}
+            <strong className="text-tp-ink">{KIND_STYLES[filter].label.toLowerCase()}</strong> items
+          </span>
+          <button
+            type="button"
+            onClick={() => onFilterChange(null)}
+            className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-tp-primary hover:underline"
+          >
+            <FiX className="h-3.5 w-3.5" />
+            Clear filter
+          </button>
+        </div>
+      ) : null}
+      {showGeneral ? (
         <section className="space-y-3">
           <SectionTitle>General</SectionTitle>
           <div className="divide-y divide-tp-hairline rounded-xl border border-tp-hairline-strong bg-tp-canvas px-4">
@@ -247,8 +332,39 @@ function DiffResult({ diff }: { diff: PricingDiff }) {
           </div>
         </section>
       ) : null}
-      {diff.sections.map(section => (
+      {sections.map(section => (
         <Section key={section.key} section={section} />
+      ))}
+    </div>
+  );
+}
+
+function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (mode: ViewMode) => void }) {
+  const options: { mode: ViewMode; label: string; icon: IconType }[] = [
+    { mode: 'structured', label: 'Structured', icon: FiList },
+    { mode: 'file', label: 'File', icon: FiCode },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Comparison view"
+      className="inline-grid grid-cols-2 gap-1 rounded-xl bg-tp-surface p-1"
+    >
+      {options.map(({ mode, label, icon: Icon }) => (
+        <button
+          key={mode}
+          type="button"
+          aria-pressed={value === mode}
+          onClick={() => onChange(mode)}
+          className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-1.5 text-sm font-medium transition-all ${
+            value === mode
+              ? 'border-tp-primary/30 bg-tp-canvas text-tp-ink shadow-sm'
+              : 'border-transparent text-tp-steel hover:text-tp-ink'
+          }`}
+        >
+          <Icon className={`h-4 w-4 ${value === mode ? 'text-tp-primary' : ''}`} />
+          {label}
+        </button>
       ))}
     </div>
   );
@@ -258,9 +374,12 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
   const [fromId, setFromId] = useState(initialPair.from);
   const [toId, setToId] = useState(initialPair.to);
   const [diff, setDiff] = useState<PricingDiff | null>(null);
+  const [texts, setTexts] = useState<{ before: string; after: string } | null>(null);
+  const [view, setView] = useState<ViewMode>('structured');
+  const [filter, setFilter] = useState<ChangeKind | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const parsedCache = useRef(new Map<string, unknown>());
+  const loadedCache = useRef(new Map<string, LoadedVersion>());
 
   // A new pair requested from outside (e.g. a row's "compare" button).
   useEffect(() => {
@@ -274,25 +393,29 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
   useEffect(() => {
     if (!fromVersion || !toVersion) return;
     let active = true;
-    const load = async (version: VersionData) => {
-      const cached = parsedCache.current.get(version.id);
-      if (cached !== undefined) return cached;
+    const load = async (version: VersionData): Promise<LoadedVersion> => {
+      const cached = loadedCache.current.get(version.id);
+      if (cached) return cached;
       const response = await fetch(yamlUrl(version));
       if (!response.ok) throw new Error(`Version ${version.version} could not be loaded.`);
-      const parsed = jsYaml.load(await response.text());
-      parsedCache.current.set(version.id, parsed);
-      return parsed;
+      const text = await response.text();
+      const loaded = { text, parsed: jsYaml.load(text) };
+      loadedCache.current.set(version.id, loaded);
+      return loaded;
     };
 
     setIsLoading(true);
     setError('');
     Promise.all([load(fromVersion), load(toVersion)])
       .then(([before, after]) => {
-        if (active) setDiff(diffPricings(before, after));
+        if (!active) return;
+        setDiff(diffPricings(before.parsed, after.parsed));
+        setTexts({ before: before.text, after: after.text });
       })
       .catch(loadError => {
         if (!active) return;
         setDiff(null);
+        setTexts(null);
         setError(loadError instanceof Error ? loadError.message : 'The comparison failed.');
       })
       .finally(() => {
@@ -354,7 +477,8 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
         </label>
       </div>
 
-      <div className="border-t border-tp-hairline pt-6">
+      <div className="space-y-6 border-t border-tp-hairline pt-6">
+        <ViewToggle value={view} onChange={setView} />
         {isLoading && !diff ? (
           <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-10 text-center text-sm text-tp-slate">
             Comparing versions…
@@ -366,9 +490,23 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
           >
             {error}
           </div>
-        ) : diff ? (
+        ) : diff && texts && fromVersion && toVersion ? (
           <div className={`transition-opacity ${isLoading ? 'opacity-50' : ''}`}>
-            <DiffResult diff={diff} />
+            {view === 'structured' ? (
+              <DiffResult
+                diff={diff}
+                filter={filter && diff.totals[filter] > 0 ? filter : null}
+                onFilterChange={setFilter}
+              />
+            ) : (
+              <FileDiffView
+                key={`${fromVersion.id}-${toVersion.id}`}
+                before={texts.before}
+                after={texts.after}
+                beforeLabel={`${fromVersion.version}`}
+                afterLabel={`${toVersion.version}`}
+              />
+            )}
           </div>
         ) : null}
       </div>
