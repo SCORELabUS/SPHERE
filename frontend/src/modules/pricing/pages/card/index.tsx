@@ -255,16 +255,24 @@ export default function CardPage() {
     }
   };
 
-  const handleDelete = async (v: VersionData) => {
+  // Shared by the trash icon in the versions list and the button in Settings.
+  const handleDeleteVersion = (target: VersionData) => {
     if (!slug) return;
-    if (!confirm(`Delete version ${v.version}? This cannot be undone.`)) return;
-    try {
-      await removePricingBySlug(organizationId || "", slug, collectionSlug ?? undefined);
-      setVersions(prev => prev.filter(x => x.id !== v.id));
-      if (currentVersion?.id === v.id) setCurrentVersion(versions.find(x => x.id !== v.id) ?? null);
-    } catch {
-      console.error("Failed to delete version");
-    }
+    customConfirm(`Are you sure you want to delete version ${target.version}? This action is irreversible.`, { danger: true })
+      .then(() => {
+        removePricingVersion(organizationId || "", slug, target.version)
+          .then(() => {
+            const remaining = versions.filter(x => x.id !== target.id);
+            setVersions(remaining);
+            // The version on screen only changes when it was the one deleted.
+            setCurrentVersion(current => (current && current.id !== target.id ? current : remaining[0] ?? null));
+            customAlert(`Version ${target.version} deleted successfully`, 'success');
+          })
+          .catch(() => {
+            customAlert('An error has occurred while deleting the version. Please, try again later.', 'error');
+          });
+      })
+      .catch(() => {});
   };
 
   const handleVisibilityChange = () => {
@@ -310,24 +318,7 @@ export default function CardPage() {
   };
 
   const handleDeleteCurrentVersion = () => {
-    if (!slug || !currentVersion) return;
-    customConfirm(`Are you sure you want to delete version ${currentVersion.version}? This action is irreversible.`, { danger: true })
-      .then(() => {
-        removePricingVersion(organizationId || "", slug, currentVersion.version)
-          .then(() => {
-            setVersions(prev => {
-              const next = prev.filter(x => x.id !== currentVersion.id);
-              if (next.length > 0) setCurrentVersion(next[0]);
-              else setCurrentVersion(null);
-              return next;
-            });
-            customAlert(`Version ${currentVersion.version} deleted successfully`, 'success');
-          })
-          .catch(() => {
-            customAlert('An error has occurred while deleting the version. Please, try again later.', 'error');
-          });
-      })
-      .catch(() => {});
+    if (currentVersion) handleDeleteVersion(currentVersion);
   };
 
   const handleDeletePricing = () => {
@@ -666,7 +657,7 @@ export default function CardPage() {
                 onDownload={handleDownload}
                 onOpenInEditor={handleOpenInEditor}
                 onCopyLink={handleCopyLink}
-                onDelete={handleDelete}
+                onDelete={handleDeleteVersion}
               />
               )}
             </motion.div>
