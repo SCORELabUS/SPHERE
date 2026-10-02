@@ -189,4 +189,13 @@ const update = [
     .withMessage('maxSubscriptionPrice must be a number'),
 ];
 
-export { create, update };
+const updateVersion = [
+  check('private')
+    .exists({ checkNull: true })
+    .withMessage('The private field is required')
+    .isBoolean()
+    .withMessage('The private field must be boolean')
+    .toBoolean(),
+];
+
+export { create, update, updateVersion };

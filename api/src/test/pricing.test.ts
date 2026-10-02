@@ -2601,4 +2601,237 @@ describe('Pricings API integration', () => {
       expect(deleteResponse.body.message).toBeDefined();
     });
   });
+  describe('Pricings with public and private versions', { timeout: 20000 }, () => {
+    /**
+     * Creates one pricing whose versions have the given visibility, oldest first,
+     * and pins their createdAt so "newest" does not depend on the fixture dates.
+     */
+    const createMixedPricing = async (organizationId: string, visibilities: boolean[]) => {
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        version: '1.0.0',
+        isPrivate: visibilities[0],
+      });
+
+      for (const [index, isPrivate] of visibilities.slice(1).entries()) {
+        const version = `${index + 2}.0.0`;
+        const fixture = await createValidPricingYaml(serviceName, version);
+        const response = await request(app)
+          .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
+          .set('Authorization', `Bearer ${adminUser.token}`)
+          .field('private', String(isPrivate))
+          .attach('yaml', fixture.filePath);
+        if (response.status !== 200) {
+          throw new Error(`Version creation failed with ${response.status}: ${JSON.stringify(response.body)}`);
+        }
+      }
+
+      const docs = await PricingMongoose.find({ name: serviceName, _organizationId: organizationId }).sort({ version: 1 });
+      for (const [index, doc] of docs.entries()) {
+        await PricingMongoose.updateOne({ _id: doc._id }, { createdAt: new Date(Date.UTC(2020, 0, index + 1)) });
+        pricingsToDelete.add(doc._id.toString());
+      }
+
+      return { serviceName, slug: docs[0].slug as string };
+    };
+
+    const listedVersion = (body: any, serviceName: string) =>
+      body.pricings.find((p: any) => p.name === serviceName)?.version;
+
+    it('lists the newest public version when the newest version is private.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { serviceName } = await createMixedPricing(organizationId, [false, false, true]);
+
+      const response = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+
+      expect(response.status).toBe(200);
+      expect(listedVersion(response.body, serviceName)).toBe('2.0.0');
+    });
+
+    it('lists the newest public version in the public catalogue.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { serviceName } = await createMixedPricing(organizationId, [false, true]);
+
+      const response = await request(app).get(`${BASE_PATH}/pricings?name=${serviceName}`);
+
+      expect(response.status).toBe(200);
+      expect(listedVersion(response.body, serviceName)).toBe('1.0.0');
+    });
+
+    it('lists the newest version, private included, to the OWNER.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createMixedPricing(organizationId, [false, true]);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(listedVersion(response.body, serviceName)).toBe('2.0.0');
+    });
+
+    it('lists the newest private version to a MEMBER with GET permission on the pricing.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+      const { serviceName, slug } = await createMixedPricing(organizationId, [false, true]);
+      await createEntityScopedPermission(member.id, organizationId, slug, 'pricing', {
+        GET: true, PUT: false, DELETE: false, CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(listedVersion(response.body, serviceName)).toBe('2.0.0');
+    });
+
+    it('does not list a pricing whose versions are all private.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { serviceName } = await createMixedPricing(organizationId, [true, true]);
+
+      const response = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+
+      expect(response.status).toBe(200);
+      expect(listedVersion(response.body, serviceName)).toBeUndefined();
+    });
+
+    it('shows only the public versions in the pricing card when the first stored version is private.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const { slug } = await createMixedPricing(organizationId, [true, false, true]);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${outsider.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.versions.map((v: any) => v.version)).toEqual(['2.0.0']);
+    });
+
+    it('hides the private versions from a MEMBER without permissions on the pricing.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+      const { slug } = await createMixedPricing(organizationId, [true, false]);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.versions.map((v: any) => v.version)).toEqual(['2.0.0']);
+    });
+
+    it('shows every version in the pricing card to the OWNER.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { slug } = await createMixedPricing(organizationId, [true, false]);
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${slug}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.versions.map((v: any) => v.version)).toEqual(['2.0.0', '1.0.0']);
+    });
+
+    it('returns 404 for the pricing card when every version is private.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { slug } = await createMixedPricing(organizationId, [true, true]);
+
+      const response = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${slug}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('returns 404 for the configuration space of a private version to an anonymous user.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { slug } = await createMixedPricing(organizationId, [false, true]);
+
+      const response = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${slug}/2.0.0`);
+
+      expect(response.status).toBe(404);
+    });
+
+    describe('PUT /api/v1/pricings/:organizationId/:pricingName/:pricingVersion', () => {
+      it('changes the visibility of that version only.', async () => {
+        const { user: owner, organizationId } = await createAndLoginUser('USER');
+        const { slug } = await createMixedPricing(organizationId, [false, false]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/2.0.0`)
+          .set('Authorization', `Bearer ${owner.token}`)
+          .send({ private: true });
+
+        expect(response.status).toBe(200);
+        const visibility = Object.fromEntries(response.body.versions.map((v: any) => [v.version, v.private]));
+        expect(visibility).toEqual({ '1.0.0': false, '2.0.0': true });
+      });
+
+      it('makes a private version public again.', async () => {
+        const { user: owner, organizationId } = await createAndLoginUser('USER');
+        const { slug } = await createMixedPricing(organizationId, [true, true]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/1.0.0`)
+          .set('Authorization', `Bearer ${owner.token}`)
+          .send({ private: false });
+
+        expect(response.status).toBe(200);
+        const anonymous = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${slug}`);
+        expect(anonymous.body.versions.map((v: any) => v.version)).toEqual(['1.0.0']);
+      });
+
+      it('returns 403 to a MEMBER without PUT permission.', async () => {
+        const { organizationId } = await createTestUser('USER');
+        const { user: member } = await createAndLoginUser('USER');
+        await createMembership(member.id, organizationId, 'MEMBER');
+        const { slug } = await createMixedPricing(organizationId, [false]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/1.0.0`)
+          .set('Authorization', `Bearer ${member.token}`)
+          .send({ private: true });
+
+        expect(response.status).toBe(403);
+        expect((await PricingMongoose.findOne({ slug, _organizationId: organizationId }))?.private).toBe(false);
+      });
+
+      it('returns 401 without authentication.', async () => {
+        const { organizationId } = await createTestUser('USER');
+        const { slug } = await createMixedPricing(organizationId, [false]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/1.0.0`)
+          .send({ private: true });
+
+        expect(response.status).toBe(401);
+      });
+
+      it('returns 422 when private is missing.', async () => {
+        const { user: owner, organizationId } = await createAndLoginUser('USER');
+        const { slug } = await createMixedPricing(organizationId, [false]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/1.0.0`)
+          .set('Authorization', `Bearer ${owner.token}`)
+          .send({});
+
+        expect(response.status).toBe(422);
+      });
+
+      it('returns 404 for a version that does not exist.', async () => {
+        const { user: owner, organizationId } = await createAndLoginUser('USER');
+        const { slug } = await createMixedPricing(organizationId, [false]);
+
+        const response = await request(app)
+          .put(`${BASE_PATH}/pricings/${organizationId}/${slug}/9.9.9`)
+          .set('Authorization', `Bearer ${owner.token}`)
+          .send({ private: true });
+
+        expect(response.status).toBe(404);
+      });
+    });
+  });
 });
