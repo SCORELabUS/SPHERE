@@ -70,14 +70,10 @@ export default function PricingVersionsTab({
               <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>
             </div>
             <div className="flex items-center gap-1">
-              {canChangeVisibility ? (
+              {canChangeVisibility && (
                 <button type="button" onClick={() => onToggleVisibility(v)} title={v.private ? 'Private: click to make this version public' : 'Public: click to make this version private'} aria-label={v.private ? 'Make version public' : 'Make version private'} className={`cursor-pointer rounded-md p-1.5 transition-colors hover:bg-tp-surface ${v.private ? 'text-tp-steel hover:text-tp-ink' : 'text-emerald-700'}`}>
                   {v.private ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
                 </button>
-              ) : (
-                <span title={v.private ? 'Private version' : 'Public version'} className={`p-1.5 ${v.private ? 'text-tp-steel' : 'text-emerald-700'}`}>
-                  {v.private ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
-                </span>
               )}
               {canCompare && <button type="button" onClick={() => setComparePair(pairFor(v))} title="Compare with the previous version" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><FiColumns className="h-4 w-4" /></button>}
               <button type="button" onClick={() => onDownload(v)} title="Download YAML" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg></button>
