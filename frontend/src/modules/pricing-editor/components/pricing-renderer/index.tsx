@@ -34,7 +34,7 @@ export function PricingRenderer({
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* <PricingCard pricing={pricing} /> */}
 
-        {Object.keys(pricing.variables).length > 0 && (
+        {Object.keys(pricing.variables ?? {}).length > 0 && (
           <>
             <div className="mb-2 mt-4 flex justify-end">
               <button
@@ -62,6 +62,7 @@ export function PricingRenderer({
           usageLimits={pricing.usageLimits ?? {}}
           addOns={pricing.addOns ?? {}}
           currency={resolvedCurrency}
+          tags={pricing.tags}
         />
 
         {pricing.addOns && Object.values(pricing.addOns).length > 0 && (

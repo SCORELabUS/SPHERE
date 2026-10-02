@@ -102,7 +102,12 @@ export async function getPublicOrganizations(
   if (params.limit !== undefined) query.set('limit', String(params.limit));
   if (params.offset !== undefined) query.set('offset', String(params.offset));
 
-  const response = await fetch(`${ORGS_BASE_PATH}/public?${query.toString()}`, { signal });
+  // `no-cache` makes the browser revalidate, so a changed avatar shows up
+  // without a hard reload.
+  const response = await fetch(`${ORGS_BASE_PATH}/public?${query.toString()}`, {
+    signal,
+    cache: 'no-cache',
+  });
   if (!response.ok) throw new Error('Failed to fetch public organizations');
   return response.json();
 }

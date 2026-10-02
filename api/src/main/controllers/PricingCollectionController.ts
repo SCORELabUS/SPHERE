@@ -89,7 +89,7 @@ class PricingCollectionController {
         req.user
       );
       const pricings = await this.pricingService.indexByCollection(collection.id);
-      const pricingsToDownload = pricings.map(pricing => pricing.yaml);
+      const pricingsToDownload = pricings;
 
       if (pricingsToDownload.length === 0) {
         res.status(400).send({ error: 'No pricings to download.' });
@@ -119,14 +119,14 @@ class PricingCollectionController {
 
       const baseDir = 'public';
 
-      pricingsToDownload.forEach(pricingPath => {
-        const relativePath = path.join(baseDir, pricingPath);
-        const pathParts = pricingPath.split('/');
-        const pricingName = pathParts[3];
-        const pricingFileName = pathParts[pathParts.length - 1];
+      pricingsToDownload.forEach(pricing => {
+        const relativePath = path.join(baseDir, pricing.yaml);
+        const extension = path.extname(pricing.yaml) || '.yml';
 
         archive.file(relativePath, {
-          name: path.posix.join(pricingName, pricingFileName),
+          // Archive names are a public collection format.  Do not leak or couple
+          // them to the internal, organization-namespaced storage path.
+          name: path.posix.join(pricing.name, `${pricing.version}${extension}`),
         });
       });
 

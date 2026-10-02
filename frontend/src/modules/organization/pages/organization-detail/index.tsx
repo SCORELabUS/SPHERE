@@ -815,7 +815,7 @@ export default function OrganizationDetailPage() {
           <OrgAvatarModal
             org={org}
             onClose={() => setAvatarModalOpen(false)}
-            onSaved={updated =>
+            onSaved={updated => {
               // Only the avatar fields are taken from the response: the avatar
               // endpoints return the organization on its own, without the child
               // organizations this page loaded separately, and replacing the
@@ -829,8 +829,11 @@ export default function OrganizationDetailPage() {
                       avatarFgColor: updated.avatarFgColor,
                     }
                   : updated
-              )
-            }
+              );
+              // The "Your organizations" list lives in a shared context that is
+              // only loaded once, so it has to be told the avatar changed.
+              refreshMyOrganizations();
+            }}
           />
         )}
         {addMemberModalOpen && org && (
