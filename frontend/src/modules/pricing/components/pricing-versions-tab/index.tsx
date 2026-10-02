@@ -1,4 +1,5 @@
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import type { VersionData } from '../../types/card';
 
 interface PricingVersionsTabProps {
@@ -10,6 +11,8 @@ interface PricingVersionsTabProps {
   onCopyLink: (v: VersionData) => void;
   onDelete: (v: VersionData) => void;
   onSelect: (v: VersionData) => void;
+  canChangeVisibility: boolean;
+  onToggleVisibility: (v: VersionData) => void;
 }
 
 export default function PricingVersionsTab({
@@ -21,6 +24,8 @@ export default function PricingVersionsTab({
   onCopyLink,
   onDelete,
   onSelect,
+  canChangeVisibility,
+  onToggleVisibility,
 }: PricingVersionsTabProps) {
   return (
     <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
@@ -30,10 +35,18 @@ export default function PricingVersionsTab({
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => onSelect(v)} title="View this version" className="cursor-pointer text-sm font-medium text-tp-ink hover:text-tp-primary hover:underline">{v.version}</button>
               {v.id === currentVersion?.id && <span className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[10px] font-medium text-tp-primary">Current</span>}
-              {v.private && <span className="rounded-full bg-tp-surface px-2 py-0.5 text-[10px] font-medium text-tp-steel">Private</span>}
               <span className="text-[11px] text-tp-steel">{formatDistanceToNow(parseISO(v.createdAt))} ago</span>
             </div>
             <div className="flex items-center gap-1">
+              {canChangeVisibility ? (
+                <button type="button" onClick={() => onToggleVisibility(v)} title={v.private ? 'Private: click to make this version public' : 'Public: click to make this version private'} aria-label={v.private ? 'Make version public' : 'Make version private'} className={`cursor-pointer rounded-md p-1.5 transition-colors hover:bg-tp-surface ${v.private ? 'text-tp-steel hover:text-tp-ink' : 'text-emerald-700'}`}>
+                  {v.private ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
+                </button>
+              ) : (
+                <span title={v.private ? 'Private version' : 'Public version'} className={`p-1.5 ${v.private ? 'text-tp-steel' : 'text-emerald-700'}`}>
+                  {v.private ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
+                </span>
+              )}
               <button type="button" onClick={() => onDownload(v)} title="Download YAML" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg></button>
               <button type="button" onClick={() => onOpenInEditor(v)} title="Open in editor" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg></button>
               <button type="button" onClick={() => onCopyLink(v)} title="Copy link" className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg></button>

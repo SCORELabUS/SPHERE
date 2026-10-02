@@ -25,7 +25,7 @@ import PricingTree from '../../components/pricing-tree';
 import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
 import PricingVersionsTab from '../../components/pricing-versions-tab';
 import PricingSettingsTab from '../../components/pricing-settings-tab';
-import VisibilityScopeModal, { type VisibilityScope } from '../../components/visibility-scope-modal';
+import VersionsVisibilityModal from '../../components/versions-visibility-modal';
 import PricingLinkModal from '../../components/pricing-link-modal';
 import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
@@ -61,8 +61,7 @@ export default function CardPage() {
   const [linkUrl, setLinkUrl] = useState('');
   const [canDelete, setCanDelete] = useState(false);
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
-  const [pendingVisibility, setPendingVisibility] = useState<'Public' | 'Private' | null>(null);
-  const [isSavingVisibility, setIsSavingVisibility] = useState(false);
+  const [showVisibilityModal, setShowVisibilityModal] = useState(false);
   const [orgDisplayName, setOrgDisplayName] = useState<string | null>(null);
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -268,45 +267,45 @@ export default function CardPage() {
     }
   };
 
-  // Visibility belongs to each version, so the settings show the selected one's.
-  const visibility = currentVersion?.private ? 'Private' : 'Public';
+  // Visibility belongs to each version: the settings describe the pricing as a
+  // whole, so a pricing with some public and some private versions is "Mixed".
+  const privateCount = versions.filter(v => v.private).length;
+  const visibility = privateCount === 0 ? 'Public' : privateCount === versions.length ? 'Private' : 'Mixed';
 
-  const applyVisibility = async (target: 'Public' | 'Private', scope: VisibilityScope) => {
-    if (!slug || !organizationId || !currentVersion) return;
-    const isPrivate = target === 'Private';
-    setIsSavingVisibility(true);
+  const setVersionsPrivacy = (isPrivate: boolean, shouldChange: (v: VersionData) => boolean) => {
+    setVersions(prev => prev.map(v => (shouldChange(v) ? { ...v, private: isPrivate } : v)));
+    setCurrentVersion(prev => (prev && shouldChange(prev) ? { ...prev, private: isPrivate } : prev));
+  };
+
+  // The eye in the versions list: one version at a time.
+  const handleToggleVersionVisibility = async (v: VersionData) => {
+    if (!slug || !organizationId) return;
+    const isPrivate = !v.private;
     try {
-      if (scope === 'version') {
-        await updatePricingVersionVisibility(organizationId, slug, currentVersion.version, isPrivate);
-      } else {
-        await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate });
-      }
-      const affected = (v: VersionData) => scope === 'pricing' || v.id === currentVersion.id;
-      setVersions(prev => prev.map(v => (affected(v) ? { ...v, private: isPrivate } : v)));
-      setCurrentVersion({ ...currentVersion, private: isPrivate });
-      setPendingVisibility(null);
-      customAlert(
-        scope === 'version'
-          ? `Version ${currentVersion.version} is now ${target.toLowerCase()}`
-          : `All versions are now ${target.toLowerCase()}`,
-        'success'
-      );
+      await updatePricingVersionVisibility(organizationId, slug, v.version, isPrivate);
+      setVersionsPrivacy(isPrivate, candidate => candidate.id === v.id);
     } catch (error) {
       customAlert(`Error: ${(error as Error).message}`, 'error');
-    } finally {
-      setIsSavingVisibility(false);
     }
   };
 
+  // The setting in the Settings tab: every version at once.
   const handleVisibilityChange = (value: string) => {
+    if (!slug || !organizationId) return;
     const target = value === 'Private' ? 'Private' : 'Public';
     if (target === visibility) return;
-    if (versions.length > 1) {
-      setPendingVisibility(target);
-      return;
-    }
-    customConfirm(`Are you sure you want to make this pricing ${target.toLowerCase()}?`, { danger: true })
-      .then(() => applyVisibility(target, 'pricing'))
+    const isPrivate = target === 'Private';
+    const scope = versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
+    customConfirm(`Make ${scope} ${target.toLowerCase()}?`, { danger: true })
+      .then(async () => {
+        try {
+          await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate });
+          setVersionsPrivacy(isPrivate, () => true);
+          customAlert(`${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`, 'success');
+        } catch (error) {
+          customAlert(`Error: ${(error as Error).message}`, 'error');
+        }
+      })
       .catch(() => {});
   };
 
@@ -690,6 +689,8 @@ export default function CardPage() {
                 onCopyLink={handleCopyLink}
                 onDelete={handleDelete}
                 onSelect={v => { setCurrentVersion(v); setTab('overview'); }}
+                canChangeVisibility={!!entityPermissions?.PUT}
+                onToggleVisibility={handleToggleVersionVisibility}
               />
               )}
             </motion.div>
@@ -703,7 +704,9 @@ export default function CardPage() {
                 visibility={visibility}
                 pricingName={pricingName}
                 currentVersion={currentVersion}
+                versions={versions}
                 onVisibilityChange={handleVisibilityChange}
+                onShowVersionsVisibility={() => setShowVisibilityModal(true)}
                 onRename={handleRename}
                 onDeleteCurrentVersion={handleDeleteCurrentVersion}
                 onDeletePricing={handleDeletePricing}
@@ -718,16 +721,13 @@ export default function CardPage() {
         <PricingLinkModal linkUrl={linkUrl} onClose={() => { setShowLinkModal(false); }} />
       )}
 
-      {/* VISIBILITY SCOPE MODAL */}
+      {/* VERSIONS VISIBILITY MODAL */}
       <AnimatePresence>
-        {pendingVisibility && currentVersion && (
-          <VisibilityScopeModal
-            targetVisibility={pendingVisibility}
-            versionLabel={currentVersion.version}
-            versionCount={versions.length}
-            isSubmitting={isSavingVisibility}
-            onConfirm={scope => applyVisibility(pendingVisibility, scope)}
-            onClose={() => setPendingVisibility(null)}
+        {showVisibilityModal && (
+          <VersionsVisibilityModal
+            versions={versions}
+            currentVersionId={currentVersion?.id}
+            onClose={() => setShowVisibilityModal(false)}
           />
         )}
       </AnimatePresence>
