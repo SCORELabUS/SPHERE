@@ -5,7 +5,7 @@ import type { Organization } from '../../../organization/api/organizationsApi';
 
 interface ForkPricingModalProps {
   pricingName: string;
-  onFork: (targetOrganizationId: string, name?: string, confirm?: boolean) => Promise<any>;
+  onFork: (targetOrganizationId: string, name?: string) => Promise<any>;
   onClose: () => void;
   onSuccess: (result: { slug: string; _organizationId: string }) => void;
 }
@@ -14,8 +14,10 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
   const [targetOrg, setTargetOrg] = useState<Organization | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingConfirmation, setPendingConfirmation] = useState<{ existingName: string; sourceVersion: string } | null>(null);
+  const [takenName, setTakenName] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  // A fork is always a new pricing, so the name must differ from the one already taken.
+  const nameIsTaken = takenName !== null && newName.trim().toLowerCase() === takenName.trim().toLowerCase();
 
   const handleFork = async () => {
     if (!targetOrg) return;
@@ -23,9 +25,9 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
     setIsSubmitting(true);
     try {
       const result = await onFork(targetOrg.id);
-      if (result?.needsConfirmation) {
-        setPendingConfirmation({ existingName: result.existingPricing.name, sourceVersion: result.sourceVersion });
-        setNewName(result.existingPricing.name);
+      if (result?.nameTaken) {
+        setTakenName(result.existingPricing.name);
+        setNewName(`${result.existingPricing.name} (fork)`);
       } else {
         onSuccess(result);
       }
@@ -36,12 +38,12 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
     }
   };
 
-  const handleConfirmNewVersion = async () => {
+  const handleForkWithName = async () => {
     if (!targetOrg) return;
     setError(null);
     setIsSubmitting(true);
     try {
-      const result = await onFork(targetOrg.id, newName.trim() || undefined, true);
+      const result = await onFork(targetOrg.id, newName.trim() || undefined);
       onSuccess(result);
     } catch (err) {
       setError((err as Error).message);
@@ -69,7 +71,7 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
         className="w-full max-w-[28rem] cursor-default rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-4"
         onClick={e => e.stopPropagation()}
       >
-        {!pendingConfirmation ? (
+        {takenName === null ? (
           <>
             <h2 className="mb-2 text-center font-display text-lg font-semibold text-tp-ink">Fork this pricing</h2>
             <p className="mb-4 text-center text-sm text-tp-steel">
@@ -97,11 +99,11 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
           </>
         ) : (
           <>
-            <h2 className="mb-2 text-center font-display text-lg font-semibold text-tp-ink">Add as a new version?</h2>
+            <h2 className="mb-2 text-center font-display text-lg font-semibold text-tp-ink">Choose a different name</h2>
             <p className="mb-4 text-center text-sm text-tp-steel">
-              {targetOrg?.displayName} already has a fork of this pricing, named{' '}
-              <span className="font-medium text-tp-ink">"{pendingConfirmation.existingName}"</span>. Version{' '}
-              {pendingConfirmation.sourceVersion} will be saved as a new version of it.
+              {targetOrg?.displayName} already has a pricing named{' '}
+              <span className="font-medium text-tp-ink">"{takenName}"</span>. A fork always creates a new pricing and
+              cannot be added to an existing one, so enter a different name for it.
             </p>
             <label className="mb-1 block text-sm text-slate-700">Pricing name</label>
             <input
@@ -113,18 +115,18 @@ export default function ForkPricingModal({ pricingName, onFork, onClose, onSucce
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setPendingConfirmation(null)}
+                onClick={() => setTakenName(null)}
                 className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-4 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
               >
                 Back
               </button>
               <button
                 type="button"
-                disabled={isSubmitting || !newName.trim()}
-                onClick={handleConfirmNewVersion}
+                disabled={isSubmitting || !newName.trim() || nameIsTaken}
+                onClick={handleForkWithName}
                 className="cursor-pointer rounded-lg bg-tp-primary px-4 py-2 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:cursor-default disabled:opacity-40"
               >
-                {isSubmitting ? 'Saving…' : 'Add version'}
+                {isSubmitting ? 'Forking…' : 'Fork as new pricing'}
               </button>
             </div>
           </>

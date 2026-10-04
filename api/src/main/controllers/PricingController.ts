@@ -134,7 +134,7 @@ class PricingController {
 
   async fork(req: any, res: any) {
     try {
-      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name, confirm } = req.body;
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name } = req.body;
       if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
         throw new Error(
           'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
@@ -147,7 +147,7 @@ class PricingController {
         sourceVersion,
         targetOrganizationId,
         req.user,
-        { name, confirm: confirm === true }
+        { name }
       );
       res.json(Array.isArray(result) ? result[0] : result);
     } catch (err: any) {

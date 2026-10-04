@@ -262,15 +262,12 @@ class PricingService {
   /**
    * Forks one version of a pricing into another organization.
    *
-   * The fork is added as a new version of an existing pricing in the target organization,
-   * instead of creating a duplicate, when either:
-   *  - the target org already has a pricing forked from this same origin (matched by
-   *    `forkedFrom.pricingId`, not by name — the user may have renamed that earlier fork), or
-   *  - the target org already has an (unrelated) pricing with the same name as the source
-   *    (matched the same way the normal, non-fork publish flow already treats a name clash).
-   * When either match is found without `options.confirm`, no write is performed: the caller
-   * gets back `{ needsConfirmation: true, ... }` so the UI can ask before proceeding,
-   * optionally renaming the destination pricing via `options.name`.
+   * A fork is a single branching point: it always creates a NEW pricing in the target
+   * organization and never adds a version to an existing one (forked or not). When the name
+   * the fork would take (`options.name`, or the source's own name) already belongs to a
+   * pricing in the target organization, nothing is written: without `options.name` the
+   * caller gets back `{ nameTaken: true, ... }` so the UI can ask for another name, and
+   * with it the request fails with a CONFLICT.
    */
   async forkPricing(
     sourceOrganizationId: string,
@@ -278,7 +275,7 @@ class PricingService {
     sourceVersion: string,
     targetOrganizationId: string,
     reqUser: LeanUser,
-    options: { name?: string; confirm?: boolean } = {}
+    options: { name?: string } = {}
   ) {
     if (sourceOrganizationId === targetOrganizationId) {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
@@ -321,59 +318,29 @@ class PricingService {
     let versionCreated = false;
 
     try {
-      // The pricing's DB-level `version` (e.g. "2021") is only a label; what actually gets
-      // stored per version is the YAML's own `version` field (e.g. "2021-11-29"), which is
-      // what the fork's version-conflict check must compare against.
-      const parsedSource = retrievePricingFromPath(copiedAbsolutePath);
-
-      const existingForkStub = await this.pricingRepository.findForkOfOrigin(
+      const requestedName = options.name?.trim();
+      const forkedPricingName = requestedName || sourcePricing.name;
+      const nameClash = await this.pricingRepository.findOne(
+        generateSlug(forkedPricingName),
         targetOrganizationId,
-        sourcePricing.pricingId
+        { includePrivate: true }
       );
-      let matchedPricing = existingForkStub?.slug
-        ? await this.pricingRepository.findOne(existingForkStub.slug, targetOrganizationId, {
-            includePrivate: true,
-          })
-        : null;
 
-      if (!matchedPricing) {
-        // No prior fork of this exact origin in the target org — but if it already has a
-        // pricing with the source's name (created independently, or forked from somewhere
-        // else), match it the same way the normal, non-fork publish flow treats a name
-        // clash: add a version to it instead of silently deduplicating the slug into an
-        // unrelated duplicate. Always keyed off the source's own name (not `options.name`)
-        // so this lookup is stable across the confirm/no-confirm round trip.
-        const candidateSlug = generateSlug(sourcePricing.name);
-        const byNameMatch = await this.pricingRepository.findOne(candidateSlug, targetOrganizationId, {
-          includePrivate: true,
-        });
-        if (byNameMatch?.versions?.length) {
-          matchedPricing = byNameMatch;
-        }
-      }
-
-      if (matchedPricing) {
-        const versionAlreadyForked = matchedPricing.versions?.some(
-          (v: PricingModel & { version: string }) => v.version === parsedSource.version
-        );
-        if (versionAlreadyForked) {
-          throw new Error(
-            `CONFLICT: ${matchedPricing.name} version ${parsedSource.version} already exists in this organization.`
-          );
-        }
-
-        if (!options.confirm) {
-          // Nothing gets written yet: the draft copy was only needed to read the real
-          // version string above, so it's cleaned up before asking the caller to confirm.
+      if (nameClash?.versions?.length) {
+        if (!requestedName) {
+          // Nothing gets written: the draft copy was only needed to read the YAML above.
           if (fs.existsSync(copiedAbsolutePath)) {
             fs.rmSync(copiedAbsolutePath);
           }
           return {
-            needsConfirmation: true as const,
-            existingPricing: { name: matchedPricing.name, slug: matchedPricing.slug },
+            nameTaken: true as const,
+            existingPricing: { name: nameClash.name, slug: nameClash.slug },
             sourceVersion: sourceVersionDoc.version,
           };
         }
+        throw new Error(
+          `CONFLICT: A pricing named "${nameClash.name}" already exists in this organization. A fork always creates a new pricing, so choose a different name.`
+        );
       }
 
       const sourceOrganization = (sourceVersionDoc as any).organization;
@@ -392,7 +359,6 @@ class PricingService {
         version: sourceVersionDoc.version,
       };
 
-      const forkedPricingName = options.name || matchedPricing?.name || sourcePricing.name;
       const pricing = await this._createPricingVersion(
         { path: copiedAbsolutePath },
         targetOrganizationId,
@@ -402,23 +368,12 @@ class PricingService {
         undefined,
         forkedPricingName,
         forkedFrom,
-        matchedPricing ?? null,
+        null,
         new Date()
       );
-      // From here on the stored version references the copied file, so a later failure
-      // (e.g. the rename below) must not delete it.
+      // From here on the stored version references the copied file, so it must not
+      // be deleted if anything after this point fails.
       versionCreated = true;
-
-      if (matchedPricing && options.name && options.name !== matchedPricing.name) {
-        // The renamed slug differs from the one _createPricingVersion just returned:
-        // reflect it in the response so callers (e.g. the frontend redirect) land on
-        // the pricing's real, current URL instead of the pre-rename one.
-        const renamed = await this.update(matchedPricing.slug!, targetOrganizationId, reqUser, { name: options.name });
-        if (renamed?.slug) {
-          pricing[0].slug = renamed.slug;
-          pricing[0].name = renamed.name;
-        }
-      }
 
       return pricing;
     } catch (err) {

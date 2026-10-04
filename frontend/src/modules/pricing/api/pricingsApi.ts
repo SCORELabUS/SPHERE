@@ -317,8 +317,7 @@ export function usePricingsApi() {
     sourceSlug: string,
     sourceVersion: string,
     targetOrganizationId: string,
-    name?: string,
-    confirm?: boolean
+    name?: string
   ) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-forks`, {
       method: 'POST',
@@ -329,7 +328,6 @@ export function usePricingsApi() {
         sourceVersion,
         targetOrganizationId,
         name,
-        confirm,
       }),
     })
       .then(async response => {

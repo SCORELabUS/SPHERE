@@ -2667,7 +2667,7 @@ describe('Pricings API integration', () => {
       expect(forkedCreatedAt).not.toBe(new Date(originVersion!.createdAt).getTime());
     });
 
-    it('Ask for confirmation when the target organization already has a pricing with the same name.', async () => {
+    it('Ask for a different name, writing nothing, when the target organization already has a pricing with the same name.', async () => {
       const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
       const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
 
@@ -2691,23 +2691,20 @@ describe('Pricings API integration', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.needsConfirmation).toBe(true);
+      expect(response.body.nameTaken).toBe(true);
       expect(response.body.existingPricing.name).toBe(sharedName);
+      expect(await PricingMongoose.countDocuments({ _organizationId: targetOrganizationId })).toBe(1);
     });
 
-    it('Add the fork as a new version of the same-named pricing once confirmed.', async () => {
+    it('Return 409 when the requested name already belongs to a pricing in the target organization.', async () => {
       const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
       const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
 
-      const sharedName = `pricing_${randomSuffix()}`;
-      const source = await createPricingForOrganization({
-        organizationId: sourceOrganizationId,
-        serviceName: sharedName,
-        version: '1.0.0',
-      });
-      const existing = await createPricingForOrganization({
+      const existingName = `pricing_${randomSuffix()}`;
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+      await createPricingForOrganization({
         organizationId: targetOrganizationId,
-        serviceName: sharedName,
+        serviceName: existingName,
         version: '2.0.0',
       });
 
@@ -2716,22 +2713,26 @@ describe('Pricings API integration', () => {
         sourceSlug: source.serviceName,
         sourceVersion: source.version,
         targetOrganizationId,
-        confirm: true,
+        name: existingName,
       });
-      trackFork(response.body);
 
-      expect(response.status).toBe(200);
-      expect(response.body.needsConfirmation).toBeUndefined();
-
-      const existingDocument = await PricingMongoose.findOne({ _id: existing.id }).lean();
-      expect(String(response.body.pricingId)).toBe(String(existingDocument!.pricingId));
-      expect(response.body.version).toBe('1.0.0');
+      expect(response.status).toBe(409);
+      expect(response.body.error).toContain('CONFLICT');
+      expect(await PricingMongoose.countDocuments({ _organizationId: targetOrganizationId })).toBe(1);
     });
 
-    it('Return 409 when the same origin version was already forked into the organization.', async () => {
+    it('Do not let a second fork of the same origin go into the existing fork, even with another version.', async () => {
       const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
       const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
-      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+      const source = await createPricingForOrganization({
+        organizationId: sourceOrganizationId,
+        version: '1.0.0',
+      });
+      const secondVersion = await createPricingForOrganization({
+        organizationId: sourceOrganizationId,
+        serviceName: source.serviceName,
+        version: '2.0.0',
+      });
 
       const first = await forkRequest(forker.token, {
         sourceOrganizationId,
@@ -2745,13 +2746,98 @@ describe('Pricings API integration', () => {
       const second = await forkRequest(forker.token, {
         sourceOrganizationId,
         sourceSlug: source.serviceName,
+        sourceVersion: secondVersion.version,
+        targetOrganizationId,
+      });
+      expect(second.status).toBe(200);
+      expect(second.body.nameTaken).toBe(true);
+
+      const forced = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: secondVersion.version,
+        targetOrganizationId,
+        name: source.serviceName,
+      });
+      expect(forced.status).toBe(409);
+      expect(await PricingMongoose.countDocuments({ _organizationId: targetOrganizationId })).toBe(1);
+    });
+
+    it('Create a separate pricing, leaving the first fork untouched, when forking again under another name.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const first = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
         sourceVersion: source.version,
         targetOrganizationId,
-        confirm: true,
       });
+      trackFork(first.body);
+      expect(first.status).toBe(200);
 
-      expect(second.status).toBe(409);
-      expect(second.body.error).toContain('CONFLICT');
+      const anotherName = `fork_${randomSuffix()}`;
+      const second = await forkRequest(forker.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+        name: anotherName,
+      });
+      trackFork(second.body);
+
+      expect(second.status).toBe(200);
+      expect(second.body.name).toBe(anotherName);
+      expect(second.body.slug).not.toBe(first.body.slug);
+      expect(second.body.forkedFrom.version).toBe(source.version);
+
+      const stillThere = await PricingMongoose.find({
+        _organizationId: targetOrganizationId,
+        slug: first.body.slug,
+      }).lean();
+      expect(stillThere).toHaveLength(1);
+      expect(stillThere[0].name).toBe(first.body.name);
+    });
+
+    it('Return 200 when the forker publishes a new version to the forked pricing, as owner and as MEMBER.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: owner, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, targetOrganizationId, 'MEMBER');
+      await createOrgScopedPermission(member.id, targetOrganizationId, 'pricing', {
+        GET: false,
+        PUT: false,
+        DELETE: false,
+        CREATE: true,
+      });
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      const fork = await forkRequest(member.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+        name: `renamed_${Date.now()}`,
+      });
+      trackFork(fork.body);
+      expect(fork.status).toBe(200);
+
+      const fixture = await createValidPricingYaml(source.serviceName);
+      const asMember = await request(app)
+        .post(`${BASE_PATH}/pricings/${targetOrganizationId}/${fork.body.slug}/${fixture.version}`)
+        .set('Authorization', `Bearer ${member.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture.filePath);
+      expect(asMember.status, JSON.stringify(asMember.body)).toBe(200);
+
+      const fixture2 = await createValidPricingYaml(source.serviceName);
+      const asOwner = await request(app)
+        .post(`${BASE_PATH}/pricings/${targetOrganizationId}/${fork.body.slug}/${fixture2.version}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .attach('yaml', fixture2.filePath);
+      expect(asOwner.status, JSON.stringify(asOwner.body)).toBe(200);
     });
 
     it('Return 422 when forking a pricing into its own organization.', async () => {

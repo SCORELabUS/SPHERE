@@ -405,9 +405,9 @@ export default function CardPage() {
     }
   }
 
-  const handleFork = async (targetOrganizationId: string, name?: string, confirm?: boolean) => {
+  const handleFork = async (targetOrganizationId: string, name?: string) => {
     if (!organizationId || !slug || !currentVersion) throw new Error('Pricing not loaded yet');
-    return forkPricing(organizationId, slug, currentVersion.version, targetOrganizationId, name, confirm);
+    return forkPricing(organizationId, slug, currentVersion.version, targetOrganizationId, name);
   };
 
   const handleViewOrigin = (forkedFrom: NonNullable<VersionData['forkedFrom']>) => {

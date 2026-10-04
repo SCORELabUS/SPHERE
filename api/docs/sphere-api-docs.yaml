@@ -3905,14 +3905,13 @@ paths:
         reference to where it came from (`forkedFrom`). The copied version's `createdAt`
         is the moment of the fork, not the date of the original version.
 
-        The fork is added as a **new version of an existing pricing** in the target
-        organization, rather than creating a duplicate, when either:
-        - the target organization already holds a pricing forked from the same origin, or
-        - the target organization already holds a pricing with the same name as the source.
-
-        In that case a request without `confirm: true` performs no write and responds with
-        `needsConfirmation`, so the client can ask the user before proceeding and optionally
-        rename the destination pricing through `name`.
+        A fork is a single branching point: it **always creates a new pricing** in the target
+        organization and never adds a version to an existing one, forked or not. To fork
+        again an origin that is already forked there, the new pricing needs a different
+        `name`. When the name the fork would take (`name`, or the source's own name) already
+        belongs to a pricing in the target organization, a request without `name` performs
+        no write and responds with `nameTaken`, so the client can ask the user for another
+        name. If `name` is sent and is already taken, the request fails with 409.
 
         **Authentication**: Required
 
@@ -3920,8 +3919,7 @@ paths:
         - The source pricing must be visible to the caller: PUBLIC pricings can be forked by
           any authenticated user, PRIVATE ones only by members of the source organization
           (or a global ADMIN).
-        - The caller needs `CREATE` permission for pricings in the target organization, or
-          entity-level `CREATE` on the existing pricing when the fork is added as a new version.
+        - The caller needs `CREATE` permission for pricings in the target organization.
       tags:
         - Pricings
       security:
@@ -3957,20 +3955,14 @@ paths:
                 name:
                   type: string
                   description: |
-                    Optional name for the forked pricing. When the fork is added to an existing
-                    pricing, supplying a different name renames that pricing.
+                    Optional name for the new forked pricing. It must not belong to a
+                    pricing that already exists in the target organization.
                   example: "Dropbox (internal)"
-                confirm:
-                  type: boolean
-                  description: |
-                    Must be `true` to add the fork as a new version of an already existing
-                    pricing. Without it the request is answered with `needsConfirmation`.
-                  default: false
       responses:
         '200':
           description: |
-            Either the created pricing version, or a confirmation request when the target
-            organization already holds a matching pricing.
+            Either the created pricing, or a `nameTaken` response when the target
+            organization already has a pricing with the name the fork would take.
           content:
             application/json:
               schema:
@@ -3978,7 +3970,7 @@ paths:
                   - $ref: '#/components/schemas/Pricing'
                   - type: object
                     properties:
-                      needsConfirmation:
+                      nameTaken:
                         type: boolean
                         example: true
                       existingPricing:
@@ -4000,7 +3992,9 @@ paths:
         '404':
           description: Source pricing or its YAML file not found
         '409':
-          description: That version of the source pricing was already forked into the organization
+          description: |
+            The requested `name` already belongs to a pricing in the target organization.
+            Forking under another `name` does not conflict.
         '422':
           description: Missing required fields, or the source and target organizations are the same
         default:
