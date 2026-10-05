@@ -22,6 +22,7 @@ import ProblemsPanel from '../../components/problems-panel';
 import ErrorBoundary from '../../../core/components/error-boundary';
 import { VisualEditorUnavailable } from '../../components/visual-editor/components/VisualEditorUnavailable';
 import TemplatesMenu from '../../components/templates-menu';
+import { usePricingsApi } from '../../../pricing/api/pricingsApi';
 import { usePricing2YamlLinter } from '../../hooks/usePricing2YamlLinter';
 import { usePricing2YamlSnippets } from '../../hooks/usePricing2YamlSnippets';
 import { templatesShortcutLabel } from '../../services/pricing2yaml/snippets';
@@ -81,8 +82,9 @@ export default function EditorPage() {
   const [selectedSyntaxVersion, setSelectedSyntaxVersion] = useState<SyntaxVersion>('3.1');
 
   const { mode } = useMode();
-  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft, setSourcePricing } = useEditorValue();
   const {getFromCache} = useCacheApi();
+  const { getPricingBySlug } = usePricingsApi();
 
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
   const [codeEditor, setCodeEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -201,11 +203,34 @@ export default function EditorPage() {
       const queryParams = new URLSearchParams(globalThis.location.search);
       const pricingParam = queryParams.get('pricing');
       const pricingUrlParam = queryParams.get('pricingUrl');
+      const sourceParam = queryParams.get('source');
       
       let templatePricing: string = '';
 
       try {
-        if (pricingUrlParam){
+        if (sourceParam) {
+          // `source=<organizationId>/<slug>`: a published version opened for editing.
+          const [organizationId, slug] = sourceParam.split('/');
+          const collectionSlug = queryParams.get('collection');
+          const requestedVersion = queryParams.get('version');
+          const data = await getPricingBySlug(slug, organizationId, collectionSlug);
+          const versions: { version: string; yaml: string }[] = data.versions ?? [];
+          const sourceVersion = versions.find(v => v.version === requestedVersion) ?? versions[0];
+          if (!sourceVersion) throw new Error('The pricing to edit has no versions.');
+          const yamlUrl = sourceVersion.yaml.startsWith('http') ? sourceVersion.yaml : `${import.meta.env.VITE_API_URL}${sourceVersion.yaml}`;
+          templatePricing = await (await fetch(yamlUrl)).text();
+          setSourcePricing({
+            organizationId,
+            slug,
+            collectionSlug: collectionSlug && collectionSlug !== 'undefined' ? collectionSlug : null,
+            name: data.name ?? slug,
+            version: sourceVersion.version,
+          });
+          if (queryParams.get('mode') === 'visual') {
+            templatePricing = ensureSyntaxVersion31(templatePricing);
+            setEditorMode('visual');
+          }
+        } else if (pricingUrlParam){
           const response = await fetch(pricingUrlParam);
           templatePricing = await response.text();
         }else if (!pricingParam) {

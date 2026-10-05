@@ -8,6 +8,7 @@ export const useEditorValue = () => {
         isDirty, setIsDirty,
         pendingVisualDraft, setPendingVisualDraft,
         saveDraft,
+        sourcePricing, setSourcePricing,
     } = useContext(EditorValueContext);
 
     return {
@@ -16,5 +17,6 @@ export const useEditorValue = () => {
         isDirty, setIsDirty,
         pendingVisualDraft, setPendingVisualDraft,
         saveDraft,
+        sourcePricing, setSourcePricing,
     };
 };

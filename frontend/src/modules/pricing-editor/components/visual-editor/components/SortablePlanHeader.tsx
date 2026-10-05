@@ -32,7 +32,7 @@ export function SortablePlanHeader({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="group relative shrink-0 grow min-w-[140px] overflow-hidden border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
+      className="group relative shrink-0 grow basis-0 min-w-[140px] overflow-hidden border-b border-r border-slate-200 px-2 py-0 dark:border-slate-700"
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >

@@ -97,7 +97,7 @@ export function SortableFeatureRow({
         {/* Value cells */}
         {planKeys.map((planKey, pIdx) => {
           const plan = draft.plans[planKey];
-          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
+          if (plan?.private) return <div key={planKey} className="shrink-0 grow basis-0 min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
           const featureValue = (plan?.features as Record<string, { value: unknown }> | undefined)?.[featureKey]?.value;
           const globalDefault = feature.defaultValue;
           const effectiveValue = featureValue ?? globalDefault;
@@ -105,7 +105,7 @@ export function SortableFeatureRow({
 
           if (typeof effectiveValue === 'boolean') {
             return (
-              <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+              <div key={planKey} className={`flex shrink-0 grow basis-0 min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
                 <motion.div className="flex cursor-pointer items-center justify-center"
                   onClick={() => onToggle(planKey, featureKey)}
                   whileTap={{ scale: 0.8 }} transition={FAST_SPRING}
@@ -130,7 +130,7 @@ export function SortableFeatureRow({
           const isNumeric = typeof effectiveValue === 'number' || feature.valueType === 'NUMERIC';
 
           return (
-            <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+            <div key={planKey} className={`flex shrink-0 grow basis-0 min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
               {strVal ? (
                 <CellInlineEdit value={strVal} numeric={isNumeric}
                   onSave={(v) => { const p = isNumeric ? (v === '' ? 0 : Number(v)) : v; onSetCellValue(planKey, 'feature', featureKey, Number.isNaN(p) ? v : p); }}

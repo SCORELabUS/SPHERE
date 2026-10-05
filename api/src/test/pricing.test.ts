@@ -2344,6 +2344,56 @@ describe('Pricings API integration', () => {
       expect(storedVersions.map(pricing => pricing.version).sort()).toEqual(['1.0.0', '1.0.1']);
     });
 
+    it('stores the createdAt timestamp sent with a new version, keeping its time of day.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+      const releasedAt = new Date(Date.now() - 60 * 60 * 1000);
+
+      const fixture = await createValidPricingYaml(serviceName, '1.0.1');
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/1.0.1`)
+        .set('Authorization', `Bearer ${adminUser.token}`)
+        .field('private', 'false')
+        .field('createdAt', releasedAt.toISOString())
+        .attach('yaml', fixture.filePath);
+
+      expect(response.status).toBe(200);
+      pricingsToDelete.add(response.body.id);
+      const stored = await PricingMongoose.findOne({
+        name: serviceName,
+        version: '1.0.1',
+        _organizationId: organizationId,
+      });
+      expect(stored?.createdAt.toISOString()).toBe(releasedAt.toISOString());
+    });
+
+    it('Return 422 when the createdAt sent with a new version is invalid or in the future.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+
+      for (const createdAt of ['not-a-date', new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()]) {
+        const fixture = await createValidPricingYaml(serviceName, '1.0.1');
+        const response = await request(app)
+          .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/1.0.1`)
+          .set('Authorization', `Bearer ${adminUser.token}`)
+          .field('private', 'false')
+          .field('createdAt', createdAt)
+          .attach('yaml', fixture.filePath);
+
+        expect(response.status).toBe(422);
+      }
+      const count = await PricingMongoose.countDocuments({ name: serviceName, _organizationId: organizationId });
+      expect(count).toBe(1);
+    });
+
     it('should preserve the original pricing name when adding a new version', async () => {
       const { organizationId } = await createAndLoginUser('USER');
       const serviceName = `TestPricing_${randomSuffix()}`;

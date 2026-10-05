@@ -117,13 +117,15 @@ class PricingController {
     try {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
+      const createdAt = this.parseCreatedAt(req.body.createdAt);
       const pricing = await this.pricingService.createVersion(
         req.file,
         req.params.organizationId,
         req.params.pricingSlug,
         isPrivate,
         req.user,
-        collectionId
+        collectionId,
+        createdAt
       );
       res.json(pricing[0]);
     } catch (err: any) {
@@ -155,6 +157,19 @@ class PricingController {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }
+  }
+
+  /** Optional release timestamp (ISO 8601); it cannot be in the future. */
+  private parseCreatedAt(value: unknown): Date | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error('INVALID DATA: createdAt must be a valid ISO 8601 date');
+    }
+    if (parsed.getTime() > Date.now()) {
+      throw new Error('INVALID DATA: createdAt must not be a future date');
+    }
+    return parsed;
   }
 
   private cleanupUploadedFile(file: any) {

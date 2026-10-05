@@ -281,7 +281,8 @@ class PricingService {
     pricingSlug: string,
     isPrivate: boolean,
     reqUser: LeanUser,
-    collectionId?: string
+    collectionId?: string,
+    createdAt?: Date
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -289,7 +290,11 @@ class PricingService {
       isPrivate,
       reqUser,
       collectionId,
-      pricingSlug
+      pricingSlug,
+      undefined,
+      undefined,
+      undefined,
+      createdAt
     );
   }
 

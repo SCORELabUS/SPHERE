@@ -3828,6 +3828,13 @@ paths:
                   type: boolean
                   default: false
                   description: Whether the pricing version should be private
+                createdAt:
+                  type: string
+                  format: date-time
+                  description: |
+                    Optional release timestamp of the version (ISO 8601, not in the future).
+                    Defaults to the `createdAt` date of the uploaded YAML. Versions are ordered
+                    by this value, so it lets several versions be published on the same day.
                 collectionId:
                   type: string
                   description: Optional collection ID to associate this version with
