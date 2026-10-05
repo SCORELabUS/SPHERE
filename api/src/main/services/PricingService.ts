@@ -1,7 +1,9 @@
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
+import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
+import { sanitizePathSegment } from '../utils/path-utils';
 import {
   PricingService as PricingAnalytics,
   retrievePricingFromPath,
@@ -291,6 +293,131 @@ class PricingService {
     );
   }
 
+  /**
+   * Forks one version of a pricing into another organization.
+   *
+   * A fork is a single branching point: it always creates a NEW pricing in the target
+   * organization and never adds a version to an existing one (forked or not). When the name
+   * the fork would take (`options.name`, or the source's own name) already belongs to a
+   * pricing in the target organization, nothing is written: without `options.name` the
+   * caller gets back `{ nameTaken: true, ... }` so the UI can ask for another name, and
+   * with it the request fails with a CONFLICT.
+   */
+  async forkPricing(
+    sourceOrganizationId: string,
+    sourceSlug: string,
+    sourceVersion: string,
+    targetOrganizationId: string,
+    reqUser: LeanUser,
+    options: { name?: string } = {}
+  ) {
+    if (sourceOrganizationId === targetOrganizationId) {
+      throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
+    }
+
+    // A pricing is forkable by whoever can already view it: same visibility rule as show().
+    const sourceOrgRole = await this.permissionService.resolveOrgRole(reqUser.id, sourceOrganizationId);
+    const includeSourcePrivate = reqUser.role === 'ADMIN' || sourceOrgRole !== null;
+
+    const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
+      version: sourceVersion,
+      includePrivate: includeSourcePrivate,
+    });
+
+    if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
+    const sourceVersionDoc = sourcePricing.versions[0];
+
+    const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+    const sourceAbsolutePath = path.resolve(staticFolder, sourceVersionDoc.yaml);
+    if (!fs.existsSync(sourceAbsolutePath)) {
+      throw new Error('NOT FOUND: Pricing file not found');
+    }
+
+    // Copy before ever parsing: pricing4ts's retrievePricingFromPath can rewrite the file
+    // it's given (schema/version normalization) as a side effect, and the source YAML
+    // belongs to another organization's pricing — it must never be mutated by a fork.
+    const uploadBaseFolder = path.resolve(process.cwd(), 'public', 'static', 'pricings', 'uploaded');
+    const draftDir = path.resolve(uploadBaseFolder, sanitizePathSegment(sourcePricing.name, 'unknown-saas'));
+    fs.mkdirSync(draftDir, { recursive: true });
+    const ext = path.extname(sourceAbsolutePath) || '.yml';
+    const copiedAbsolutePath = path.resolve(
+      draftDir,
+      `${sanitizePathSegment(sourceVersionDoc.version, '0.0.0')}-fork-${Date.now()}${ext}`
+    );
+    fs.copyFileSync(sourceAbsolutePath, copiedAbsolutePath);
+
+    let versionCreated = false;
+
+    try {
+      const requestedName = options.name?.trim();
+      const forkedPricingName = requestedName || sourcePricing.name;
+      const nameClash = await this.pricingRepository.findOne(
+        generateSlug(forkedPricingName),
+        targetOrganizationId,
+        { includePrivate: true }
+      );
+
+      if (nameClash?.versions?.length) {
+        if (!requestedName) {
+          // Nothing gets written: the draft copy was only needed to read the YAML above.
+          if (fs.existsSync(copiedAbsolutePath)) {
+            fs.rmSync(copiedAbsolutePath);
+          }
+          return {
+            nameTaken: true as const,
+            existingPricing: { name: nameClash.name, slug: nameClash.slug },
+            sourceVersion: sourceVersionDoc.version,
+          };
+        }
+        throw new Error(
+          `CONFLICT: A pricing named "${nameClash.name}" already exists in this organization. A fork always creates a new pricing, so choose a different name.`
+        );
+      }
+
+      const sourceOrganization = (sourceVersionDoc as any).organization;
+      const sourceCollection = (sourcePricing as any).collection;
+
+      const forkedFrom: ForkedFrom = {
+        pricingId: sourcePricing.pricingId,
+        organizationId: sourceOrganizationId,
+        organizationName: sourceOrganization?.name ?? '',
+        organizationDisplayName: sourceOrganization?.displayName ?? sourceOrganization?.name ?? '',
+        ...(sourceCollection?.id ? { collectionId: sourceCollection.id, collectionName: sourceCollection.name, collectionSlug: sourceCollection.slug } : {}),
+        slug: sourcePricing.slug!,
+        name: sourcePricing.name,
+        // The version's DB-level label (e.g. "2021"), as shown in the source pricing's
+        // version picker — not the YAML-internal version string, which is meaningless here.
+        version: sourceVersionDoc.version,
+      };
+
+      const pricing = await this._createPricingVersion(
+        { path: copiedAbsolutePath },
+        targetOrganizationId,
+        sourceVersionDoc.private === true,
+        reqUser,
+        undefined,
+        undefined,
+        forkedPricingName,
+        forkedFrom,
+        null,
+        new Date()
+      );
+      // From here on the stored version references the copied file, so it must not
+      // be deleted if anything after this point fails.
+      versionCreated = true;
+
+      return pricing;
+    } catch (err) {
+      if (!versionCreated && fs.existsSync(copiedAbsolutePath)) {
+        fs.rmSync(copiedAbsolutePath);
+      }
+      throw err;
+    }
+  }
+
   private async _createPricingVersion(
     pricingFile: any,
     organizationId: string,
@@ -298,7 +425,10 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string,
     overrideSlug?: string,
-    name?: string
+    name?: string,
+    forkedFrom?: ForkedFrom,
+    previousPricingOverride?: any,
+    createdAtOverride?: Date
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -318,20 +448,25 @@ class PricingService {
       const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
       uploadedPricing = retrievePricingFromPath(filePath);
 
-      const lookupSlug = overrideSlug
-        ? generateSlug(overrideSlug)
-        : name
-          ? generateSlug(name)
-          : generateSlug(uploadedPricing.saasName);
+      // A fork already knows which pricing (if any) it should attach a new version to,
+      // resolved by origin rather than by name/slug: skip the usual name-based lookup.
+      let previousPricing = previousPricingOverride;
+      if (previousPricingOverride === undefined) {
+        const lookupSlug = overrideSlug
+          ? generateSlug(overrideSlug)
+          : name
+            ? generateSlug(name)
+            : generateSlug(uploadedPricing.saasName);
 
-      const previousPricing = await this.pricingRepository.findOne(
-        lookupSlug,
-        organizationId,
-        {
-          collectionId: collectionId,
-          includePrivate: true,
-        }
-      );
+        previousPricing = await this.pricingRepository.findOne(
+          lookupSlug,
+          organizationId,
+          {
+            collectionId: collectionId,
+            includePrivate: true,
+          }
+        );
+      }
 
       const isAddingVersion =
         !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
@@ -415,6 +550,7 @@ class PricingService {
 
       const pricingData = {
         ...(isAddingVersion && previousPricing.pricingId ? { pricingId: previousPricing.pricingId } : {}),
+        ...(forkedFrom ? { forkedFrom } : {}),
         name: pricingName,
         slug: pricingSlug,
         version: uploadedPricing.version,
@@ -422,7 +558,9 @@ class PricingService {
         _organizationId: organizationId,
         private: isPrivate,
         currency: uploadedPricing.currency,
-        createdAt: new Date(uploadedPricing.createdAt),
+        // A forked version is "created" now, when it's added to the destination pricing,
+        // not when the original version being copied was authored.
+        createdAt: createdAtOverride ?? new Date(uploadedPricing.createdAt),
         url: '',
         yaml: yamlPath,
         analytics: {},
