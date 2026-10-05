@@ -19,6 +19,7 @@ class PricingController {
     this.createVersion = this.createVersion.bind(this);
     this.fork = this.fork.bind(this);
     this.update = this.update.bind(this);
+    this.updateVersionVisibility = this.updateVersionVisibility.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
     this.destroyVersionByNameAndOrganization = this.destroyVersionByNameAndOrganization.bind(this);
@@ -177,6 +178,22 @@ class PricingController {
         req.user,
         req.body,
         queryParams
+      );
+      res.json(pricing);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async updateVersionVisibility(req: any, res: any) {
+    try {
+      const pricing = await this.pricingService.updateVersionVisibility(
+        req.params.pricingSlug,
+        req.params.pricingVersion,
+        req.params.organizationId,
+        req.user,
+        req.body.private === true || req.body.private === 'true'
       );
       res.json(pricing);
     } catch (err: any) {

@@ -3632,14 +3632,18 @@ paths:
     get:
       summary: Get public pricing details.
       description: |
-        Retrieves a pricing by slug for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
+        Retrieves a pricing by slug for a given user. Visibility is set per version: a pricing
+        with some public and some private versions is returned with only its public versions to
+        anyone who cannot see private ones. It is `404` only when none of its versions is visible.
 
         **Authentication**: Public
 
         **Permission**: 
-        - UNAUTHENTICATED: can only access PUBLIC pricings.
-        - USER: can access their own pricings (PUBLIC, PRIVATE) and PUBLIC pricings of other users.
-        - ADMIN: can access any user's pricings.
+        - UNAUTHENTICATED: only the PUBLIC versions.
+        - OWNER or ADMIN of the organization, or a MEMBER with `GET` permission on the pricing or on
+          its collection: every version (PUBLIC and PRIVATE).
+        - Any other USER: only the PUBLIC versions.
+        - Global ADMIN: every version.
 
       tags:
         - Pricings
@@ -3848,6 +3852,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Change the visibility of one version of a pricing.
+      description: |
+        Makes a single version public or private, leaving the other versions of the pricing as
+        they are. To change every version at once, use `PUT /pricings/{organizationId}/{pricingSlug}`
+        with the `private` field.
+
+        **Authentication**: Bearer Token or User API Key
+
+        **Permission**:
+        - OWNER or ADMIN of the organization.
+        - MEMBER with `PUT` permission on the pricing (and `GET` if the version is private).
+        - Global ADMIN.
+
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/PricingVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                private:
+                  type: boolean
+                  description: Whether this version should be private
+              required:
+                - private
+      responses:
+        '200':
+          description: Visibility updated. Returns the pricing with all its versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingDetails'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Pricing or pricing version not found
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
