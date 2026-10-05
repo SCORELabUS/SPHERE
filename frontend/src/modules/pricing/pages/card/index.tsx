@@ -7,7 +7,7 @@ import { useOrganizationsApi, getPublicOrganization } from '../../../organizatio
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
-import { downloadYaml, parseStringYamlToEncodedYaml } from '../../../pricing-editor/services/export.service';
+import { downloadYaml } from '../../../pricing-editor/services/export.service';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
@@ -29,6 +29,7 @@ import VersionsVisibilityModal from '../../components/versions-visibility-modal'
 import PricingLinkModal from '../../components/pricing-link-modal';
 import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
+import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { pricingVersionNameMatches } from './pricing-version-validation';
@@ -224,12 +225,21 @@ export default function CardPage() {
     fetch(url).then(r => r.text()).then(text => downloadYaml(text)).catch(() => {});
   };
 
+  // The editor receives the pricing and version it starts from, so publishing
+  // can offer to continue from it.
+  const buildEditorPath = (v: VersionData, mode: 'visual' | 'code') => {
+    const params = new URLSearchParams({ source: `${organizationId}/${slug}`, version: v.version, mode });
+    if (collectionSlug) params.set('collection', collectionSlug);
+    return `/editor?${params.toString()}`;
+  };
+
   const handleOpenInEditor = (v: VersionData) => {
-    const url = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    fetch(url).then(r => r.text()).then(text => {
-      const encoded = parseStringYamlToEncodedYaml(text);
-      window.open(`/editor?pricing=${encoded}`, '_blank');
-    }).catch(() => {});
+    window.open(buildEditorPath(v, 'code'), '_blank');
+  };
+
+  const handleNewVersionInEditor = (mode: 'visual' | 'code') => {
+    const latest = versions[0];
+    if (latest) router.push(buildEditorPath(latest, mode));
   };
 
   const handleCopyLink = (v: VersionData) => {
@@ -486,7 +496,23 @@ export default function CardPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="font-display text-2xl font-normal text-tp-ink">{pricingName}</h1>
-              {currentVersion && <p className="mt-1 text-sm text-tp-steel">Updated {formatDistanceToNow(parseISO(currentVersion.createdAt))} ago</p>}
+              {currentVersion && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-tp-steel">
+                  {versions.length > 1 ? (
+                    <select
+                      aria-label="Pricing version"
+                      value={currentVersion.id}
+                      onChange={e => { const v = versions.find(x => x.id === e.target.value); if (v) setCurrentVersion(v); }}
+                      className="h-7 cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-2 text-xs font-medium text-tp-ink focus:border-tp-primary focus:outline-none"
+                    >
+                      {versions.map(v => <option key={v.id} value={v.id}>v{v.version}</option>)}
+                    </select>
+                  ) : (
+                    <span className="rounded-lg border border-tp-input-border bg-tp-input-bg px-2 py-1 text-xs font-medium text-tp-ink">v{currentVersion.version}</span>
+                  )}
+                  <span>· Updated {formatDistanceToNow(parseISO(currentVersion.createdAt))} ago</span>
+                </div>
+              )}
               {currentVersion?.forkedFrom && (
                 <button
                   type="button"
@@ -500,22 +526,6 @@ export default function CardPage() {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {versions.length > 1 && (
-                <select value={currentVersion?.id ?? ''} onChange={e => { const v = versions.find(x => x.id === e.target.value); if (v) setCurrentVersion(v); }}
-                  className="h-8 cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-2 text-xs text-tp-ink focus:border-tp-primary focus:outline-none">
-                  {versions.map(v => <option key={v.id} value={v.id}>{v.version}</option>)}
-                </select>
-              )}
-              {entityPermissions?.CREATE && (
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(true)}
-                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-xs text-tp-ink transition-colors hover:bg-tp-surface focus:border-tp-primary focus:outline-none"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                  New Version
-                </button>
-              )}
               {authUser.isAuthenticated && currentVersion && (
                 <button
                   type="button"
@@ -527,6 +537,13 @@ export default function CardPage() {
                   </svg>
                   Fork
                 </button>
+              )}
+              {entityPermissions?.CREATE && (
+                <NewVersionMenu
+                  onVisualEditor={() => handleNewVersionInEditor('visual')}
+                  onCodeEditor={() => handleNewVersionInEditor('code')}
+                  onUploadFile={() => setShowImportModal(true)}
+                />
               )}
               <GetPricingMenu
                 pricingId={pricingId}

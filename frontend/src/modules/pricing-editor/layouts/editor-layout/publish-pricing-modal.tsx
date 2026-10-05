@@ -16,6 +16,8 @@ import { Organization, useOrganizationsApi } from '../../../organization/api/org
 import { useRouter } from '../../../core/hooks/useRouter';
 import OrgAvatar from '../../../core/components/org-avatar';
 import customConfirm from '../../../core/utils/custom-confirm';
+import { useEditorValue } from '../../hooks/useEditorValue';
+import { stampVersionMetadata, toDatetimeLocalValue } from '../../utils/publish-metadata';
 
 interface PublishPricingModalProps {
   yaml: string;
@@ -49,7 +51,8 @@ const sameName = (pricing: AccessiblePricing, name?: string) =>
 
 export default function PublishPricingModal({ yaml, onClose }: PublishPricingModalProps) {
   const router = useRouter();
-  const { createPricing, createPricingVersion, getPermissionBasedUserPricings } = usePricingsApi();
+  const { createPricing, createPricingVersion, getPermissionBasedUserPricings, getPricingBySlug } = usePricingsApi();
+  const { sourcePricing } = useEditorValue();
   const { getMyOrganizations } = useOrganizationsApi();
   const parsedPricing = useMemo(() => {
     try {
@@ -76,6 +79,11 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
   const [errors, setErrors] = useState<string[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const didSetDefaultPricing = useRef(false);
+  const [versionName, setVersionName] = useState('');
+  const [versionNameEdited, setVersionNameEdited] = useState(false);
+  const [releaseAt, setReleaseAt] = useState(() => toDatetimeLocalValue(new Date()));
+  const [releaseAtEdited, setReleaseAtEdited] = useState(false);
+  const [existingVersions, setExistingVersions] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -136,7 +144,7 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
           sameName(pricing, saasName)
         );
         setMatchingPricings(exactMatches);
-        if (!didSetDefaultPricing.current && exactMatches.length === 1) {
+        if (!sourcePricing && !didSetDefaultPricing.current && exactMatches.length === 1) {
           didSetDefaultPricing.current = true;
           setSelectedPricing(exactMatches[0]);
           setVersionVisibility(exactMatches[0].private ? 'Private' : 'Public');
@@ -150,6 +158,77 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
       active = false;
     };
   }, [getPermissionBasedUserPricings, parsedPricing.pricing?.saasName]);
+
+  // Opened from a published pricing: the new version goes back to that pricing.
+  useEffect(() => {
+    if (!sourcePricing) return;
+    let active = true;
+    getPermissionBasedUserPricings({ name: sourcePricing.name, limit: 20, offset: 0 })
+      .then(result => {
+        if (!active) return;
+        const source = (result.pricings ?? []).find(
+          (pricing: AccessiblePricing) =>
+            pricing.slug === sourcePricing.slug &&
+            pricing.organization.id === sourcePricing.organizationId
+        );
+        if (source && !didSetDefaultPricing.current) {
+          didSetDefaultPricing.current = true;
+          setSelectedPricing(source);
+          setVersionVisibility(source.private ? 'Private' : 'Public');
+          setDestination('version');
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [getPermissionBasedUserPricings, sourcePricing]);
+
+  // Versions already published on the destination, to flag a clash before sending.
+  useEffect(() => {
+    if (!selectedPricing) {
+      setExistingVersions([]);
+      return;
+    }
+    let active = true;
+    getPricingBySlug(selectedPricing.slug, selectedPricing.organization.id, selectedPricing.collection?.slug ?? null)
+      .then(data => {
+        if (active) setExistingVersions((data.versions ?? []).map((v: { version: string }) => v.version));
+      })
+      .catch(() => {
+        if (active) setExistingVersions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [getPricingBySlug, selectedPricing]);
+
+  // The version the draft started from: the one opened in the editor when it
+  // belongs to the destination, otherwise the destination's latest.
+  const cameFromSelected =
+    !!sourcePricing &&
+    !!selectedPricing &&
+    sourcePricing.slug === selectedPricing.slug &&
+    sourcePricing.organizationId === selectedPricing.organization.id;
+  const baseVersion = cameFromSelected ? sourcePricing!.version : selectedPricing?.version;
+  const draftVersion = parsedPricing.pricing?.version ?? '';
+  const versionChanged = !!baseVersion && !!draftVersion && draftVersion !== baseVersion;
+
+  useEffect(() => {
+    if (versionNameEdited) return;
+    setVersionName(versionChanged ? draftVersion : '');
+  }, [versionChanged, draftVersion, versionNameEdited]);
+
+  const trimmedVersionName = versionName.trim();
+  const versionNameError = !selectedPricing || !trimmedVersionName
+    ? ''
+    : existingVersions.includes(trimmedVersionName)
+      ? `Version "${trimmedVersionName}" already exists in ${selectedPricing.name}.`
+      : '';
+  const releaseDate = releaseAtEdited ? new Date(releaseAt) : null;
+  const releaseDateError = releaseDate && (Number.isNaN(releaseDate.getTime()) || releaseDate.getTime() > Date.now())
+    ? 'The release date must be a valid date and time that is not in the future.'
+    : '';
 
   const selectPricing = (pricing: AccessiblePricing) => {
     setSelectedPricing(pricing);
@@ -170,12 +249,12 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
     )
       return;
     if (destination === 'version' && selectedPricing) {
-      const draftDate = new Date(parsedPricing.pricing.createdAt ?? '').getTime();
+      const draftDate = (releaseDate ?? new Date()).getTime();
       const latestDate = new Date(selectedPricing.createdAt).getTime();
       if (!Number.isNaN(draftDate) && !Number.isNaN(latestDate) && draftDate < latestDate) {
         try {
           await customConfirm(
-            `This version is dated ${formatDate(parsedPricing.pricing.createdAt!)} and the latest version of ${selectedPricing.name} is dated ${formatDate(selectedPricing.createdAt)}. It will not become this pricing's latest version. Do you want to publish it anyway?`,
+            `This version is dated ${formatDate(releaseDate ?? new Date())} and the latest version of ${selectedPricing.name} is dated ${formatDate(selectedPricing.createdAt)}. It will not become this pricing's latest version. Do you want to publish it anyway?`,
             { confirmLabel: 'Publish anyway', cancelLabel: 'Go back' }
           );
         } catch {
@@ -185,21 +264,32 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
     }
     setErrors([]);
     setIsPublishing(true);
+    // A version released "now" takes the exact instant of publishing, so several
+    // versions published within one day (or minute) keep their order.
+    const publishedAt = releaseDate ?? new Date();
+    const versionYaml =
+      destination === 'version' ? stampVersionMetadata(yaml, trimmedVersionName, publishedAt) : yaml;
     const formData = new FormData();
     formData.append(
       'yaml',
-      new File([yaml], `${parsedPricing.pricing.saasName || 'pricing'}.yaml`, {
+      new File([versionYaml], `${parsedPricing.pricing.saasName || 'pricing'}.yaml`, {
         type: 'application/x-yaml',
       })
     );
     try {
       if (destination === 'version' && selectedPricing) {
+        // Multer needs the text fields before the file to place it, so the
+        // file is re-appended last.
+        const file = formData.get('yaml') as File;
+        formData.delete('yaml');
         formData.append('private', versionVisibility === 'Private' ? 'true' : 'false');
+        formData.append('createdAt', publishedAt.toISOString());
+        formData.append('yaml', file);
         await createPricingVersion(
           formData,
           selectedPricing.organization.id,
           selectedPricing.slug,
-          parsedPricing.pricing.version
+          trimmedVersionName
         );
         onClose();
         router.push(`/pricings/${selectedPricing.organization.id}/${selectedPricing.slug}`);
@@ -226,7 +316,9 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
   const canPublish = Boolean(
     parsedPricing.pricing &&
     !isPublishing &&
-    (destination === 'version' ? selectedPricing : selectedOrg && pricingName.trim())
+    (destination === 'version'
+      ? selectedPricing && trimmedVersionName && !versionNameError && !releaseDateError
+      : selectedOrg && pricingName.trim())
   );
   const searchTerm = pricingSearch.trim();
   const draftMatchIds = new Set(matchingPricings.map(pricing => pricing.id));
@@ -443,6 +535,25 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
                         }
                       />
                     ) : null}
+                    {selectedPricing ? (
+                      <VersionDetails
+                        versionName={versionName}
+                        onVersionNameChange={value => {
+                          setVersionName(value);
+                          setVersionNameEdited(true);
+                        }}
+                        versionDetected={versionChanged && !versionNameEdited}
+                        baseVersion={baseVersion}
+                        versionError={versionNameError}
+                        releaseAt={releaseAt}
+                        onReleaseAtChange={value => {
+                          setReleaseAt(value);
+                          setReleaseAtEdited(true);
+                        }}
+                        releaseAtEdited={releaseAtEdited}
+                        releaseError={releaseDateError}
+                      />
+                    ) : null}
                   </section>
                 )}
               </motion.div>
@@ -625,6 +736,75 @@ function SelectedPricing({
         Change
       </button>
     </div>
+  );
+}
+function VersionDetails({
+  versionName,
+  onVersionNameChange,
+  versionDetected,
+  baseVersion,
+  versionError,
+  releaseAt,
+  onReleaseAtChange,
+  releaseAtEdited,
+  releaseError,
+}: {
+  versionName: string;
+  onVersionNameChange: (value: string) => void;
+  versionDetected: boolean;
+  baseVersion?: string;
+  versionError: string;
+  releaseAt: string;
+  onReleaseAtChange: (value: string) => void;
+  releaseAtEdited: boolean;
+  releaseError: string;
+}) {
+  const inputClass =
+    'h-10 w-full rounded-md border border-tp-hairline-strong bg-tp-canvas px-3 text-sm text-tp-ink outline-none transition-colors placeholder:text-tp-muted focus:border-tp-primary focus:ring-2 focus:ring-tp-primary/10';
+  return (
+    <fieldset className="space-y-3">
+      <legend className="mb-1.5 text-sm text-tp-slate">Version details</legend>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-tp-slate">Version name</span>
+        <input
+          value={versionName}
+          onChange={event => onVersionNameChange(event.target.value)}
+          placeholder={baseVersion ? `e.g. a new name after ${baseVersion}` : 'e.g. 2.0.0'}
+          aria-invalid={Boolean(versionError)}
+          className={inputClass}
+        />
+        {versionError ? (
+          <span className="mt-1 block text-xs text-red-600">{versionError}</span>
+        ) : (
+          <span className="mt-1 block text-xs text-tp-muted">
+            {versionDetected
+              ? `Taken from the version you set in the editor (the pricing started at ${baseVersion}).`
+              : versionName
+                ? ''
+                : `The version was not changed from ${baseVersion}. Name this new version.`}
+          </span>
+        )}
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-tp-slate">Release date</span>
+        <input
+          type="datetime-local"
+          value={releaseAt}
+          max={toDatetimeLocalValue(new Date())}
+          onChange={event => onReleaseAtChange(event.target.value)}
+          className={inputClass}
+        />
+        {releaseError ? (
+          <span className="mt-1 block text-xs text-red-600">{releaseError}</span>
+        ) : (
+          <span className="mt-1 block text-xs text-tp-muted">
+            {releaseAtEdited
+              ? 'The release date and time you chose.'
+              : 'Set to today, to the moment you publish, so this becomes the latest version. Change it if needed.'}
+          </span>
+        )}
+      </label>
+    </fieldset>
   );
 }
 function VisibilityPicker({

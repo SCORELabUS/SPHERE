@@ -4,7 +4,7 @@ import EditorHeader from './editor-header';
 import Main from '../main';
 import { createUrlWithEncodedYaml, parseStringYamlToEncodedYaml } from '../../services/export.service';
 import CopyToClipboardIcon from '../../../core/components/copy-icon';
-import { EditorValueContext, EditorMode } from '../../contexts/editorValueContext';
+import { EditorValueContext, EditorMode, EditorSourcePricing } from '../../contexts/editorValueContext';
 import FileUpload from '../../../core/components/file-upload-input';
 import customAlert from '../../../core/utils/custom-alert';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
@@ -20,6 +20,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   const [tabValue, setTabValue] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
   const [pendingVisualDraft, setPendingVisualDraft] = useState<PricingDraft | null>(null);
+  const [sourcePricing, setSourcePricing] = useState<EditorSourcePricing | null>(null);
 
   const [shareLinkValue, setShareLinkValue] = useState('');
 
@@ -88,7 +89,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   };
 
   return (
-    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft }}>
+    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft, sourcePricing, setSourcePricing }}>
       <div className="flex h-dvh flex-col bg-tp-surface-code">
         <EditorHeader onShareLink={renderSharedLink} onImport={renderYamlImport} />
         <Main>{children}</Main>

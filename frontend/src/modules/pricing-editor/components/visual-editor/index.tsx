@@ -522,7 +522,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
           <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               {/* Header row */}
-              <div className="sticky top-0 z-20 flex shrink-0 border-b border-slate-200 dark:border-slate-700" style={{ minWidth: 'min-content' }}>
+              <div className="sticky top-0 z-20 flex shrink-0 border-b border-slate-200 dark:border-slate-700">
                 <div className="shrink-0 border-r border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800" style={{ width: LABEL_WIDTH }} />
                 <SortableContext items={visiblePlanKeys} strategy={horizontalListSortingStrategy}>
                   {visiblePlanKeys.map((planKey, index) => (
@@ -544,7 +544,7 @@ export default function VisualPricingEditor({ yaml, isDirty, onDraftChange, onSa
               </div>
 
               {/* Body */}
-              <div className="flex flex-col" style={{ minWidth: 'min-content' }}>
+              <div className="flex flex-col">
                 {/* Features section */}
                 <FeaturesSectionHeader onAddGroup={handleAddGroup} />
                 <SortableContext items={visibleFeatureKeys} strategy={verticalListSortingStrategy}>
