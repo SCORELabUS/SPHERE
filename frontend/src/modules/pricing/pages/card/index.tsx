@@ -3,7 +3,10 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
 import { usePricingsApi } from '../../api/pricingsApi';
-import { useOrganizationsApi, getPublicOrganization } from '../../../organization/api/organizationsApi';
+import {
+  useOrganizationsApi,
+  getPublicOrganization,
+} from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
@@ -38,18 +41,25 @@ export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
   const [searchParams] = useSearchParams();
   const collectionParam = searchParams.get('collection');
-  const collectionSlug = collectionParam && !['undefined', 'null'].includes(collectionParam)
-    ? collectionParam
-    : null;
+  const collectionSlug =
+    collectionParam && !['undefined', 'null'].includes(collectionParam) ? collectionParam : null;
   const router = useRouter();
-  const { getPricingBySlug, removePricingVersion, removePricingBySlug, updatePricing, updatePricingVersionVisibility, createPricingVersion, forkPricing } = usePricingsApi();
+  const {
+    getPricingBySlug,
+    removePricingVersion,
+    removePricingBySlug,
+    updatePricing,
+    updatePricingVersionVisibility,
+    createPricingVersion,
+    forkPricing,
+  } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
 
   const [versions, setVersions] = useState<VersionData[]>([]);
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
-  const [pricing, setPricing] = useState<Pricing & {name?: string} | null>(null);
+  const [pricing, setPricing] = useState<(Pricing & { name?: string }) | null>(null);
   const [pricingId, setPricingId] = useState<string>();
   const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
@@ -81,7 +91,7 @@ export default function CardPage() {
     if (!slug || !organizationId) return;
     setIsLoading(true);
     getPricingBySlug(slug, organizationId, collectionSlug)
-      .then(async (data) => {
+      .then(async data => {
         setPricingId(data.pricingId);
         setPricingName(data.name ?? slug);
         setCollectionName(data.collection?.name ?? null);
@@ -93,20 +103,27 @@ export default function CardPage() {
         try {
           const members = await getOrgMembers(organizationId);
           const me = members.find((m: any) => m.user.username === authUser.user?.username);
-          setCanDelete(me ? (me.role === 'OWNER' || me.role === 'ADMIN') : false);
-        } catch { setCanDelete(false); }
+          setCanDelete(me ? me.role === 'OWNER' || me.role === 'ADMIN' : false);
+        } catch {
+          setCanDelete(false);
+        }
 
         try {
           const baseUrl = import.meta.env.VITE_API_URL;
           const token = authUser?.token;
-          const response = await fetch(`${baseUrl}/pricings/${organizationId}/${slug}/permissions`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await fetch(
+            `${baseUrl}/pricings/${organizationId}/${slug}/permissions`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
           if (response.ok) {
             const data: EntityPermissions = await response.json();
             setEntityPermissions(data);
           }
-        } catch { setEntityPermissions(null); }
+        } catch {
+          setEntityPermissions(null);
+        }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
@@ -126,7 +143,9 @@ export default function CardPage() {
     if (!currentVersion?.yaml) return;
     setIsLoadingYaml(true);
     setErrors([]);
-    const url = currentVersion.yaml.startsWith('http') ? currentVersion.yaml : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
+    const url = currentVersion.yaml.startsWith('http')
+      ? currentVersion.yaml
+      : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
     fetch(url)
       .then(r => r.text())
       .then(async text => {
@@ -149,18 +168,29 @@ export default function CardPage() {
           }
         }
       })
-      .catch(() => { setYamlText(''); setPricing(null); })
+      .catch(() => {
+        setYamlText('');
+        setPricing(null);
+      })
       .finally(() => setIsLoadingYaml(false));
   }, [currentVersion]);
 
   const handleApplyVariables = async (variables: Record<string, unknown>) => {
     if (!yamlText) return;
     try {
-      const ser = (v: unknown) => { if (typeof v === 'string') return JSON.stringify(v); if (typeof v === 'boolean') return v ? 'true' : 'false'; if (typeof v === 'number' && Number.isFinite(v)) return String(v); return JSON.stringify(v); };
-      const lines = ['variables:']; for (const k of Object.keys(variables)) lines.push(`  ${k}: ${ser(variables[k])}`);
+      const ser = (v: unknown) => {
+        if (typeof v === 'string') return JSON.stringify(v);
+        if (typeof v === 'boolean') return v ? 'true' : 'false';
+        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+        return JSON.stringify(v);
+      };
+      const lines = ['variables:'];
+      for (const k of Object.keys(variables)) lines.push(`  ${k}: ${ser(variables[k])}`);
       const block = lines.join('\n');
       const re = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-      const newYaml = re.test(yamlText) ? yamlText.replace(re, block + '\n') : yamlText + '\n' + block + '\n';
+      const newYaml = re.test(yamlText)
+        ? yamlText.replace(re, block + '\n')
+        : yamlText + '\n' + block + '\n';
       setYamlText(newYaml);
       try {
         setPricing(retrievePricingFromYaml(newYaml));
@@ -175,7 +205,9 @@ export default function CardPage() {
         setPricing(await response.json());
         setErrors([]);
       }
-    } catch (e) { setErrors([(e as Error).message]); }
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
   };
 
   const filteredVersions = useMemo(() => {
@@ -191,7 +223,9 @@ export default function CardPage() {
       date: new Date(v.createdAt).toLocaleDateString(),
       minPrice: v.analytics?.minSubscriptionPrice ?? 0,
       maxPrice: v.analytics?.maxSubscriptionPrice ?? 0,
-      avgPrice: v.analytics ? (v.analytics.minSubscriptionPrice + v.analytics.maxSubscriptionPrice) / 2 : 0,
+      avgPrice: v.analytics
+        ? (v.analytics.minSubscriptionPrice + v.analytics.maxSubscriptionPrice) / 2
+        : 0,
       configs: v.analytics?.configurationSpaceSize ?? 0,
       plans: v.analytics?.numberOfPlans ?? 0,
       features: v.analytics?.numberOfFeatures ?? 0,
@@ -218,11 +252,18 @@ export default function CardPage() {
   }, [filteredVersions]);
 
   const a = currentVersion?.analytics ?? null;
-  const aSafe = a ? Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === 'number' ? v : 0])) as unknown as TreeAnalytics : null;
+  const aSafe = a
+    ? (Object.fromEntries(
+        Object.entries(a).map(([k, v]) => [k, typeof v === 'number' ? v : 0])
+      ) as unknown as TreeAnalytics)
+    : null;
 
   const handleDownload = (v: VersionData) => {
     const url = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    fetch(url).then(r => r.text()).then(text => downloadYaml(text)).catch(() => {});
+    fetch(url)
+      .then(r => r.text())
+      .then(text => downloadYaml(text))
+      .catch(() => {});
   };
 
   // The editor receives the pricing and version it starts from, so publishing
@@ -251,9 +292,12 @@ export default function CardPage() {
   const handleDownloadAllVersions = async () => {
     if (!pricingId) return;
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/public/pricings/${pricingId}/download`, {
-        headers: authUser?.token ? { Authorization: `Bearer ${authUser.token}` } : undefined,
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/public/pricings/${pricingId}/download`,
+        {
+          headers: authUser?.token ? { Authorization: `Bearer ${authUser.token}` } : undefined,
+        }
+      );
       if (!response.ok) throw new Error('Unable to download pricing versions');
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -267,26 +311,45 @@ export default function CardPage() {
     }
   };
 
-  const handleDelete = async (v: VersionData) => {
+  // Shared by the trash icon in the versions list and the button in Settings.
+  const handleDeleteVersion = (target: VersionData) => {
     if (!slug) return;
-    if (!confirm(`Delete version ${v.version}? This cannot be undone.`)) return;
-    try {
-      await removePricingBySlug(organizationId || "", slug, collectionSlug ?? undefined);
-      setVersions(prev => prev.filter(x => x.id !== v.id));
-      if (currentVersion?.id === v.id) setCurrentVersion(versions.find(x => x.id !== v.id) ?? null);
-    } catch {
-      console.error("Failed to delete version");
-    }
+    customConfirm(
+      `Are you sure you want to delete version ${target.version}? This action is irreversible.`,
+      { danger: true }
+    )
+      .then(() => {
+        removePricingVersion(organizationId || '', slug, target.version)
+          .then(() => {
+            const remaining = versions.filter(x => x.id !== target.id);
+            setVersions(remaining);
+            // The version on screen only changes when it was the one deleted.
+            setCurrentVersion(current =>
+              current && current.id !== target.id ? current : (remaining[0] ?? null)
+            );
+            customAlert(`Version ${target.version} deleted successfully`, 'success');
+          })
+          .catch(() => {
+            customAlert(
+              'An error has occurred while deleting the version. Please, try again later.',
+              'error'
+            );
+          });
+      })
+      .catch(() => {});
   };
 
   // Visibility belongs to each version: the settings describe the pricing as a
   // whole, so a pricing with some public and some private versions is "Mixed".
   const privateCount = versions.filter(v => v.private).length;
-  const visibility = privateCount === 0 ? 'Public' : privateCount === versions.length ? 'Private' : 'Mixed';
+  const visibility =
+    privateCount === 0 ? 'Public' : privateCount === versions.length ? 'Private' : 'Mixed';
 
   const setVersionsPrivacy = (isPrivate: boolean, shouldChange: (v: VersionData) => boolean) => {
     setVersions(prev => prev.map(v => (shouldChange(v) ? { ...v, private: isPrivate } : v)));
-    setCurrentVersion(prev => (prev && shouldChange(prev) ? { ...prev, private: isPrivate } : prev));
+    setCurrentVersion(prev =>
+      prev && shouldChange(prev) ? { ...prev, private: isPrivate } : prev
+    );
   };
 
   // The eye in the versions list: one version at a time.
@@ -307,13 +370,17 @@ export default function CardPage() {
     const target = value === 'Private' ? 'Private' : 'Public';
     if (target === visibility) return;
     const isPrivate = target === 'Private';
-    const scope = versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
+    const scope =
+      versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
     customConfirm(`Make ${scope} ${target.toLowerCase()}?`, { danger: true })
       .then(async () => {
         try {
           await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate });
           setVersionsPrivacy(isPrivate, () => true);
-          customAlert(`${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`, 'success');
+          customAlert(
+            `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`,
+            'success'
+          );
         } catch (error) {
           customAlert(`Error: ${(error as Error).message}`, 'error');
         }
@@ -326,50 +393,39 @@ export default function CardPage() {
     customConfirm(
       `Are you sure you want to rename this pricing to "${newName}"? You'll be redirected to the new URL.`,
       { danger: false }
-    ).then(() => {
-      updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName })
-        .then((data: any) => {
-          if (data?.error) {
-            customAlert(`Error: ${data.error}`, 'error');
-            return;
-          }
-          const newSlug = data?.slug ?? slug;
-          setPricingName(newName);
-          customAlert('Pricing renamed successfully', 'success');
-          if (newSlug !== slug) {
-            router.push(`/pricings/${organizationId}/${newSlug}${collectionSlug ? `?collectionSlug=${collectionSlug}` : ''}`);
-          }
-        })
-        .catch((error: Error) => {
-          customAlert(`Error: ${error.message}`, 'error');
-        });
-    }).catch(() => {});
-  };
-
-  const handleDeleteCurrentVersion = () => {
-    if (!slug || !currentVersion) return;
-    customConfirm(`Are you sure you want to delete version ${currentVersion.version}? This action is irreversible.`, { danger: true })
+    )
       .then(() => {
-        removePricingVersion(organizationId || "", slug, currentVersion.version)
-          .then(() => {
-            setVersions(prev => {
-              const next = prev.filter(x => x.id !== currentVersion.id);
-              if (next.length > 0) setCurrentVersion(next[0]);
-              else setCurrentVersion(null);
-              return next;
-            });
-            customAlert(`Version ${currentVersion.version} deleted successfully`, 'success');
+        updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName })
+          .then((data: any) => {
+            if (data?.error) {
+              customAlert(`Error: ${data.error}`, 'error');
+              return;
+            }
+            const newSlug = data?.slug ?? slug;
+            setPricingName(newName);
+            customAlert('Pricing renamed successfully', 'success');
+            if (newSlug !== slug) {
+              router.push(
+                `/pricings/${organizationId}/${newSlug}${collectionSlug ? `?collectionSlug=${collectionSlug}` : ''}`
+              );
+            }
           })
-          .catch(() => {
-            customAlert('An error has occurred while deleting the version. Please, try again later.', 'error');
+          .catch((error: Error) => {
+            customAlert(`Error: ${error.message}`, 'error');
           });
       })
       .catch(() => {});
   };
 
+  const handleDeleteCurrentVersion = () => {
+    if (currentVersion) handleDeleteVersion(currentVersion);
+  };
+
   const handleDeletePricing = () => {
     if (!slug) return;
-    customConfirm('Are you sure you want to delete this pricing? This action is irreversible.', { danger: true })
+    customConfirm('Are you sure you want to delete this pricing? This action is irreversible.', {
+      danger: true,
+    })
       .then(() => {
         if (!organizationId) {
           customAlert('Organization ID is missing. Cannot delete pricing.', 'error');
@@ -377,12 +433,17 @@ export default function CardPage() {
         }
         removePricingBySlug(organizationId, slug, collectionSlug ?? undefined)
           .then(() => {
-            customConfirm('Pricing deleted successfully. Do you want to return to the main page?', { danger: false })
+            customConfirm('Pricing deleted successfully. Do you want to return to the main page?', {
+              danger: false,
+            })
               .then(() => router.push('/'))
               .catch(() => router.push('/pricings'));
           })
           .catch(() => {
-            customAlert('An error has occurred while removing the pricing. Please, try again later.', 'error');
+            customAlert(
+              'An error has occurred while removing the pricing. Please, try again later.',
+              'error'
+            );
           });
       })
       .catch(() => {});
@@ -403,14 +464,20 @@ export default function CardPage() {
 
       const versionExists = versions.some(v => v.version === uploadedPricing.version);
       if (versionExists) {
-        customAlert(`Version "${uploadedPricing.version}" already exists. Please upload a file with a different version.`, 'error');
+        customAlert(
+          `Version "${uploadedPricing.version}" already exists. Please upload a file with a different version.`,
+          'error'
+        );
         return;
       }
 
-      if (!pricingVersionNameMatches(uploadedPricing.saasName, pricingName)){
-        await customConfirm(`The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${pricingName || slug}". Do you want to proceed?`, { danger: true });
+      if (!pricingVersionNameMatches(uploadedPricing.saasName, pricingName)) {
+        await customConfirm(
+          `The uploaded pricing is named "${uploadedPricing.saasName}", which does not match the current pricing name "${pricingName || slug}". Do you want to proceed?`,
+          { danger: true }
+        );
         await _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
-      }else{
+      } else {
         await _createPricingVersion(file, organizationId, slug, uploadedPricing.version);
       }
     } catch (err) {
@@ -418,7 +485,12 @@ export default function CardPage() {
     }
   };
 
-  async function _createPricingVersion(file: File, organizationId: string, slug: string, version: string) {
+  async function _createPricingVersion(
+    file: File,
+    organizationId: string,
+    slug: string,
+    version: string
+  ) {
     try {
       const formData = new FormData();
       // Multer chooses the file path while parsing multipart data, so these fields
@@ -432,7 +504,7 @@ export default function CardPage() {
       customAlert('New version added successfully', 'success');
       setShowImportModal(false);
 
-      getPricingBySlug(slug, organizationId, collectionSlug).then(async (data) => {
+      getPricingBySlug(slug, organizationId, collectionSlug).then(async data => {
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
@@ -464,16 +536,48 @@ export default function CardPage() {
   const isPrivateNoAccess = !entityPermissions?.GET && !currentVersion;
 
   const pricingSuggestions: SuggestedQuestion[] = useMemo(() => {
-    if (!a) return [
-      { id: 'overview', label: 'Give me an overview of this pricing', question: 'Can you give me an overview of this pricing structure? What are the main plans and features?' },
-      { id: 'compare', label: 'Compare plans and their differences', question: 'What are the differences between the available plans? Which one offers the best value?' },
-      { id: 'optimize', label: 'Suggest improvements for this pricing', question: 'Do you see any opportunities to improve this pricing strategy? Any redundancies or gaps?' },
-    ];
+    if (!a)
+      return [
+        {
+          id: 'overview',
+          label: 'Give me an overview of this pricing',
+          question:
+            'Can you give me an overview of this pricing structure? What are the main plans and features?',
+        },
+        {
+          id: 'compare',
+          label: 'Compare plans and their differences',
+          question:
+            'What are the differences between the available plans? Which one offers the best value?',
+        },
+        {
+          id: 'optimize',
+          label: 'Suggest improvements for this pricing',
+          question:
+            'Do you see any opportunities to improve this pricing strategy? Any redundancies or gaps?',
+        },
+      ];
     return [
-      { id: 'cheapest', label: `Find the cheapest plan with the most features`, question: `Which is the most affordable configuration that includes the maximum number of features in ${pricingName}?` },
-      { id: 'compare', label: 'Compare all plans side by side', question: `Can you compare all the plans in ${pricingName}? What are the key differences and which offers the best value?` },
-      { id: 'gaps', label: 'Identify gaps in the pricing strategy', question: `Are there any gaps or missing tiers in the ${pricingName} pricing? Could there be a plan that captures users between tiers?` },
-      { id: 'redundancies', label: 'Check for redundant plans or features', question: `Are there any redundant plans or overlapping features in ${pricingName}? How could the pricing be streamlined?` },
+      {
+        id: 'cheapest',
+        label: `Find the cheapest plan with the most features`,
+        question: `Which is the most affordable configuration that includes the maximum number of features in ${pricingName}?`,
+      },
+      {
+        id: 'compare',
+        label: 'Compare all plans side by side',
+        question: `Can you compare all the plans in ${pricingName}? What are the key differences and which offers the best value?`,
+      },
+      {
+        id: 'gaps',
+        label: 'Identify gaps in the pricing strategy',
+        question: `Are there any gaps or missing tiers in the ${pricingName} pricing? Could there be a plan that captures users between tiers?`,
+      },
+      {
+        id: 'redundancies',
+        label: 'Check for redundant plans or features',
+        question: `Are there any redundant plans or overlapping features in ${pricingName}? How could the pricing be streamlined?`,
+      },
     ];
   }, [a, pricingName]);
 
@@ -481,16 +585,38 @@ export default function CardPage() {
 
   return (
     <>
-      <Helmet><title>SPHERE - {pricingName}</title></Helmet>
+      <Helmet>
+        <title>SPHERE - {pricingName}</title>
+      </Helmet>
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
         {/* Breadcrumb + header */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={transitionDefault} className="mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={transitionDefault}
+          className="mb-6"
+        >
           <div className="mb-2 flex items-center gap-2 text-xs text-tp-steel">
-            <button type="button" onClick={() => router.push(`/orgs/${organizationId}`)} className="cursor-pointer hover:text-tp-ink">
+            <button
+              type="button"
+              onClick={() => router.push(`/orgs/${organizationId}`)}
+              className="cursor-pointer hover:text-tp-ink"
+            >
               {orgDisplayName || 'Organization'}
             </button>
             <span>/</span>
-            {collectionSlug && <><button type="button" onClick={() => router.push(`/collections/${organizationId}/${collectionSlug}`)} className="cursor-pointer hover:text-tp-ink">{collectionName || collectionSlug}</button><span>/</span></>}
+            {collectionSlug && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/collections/${organizationId}/${collectionSlug}`)}
+                  className="cursor-pointer hover:text-tp-ink"
+                >
+                  {collectionName || collectionSlug}
+                </button>
+                <span>/</span>
+              </>
+            )}
             <span className="text-tp-ink">{pricingName}</span>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -519,9 +645,13 @@ export default function CardPage() {
                   onClick={() => handleViewOrigin(currentVersion.forkedFrom!)}
                   className="mt-1 cursor-pointer text-left text-xs text-tp-steel underline decoration-dotted hover:text-tp-ink"
                 >
-                  Forked from {currentVersion.forkedFrom.name} (version {currentVersion.forkedFrom.version})
-                  {currentVersion.forkedFrom.collectionName ? ` in ${currentVersion.forkedFrom.collectionName}` : ''}
-                  {' · '}{currentVersion.forkedFrom.organizationDisplayName}
+                  Forked from {currentVersion.forkedFrom.name} (version{' '}
+                  {currentVersion.forkedFrom.version})
+                  {currentVersion.forkedFrom.collectionName
+                    ? ` in ${currentVersion.forkedFrom.collectionName}`
+                    : ''}
+                  {' · '}
+                  {currentVersion.forkedFrom.organizationDisplayName}
                 </button>
               )}
             </div>
@@ -532,8 +662,18 @@ export default function CardPage() {
                   onClick={() => setShowForkModal(true)}
                   className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 text-xs text-tp-ink transition-colors hover:bg-tp-surface focus:border-tp-primary focus:outline-none"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5zm0 0v3.75m0 0a2.25 2.25 0 102.25 2.25M8.25 10.5a2.25 2.25 0 002.25 2.25m6-9v3.75m0 0a2.25 2.25 0 11-2.25 2.25m2.25-2.25a2.25 2.25 0 00-2.25 2.25m0 0v5.25a2.25 2.25 0 01-2.25 2.25h-1.5" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8.25 6.75a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5zm0 0v3.75m0 0a2.25 2.25 0 102.25 2.25M8.25 10.5a2.25 2.25 0 002.25 2.25m6-9v3.75m0 0a2.25 2.25 0 11-2.25 2.25m2.25-2.25a2.25 2.25 0 00-2.25 2.25m0 0v5.25a2.25 2.25 0 01-2.25 2.25h-1.5"
+                    />
                   </svg>
                   Fork
                 </button>
@@ -557,22 +697,44 @@ export default function CardPage() {
         </motion.div>
 
         {/* Stats */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...transitionDefault, delay: 0.05 }} className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[{ l: 'Configurations', v: a?.configurationSpaceSize?.toLocaleString() ?? '—' }, { l: 'Min price', v: a ? `$${a.minSubscriptionPrice.toFixed(2)}` : '—' }, { l: 'Max price', v: a ? `$${a.maxSubscriptionPrice.toFixed(2)}` : '—' }, { l: 'Versions', v: String(versions.length) }].map(s => (
-            <div key={s.l} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3"><p className="text-[11px] text-tp-steel">{s.l}</p><p className="mt-0.5 text-lg font-semibold text-tp-ink">{s.v}</p></div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...transitionDefault, delay: 0.05 }}
+          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4"
+        >
+          {[
+            { l: 'Configurations', v: a?.configurationSpaceSize?.toLocaleString() ?? '—' },
+            { l: 'Min price', v: a ? `$${a.minSubscriptionPrice.toFixed(2)}` : '—' },
+            { l: 'Max price', v: a ? `$${a.maxSubscriptionPrice.toFixed(2)}` : '—' },
+            { l: 'Versions', v: String(versions.length) },
+          ].map(s => (
+            <div key={s.l} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
+              <p className="text-[11px] text-tp-steel">{s.l}</p>
+              <p className="mt-0.5 text-lg font-semibold text-tp-ink">{s.v}</p>
+            </div>
           ))}
         </motion.div>
 
         {/* Tabs */}
         <div className="mb-6 border-b border-tp-hairline">
-          <div className="mb-2 flex gap-2 overflow-x-auto pb-2 md:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
-            {([
-              ['overview', 'Overview'],
-              ['analytics', 'Analytics'],
-              ['config-space', 'Config Space'],
-              ['versions', 'Versions'],
-              ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
-            ] as const).map(([k, l]) => (
+          <div
+            className="mb-2 flex gap-2 overflow-x-auto pb-2 md:hidden"
+            style={{
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
+            {(
+              [
+                ['overview', 'Overview'],
+                ['analytics', 'Analytics'],
+                ['config-space', 'Config Space'],
+                ['versions', 'Versions'],
+                ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
+              ] as const
+            ).map(([k, l]) => (
               <button
                 key={k}
                 type="button"
@@ -588,16 +750,29 @@ export default function CardPage() {
             ))}
           </div>
           <div className="hidden gap-1 md:flex">
-            {([
-              ['overview', 'Overview'],
-              ['analytics', 'Analytics'],
-              ['config-space', 'Configuration Space'],
-              ['versions', 'Versions'],
-              ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
-            ] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setTab(k)} className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}>
+            {(
+              [
+                ['overview', 'Overview'],
+                ['analytics', 'Analytics'],
+                ['config-space', 'Configuration Space'],
+                ['versions', 'Versions'],
+                ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
+              ] as const
+            ).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setTab(k)}
+                className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}
+              >
                 {l}
-                {tab === k && <motion.div layoutId="pricing-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary" transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
+                {tab === k && (
+                  <motion.div
+                    layoutId="pricing-tab"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
               </button>
             ))}
           </div>
@@ -606,162 +781,268 @@ export default function CardPage() {
         <AnimatePresence mode="wait">
           {/* OVERVIEW */}
           {tab === 'overview' && (
-            <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
-              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
-              <>
-              <div className="mb-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setSidebarOpen(p => !p)}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-                >
-                  <svg className={`h-4 w-4 transition-transform duration-300 ${sidebarOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-                  </svg>
-                  {sidebarOpen ? 'Hide details' : 'Show details'}
-                </button>
-              </div>
-
-              <div className="hidden flex-col gap-6 md:flex md:flex-row">
-                <motion.div
-                  className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
-                  animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                >
-                  {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
-                    : pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={handleApplyVariables} />
-                    : <div className="flex h-64 items-center justify-center text-sm text-tp-steel">Could not load pricing preview</div>}
-                </motion.div>
-
-                <AnimatePresence initial={false}>
-                  {sidebarOpen && (
-                    <motion.div
-                      key="sidebar-desktop"
-                      initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: 360, opacity: 1 }}
-                      exit={{ width: 0, opacity: 0 }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      className="overflow-hidden"
+            <motion.div
+              key="overview"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
+              {isPrivateNoAccess ? (
+                <PrivateAccessFallback />
+              ) : (
+                <>
+                  <div className="mb-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSidebarOpen(p => !p)}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
                     >
-                      <div className="w-[360px] space-y-4">
-                        {aSafe && <PricingTree analytics={aSafe} />}
-                        {yamlText && <YamlSourcePanel yamlText={yamlText} />}
-                      </div>
+                      <svg
+                        className={`h-4 w-4 transition-transform duration-300 ${sidebarOpen ? 'rotate-180' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"
+                        />
+                      </svg>
+                      {sidebarOpen ? 'Hide details' : 'Show details'}
+                    </button>
+                  </div>
+
+                  <div className="hidden flex-col gap-6 md:flex md:flex-row">
+                    <motion.div
+                      className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
+                      animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    >
+                      {isLoadingYaml ? (
+                        <div className="flex h-64 items-center justify-center">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
+                        </div>
+                      ) : pricing ? (
+                        <PricingRenderer
+                          pricing={pricing}
+                          errors={errors}
+                          onApplyVariables={handleApplyVariables}
+                        />
+                      ) : (
+                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
+                          Could not load pricing preview
+                        </div>
+                      )}
                     </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
 
-              <div className="md:hidden">
-                <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
-                  {isLoadingYaml ? <div className="flex h-64 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" /></div>
-                    : pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={handleApplyVariables} />
-                    : <div className="flex h-64 items-center justify-center text-sm text-tp-steel">Could not load pricing preview</div>}
-                </div>
-              </div>
-
-              <AnimatePresence>
-                {sidebarOpen && (
-                  <motion.div
-                    key="sidebar-mobile"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 md:hidden"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <motion.div
-                      initial={{ y: '100%', opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: '100%', opacity: 0 }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      className="max-h-[85vh] w-[90vw] max-w-2xl overflow-y-auto rounded-2xl bg-tp-canvas p-5 shadow-elevation-4"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-tp-ink">Details</h3>
-                        <button
-                          type="button"
-                          onClick={() => setSidebarOpen(false)}
-                          className="cursor-pointer rounded-full p-1 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"
+                    <AnimatePresence initial={false}>
+                      {sidebarOpen && (
+                        <motion.div
+                          key="sidebar-desktop"
+                          initial={{ width: 0, opacity: 0 }}
+                          animate={{ width: 360, opacity: 1 }}
+                          exit={{ width: 0, opacity: 0 }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                          className="overflow-hidden"
                         >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="space-y-4">
-                        {aSafe && <PricingTree analytics={aSafe} />}
-                        {yamlText && <YamlSourcePanel yamlText={yamlText} />}
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              </>
+                          <div className="w-[360px] space-y-4">
+                            {aSafe && <PricingTree analytics={aSafe} />}
+                            {yamlText && <YamlSourcePanel yamlText={yamlText} />}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div className="md:hidden">
+                    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
+                      {isLoadingYaml ? (
+                        <div className="flex h-64 items-center justify-center">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
+                        </div>
+                      ) : pricing ? (
+                        <PricingRenderer
+                          pricing={pricing}
+                          errors={errors}
+                          onApplyVariables={handleApplyVariables}
+                        />
+                      ) : (
+                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
+                          Could not load pricing preview
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {sidebarOpen && (
+                      <motion.div
+                        key="sidebar-mobile"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 md:hidden"
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <motion.div
+                          initial={{ y: '100%', opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          exit={{ y: '100%', opacity: 0 }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                          className="max-h-[85vh] w-[90vw] max-w-2xl overflow-y-auto rounded-2xl bg-tp-canvas p-5 shadow-elevation-4"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="mb-4 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-tp-ink">Details</h3>
+                            <button
+                              type="button"
+                              onClick={() => setSidebarOpen(false)}
+                              className="cursor-pointer rounded-full p-1 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"
+                            >
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="space-y-4">
+                            {aSafe && <PricingTree analytics={aSafe} />}
+                            {yamlText && <YamlSourcePanel yamlText={yamlText} />}
+                          </div>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
               )}
             </motion.div>
           )}
 
           {/* ANALYTICS */}
           {tab === 'analytics' && (
-            <motion.div key="analytics" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
-              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
-              <PricingAnalyticsTab
-                chartData={chartData}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onDateFromChange={setDateFrom}
-                onDateToChange={setDateTo}
-              />
+            <motion.div
+              key="analytics"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
+              {isPrivateNoAccess ? (
+                <PrivateAccessFallback />
+              ) : (
+                <PricingAnalyticsTab
+                  chartData={chartData}
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onDateFromChange={setDateFrom}
+                  onDateToChange={setDateTo}
+                />
               )}
             </motion.div>
           )}
 
           {/* CONFIGURATION SPACE */}
           {tab === 'config-space' && (
-            <motion.div key="config-space" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
-              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
-              <>
-              {a && a.configurationSpaceSize && a.configurationSpaceSize > 2000 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
-                  <svg className="mb-3 h-10 w-10 text-tp-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
-                  <p className="text-sm font-medium text-tp-ink">Configuration space too large</p>
-                  <p className="mt-1 max-w-md text-xs text-tp-steel">This pricing has {a.configurationSpaceSize.toLocaleString()} configurations. The explorer is only available for pricing with ≤2,000 configurations.</p>
-                </div>
-              ) : organizationId && currentVersion ? (
-                <ConfigurationSpaceView organizationId={organizationId} pricingSlug={slug!} pricingVersion={currentVersion.version} />
-              ) : null}
-              </>
+            <motion.div
+              key="config-space"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
+              {isPrivateNoAccess ? (
+                <PrivateAccessFallback />
+              ) : (
+                <>
+                  {a && a.configurationSpaceSize && a.configurationSpaceSize > 2000 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
+                      <svg
+                        className="mb-3 h-10 w-10 text-tp-muted"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                        />
+                      </svg>
+                      <p className="text-sm font-medium text-tp-ink">
+                        Configuration space too large
+                      </p>
+                      <p className="mt-1 max-w-md text-xs text-tp-steel">
+                        This pricing has {a.configurationSpaceSize.toLocaleString()} configurations.
+                        The explorer is only available for pricing with ≤2,000 configurations.
+                      </p>
+                    </div>
+                  ) : organizationId && currentVersion ? (
+                    <ConfigurationSpaceView
+                      organizationId={organizationId}
+                      pricingSlug={slug!}
+                      pricingVersion={currentVersion.version}
+                    />
+                  ) : null}
+                </>
               )}
             </motion.div>
           )}
 
           {/* VERSIONS */}
           {tab === 'versions' && (
-            <motion.div key="versions" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
-              {isPrivateNoAccess ? <PrivateAccessFallback /> : (
-              <PricingVersionsTab
-                versions={versions}
-                currentVersion={currentVersion}
-                canDelete={canDelete}
-                onDownload={handleDownload}
-                onOpenInEditor={handleOpenInEditor}
-                onCopyLink={handleCopyLink}
-                onDelete={handleDelete}
-                onSelect={v => { setCurrentVersion(v); setTab('overview'); }}
-                canChangeVisibility={!!entityPermissions?.PUT}
-                onToggleVisibility={handleToggleVersionVisibility}
-                onViewOrigin={handleViewOrigin}
-              />
+            <motion.div
+              key="versions"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
+              {isPrivateNoAccess ? (
+                <PrivateAccessFallback />
+              ) : (
+                <PricingVersionsTab
+                  versions={versions}
+                  currentVersion={currentVersion}
+                  canDelete={canDelete}
+                  onDownload={handleDownload}
+                  onOpenInEditor={handleOpenInEditor}
+                  onCopyLink={handleCopyLink}
+                  onDelete={handleDeleteVersion}
+                  onSelect={v => {
+                    setCurrentVersion(v);
+                    setTab('overview');
+                  }}
+                  canChangeVisibility={!!entityPermissions?.PUT}
+                  onToggleVisibility={handleToggleVersionVisibility}
+                  onViewOrigin={handleViewOrigin}
+                />
               )}
             </motion.div>
           )}
 
           {/* SETTINGS */}
           {tab === 'settings' && (
-            <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitionDefault}>
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
               <PricingSettingsTab
                 entityPermissions={entityPermissions}
                 visibility={visibility}
@@ -781,7 +1062,12 @@ export default function CardPage() {
 
       {/* LINK MODAL */}
       {showLinkModal && (
-        <PricingLinkModal linkUrl={linkUrl} onClose={() => { setShowLinkModal(false); }} />
+        <PricingLinkModal
+          linkUrl={linkUrl}
+          onClose={() => {
+            setShowLinkModal(false);
+          }}
+        />
       )}
 
       {/* VERSIONS VISIBILITY MODAL */}
