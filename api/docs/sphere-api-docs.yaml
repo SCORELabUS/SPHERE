@@ -3632,14 +3632,18 @@ paths:
     get:
       summary: Get public pricing details.
       description: |
-        Retrieves a pricing by slug for a given user. If the user requesting is the owner of the pricing, they can then access private pricings. Otherwise, only public ones.
+        Retrieves a pricing by slug for a given user. Visibility is set per version: a pricing
+        with some public and some private versions is returned with only its public versions to
+        anyone who cannot see private ones. It is `404` only when none of its versions is visible.
 
         **Authentication**: Public
 
         **Permission**: 
-        - UNAUTHENTICATED: can only access PUBLIC pricings.
-        - USER: can access their own pricings (PUBLIC, PRIVATE) and PUBLIC pricings of other users.
-        - ADMIN: can access any user's pricings.
+        - UNAUTHENTICATED: only the PUBLIC versions.
+        - OWNER or ADMIN of the organization, or a MEMBER with `GET` permission on the pricing or on
+          its collection: every version (PUBLIC and PRIVATE).
+        - Any other USER: only the PUBLIC versions.
+        - Global ADMIN: every version.
 
       tags:
         - Pricings
@@ -3856,6 +3860,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    put:
+      summary: Change the visibility of one version of a pricing.
+      description: |
+        Makes a single version public or private, leaving the other versions of the pricing as
+        they are. To change every version at once, use `PUT /pricings/{organizationId}/{pricingSlug}`
+        with the `private` field.
+
+        **Authentication**: Bearer Token or User API Key
+
+        **Permission**:
+        - OWNER or ADMIN of the organization.
+        - MEMBER with `PUT` permission on the pricing (and `GET` if the version is private).
+        - Global ADMIN.
+
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/PricingVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                private:
+                  type: boolean
+                  description: Whether this version should be private
+              required:
+                - private
+      responses:
+        '200':
+          description: Visibility updated. Returns the pricing with all its versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingDetails'
+        '401':
+          description: Authentication required
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Pricing or pricing version not found
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       summary: Delete a specific version of a pricing.
       description: |
@@ -3890,6 +3950,113 @@ paths:
           description: Insufficient permissions
         '404':
           description: User, pricing or pricing version not found
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pricing-forks:
+    post:
+      summary: Fork a pricing version into another organization
+      description: |
+        Copies one version of an existing pricing into a target organization, keeping a
+        reference to where it came from (`forkedFrom`). The copied version's `createdAt`
+        is the moment of the fork, not the date of the original version.
+
+        A fork is a single branching point: it **always creates a new pricing** in the target
+        organization and never adds a version to an existing one, forked or not. To fork
+        again an origin that is already forked there, the new pricing needs a different
+        `name`. When the name the fork would take (`name`, or the source's own name) already
+        belongs to a pricing in the target organization, a request without `name` performs
+        no write and responds with `nameTaken`, so the client can ask the user for another
+        name. If `name` is sent and is already taken, the request fails with 409.
+
+        **Authentication**: Required
+
+        **Permission**:
+        - The source pricing must be visible to the caller: PUBLIC pricings can be forked by
+          any authenticated user, PRIVATE ones only by members of the source organization
+          (or a global ADMIN).
+        - The caller needs `CREATE` permission for pricings in the target organization.
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceOrganizationId
+                - sourceSlug
+                - sourceVersion
+                - targetOrganizationId
+              properties:
+                sourceOrganizationId:
+                  type: string
+                  description: ID of the organization owning the pricing being forked
+                  example: "63f74bf8eeed64058364b601"
+                sourceSlug:
+                  type: string
+                  description: Slug of the pricing being forked
+                  example: "dropbox"
+                sourceVersion:
+                  type: string
+                  description: Version of the source pricing to copy
+                  example: "2024"
+                targetOrganizationId:
+                  type: string
+                  description: ID of the organization that will hold the fork
+                  example: "63f74bf8eeed64058364b602"
+                name:
+                  type: string
+                  description: |
+                    Optional name for the new forked pricing. It must not belong to a
+                    pricing that already exists in the target organization.
+                  example: "Dropbox (internal)"
+      responses:
+        '200':
+          description: |
+            Either the created pricing, or a `nameTaken` response when the target
+            organization already has a pricing with the name the fork would take.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Pricing'
+                  - type: object
+                    properties:
+                      nameTaken:
+                        type: boolean
+                        example: true
+                      existingPricing:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: "Dropbox"
+                          slug:
+                            type: string
+                            example: "dropbox"
+                      sourceVersion:
+                        type: string
+                        example: "2024"
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient permissions in the target organization
+        '404':
+          description: Source pricing or its YAML file not found
+        '409':
+          description: |
+            The requested `name` already belongs to a pricing in the target organization.
+            Forking under another `name` does not conflict.
+        '422':
+          description: Missing required fields, or the source and target organizations are the same
         default:
           description: Unexpected error
           content:
@@ -5443,6 +5610,45 @@ components:
           type: boolean
           description: Whether the pricing is private (only accessible to users with explicit permissions)
           default: false
+        forkedFrom:
+          type: object
+          nullable: true
+          description: |
+            Origin of this version when it was created by forking another organization's pricing.
+            Absent on versions that were not forked.
+          properties:
+            pricingId:
+              type: string
+              description: Permanent identifier of the pricing this version was forked from
+            organizationId:
+              type: string
+            organizationName:
+              type: string
+              example: "demo-org"
+            organizationDisplayName:
+              type: string
+              example: "Demo Organization"
+            collectionId:
+              type: string
+              nullable: true
+            collectionName:
+              type: string
+              nullable: true
+              example: "IEEE TSC 2025"
+            collectionSlug:
+              type: string
+              nullable: true
+              example: "ieee-tsc-2025"
+            slug:
+              type: string
+              example: "dropbox"
+            name:
+              type: string
+              example: "Dropbox"
+            version:
+              type: string
+              description: Version of the origin pricing that was copied, as labelled there
+              example: "2024"
         analytics:
           type: object
           nullable: true

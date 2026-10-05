@@ -251,6 +251,25 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders, username]);
 
+  const updatePricingVersionVisibility = useCallback((organizationId: string, pricingSlug: string, pricingVersion: string, isPrivate: boolean) => {
+    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`, {
+      method: 'PUT',
+      headers: basicHeaders,
+      body: JSON.stringify({ private: isPrivate }),
+    })
+      .then(response => {
+        if (!response.ok) {
+          return Promise.reject(response);
+        } else {
+          return response.json();
+        }
+      })
+      .catch(async error => {
+        const body = await (error as Response).json().catch(() => ({}));
+        return Promise.reject({message: body.error});
+      });
+  }, [fetchWithInterceptor, basicHeaders]);
+
   const updateClientPricingVersion = useCallback(async (pricingString: string) => {
     return fetchWithInterceptor(`${PRICINGS_BASE_PATH}`, {
       method: 'PUT',
@@ -312,6 +331,35 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
+  const forkPricing = useCallback(async (
+    sourceOrganizationId: string,
+    sourceSlug: string,
+    sourceVersion: string,
+    targetOrganizationId: string,
+    name?: string
+  ) => {
+    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-forks`, {
+      method: 'POST',
+      headers: basicHeaders,
+      body: JSON.stringify({
+        sourceOrganizationId,
+        sourceSlug,
+        sourceVersion,
+        targetOrganizationId,
+        name,
+      }),
+    })
+      .then(async response => {
+        const parsedResponse = await response.json();
+
+        if (!response.ok) {
+          throw new Error(parsedResponse.error);
+        }
+
+        return parsedResponse;
+      });
+  }, [fetchWithInterceptor, basicHeaders]);
+
   const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
@@ -345,10 +393,12 @@ export function usePricingsApi() {
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
+      forkPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,
       updatePricing,
+      updatePricingVersionVisibility,
       updateClientPricingVersion,
       removePricingVersion,
     }),
@@ -360,10 +410,12 @@ export function usePricingsApi() {
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
+      forkPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,
       updatePricing,
+      updatePricingVersionVisibility,
       updateClientPricingVersion,
       removePricingVersion,
     ]

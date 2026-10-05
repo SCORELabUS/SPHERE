@@ -98,6 +98,7 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
             url: '$url',
             yaml: '$yaml',
             analytics: '$analytics',
+            forkedFrom: { $ifNull: ['$forkedFrom', null] },
             organization: {
               id: { $toString: '$organization._id' },
               name: '$organization.name',

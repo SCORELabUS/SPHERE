@@ -17,7 +17,9 @@ class PricingController {
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
     this.createVersion = this.createVersion.bind(this);
+    this.fork = this.fork.bind(this);
     this.update = this.update.bind(this);
+    this.updateVersionVisibility = this.updateVersionVisibility.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
     this.destroyVersionByNameAndOrganization = this.destroyVersionByNameAndOrganization.bind(this);
@@ -131,6 +133,30 @@ class PricingController {
     }
   }
 
+  async fork(req: any, res: any) {
+    try {
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name } = req.body;
+      if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
+        throw new Error(
+          'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
+        );
+      }
+
+      const result = await this.pricingService.forkPricing(
+        sourceOrganizationId,
+        sourceSlug,
+        sourceVersion,
+        targetOrganizationId,
+        req.user,
+        { name }
+      );
+      res.json(Array.isArray(result) ? result[0] : result);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
   private cleanupUploadedFile(file: any) {
     if (!file?.path) return;
     try {
@@ -152,6 +178,22 @@ class PricingController {
         req.user,
         req.body,
         queryParams
+      );
+      res.json(pricing);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async updateVersionVisibility(req: any, res: any) {
+    try {
+      const pricing = await this.pricingService.updateVersionVisibility(
+        req.params.pricingSlug,
+        req.params.pricingVersion,
+        req.params.organizationId,
+        req.user,
+        req.body.private === true || req.body.private === 'true'
       );
       res.json(pricing);
     } catch (err: any) {

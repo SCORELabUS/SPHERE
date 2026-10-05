@@ -18,9 +18,24 @@ export interface LeanPricing {
 
   analytics?: PricingAnalytics;
 
+  forkedFrom?: ForkedFrom;
+
   // Virtual (when populate is used)
   collection?: PricingCollection | string | null;
   organization?: PricingOrganization | null;
+}
+
+export interface ForkedFrom {
+  pricingId: Types.ObjectId | string;
+  organizationId: Types.ObjectId | string;
+  organizationName: string;
+  organizationDisplayName: string;
+  collectionId?: Types.ObjectId | string;
+  collectionName?: string;
+  collectionSlug?: string;
+  slug: string;
+  name: string;
+  version: string;
 }
 
 export interface PricingAnalytics {
