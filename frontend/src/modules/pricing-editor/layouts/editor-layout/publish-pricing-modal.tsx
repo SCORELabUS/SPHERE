@@ -373,7 +373,7 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
                       <span className="font-medium text-tp-ink">
                         {parsedPricing.pricing.saasName}
                       </span>{' '}
-                      · v{parsedPricing.pricing.version} · ready to publish
+                      · {parsedPricing.pricing.version} · ready to publish
                     </span>
                   </p>
                 ) : null}
@@ -692,7 +692,7 @@ function PricingTarget({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-tp-ink">{pricing.name}</span>
         <span className="mt-0.5 block truncate text-xs text-tp-steel">
-          {pricing.organization.displayName || pricing.organization.name} · v{pricing.version} ·{' '}
+          {pricing.organization.displayName || pricing.organization.name} · {pricing.version} ·{' '}
           {formatDate(pricing.createdAt)}
         </span>
       </span>

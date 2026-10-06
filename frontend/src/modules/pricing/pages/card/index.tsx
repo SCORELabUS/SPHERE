@@ -631,10 +631,10 @@ export default function CardPage() {
                       onChange={e => { const v = versions.find(x => x.id === e.target.value); if (v) setCurrentVersion(v); }}
                       className="h-7 cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-2 text-xs font-medium text-tp-ink focus:border-tp-primary focus:outline-none"
                     >
-                      {versions.map(v => <option key={v.id} value={v.id}>v{v.version}</option>)}
+                      {versions.map(v => <option key={v.id} value={v.id}>{v.version}</option>)}
                     </select>
                   ) : (
-                    <span className="rounded-lg border border-tp-input-border bg-tp-input-bg px-2 py-1 text-xs font-medium text-tp-ink">v{currentVersion.version}</span>
+                    <span className="rounded-lg border border-tp-input-border bg-tp-input-bg px-2 py-1 text-xs font-medium text-tp-ink">{currentVersion.version}</span>
                   )}
                   <span>· Updated {formatDistanceToNow(parseISO(currentVersion.createdAt))} ago</span>
                 </div>

@@ -111,7 +111,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         <span className="hidden truncate text-xs text-white/40 md:inline">Pricing2Yaml Editor</span>
         {sourcePricing ? (
           <span className="hidden max-w-[16rem] truncate rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/60 xl:inline" title={`Editing ${sourcePricing.name} from version ${sourcePricing.version}`}>
-            Editing <span className="font-medium text-white/80">{sourcePricing.name}</span> · from v{sourcePricing.version}
+            Editing <span className="font-medium text-white/80">{sourcePricing.name}</span> · from {sourcePricing.version}
           </span>
         ) : null}
         {authUser.isAuthenticated ? (
