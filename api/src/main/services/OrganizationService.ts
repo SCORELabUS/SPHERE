@@ -212,7 +212,7 @@ class OrganizationService {
     });
 
     if (inheritedManagers.length > 0) {
-      await this.copyMembershipsToChild(inheritedManagers, orgId, inheritedOwnerId);
+      await this.copyMembershipsToChild(inheritedManagers, orgId, inheritedOwnerId, userId);
     }
 
     return organization;
@@ -278,10 +278,9 @@ class OrganizationService {
   /**
    * Copies inherited memberships into a freshly created child.
    *
-   * The creator's own membership is already there, and `createBulk` drops the
-   * rows the unique index rejects, so the owner of the parent creating their own
-   * sub-organization keeps the seat they were just given rather than being
-   * written twice.
+   * The creator's own membership is already there, so it is left out: the owner
+   * of the parent creating their own sub-organization keeps the seat they were
+   * just given rather than being written twice.
    *
    * Only the inherited seat comes down as an owner's. A parent carrying a second
    * owner from before the rule would otherwise hand every one of them to the
@@ -293,11 +292,15 @@ class OrganizationService {
   private async copyMembershipsToChild(
     managers: any[],
     childId: string,
-    inheritedOwnerId: string | null
+    inheritedOwnerId: string | null,
+    creatorId: string
   ) {
     const now = new Date();
+    // The creator is skipped here instead of being left to the unique index to
+    // reject: on a database where that index is not built yet, they would end up
+    // with two memberships, and an owner with two seats counts as two owners.
     await this.organizationMembershipRepository.createBulk(
-      managers.map((m: any) => {
+      managers.filter((m: any) => m._userId.toString() !== creatorId).map((m: any) => {
         const userId = m._userId.toString();
         let role = m.role as OrgRole;
         if (role === 'OWNER' && userId !== inheritedOwnerId) {
