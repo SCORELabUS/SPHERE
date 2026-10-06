@@ -44,7 +44,7 @@ const formatDate = (date: string | Date) => {
   const value = new Date(date);
   return Number.isNaN(value.getTime())
     ? String(date)
-    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(value);
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(value);
 };
 const sameName = (pricing: AccessiblePricing, name?: string) =>
   pricing.name.trim().toLowerCase() === name?.trim().toLowerCase();

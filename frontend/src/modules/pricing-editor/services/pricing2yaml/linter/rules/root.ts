@@ -6,9 +6,9 @@ import {
   listOptions,
 } from './constants';
 import { checkName, checkRequired, checkString, checkStringArray } from './shared';
+import { isCreatedAtString } from '../../created-at';
 
 const URL_PATTERN = /^(https?):\/\/[^\s/$.?#].[^\s]*$/i;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Validates the pricing header: identity, versioning, currency and billing. */
 export function checkRootFields(context: LintContext): void {
@@ -77,12 +77,12 @@ function checkCreatedAt(context: LintContext): void {
 
   if (value instanceof Date) {
     date = value;
-  } else if (typeof value === 'string' && DATE_PATTERN.test(value)) {
+  } else if (typeof value === 'string' && isCreatedAtString(value)) {
     date = new Date(value);
   } else {
     context.error(
       'invalid-type',
-      `createdAt must be a date in the format yyyy-mm-dd. Received ${describeType(value)}.`,
+      `createdAt must be a date (yyyy-mm-dd) or an ISO 8601 date-time with time zone (e.g. 2025-05-25T14:30:00Z). Received ${describeType(value)}.`,
       ['createdAt']
     );
 

@@ -2369,6 +2369,13 @@ describe('Pricings API integration', () => {
         _organizationId: organizationId,
       });
       expect(stored?.createdAt.toISOString()).toBe(releasedAt.toISOString());
+
+      // The stored YAML says the same instant, so consumers comparing both agree.
+      const storedYaml = await fs.readFile(
+        path.resolve(process.env.SERVER_STATICS_FOLDER || 'public', stored!.yaml),
+        'utf8'
+      );
+      expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
     it('Return 422 when the createdAt sent with a new version is invalid or in the future.', async () => {
@@ -2948,6 +2955,14 @@ describe('Pricings API integration', () => {
       const forkedCreatedAt = new Date(response.body.createdAt).getTime();
       expect(forkedCreatedAt).toBeGreaterThanOrEqual(forkedAfter - 1000);
       expect(forkedCreatedAt).not.toBe(new Date(originVersion!.createdAt).getTime());
+
+      // The forked YAML carries the fork's instant too, not the origin version's date.
+      const forked = await PricingMongoose.findOne({ _id: response.body.id }).lean();
+      const forkedYaml = await fs.readFile(
+        path.resolve(process.env.SERVER_STATICS_FOLDER || 'public', forked!.yaml),
+        'utf8'
+      );
+      expect(new Date((yaml.load(forkedYaml) as { createdAt: string }).createdAt).getTime()).toBe(forkedCreatedAt);
     });
 
     it('Ask for a different name, writing nothing, when the target organization already has a pricing with the same name.', async () => {
