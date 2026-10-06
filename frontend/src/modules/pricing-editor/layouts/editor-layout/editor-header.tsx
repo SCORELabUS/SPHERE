@@ -21,7 +21,7 @@ interface Props {
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
   const { authUser } = useAuth();
-  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft, sourcePricing } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -109,6 +109,11 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         </button>
         <span className="hidden text-white/20 md:inline">/</span>
         <span className="hidden truncate text-xs text-white/40 md:inline">Pricing2Yaml Editor</span>
+        {sourcePricing ? (
+          <span className="hidden max-w-[16rem] truncate rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/60 xl:inline" title={`Editing ${sourcePricing.name} from version ${sourcePricing.version}`}>
+            Editing <span className="font-medium text-white/80">{sourcePricing.name}</span> · from {sourcePricing.version}
+          </span>
+        ) : null}
         {authUser.isAuthenticated ? (
           <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-300 lg:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />

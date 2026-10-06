@@ -52,7 +52,7 @@ export default function ContextItem({ item, onRemove }: Props) {
           </span>
           {isSphereItem && (
             <span className="inline-flex items-center rounded border border-tp-hairline-strong bg-tp-surface px-1.5 py-0.5 font-mono text-[10px] font-medium text-tp-slate">
-              v{item.version}
+              {item.version}
             </span>
           )}
           {isTransforming && (

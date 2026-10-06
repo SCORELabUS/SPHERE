@@ -1,6 +1,6 @@
 import { PipelineStage } from "mongoose";
 import { OrgUserPermissionsContext } from "../../../../types/policies";
-import { latestPricingsByNameAggregator, refactorRootAggregator } from "./group-pricing-versions";
+import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorRootAggregator } from "./group-pricing-versions";
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
 import { filterByOrganizationAggregator } from "./filter-by-organization";
@@ -21,6 +21,7 @@ export function getPricingsAggregator(
       ...populateCollectionDataAggregator,
       ...populateOrganizationDataAggregator,
       ...(organizationId ? filterByOrganizationAggregator(organizationId) : [{ $match: {} }]),
+      ...pickVisibleVersionAggregator(canSeePrivateVersions(permissions)),
       {
         $set: {
           id: { $toString: '$_id' },
@@ -30,6 +31,8 @@ export function getPricingsAggregator(
     
     pipeline.push(...filteringAggregator);
     
+    // The version chosen above is public unless the viewer may see private ones,
+    // so these only drop pricings that have no public version at all.
     if (!permissions){
       pipeline.push({ $match: { private: false } });
     }else if (!permissions.isGlobalAdmin && (!permissions.orgRole || (permissions.orgRole !== 'OWNER' && permissions.orgRole !== 'ADMIN'))) {
@@ -41,4 +44,20 @@ export function getPricingsAggregator(
     pipeline.push(...sortAggregator);
   
     return pipeline;
+}
+
+/**
+ * Whether the viewer may see a pricing's private versions: the same grounds as
+ * considerUserPermissionsAggregator, minus the pricing being public.
+ */
+function canSeePrivateVersions(permissions?: OrgUserPermissionsContext): unknown {
+  if (!permissions) return false;
+  if (permissions.isGlobalAdmin || permissions.orgRole === 'OWNER' || permissions.orgRole === 'ADMIN') return true;
+  return {
+    $or: [
+      { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] },
+      { $in: [{ $ifNull: ['$collection.slug', null] }, permissions.collections] },
+      { $in: ['$slug', permissions.pricings] },
+    ],
+  };
 }

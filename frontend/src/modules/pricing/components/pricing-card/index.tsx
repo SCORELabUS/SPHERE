@@ -178,7 +178,7 @@ export default function PricingCard({ data, showMenu = false, menuItems = [] }: 
           {minPrice.toFixed(0)}–{symbol}
           {maxPrice.toFixed(0)}
         </span>
-        <span className="text-tp-muted">v{data.version}</span>
+        <span className="text-tp-muted">{data.version}</span>
       </div>
     </motion.div>
   );

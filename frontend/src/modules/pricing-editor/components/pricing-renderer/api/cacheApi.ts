@@ -25,26 +25,19 @@ export function useCacheApi() {
   };
 
   const getFromCache = async (key: string) => {
-    return fetch(`${CACHE_BASE_PATH}?key=${encodeURIComponent(key)}`, {
+    const response = await fetch(`${CACHE_BASE_PATH}?key=${encodeURIComponent(key)}`, {
       method: 'GET',
       headers: buildHeaders(),
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (data.error){
-          return Promise.reject(data.error);
-        }else{
-          return data.data;
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject(body as Error);
-      });
+    });
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data;
   };
 
   const setInCache = async (key: string, value: string, expirationInSeconds?: number) => {
-    return fetch(`${CACHE_BASE_PATH}`, {
+    const response = await fetch(`${CACHE_BASE_PATH}`, {
       method: 'POST',
       headers: buildHeaders(),
       body: JSON.stringify({
@@ -52,19 +45,12 @@ export function useCacheApi() {
         value,
         expirationInSeconds,
       }),
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (data.error){
-          return Promise.reject(data.error);
-        }else{
-          return data;
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject(body as Error);
-      });
+    });
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data;
   };
 
   return {

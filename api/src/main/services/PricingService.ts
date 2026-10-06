@@ -1,7 +1,10 @@
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
+import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
+import { sanitizePathSegment } from '../utils/path-utils';
+import { stampCreatedAt } from '../utils/created-at';
 import {
   PricingService as PricingAnalytics,
   retrievePricingFromPath,
@@ -129,15 +132,21 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
   ) {
-    if (reqUser) {
-      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      queryParams.includePrivate = reqUser.role === 'ADMIN' || role !== null;
+    const pricing: {
+      name: string;
+      slug: string;
+      collection?: { slug?: string };
+      versions: (PricingModel & { private?: boolean })[];
+    } | null = await this.pricingRepository.findOne(slug, organizationId, {
+      ...queryParams,
+      includePrivate: true,
+    });
+
+    if (pricing && !(await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))) {
+      pricing.versions = pricing.versions.filter(version => !version.private);
     }
 
-    const pricing: { name: string; slug: string; versions: PricingModel[] } | null =
-      await this.pricingRepository.findOne(slug, organizationId, queryParams);
-
-    if (!pricing) {
+    if (!pricing || pricing.versions.length === 0) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
@@ -146,6 +155,36 @@ class PricingService {
     }
 
     return pricing;
+  }
+
+  /**
+   * Whether the user may see the private versions of a pricing, on the same
+   * grounds the listings use: global admin, OWNER/ADMIN of its organization, or
+   * an explicit GET permission on the pricing or on its collection. Anyone else
+   * only gets the public versions.
+   */
+  private async _canSeePrivateVersions(
+    reqUser: LeanUser | undefined,
+    organizationId: string,
+    pricingSlug: string,
+    collectionSlug?: string
+  ): Promise<boolean> {
+    if (!reqUser) return false;
+    if (reqUser.role === 'ADMIN') return true;
+
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    if (!orgRole) return false;
+
+    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
+      reqUser,
+      orgRole,
+      organizationId
+    );
+    return (
+      permissions.adminOrgIds.includes(organizationId) ||
+      permissions.pricings.includes(pricingSlug) ||
+      (!!collectionSlug && permissions.collections.includes(collectionSlug))
+    );
   }
 
   async getConfigurationSpace(
@@ -169,22 +208,20 @@ class PricingService {
       offset: queryParams?.offset ? parseInt(queryParams.offset) : undefined,
     };
 
-    let includePrivate = false;
-    if (reqUser) {
-      const role = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      includePrivate = reqUser.role === 'ADMIN' || role !== null;
-    }
-
     const retrievedPricing = await this.pricingRepository.findOne(
       pricingSlug,
       organizationId,
       {
         ...queryParams,
         version: pricingVersion,
-        includePrivate,
+        includePrivate: true,
       }
     );
-    if (!retrievedPricing) {
+    const canSeeVersion = retrievedPricing && (
+      !retrievedPricing.versions[0]?.private ||
+      await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, retrievedPricing.collection?.slug)
+    );
+    if (!retrievedPricing || !canSeeVersion) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
@@ -245,7 +282,8 @@ class PricingService {
     pricingSlug: string,
     isPrivate: boolean,
     reqUser: LeanUser,
-    collectionId?: string
+    collectionId?: string,
+    createdAt?: Date
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -253,8 +291,137 @@ class PricingService {
       isPrivate,
       reqUser,
       collectionId,
-      pricingSlug
+      pricingSlug,
+      undefined,
+      undefined,
+      undefined,
+      createdAt
     );
+  }
+
+  /**
+   * Forks one version of a pricing into another organization.
+   *
+   * A fork is a single branching point: it always creates a NEW pricing in the target
+   * organization and never adds a version to an existing one (forked or not). When the name
+   * the fork would take (`options.name`, or the source's own name) already belongs to a
+   * pricing in the target organization, nothing is written: without `options.name` the
+   * caller gets back `{ nameTaken: true, ... }` so the UI can ask for another name, and
+   * with it the request fails with a CONFLICT.
+   */
+  async forkPricing(
+    sourceOrganizationId: string,
+    sourceSlug: string,
+    sourceVersion: string,
+    targetOrganizationId: string,
+    reqUser: LeanUser,
+    options: { name?: string } = {}
+  ) {
+    if (sourceOrganizationId === targetOrganizationId) {
+      throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
+    }
+
+    // A pricing is forkable by whoever can already view it: same visibility rule as show().
+    const sourceOrgRole = await this.permissionService.resolveOrgRole(reqUser.id, sourceOrganizationId);
+    const includeSourcePrivate = reqUser.role === 'ADMIN' || sourceOrgRole !== null;
+
+    const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
+      version: sourceVersion,
+      includePrivate: includeSourcePrivate,
+    });
+
+    if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
+    const sourceVersionDoc = sourcePricing.versions[0];
+
+    const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+    const sourceAbsolutePath = path.resolve(staticFolder, sourceVersionDoc.yaml);
+    if (!fs.existsSync(sourceAbsolutePath)) {
+      throw new Error('NOT FOUND: Pricing file not found');
+    }
+
+    // Copy before ever parsing: pricing4ts's retrievePricingFromPath can rewrite the file
+    // it's given (schema/version normalization) as a side effect, and the source YAML
+    // belongs to another organization's pricing — it must never be mutated by a fork.
+    const uploadBaseFolder = path.resolve(process.cwd(), 'public', 'static', 'pricings', 'uploaded');
+    const draftDir = path.resolve(uploadBaseFolder, sanitizePathSegment(sourcePricing.name, 'unknown-saas'));
+    fs.mkdirSync(draftDir, { recursive: true });
+    const ext = path.extname(sourceAbsolutePath) || '.yml';
+    const copiedAbsolutePath = path.resolve(
+      draftDir,
+      `${sanitizePathSegment(sourceVersionDoc.version, '0.0.0')}-fork-${Date.now()}${ext}`
+    );
+    fs.copyFileSync(sourceAbsolutePath, copiedAbsolutePath);
+
+    let versionCreated = false;
+
+    try {
+      const requestedName = options.name?.trim();
+      const forkedPricingName = requestedName || sourcePricing.name;
+      const nameClash = await this.pricingRepository.findOne(
+        generateSlug(forkedPricingName),
+        targetOrganizationId,
+        { includePrivate: true }
+      );
+
+      if (nameClash?.versions?.length) {
+        if (!requestedName) {
+          // Nothing gets written: the draft copy was only needed to read the YAML above.
+          if (fs.existsSync(copiedAbsolutePath)) {
+            fs.rmSync(copiedAbsolutePath);
+          }
+          return {
+            nameTaken: true as const,
+            existingPricing: { name: nameClash.name, slug: nameClash.slug },
+            sourceVersion: sourceVersionDoc.version,
+          };
+        }
+        throw new Error(
+          `CONFLICT: A pricing named "${nameClash.name}" already exists in this organization. A fork always creates a new pricing, so choose a different name.`
+        );
+      }
+
+      const sourceOrganization = (sourceVersionDoc as any).organization;
+      const sourceCollection = (sourcePricing as any).collection;
+
+      const forkedFrom: ForkedFrom = {
+        pricingId: sourcePricing.pricingId,
+        organizationId: sourceOrganizationId,
+        organizationName: sourceOrganization?.name ?? '',
+        organizationDisplayName: sourceOrganization?.displayName ?? sourceOrganization?.name ?? '',
+        ...(sourceCollection?.id ? { collectionId: sourceCollection.id, collectionName: sourceCollection.name, collectionSlug: sourceCollection.slug } : {}),
+        slug: sourcePricing.slug!,
+        name: sourcePricing.name,
+        // The version's DB-level label (e.g. "2021"), as shown in the source pricing's
+        // version picker — not the YAML-internal version string, which is meaningless here.
+        version: sourceVersionDoc.version,
+      };
+
+      const pricing = await this._createPricingVersion(
+        { path: copiedAbsolutePath },
+        targetOrganizationId,
+        sourceVersionDoc.private === true,
+        reqUser,
+        undefined,
+        undefined,
+        forkedPricingName,
+        forkedFrom,
+        null,
+        new Date()
+      );
+      // From here on the stored version references the copied file, so it must not
+      // be deleted if anything after this point fails.
+      versionCreated = true;
+
+      return pricing;
+    } catch (err) {
+      if (!versionCreated && fs.existsSync(copiedAbsolutePath)) {
+        fs.rmSync(copiedAbsolutePath);
+      }
+      throw err;
+    }
   }
 
   private async _createPricingVersion(
@@ -264,7 +431,10 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string,
     overrideSlug?: string,
-    name?: string
+    name?: string,
+    forkedFrom?: ForkedFrom,
+    previousPricingOverride?: any,
+    createdAtOverride?: Date
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -284,20 +454,25 @@ class PricingService {
       const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
       uploadedPricing = retrievePricingFromPath(filePath);
 
-      const lookupSlug = overrideSlug
-        ? generateSlug(overrideSlug)
-        : name
-          ? generateSlug(name)
-          : generateSlug(uploadedPricing.saasName);
+      // A fork already knows which pricing (if any) it should attach a new version to,
+      // resolved by origin rather than by name/slug: skip the usual name-based lookup.
+      let previousPricing = previousPricingOverride;
+      if (previousPricingOverride === undefined) {
+        const lookupSlug = overrideSlug
+          ? generateSlug(overrideSlug)
+          : name
+            ? generateSlug(name)
+            : generateSlug(uploadedPricing.saasName);
 
-      const previousPricing = await this.pricingRepository.findOne(
-        lookupSlug,
-        organizationId,
-        {
-          collectionId: collectionId,
-          includePrivate: true,
-        }
-      );
+        previousPricing = await this.pricingRepository.findOne(
+          lookupSlug,
+          organizationId,
+          {
+            collectionId: collectionId,
+            includePrivate: true,
+          }
+        );
+      }
 
       const isAddingVersion =
         !!previousPricing && previousPricing.versions && previousPricing.versions.length > 0;
@@ -350,6 +525,14 @@ class PricingService {
         collectionId = previousPricing.versions[0]._collectionId.toString();
       }
 
+      // The release instant lives both in the database and in the YAML. When the
+      // caller dictates it (a new version's release time, a fork's creation time),
+      // the stored YAML must say the same.
+      if (createdAtOverride && createdAtOverride.getTime() !== new Date(uploadedPricing.createdAt).getTime()) {
+        const stampedPath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
+        fs.writeFileSync(stampedPath, stampCreatedAt(fs.readFileSync(stampedPath, 'utf8'), createdAtOverride), 'utf8');
+      }
+
       const rawPath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
       const normalizedPath = rawPath.replace(/\\/g, '/');
       const staticIndex = normalizedPath.indexOf('static/');
@@ -381,6 +564,7 @@ class PricingService {
 
       const pricingData = {
         ...(isAddingVersion && previousPricing.pricingId ? { pricingId: previousPricing.pricingId } : {}),
+        ...(forkedFrom ? { forkedFrom } : {}),
         name: pricingName,
         slug: pricingSlug,
         version: uploadedPricing.version,
@@ -388,7 +572,9 @@ class PricingService {
         _organizationId: organizationId,
         private: isPrivate,
         currency: uploadedPricing.currency,
-        createdAt: new Date(uploadedPricing.createdAt),
+        // A forked version is "created" now, when it's added to the destination pricing,
+        // not when the original version being copied was authored.
+        createdAt: createdAtOverride ?? new Date(uploadedPricing.createdAt),
         url: '',
         yaml: yamlPath,
         analytics: {},
@@ -598,6 +784,59 @@ class PricingService {
     });
 
     return updatedPricing;
+  }
+
+  /**
+   * Changes the visibility of one version only. The rest of the pricing keeps
+   * its own; `update` is what changes every version at once.
+   */
+  async updateVersionVisibility(
+    pricingSlug: string,
+    pricingVersion: string,
+    organizationId: string,
+    reqUser: LeanUser,
+    isPrivate: boolean
+  ) {
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+
+    const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
+      includePrivate: true,
+    });
+    const target = pricing?.versions.find(
+      (version: { version: string }) =>
+        [pricingVersion, pricingVersion.replace('_', '.')].some(
+          candidate => version.version.toLowerCase() === candidate.toLowerCase()
+        )
+    );
+    if (!pricing || !target) {
+      throw new Error('NOT FOUND: Pricing version not found');
+    }
+
+    const batchCtx = await this.permissionService.buildBatchContext(
+      reqUser.id,
+      organizationId,
+      orgRole,
+      reqUser.role === 'ADMIN'
+    );
+
+    const updateResult = this.permissionEngine.evaluate({
+      userId: reqUser.id,
+      organizationId,
+      entityType: 'pricing',
+      entitySlug: pricingSlug,
+      action: 'PUT',
+      isPrivate: target.private === true,
+      userOrgRole: orgRole,
+      isGlobalAdmin: reqUser.role === 'ADMIN',
+      entityPermissions: batchCtx.entityPermissions.get(`pricing:${pricingSlug}`),
+    });
+    if (!updateResult.allowed) {
+      throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
+    }
+
+    await this.pricingRepository.update(target.id, { private: isPrivate });
+
+    return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
   }
 
   async updateVersion(pricingString: string) {

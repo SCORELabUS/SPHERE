@@ -28,6 +28,19 @@ docker compose up -d
 
 🎉 After running these commands, the project should be up and running! You can access the frontend through [http://localhost/](http://localhost/)
 
+### Using the published images
+
+Every release of SPHERE publishes two public multi-arch (`amd64`/`arm64`) images to the GitHub Container Registry, tagged with the release version without the leading `v` (release `v2.5.5` → tag `2.5.5`; `latest` always points to the newest stable release):
+
+```bash
+docker pull ghcr.io/scorelabus/sphere-api:2.5.5      # Express API (includes MiniZinc), port 8080
+docker pull ghcr.io/scorelabus/sphere-client:2.5.5   # Static web client served by nginx, port 80
+```
+
+You still need MongoDB and Redis, and a reverse proxy that routes `/api/v1` and `/static` to the API and everything else to the client. See `docker/testing/docker-compose.yml` and `nginx/` for a reference setup. The API is configured through the same environment variables as in `api/.env.testing`, and the client is built with `VITE_API_URL=/api/v1`.
+
+Releases must be tagged as `vX.Y.Z`; otherwise the publishing workflow fails.
+
 ## 🚀 Installation Guide for Developers
 
 To set up and run this project, follow these steps:

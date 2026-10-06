@@ -81,12 +81,12 @@ export function SortableUsageLimitRow({
         {/* Values */}
         {planKeys.map((planKey, pIdx) => {
           const plan = draft.plans[planKey];
-          if (plan?.private) return <div key={planKey} className="grow min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
+          if (plan?.private) return <div key={planKey} className="shrink-0 grow basis-0 min-w-[140px] overflow-hidden border-b border-r border-slate-100 dark:border-slate-800" />;
           const usageValue = (plan?.usageLimits as Record<string, { value: unknown }> | undefined)?.[usageKey]?.value;
           const effectiveValue = usageValue ?? usage.defaultValue;
           const toneClass = pIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50';
           return (
-            <div key={planKey} className={`flex grow min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
+            <div key={planKey} className={`flex shrink-0 grow basis-0 min-w-[140px] overflow-hidden items-center justify-center border-b border-r border-slate-100 px-2 py-3 dark:border-slate-800 ${toneClass}`}>
               <UsageValueCell value={effectiveValue as string | number | boolean} usage={usage as unknown as UsageLimit}
                 onSave={(v) => onSetCellValue(planKey, 'usageLimit', usageKey, v)} />
             </div>

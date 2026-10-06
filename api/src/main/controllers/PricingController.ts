@@ -17,7 +17,9 @@ class PricingController {
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
     this.create = this.create.bind(this);
     this.createVersion = this.createVersion.bind(this);
+    this.fork = this.fork.bind(this);
     this.update = this.update.bind(this);
+    this.updateVersionVisibility = this.updateVersionVisibility.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
     this.destroyByNameAndOrganization = this.destroyByNameAndOrganization.bind(this);
     this.destroyVersionByNameAndOrganization = this.destroyVersionByNameAndOrganization.bind(this);
@@ -115,13 +117,15 @@ class PricingController {
     try {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
+      const createdAt = this.parseCreatedAt(req.body.createdAt);
       const pricing = await this.pricingService.createVersion(
         req.file,
         req.params.organizationId,
         req.params.pricingSlug,
         isPrivate,
         req.user,
-        collectionId
+        collectionId,
+        createdAt
       );
       res.json(pricing[0]);
     } catch (err: any) {
@@ -129,6 +133,43 @@ class PricingController {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }
+  }
+
+  async fork(req: any, res: any) {
+    try {
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name } = req.body;
+      if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
+        throw new Error(
+          'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
+        );
+      }
+
+      const result = await this.pricingService.forkPricing(
+        sourceOrganizationId,
+        sourceSlug,
+        sourceVersion,
+        targetOrganizationId,
+        req.user,
+        { name }
+      );
+      res.json(Array.isArray(result) ? result[0] : result);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  /** Optional release timestamp (ISO 8601); it cannot be in the future. */
+  private parseCreatedAt(value: unknown): Date | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error('INVALID DATA: createdAt must be a valid ISO 8601 date');
+    }
+    if (parsed.getTime() > Date.now()) {
+      throw new Error('INVALID DATA: createdAt must not be a future date');
+    }
+    return parsed;
   }
 
   private cleanupUploadedFile(file: any) {
@@ -152,6 +193,22 @@ class PricingController {
         req.user,
         req.body,
         queryParams
+      );
+      res.json(pricing);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async updateVersionVisibility(req: any, res: any) {
+    try {
+      const pricing = await this.pricingService.updateVersionVisibility(
+        req.params.pricingSlug,
+        req.params.pricingVersion,
+        req.params.organizationId,
+        req.user,
+        req.body.private === true || req.body.private === 'true'
       );
       res.json(pricing);
     } catch (err: any) {

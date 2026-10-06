@@ -1,6 +1,7 @@
 import jsYaml from 'js-yaml';
 import type { PricingDraft, DraftFeature, DraftUsageLimit, DraftPlan, DraftAddOn } from './types';
 import { serializeDraftToYaml } from './serializer';
+import { formatCreatedAt } from './created-at';
 import {
   updateField,
   addPlan,
@@ -20,6 +21,12 @@ import {
   updateAddOnProps,
   toggleAddOnAvailableFor,
   setAddOnCellValue,
+  getFeatureGroups,
+  orderFeaturesByGroup,
+  addFeatureGroup,
+  renameFeatureGroup,
+  removeFeatureGroup,
+  moveFeatureToGroup,
 } from './mutations';
 
 export type { PricingDraft, DraftFeature, DraftUsageLimit, DraftPlan, DraftAddOn };
@@ -43,6 +50,12 @@ export {
   updateAddOnProps,
   toggleAddOnAvailableFor,
   setAddOnCellValue,
+  getFeatureGroups,
+  orderFeaturesByGroup,
+  addFeatureGroup,
+  renameFeatureGroup,
+  removeFeatureGroup,
+  moveFeatureToGroup,
 };
 
 export function ensureSyntaxVersion31(yamlStr: string): string {
@@ -206,7 +219,7 @@ function rawToDraft(raw: Record<string, unknown>): PricingDraft {
     saasName: (raw.saasName as string) ?? 'Untitled',
     syntaxVersion: '3.1',
     version: raw.version as string | undefined,
-    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : raw.createdAt instanceof Date ? raw.createdAt.toISOString().split('T')[0] : undefined,
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : raw.createdAt instanceof Date ? formatCreatedAt(raw.createdAt) : undefined,
     url: raw.url as string | undefined,
     tags: raw.tags as string[] | undefined,
     currency: raw.currency as string | undefined,

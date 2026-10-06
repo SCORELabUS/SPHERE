@@ -9,7 +9,9 @@ interface PricingSettingsTabProps {
   visibility: string;
   pricingName: string;
   currentVersion: VersionData | null;
-  onVisibilityChange: () => void;
+  versions: VersionData[];
+  onVisibilityChange: (value: string) => void;
+  onShowVersionsVisibility: () => void;
   onRename: (newName: string) => void;
   onDeleteCurrentVersion: () => void;
   onDeletePricing: () => void;
@@ -20,12 +22,15 @@ export default function PricingSettingsTab({
   visibility,
   pricingName,
   currentVersion,
+  versions,
   onVisibilityChange,
+  onShowVersionsVisibility,
   onRename,
   onDeleteCurrentVersion,
   onDeletePricing,
 }: PricingSettingsTabProps) {
   const [nameValue, setNameValue] = useState(pricingName);
+  const privateCount = versions.filter(v => v.private).length;
 
   useEffect(() => {
     setNameValue(pricingName);
@@ -62,7 +67,27 @@ export default function PricingSettingsTab({
             </div>
           </div>
 
-          <h3 className="mb-2 text-sm font-medium text-tp-ink">Visibility</h3>
+          <h3 className="mb-1 text-sm font-medium text-tp-ink">Visibility</h3>
+          <p className="mb-2 text-xs text-tp-steel">
+            {versions.length > 1
+              ? `This applies to all ${versions.length} versions of the pricing. To change a single version, use the eye icon in the Versions tab.`
+              : 'This applies to the pricing.'}
+          </p>
+          {versions.length > 1 && (
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-tp-slate">
+              <span>
+                {versions.length - privateCount} public · {privateCount} private
+                {visibility === 'Mixed' && ' (mixed)'}
+              </span>
+              <button
+                type="button"
+                onClick={onShowVersionsVisibility}
+                className="cursor-pointer font-medium text-tp-primary hover:underline"
+              >
+                View all versions
+              </button>
+            </div>
+          )}
           <div className="pl-4">
             <VisibilityOptions value={visibility} onChange={onVisibilityChange} />
           </div>

@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import EditorHeader from './editor-header';
 import Main from '../main';
 import { createUrlWithEncodedYaml, parseStringYamlToEncodedYaml } from '../../services/export.service';
 import CopyToClipboardIcon from '../../../core/components/copy-icon';
-import { EditorValueContext, EditorMode } from '../../contexts/editorValueContext';
+import { EditorValueContext, EditorMode, EditorSourcePricing } from '../../contexts/editorValueContext';
 import FileUpload from '../../../core/components/file-upload-input';
 import customAlert from '../../../core/utils/custom-alert';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
@@ -20,6 +20,9 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   const [tabValue, setTabValue] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
   const [pendingVisualDraft, setPendingVisualDraft] = useState<PricingDraft | null>(null);
+  const [sourcePricing, setSourcePricing] = useState<EditorSourcePricing | null>(null);
+
+  const [shareLinkValue, setShareLinkValue] = useState('');
 
   const { setInCache } = useCacheApi();
 
@@ -38,6 +41,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
 
   const handleSharedLinkClose = () => {
     setSharedLinkModalOpen(false);
+    setShareLinkValue('');
   };
 
   const renderYamlImport = () => {
@@ -48,23 +52,29 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
     setImportLinkModalOpen(false);
   };
 
-  const handleCopyToClipboard = () => {
-    if (sharedLinkModalOpen) {
-      if (tabValue === 1) {
-        const encodedPricing = parseStringYamlToEncodedYaml(editorValue);
-        return createUrlWithEncodedYaml(encodedPricing);
-      } else {
-        const urlParams = new URLSearchParams(window.location.search);
-        const assignedId = urlParams.get('pricing') ?? uuidv4();
-        const encodedPricing = parseStringYamlToEncodedYaml(editorValue);
-        setInCache(assignedId, encodedPricing, 24 * 60 * 60).catch(error => {
-          customAlert(`Error saving link in cache: ${error}`, 'error');
-        });
-        return createUrlWithEncodedYaml(assignedId);
-      }
+  // Generates the share link once per modal open (or per tab switch), instead of
+  // on every render, so a short link always gets a fresh cache key: reusing the
+  // key already in the URL would overwrite an existing shared snapshot and fail
+  // with a conflict whenever the pricing had since changed.
+  useEffect(() => {
+    if (!sharedLinkModalOpen) {
+      return;
     }
-    return '';
-  };
+
+    if (tabValue === 1) {
+      const encodedPricing = parseStringYamlToEncodedYaml(editorValue);
+      setShareLinkValue(createUrlWithEncodedYaml(encodedPricing));
+      return;
+    }
+
+    const assignedId = uuidv4();
+    const encodedPricing = parseStringYamlToEncodedYaml(editorValue);
+    setShareLinkValue(createUrlWithEncodedYaml(assignedId));
+    setInCache(assignedId, encodedPricing, 24 * 60 * 60).catch(error => {
+      customAlert(`Error saving link in cache: ${error}`, 'error');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedLinkModalOpen, tabValue]);
 
   const onSubmitImport = (file: File) => {
     if (file) {
@@ -79,7 +89,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
   };
 
   return (
-    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft }}>
+    <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft, sourcePricing, setSourcePricing }}>
       <div className="flex h-dvh flex-col bg-tp-surface-code">
         <EditorHeader onShareLink={renderSharedLink} onImport={renderYamlImport} />
         <Main>{children}</Main>
@@ -141,7 +151,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
               )}
 
               <div className="mt-4 flex justify-center">
-                <CopyToClipboardIcon value={handleCopyToClipboard()} />
+                <CopyToClipboardIcon value={shareLinkValue} />
               </div>
             </motion.div>
           </motion.div>
