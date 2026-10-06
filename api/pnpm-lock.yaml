@@ -105,8 +105,8 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1
       pricing4ts:
-        specifier: ^0.11.1
-        version: 0.11.1(@openfeature/core@1.9.2)(minizinc@4.4.5)
+        specifier: ^0.12.1
+        version: 0.12.1(@openfeature/core@1.9.2)(minizinc@4.4.5)
       prop-types:
         specifier: ^15.8.1
         version: 15.8.1
@@ -2578,8 +2578,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  pricing4ts@0.11.1:
-    resolution: {integrity: sha512-Q2lTrkhvgAGyefr9dh1qN7XL3hQ+NdU5OGHjD00yHMB2YOnbfV3gMfpc5hkaxjd93R1OGUqnfExQlHxesAq0wg==}
+  pricing4ts@0.12.1:
+    resolution: {integrity: sha512-kmJWvAhKvWq47WYfcq3Y5bTqVENixcCYTPkYNJgJpbVj20/kZBTioyE7VEG01xDsUID/Nz3KOUIjn6pyhHCfGg==}
     peerDependencies:
       minizinc: ^4.3.5
 
@@ -5392,7 +5392,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  pricing4ts@0.11.1(@openfeature/core@1.9.2)(minizinc@4.4.5):
+  pricing4ts@0.12.1(@openfeature/core@1.9.2)(minizinc@4.4.5):
     dependencies:
       '@openfeature/server-sdk': 1.20.2(@openfeature/core@1.9.2)
       '@types/papaparse': 5.5.2

@@ -4,6 +4,7 @@ import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
+import { stampCreatedAt } from '../utils/created-at';
 import {
   PricingService as PricingAnalytics,
   retrievePricingFromPath,
@@ -522,6 +523,14 @@ class PricingService {
 
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
+      }
+
+      // The release instant lives both in the database and in the YAML. When the
+      // caller dictates it (a new version's release time, a fork's creation time),
+      // the stored YAML must say the same.
+      if (createdAtOverride && createdAtOverride.getTime() !== new Date(uploadedPricing.createdAt).getTime()) {
+        const stampedPath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
+        fs.writeFileSync(stampedPath, stampCreatedAt(fs.readFileSync(stampedPath, 'utf8'), createdAtOverride), 'utf8');
       }
 
       const rawPath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;

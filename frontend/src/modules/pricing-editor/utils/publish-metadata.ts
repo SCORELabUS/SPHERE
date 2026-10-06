@@ -1,3 +1,5 @@
+import { formatCreatedAt } from '../services/pricing2yaml/created-at';
+
 const TOP_LEVEL_KEY = (key: string) => new RegExp(`^${key}:.*$`, 'm');
 
 /** Replaces a top-level scalar in a YAML text, or inserts it when absent, leaving the rest untouched. */
@@ -11,15 +13,14 @@ function setTopLevelScalar(yaml: string, key: string, value: string): string {
 }
 
 /**
- * Stamps the release metadata of a version into its YAML. The YAML only holds a
- * date (yyyy-mm-dd, which the parser reads as UTC midnight), so the UTC date is
- * used: a local date could be "in the future" for it. The full timestamp travels
- * separately, as the `createdAt` form field.
+ * Stamps the release metadata of a version into its YAML. `createdAt` carries the
+ * exact release instant (UTC), the same one sent as the `createdAt` form field,
+ * so the version SPHERE stores and the YAML it serves always agree.
  */
 export function stampVersionMetadata(yaml: string, version: string, releasedAt: Date): string {
   const quotedVersion = `"${version.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   const withVersion = setTopLevelScalar(yaml, 'version', quotedVersion);
-  return setTopLevelScalar(withVersion, 'createdAt', `"${releasedAt.toISOString().slice(0, 10)}"`);
+  return setTopLevelScalar(withVersion, 'createdAt', `"${formatCreatedAt(releasedAt)}"`);
 }
 
 /** Value for an `<input type="datetime-local">`, in the user's local time. */
