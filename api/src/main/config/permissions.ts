@@ -141,6 +141,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // Following a pricing to be notified of new versions. PricingFollowService applies the
+  // pricing's visibility rule; this only requires login.
+  {
+    path: '/pricing-follows/*/*',
+    methods: ['GET', 'PUT', 'DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
   // Collection Management Routes
   // ============================================

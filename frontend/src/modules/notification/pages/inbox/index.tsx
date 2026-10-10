@@ -7,7 +7,6 @@ import { Notification } from '../../api/notificationsApi';
 const kindLabels: Record<string, string> = {
   OrganizationInvitation: 'Organization Invitations',
   System: 'System',
-  CollectionShared: 'Collections',
   PricingUpdated: 'Pricing Updates',
 };
 
@@ -53,6 +52,12 @@ export default function InboxPage() {
 
       if (notification.kind === 'OrganizationInvitation' && notification.data?.invitationCode) {
         navigate(`/orgs/join/${notification.data.invitationCode}`);
+      } else if (
+        notification.kind === 'PricingUpdated' &&
+        notification.data?.organizationId &&
+        notification.data?.pricingSlug
+      ) {
+        navigate(`/pricings/${notification.data.organizationId}/${notification.data.pricingSlug}`);
       }
     }
   };

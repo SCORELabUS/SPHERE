@@ -2894,6 +2894,149 @@ describe('Pricings API integration', () => {
 
   // Each fork case seeds two organizations, a source pricing and then the fork itself,
   // which parses and analyses two YAML files: slower than the 5s default.
+  describe('Pricing follows', { timeout: 20000 }, () => {
+    const followPath = (organizationId: string, slug: string) =>
+      `${BASE_PATH}/pricing-follows/${organizationId}/${slug}`;
+
+    const slugOf = async (pricingDocId: string) =>
+      (await PricingMongoose.findOne({ _id: pricingDocId }).lean())!.slug as string;
+
+    const publishVersion = async (
+      token: string,
+      organizationId: string,
+      slug: string,
+      saasName: string,
+      isPrivate = false
+    ) => {
+      const fixture = await createValidPricingYaml(saasName);
+      const response = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${slug}/${fixture.version}`)
+        .set('Authorization', `Bearer ${token}`)
+        .field('private', String(isPrivate))
+        .attach('yaml', fixture.filePath);
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      if (response.body?.id) pricingsToDelete.add(response.body.id);
+      return fixture.version;
+    };
+
+    const pricingUpdates = async (token: string) => {
+      const response = await request(app).get(`${BASE_PATH}/notifications`).set('Authorization', `Bearer ${token}`);
+      return (response.body as any[]).filter(notification => notification.kind === 'PricingUpdated');
+    };
+
+    // Followers are notified without awaiting the publish request.
+    const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+
+    it('Follow, check and unfollow a public pricing of another organization.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: follower } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId });
+      const slug = await slugOf(pricing.id);
+
+      const before = await request(app).get(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      expect(before.status).toBe(200);
+      expect(before.body.following).toBe(false);
+
+      const follow = await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      expect(follow.status).toBe(200);
+      expect(follow.body.following).toBe(true);
+
+      const after = await request(app).get(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      expect(after.body.following).toBe(true);
+
+      const unfollow = await request(app).delete(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      expect(unfollow.status).toBe(200);
+      expect(unfollow.body.following).toBe(false);
+    });
+
+    it('Return 404 when following a private pricing of an organization the user does not belong to.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      const response = await request(app)
+        .put(followPath(organizationId, await slugOf(pricing.id)))
+        .set('Authorization', `Bearer ${outsider.token}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('Return 401 without authentication.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId });
+
+      const response = await request(app).put(followPath(organizationId, await slugOf(pricing.id)));
+
+      expect(response.status).toBe(401);
+    });
+
+    it('Notify followers, but not the author, when a new version is published.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: follower } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId });
+      const slug = await slugOf(pricing.id);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${owner.token}`);
+
+      const version = await publishVersion(owner.token, organizationId, slug, pricing.serviceName);
+      await settle();
+
+      const received = await pricingUpdates(follower.token);
+      expect(received).toHaveLength(1);
+      expect(received[0].message).toContain(version);
+      expect(received[0].data).toMatchObject({ organizationId, pricingSlug: slug, version });
+      expect(await pricingUpdates(owner.token)).toHaveLength(0);
+    });
+
+    it('Stop notifying a user after they unfollow the pricing.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: follower } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId });
+      const slug = await slugOf(pricing.id);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      await request(app).delete(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+
+      await publishVersion(owner.token, organizationId, slug, pricing.serviceName);
+      await settle();
+
+      expect(await pricingUpdates(follower.token)).toHaveLength(0);
+    });
+
+    it('Not tell followers outside the organization about a private version.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+      const pricing = await createPricingForOrganization({ organizationId });
+      const slug = await slugOf(pricing.id);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${outsider.token}`);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${member.token}`);
+
+      await publishVersion(owner.token, organizationId, slug, pricing.serviceName, true);
+      await settle();
+
+      expect(await pricingUpdates(outsider.token)).toHaveLength(0);
+      expect(await pricingUpdates(member.token)).toHaveLength(1);
+    });
+
+    it('Skip the in-app notification when the follower turned off the Pricing Updated inbox channel.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: follower } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId });
+      const slug = await slugOf(pricing.id);
+      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      await request(app)
+        .put(`${BASE_PATH}/users/me/settings/notifications`)
+        .set('Authorization', `Bearer ${follower.token}`)
+        .send({ PricingUpdated: { email: false, inbox: false } });
+
+      await publishVersion(owner.token, organizationId, slug, pricing.serviceName);
+      await settle();
+
+      expect(await pricingUpdates(follower.token)).toHaveLength(0);
+    });
+  });
+
   describe('POST /api/v1/pricing-forks', { timeout: 20000 }, () => {
     const trackFork = (body: any) => {
       if (body?.id) {

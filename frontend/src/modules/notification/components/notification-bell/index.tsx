@@ -4,7 +4,7 @@ import { useNotificationsContext } from '../../hooks/useNotificationsContext';
 import NotificationDropdown from '../notification-dropdown';
 
 export default function NotificationBell() {
-  const { unreadCount } = useNotificationsContext();
+  const { unreadCount, hasUnseen, markSeen } = useNotificationsContext();
   const [isOpen, setIsOpen] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,24 +50,28 @@ export default function NotificationBell() {
     };
   }, [isOpen]);
 
-  const hasUnread = unreadCount > 0;
 
   return (
     <div ref={containerRef} className="relative flex items-center justify-center">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (!isOpen) markSeen();
+          setIsOpen(!isOpen);
+        }}
         className={`relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition-colors ${
-          hasUnread ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'
+          hasUnseen ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'
         }`}
-        title="Notifications"
+        title={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+        aria-label={hasUnseen ? 'Notifications, new unread notifications' : 'Notifications'}
       >
         <span className={isRinging ? 'animate-bell-ring inline-block' : 'inline-block'}>
-          <Iconify icon={hasUnread ? 'mdi:bell-badge-outline' : 'mdi:bell-outline'} width={18} />
+          <Iconify icon="mdi:bell-outline" width={18} />
         </span>
-        {hasUnread && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-tp-primary px-1 text-[10px] font-medium text-tp-on-primary">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
+        {hasUnseen && (
+          <span
+            aria-hidden="true"
+            className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-tp-primary ring-2 ring-tp-canvas"
+          />
         )}
       </button>
 
