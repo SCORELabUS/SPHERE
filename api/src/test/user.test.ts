@@ -1337,6 +1337,13 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
 
       expect(response.status).toBe(200);
       expect(response.body.settings).toHaveProperty('notificationPrefs');
+      expect(response.body.settings.notificationPrefs.OrganizationInvitation).toEqual({ email: true, inbox: false });
+      expect(response.body.settings.notificationPrefs.PricingUpdated).toEqual({ email: false, inbox: true });
+
+      const settings = await request(app)
+        .get(`${BASE_PATH}/users/me/settings`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(settings.body.settings.notificationPrefs.PricingUpdated).toEqual({ email: false, inbox: true });
     });
 
     it('Return 401 without authorization header.', async () => {

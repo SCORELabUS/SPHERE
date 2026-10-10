@@ -12,14 +12,36 @@ export interface NotificationsContextValue {
   markAllAsRead: () => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
   addNotification: (notification: Notification) => void;
+  /** An unread notification arrived after the bell was last opened. */
+  hasUnseen: boolean;
+  markSeen: () => void;
 }
 
 export const NotificationsContext = createContext<NotificationsContextValue | null>(null);
+
+// When the bell was last opened, per user and per browser. Storage may be unavailable
+// (private window, blocked site data): the dot then simply shows for any unread notification.
+const lastSeenKey = (username: string) => `sphere:notifications:last-seen:${username}`;
+const readLastSeen = (username: string) => {
+  try {
+    return Number(localStorage.getItem(lastSeenKey(username))) || 0;
+  } catch {
+    return 0;
+  }
+};
+const writeLastSeen = (username: string, time: number) => {
+  try {
+    localStorage.setItem(lastSeenKey(username), String(time));
+  } catch {
+    // Not persisted: the dot is cleared for this session only.
+  }
+};
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasUnseen, setHasUnseen] = useState(false);
   const api = useNotificationsApi();
   const { authUser } = useAuth();
 
@@ -82,8 +104,37 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setNotifications((prev) => [notification, ...prev]);
     if (!notification.read) {
       setUnreadCount((prev) => prev + 1);
+      setHasUnseen(true);
     }
   }, []);
+
+  const username = authUser?.user?.username;
+
+  const markSeen = useCallback(() => {
+    setHasUnseen(false);
+    if (username) writeLastSeen(username, Date.now());
+  }, [username]);
+
+  // On sign-in, the dot shows if the newest unread notification came after the bell was last opened.
+  useEffect(() => {
+    setHasUnseen(false);
+    if (!authUser?.isAuthenticated || !username) return;
+    let active = true;
+    apiRef.current
+      .getNotifications({ unreadOnly: true, limit: 1 })
+      .then(([newest]) => {
+        if (active && newest) setHasUnseen(new Date(newest.createdAt).getTime() > readLastSeen(username));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [authUser?.isAuthenticated, username]);
+
+  // Nothing left to read, nothing to point at.
+  useEffect(() => {
+    if (unreadCount === 0) setHasUnseen(false);
+  }, [unreadCount]);
 
   // Initial fetch
   useEffect(() => {
@@ -103,8 +154,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       markAllAsRead: handleMarkAllAsRead,
       deleteNotification: handleDeleteNotification,
       addNotification,
+      hasUnseen,
+      markSeen,
     }),
-    [notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, handleMarkAsRead, handleMarkAllAsRead, handleDeleteNotification, addNotification]
+    [notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, handleMarkAsRead, handleMarkAllAsRead, handleDeleteNotification, addNotification, hasUnseen, markSeen]
   );
 
   return (

@@ -52,12 +52,18 @@ export default function CardPage() {
     updatePricingVersionVisibility,
     createPricingVersion,
     forkPricing,
+    getPricingFollow,
+    followPricing,
+    unfollowPricing,
   } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
 
   const [versions, setVersions] = useState<VersionData[]>([]);
+  // null until known: the button stays hidden for guests and while the status loads.
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
   const [pricing, setPricing] = useState<(Pricing & { name?: string }) | null>(null);
   const [pricingId, setPricingId] = useState<string>();
@@ -128,6 +134,35 @@ export default function CardPage() {
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, [slug, organizationId, collectionSlug]);
+
+  useEffect(() => {
+    setIsFollowing(null);
+    if (!authUser.isAuthenticated || !slug || !organizationId) return;
+    let active = true;
+    getPricingFollow(organizationId, slug)
+      .then(result => {
+        if (active) setIsFollowing(result.following);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [slug, organizationId, authUser.isAuthenticated, getPricingFollow]);
+
+  const handleToggleFollow = async () => {
+    if (!organizationId || !slug || isFollowing === null) return;
+    setIsTogglingFollow(true);
+    try {
+      const result = isFollowing
+        ? await unfollowPricing(organizationId, slug)
+        : await followPricing(organizationId, slug);
+      setIsFollowing(result.following);
+    } catch (error) {
+      customAlert(`Could not update follow: ${(error as Error).message}`, 'error');
+    } finally {
+      setIsTogglingFollow(false);
+    }
+  };
 
   useEffect(() => {
     if (!authUser.isAuthenticated || !slug || !organizationId) return;
@@ -656,6 +691,35 @@ export default function CardPage() {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {authUser.isAuthenticated && isFollowing !== null && (
+                <button
+                  type="button"
+                  onClick={handleToggleFollow}
+                  disabled={isTogglingFollow}
+                  aria-pressed={isFollowing}
+                  title={isFollowing ? 'Stop getting notified of new versions' : 'Get notified when a new version is published'}
+                  className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-xs transition-colors focus:border-tp-primary focus:outline-none disabled:cursor-wait disabled:opacity-60 ${
+                    isFollowing
+                      ? 'border-tp-primary bg-tp-primary/10 text-tp-ink hover:bg-tp-primary/15'
+                      : 'border-tp-input-border bg-tp-input-bg text-tp-ink hover:bg-tp-surface'
+                  }`}
+                >
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill={isFollowing ? 'currentColor' : 'none'}
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+                    />
+                  </svg>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </button>
+              )}
               {authUser.isAuthenticated && currentVersion && (
                 <button
                   type="button"
