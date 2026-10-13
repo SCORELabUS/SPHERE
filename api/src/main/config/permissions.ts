@@ -306,6 +306,18 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
 
   // ============================================
+  // ORBIT assistant
+  // ============================================
+  // Conversations and plans belong to the signed-in user; the service answers 404
+  // for anyone else's. Every change ORBIT makes is checked again against the
+  // user's organization roles when the plan runs.
+  {
+    path: '/orbit/**',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
+  // ============================================
   // Health Check (Public)
   // ============================================
   {

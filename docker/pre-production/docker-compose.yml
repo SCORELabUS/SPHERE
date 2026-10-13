@@ -132,6 +132,10 @@ services:
       - 8080:8080
     env_file:
       - ../../api/.env.testing
+    environment:
+      # ORBIT, the assistant, uses the same model and key as HARVEY.
+      - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
+      - ORBIT_OPENAI_MODEL=gpt-5-nano
     volumes:
       - 'sphere-statics:/usr/src/server/public'
     depends_on:

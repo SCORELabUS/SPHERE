@@ -40,6 +40,12 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - Migrations auto-run via `npx migrate up` in `dev:api` script
 - API uses `ts-migrate-mongoose` for MongoDB migrations
 
+## ORBIT assistant
+
+- Lives in `api/src/main/services/orbit/` and is served under `/api/v1/orbit/**`. The model only reads (query tools) and proposes plans; `OrbitPlanService` validates them by code and `OrbitExecutorService` applies a confirmed plan with the user's own permissions, re-checked per step.
+- Configured with `ORBIT_OPENAI_API_KEY` (falls back to `HARVEY_API_KEY`, then `OPENAI_API_KEY`), `ORBIT_OPENAI_MODEL` (default `gpt-5-nano`) and optionally `ORBIT_OPENAI_BASE_URL`. Without a key, `GET /orbit/status` reports `available: false` and messages answer 503.
+- New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
+
 ## API Documentation
 
 - `/api/docs/sphere-api-docs.yaml` contains the OpenAPI specification for the API. Use it as the primary reference for understanding available endpoints, request and response schemas, authentication requirements, and general API behavior.
@@ -53,6 +59,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
+- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import and plan execution). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
 
 In addition, test utilities are organized in `/api/src/test/utils/` with subfolders for auth, users, organizations, collections and pricings.
 

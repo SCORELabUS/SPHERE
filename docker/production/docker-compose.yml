@@ -172,6 +172,10 @@ services:
     env_file:
       - ../../api/.env.production
       - .env
+    environment:
+      # ORBIT, the assistant, uses the same model and key as HARVEY.
+      - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
+      - ORBIT_OPENAI_MODEL=gpt-5-nano
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion } from 'framer-motion';
@@ -5,6 +6,11 @@ import type { ChatMessage } from '../../../../modules/harvey/types/types';
 
 interface Props {
   message: ChatMessage;
+  /** Name shown above the assistant's messages. ORBIT reuses this component. */
+  assistantName?: string;
+  assistantInitial?: string;
+  /** Rendered below the bubble, such as a plan card or an attached file. */
+  children?: ReactNode;
 }
 
 const bubbleVariants = {
@@ -17,7 +23,12 @@ const bubbleVariants = {
   },
 };
 
-export default function HarveyChatMessage({ message }: Props) {
+export default function HarveyChatMessage({
+  message,
+  assistantName = 'H.A.R.V.E.Y.',
+  assistantInitial = 'H',
+  children,
+}: Props) {
   const isUser = message.role === 'user';
 
   return (
@@ -38,13 +49,13 @@ export default function HarveyChatMessage({ message }: Props) {
           }`}
           whileHover={{ scale: 1.1 }}
         >
-          {isUser ? 'U' : 'H'}
+          {isUser ? 'U' : assistantInitial}
         </motion.div>
 
         {/* Bubble */}
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           <span className="mb-1 text-[11px] font-medium text-tp-steel">
-            {isUser ? 'You' : 'H.A.R.V.E.Y.'}
+            {isUser ? 'You' : assistantName}
           </span>
           <div
             className={`rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
@@ -59,6 +70,7 @@ export default function HarveyChatMessage({ message }: Props) {
               </ReactMarkdown>
             </div>
           </div>
+          {children}
         </div>
       </div>
     </motion.div>
