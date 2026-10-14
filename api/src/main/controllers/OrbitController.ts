@@ -7,6 +7,9 @@ function actorOf(req: any): OrbitActor {
   return { id: req.user.id, username: req.user.username, role: req.user.role };
 }
 
+// The chat gives a stream up as lost after 45 seconds of silence.
+const HEARTBEAT_MS = 15_000;
+
 function wantsEventStream(req: any): boolean {
   return String(req.headers?.accept ?? '').includes('text/event-stream');
 }
@@ -20,8 +23,14 @@ function wantsEventStream(req: any): boolean {
 function openEventStream(req: any, res: any) {
   let started = false;
   let clientGone = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const stopHeartbeat = () => {
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+  };
   req.on('close', () => {
     clientGone = true;
+    stopHeartbeat();
   });
 
   const send = (event: { type: string }) => {
@@ -34,6 +43,11 @@ function openEventStream(req: any, res: any) {
         'X-Accel-Buffering': 'no',
       });
       started = true;
+      // A comment line now and then, ignored by the client, so it can tell a
+      // long wait for the model from a connection that silently died.
+      heartbeat = setInterval(() => {
+        if (!clientGone && !res.writableEnded) res.write(': keep-alive\n\n');
+      }, HEARTBEAT_MS);
     }
     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
   };
@@ -41,9 +55,11 @@ function openEventStream(req: any, res: any) {
   return {
     send,
     end: () => {
+      stopHeartbeat();
       if (!res.writableEnded) res.end();
     },
     fail: (status: number, message: string) => {
+      stopHeartbeat();
       if (!started) {
         res.status(status).send({ error: message });
       } else if (!res.writableEnded) {
@@ -63,6 +79,7 @@ class OrbitController {
     this.listConversations = this.listConversations.bind(this);
     this.createConversation = this.createConversation.bind(this);
     this.showConversation = this.showConversation.bind(this);
+    this.deleteConversation = this.deleteConversation.bind(this);
     this.sendMessage = this.sendMessage.bind(this);
     this.showPlan = this.showPlan.bind(this);
     this.confirmPlan = this.confirmPlan.bind(this);
@@ -94,6 +111,16 @@ class OrbitController {
   async showConversation(req: any, res: any) {
     try {
       res.json(await this.orbitService.getConversation(actorOf(req), req.params.conversationId));
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async deleteConversation(req: any, res: any) {
+    try {
+      await this.orbitService.deleteConversation(actorOf(req), req.params.conversationId);
+      res.status(204).send();
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

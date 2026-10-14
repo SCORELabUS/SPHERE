@@ -1,3 +1,4 @@
+import { EnvHttpProxyAgent, fetch as fetchThroughProxy } from 'undici';
 import { OrbitToolCall } from '../../types/models/Orbit';
 
 export interface LlmMessage {
@@ -49,11 +50,42 @@ function retryAfterSeconds(response: Response, detail: string): number | null {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const PROXY_VARIABLES = ['https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY'];
+const NO_PROXY_VARIABLES = ['no_proxy', 'NO_PROXY'];
+let proxy: { settings: string; agent: EnvHttpProxyAgent } | null = null;
+
+/**
+ * The agent that sends requests through the outbound proxy, when one is set.
+ * Production servers only reach the internet through it, and Node's built-in
+ * fetch ignores the http(s)_proxy variables, so they are honoured here,
+ * no_proxy included. Rebuilt only when those variables change.
+ */
+function proxyAgent(): EnvHttpProxyAgent | null {
+  if (!PROXY_VARIABLES.some(name => process.env[name])) return null;
+  const settings = [...PROXY_VARIABLES, ...NO_PROXY_VARIABLES].map(name => process.env[name] ?? '').join('|');
+  if (proxy?.settings !== settings) {
+    void proxy?.agent.close();
+    proxy = { settings, agent: new EnvHttpProxyAgent() };
+  }
+  return proxy.agent;
+}
+
+/**
+ * Whether the provider turned the request down because it was streamed: OpenAI,
+ * for one, only streams some models to verified organizations.
+ */
+function isStreamingRefusal(err: any): boolean {
+  if (err?.providerStatus !== 400 && err?.providerStatus !== 403) return false;
+  return err.providerParam === 'stream' || /\bstream/i.test(String(err.providerDetail ?? ''));
+}
+
 /**
  * The only piece of ORBIT that talks to the language model, through OpenAI's
  * chat completions API. Kept behind this class so tests can swap it out.
  */
 class OrbitLlmClient {
+  private streamingRefused = false;
+
   private get apiKey(): string {
     return (
       process.env.ORBIT_OPENAI_API_KEY ||
@@ -95,7 +127,24 @@ class OrbitLlmClient {
    * arrive in fragments too and are put back together here.
    */
   async chatStream(request: LlmChatRequest, onDelta: (text: string) => void): Promise<LlmChatResponse> {
-    const { response, done } = await this.send(request, true);
+    if (!this.streamingRefused) {
+      try {
+        return await this.readStream(await this.send(request, true), onDelta);
+      } catch (err) {
+        if (!isStreamingRefusal(err)) throw err;
+        // Asked once; from then on every answer is requested whole.
+        this.streamingRefused = true;
+      }
+    }
+    const response = await this.chat(request);
+    if (response.content) onDelta(response.content);
+    return response;
+  }
+
+  private async readStream(
+    { response, done }: { response: Response; done: () => void },
+    onDelta: (text: string) => void
+  ): Promise<LlmChatResponse> {
     let content = '';
     const toolCalls: OrbitToolCall[] = [];
 
@@ -179,7 +228,8 @@ class OrbitLlmClient {
 
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/chat/completions`, {
+      const url = `${this.baseUrl}/chat/completions`;
+      const init = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -187,7 +237,11 @@ class OrbitLlmClient {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
-      });
+      };
+      const agent = proxyAgent();
+      response = agent
+        ? ((await fetchThroughProxy(url, { ...init, dispatcher: agent })) as unknown as Response)
+        : await fetch(url, init);
     } catch (err: any) {
       done();
       const reason = err?.name === 'AbortError' ? 'the request timed out' : String(err?.message ?? err);
@@ -209,7 +263,11 @@ class OrbitLlmClient {
         const when = wait !== null ? ` Try again in about ${Math.ceil(wait)} seconds.` : ' Try again in a moment.';
         throw new Error(`ORBIT UNAVAILABLE: The AI provider is receiving too many requests right now.${when}`);
       }
-      throw new Error(`ORBIT UNAVAILABLE: The language model returned an error (${detail})`);
+      throw Object.assign(new Error(`ORBIT UNAVAILABLE: The language model returned an error (${detail})`), {
+        providerStatus: response.status,
+        providerDetail: detail,
+        providerParam: payload?.error?.param ?? null,
+      });
     }
     return { response, done };
   }

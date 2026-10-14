@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion } from 'framer-motion';
@@ -8,7 +8,8 @@ interface Props {
   message: ChatMessage;
   /** Name shown above the assistant's messages. ORBIT reuses this component. */
   assistantName?: string;
-  assistantInitial?: string;
+  /** What the assistant's avatar shows: a letter, or a small icon. */
+  assistantInitial?: ReactNode;
   /** Rendered below the bubble, such as a plan card or an attached file. */
   children?: ReactNode;
 }
@@ -23,16 +24,16 @@ const bubbleVariants = {
   },
 };
 
-export default function HarveyChatMessage({
-  message,
-  assistantName = 'H.A.R.V.E.Y.',
-  assistantInitial = 'H',
-  children,
-}: Props) {
+// Takes a ref so AnimatePresence's popLayout mode can measure the message.
+const HarveyChatMessage = forwardRef<HTMLDivElement, Props>(function HarveyChatMessage(
+  { message, assistantName = 'H.A.R.V.E.Y.', assistantInitial = 'H', children },
+  ref
+) {
   const isUser = message.role === 'user';
 
   return (
     <motion.div
+      ref={ref}
       variants={bubbleVariants}
       initial="hidden"
       animate="visible"
@@ -53,12 +54,13 @@ export default function HarveyChatMessage({
         </motion.div>
 
         {/* Bubble */}
-        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`flex min-w-0 flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           <span className="mb-1 text-[11px] font-medium text-tp-steel">
             {isUser ? 'You' : assistantName}
           </span>
+          {/* Wide content (tables, long ids) scrolls inside the bubble instead of overflowing the chat. */}
           <div
-            className={`rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+            className={`max-w-full rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed [overflow-wrap:anywhere] [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:[overflow-wrap:normal] [&_th]:[overflow-wrap:normal] ${
               isUser
                 ? 'rounded-tr-md bg-tp-primary text-tp-on-primary'
                 : 'rounded-tl-md bg-tp-surface text-tp-ink'
@@ -75,4 +77,6 @@ export default function HarveyChatMessage({
       </div>
     </motion.div>
   );
-}
+});
+
+export default HarveyChatMessage;

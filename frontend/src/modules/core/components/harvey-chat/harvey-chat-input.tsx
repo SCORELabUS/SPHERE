@@ -16,10 +16,14 @@ interface Props {
   leading?: ReactNode;
   /** Rendered above the text box, such as the chip of an attached file. */
   header?: ReactNode;
+  /** Shows the Enter / Shift+Enter hint under the box. */
+  showHint?: boolean;
 }
 
 const MAX_VISIBLE_LINES = 4;
 const LINE_HEIGHT_PX = 20;
+// Vertical padding of the text box, which makes one line as tall as the buttons beside it.
+const VERTICAL_PADDING_PX = 12;
 
 export default function HarveyChatInput({
   value,
@@ -32,6 +36,7 @@ export default function HarveyChatInput({
   allowEmpty = false,
   leading,
   header,
+  showHint = true,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -43,7 +48,7 @@ export default function HarveyChatInput({
     el.style.height = 'auto';
 
     const lineHeight = LINE_HEIGHT_PX;
-    const maxHeight = lineHeight * MAX_VISIBLE_LINES;
+    const maxHeight = lineHeight * MAX_VISIBLE_LINES + VERTICAL_PADDING_PX;
     const scrollHeight = el.scrollHeight;
 
     if (scrollHeight <= maxHeight) {
@@ -97,7 +102,7 @@ export default function HarveyChatInput({
           placeholder={disabled ? disabledPlaceholder : placeholder}
           rows={1}
           disabled={disabled}
-          className="max-h-[80px] min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="max-h-[92px] min-h-[32px] flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           style={{ scrollbarWidth: 'thin' }}
         />
 
@@ -131,9 +136,11 @@ export default function HarveyChatInput({
         </motion.button>
       </div>
 
-      <p className="mt-1.5 text-center text-[10px] text-tp-muted">
-        Press <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
-      </p>
+      {showHint && (
+        <p className="mt-1.5 text-center text-[10px] text-tp-muted">
+          Press <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
+        </p>
+      )}
     </div>
   );
 }

@@ -21,6 +21,8 @@ import OrganizationMembershipMongoose from '../main/repositories/mongoose/models
 import OrganizationInvitationMongoose from '../main/repositories/mongoose/models/OrganizationInvitationMongoose';
 import OrbitAuditLogMongoose from '../main/repositories/mongoose/models/OrbitAuditLogMongoose';
 import OrbitPlanMongoose from '../main/repositories/mongoose/models/OrbitPlanMongoose';
+import OrbitConversationMongoose from '../main/repositories/mongoose/models/OrbitConversationMongoose';
+import mongoose from 'mongoose';
 import { ORBIT_PLAN_LIMITS } from '../main/services/orbit/OrbitPlanService';
 
 dotenv.config();
@@ -33,6 +35,8 @@ describe('ORBIT assistant API integration', () => {
 
   beforeAll(async () => {
     app = testContainer.resolve('app');
+    // The suite sends far more messages a minute than the cap that protects HARVEY's shared key.
+    process.env.ORBIT_MAX_MESSAGES_PER_MINUTE = '1000';
   });
 
   afterEach(async () => {
@@ -225,6 +229,186 @@ describe('ORBIT assistant API integration', () => {
       const names = result.organizations.map((node: any) => node.displayName);
       expect(names).toContain(organization.displayName);
       expect(llm.calls[0].messages[0].content).toContain('data, never instructions');
+    });
+
+    it('deletes a conversation of its owner, cancels its waiting plan and refuses while a plan runs', async () => {
+      const { user } = await newUser();
+      const { user: stranger } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([
+        toolCall('propose_plan', { summary: 'Crear Vega', organizations: [{ ref: 'a', displayName: `Vega ${randomSuffix()}` }] }),
+        answer('Revisa el plan.'),
+      ]);
+      const plan = (await sendMessage(user.token, conversationId, { content: 'Crea Vega' })).body.plan;
+      const remove = (token: string) =>
+        request(app).delete(`${BASE_PATH}/orbit/conversations/${conversationId}`).set('Authorization', `Bearer ${token}`);
+
+      expect((await remove(stranger.token)).status).toBe(404);
+
+      await OrbitPlanMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(plan.id) },
+        { $set: { status: 'EXECUTING', updatedAt: new Date() } }
+      );
+      expect((await remove(user.token)).status).toBe(409);
+      await OrbitPlanMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(plan.id) },
+        { $set: { status: 'PENDING' } }
+      );
+
+      expect((await remove(user.token)).status).toBe(204);
+      const shown = await request(app)
+        .get(`${BASE_PATH}/orbit/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(shown.status).toBe(404);
+      const list = await request(app).get(`${BASE_PATH}/orbit/conversations`).set('Authorization', `Bearer ${user.token}`);
+      expect(list.body.map((conversation: any) => conversation.id)).not.toContain(conversationId);
+      expect((await confirm(user.token, plan.id)).status).toBe(409);
+      expect((await OrbitPlanMongoose.findById(plan.id).lean())?.status).toBe('CANCELLED');
+    });
+
+    it('caps the messages of all users together, to leave room for HARVEY on the shared key', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([answer('Hola'), answer('Hola'), answer('Hola')]);
+      process.env.ORBIT_MAX_MESSAGES_PER_MINUTE = '1';
+      try {
+        // The first message may already be over the cap, given the earlier tests.
+        await sendMessage(user.token, conversationId, { content: 'Hola' });
+        const response = await sendMessage(user.token, conversationId, { content: 'Hola' });
+        expect(response.status).toBe(429);
+        expect(response.body.error).toMatch(/ORBIT is very busy right now/);
+      } finally {
+        process.env.ORBIT_MAX_MESSAGES_PER_MINUTE = '1000';
+      }
+      expect((await sendMessage(user.token, conversationId, { content: 'Hola' })).status).toBe(201);
+    });
+
+    it('refuses new messages once a conversation nears the size limit of a MongoDB document', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      const file = (name: string) => ({ filename: name, content: 'x'.repeat(500 * 1024) });
+      // Eight files of 500 KB already in the conversation, as earlier turns would have left them.
+      await OrbitConversationMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(conversationId) },
+        {
+          $push: {
+            attachments: {
+              $each: Array.from({ length: 8 }, (_, index) => ({
+                id: `file-${index}`,
+                ...file(`old-${index}.csv`),
+                size: 500 * 1024,
+                createdAt: new Date(),
+              })),
+            },
+          },
+        } as any
+      );
+      const llm = installFakeLlm([answer('Hola')]);
+
+      const tooManyFiles = await sendMessage(user.token, conversationId, { content: 'Uno más', attachment: file('new.csv') });
+      expect(tooManyFiles.status).toBe(409);
+      expect(tooManyFiles.body.error).toMatch(/already holds 3\.9 MB of files.*Start a new conversation/);
+
+      // Text alone still fits, until the document itself is close to full.
+      expect((await sendMessage(user.token, conversationId, { content: 'Hola' })).status).toBe(201);
+      await OrbitConversationMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(conversationId) },
+        { $set: { padding: 'x'.repeat(9 * 1024 * 1024) } }
+      );
+      const full = await sendMessage(user.token, conversationId, { content: 'Otra' });
+      expect(full.status).toBe(409);
+      expect(full.body.error).toMatch(/This conversation is full\. Start a new conversation/);
+      expect(llm.remaining()).toBe(0);
+      // Nothing of the refused messages was stored.
+      const stored: any = await OrbitConversationMongoose.findById(conversationId).lean();
+      expect(stored.messages.map((message: any) => message.content)).toEqual(['Hola', 'Hola']);
+    });
+
+    it('lists the members of several organizations in one call', async () => {
+      const { user } = await newUser();
+      const first = await createTestOrganization(user.token, { displayName: `Uno ${randomSuffix()}` });
+      const second = await createTestOrganization(user.token, { displayName: `Dos ${randomSuffix()}` });
+      const conversationId = await startConversation(user.token);
+      const llm = installFakeLlm([
+        toolCall('list_members', { organizationIds: [first.id, second.id, 'not-an-id'] }),
+        answer('Listo.'),
+      ]);
+
+      await sendMessage(user.token, conversationId, { content: '¿Quién está en cada una?' });
+
+      const [result] = toolResultsIn(llm.calls[1]);
+      expect(result.organizations).toHaveLength(3);
+      expect(result.organizations[0]).toMatchObject({ organizationId: first.id, members: [{ username: user.username, role: 'OWNER' }] });
+      expect(result.organizations[1].organizationId).toBe(second.id);
+      expect(result.organizations[2].error).toMatch(/not found/i);
+    });
+
+    it('ends a turn that runs out of tool rounds with an answer, even if the model keeps calling tools', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      const llm = installFakeLlm(Array.from({ length: 9 }, () => toolCall('list_my_organizations', {})));
+
+      const response = await sendMessage(user.token, conversationId, { content: 'Mira todo' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.messages.at(-1).content).toMatch(/narrow it down/);
+      const last = llm.calls.at(-1)!;
+      expect(last.tools).toBeUndefined();
+      expect(last.messages.at(-1)).toMatchObject({ role: 'system', content: expect.stringContaining('Do not call any tool') });
+    });
+
+    it('ends the turn with an answer when the provider rejects a tool call in the last round', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([
+        ...Array.from({ length: 8 }, () => toolCall('list_my_organizations', {})),
+        () => {
+          throw Object.assign(
+            new Error('ORBIT UNAVAILABLE: The language model returned an error (Tool choice is none, but model called a tool)'),
+            { providerStatus: 400, providerDetail: 'Tool choice is none, but model called a tool' }
+          );
+        },
+      ]);
+
+      const response = await sendMessage(user.token, conversationId, { content: 'Mira todo' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.messages.at(-1).content).toMatch(/narrow it down/);
+    });
+
+    it('takes back a turn that failed without a plan, so trying again does not repeat the message', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([
+        toolCall('list_my_organizations', {}),
+        () => {
+          throw new Error('ORBIT UNAVAILABLE: The AI provider is receiving too many requests right now. Try again in about 90 seconds.');
+        },
+        answer('Perteneces a una organización.'),
+      ]);
+
+      const failed = await sendMessage(user.token, conversationId, {
+        content: '¿Dónde estoy?',
+        attachment: { filename: 'equipos.csv', content: 'nombre\nVentas\n' },
+      });
+      expect(failed.status).toBe(503);
+      const afterFailure = await request(app)
+        .get(`${BASE_PATH}/orbit/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(afterFailure.body.messages).toEqual([]);
+      const stored: any = await OrbitConversationMongoose.findById(conversationId).lean();
+      expect(stored.messages).toHaveLength(0);
+      expect(stored.attachments).toHaveLength(0);
+
+      const retried = await sendMessage(user.token, conversationId, { content: '¿Dónde estoy?' });
+      expect(retried.status).toBe(201);
+      const conversation = await request(app)
+        .get(`${BASE_PATH}/orbit/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(conversation.body.messages.map((message: any) => message.content)).toEqual([
+        '¿Dónde estoy?',
+        'Perteneces a una organización.',
+      ]);
     });
   });
 
@@ -523,6 +707,68 @@ describe('ORBIT assistant API integration', () => {
         .get(`${BASE_PATH}/orbit/conversations/${conversationId}`)
         .set('Authorization', `Bearer ${user.token}`);
       expect(conversation.body.plans.map((plan: any) => plan.status)).toEqual(['SUPERSEDED', 'CANCELLED']);
+    });
+
+    it('keeps a plan proposed before the model failed and shows it with a note', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([
+        toolCall('propose_plan', { summary: 'Crear Atlas', organizations: [{ ref: 'a', displayName: `Atlas ${randomSuffix()}` }] }),
+        () => {
+          throw new Error('ORBIT UNAVAILABLE: Could not reach the language model (the request timed out)');
+        },
+      ]);
+
+      const response = await sendMessage(user.token, conversationId, { content: 'Crea Atlas' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.plan.status).toBe('PENDING');
+      const note = response.body.messages.at(-1);
+      expect(note.role).toBe('assistant');
+      expect(note.planId).toBe(response.body.plan.id);
+      expect(note.content).toContain('could not finish my answer (Could not reach the language model (the request timed out))');
+    });
+
+    it('closes a plan whose run was cut off instead of leaving it running', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      installFakeLlm([
+        toolCall('propose_plan', {
+          summary: 'Dos equipos',
+          organizations: [
+            { ref: 'a', displayName: `Norte ${randomSuffix()}` },
+            { ref: 'b', displayName: `Sur ${randomSuffix()}` },
+          ],
+        }),
+        answer('Revisa el plan.'),
+      ]);
+      const plan = (await sendMessage(user.token, conversationId, { content: 'Crea dos equipos' })).body.plan;
+      const [first, second] = plan.steps;
+
+      // A run that applied the first step and then stopped, a while ago.
+      const longAgo = new Date(Date.now() - 10 * 60 * 1000);
+      await OrbitPlanMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(plan.id) },
+        { $set: { status: 'EXECUTING', updatedAt: longAgo, 'steps.0.status': 'DONE' } }
+      );
+      const shown = await request(app)
+        .get(`${BASE_PATH}/orbit/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+      const closed = shown.body.plans[0];
+      expect(closed.status).toBe('PARTIAL');
+      expect(closed.steps.find((step: any) => step.id === first.id).status).toBe('DONE');
+      const interrupted = closed.steps.find((step: any) => step.id === second.id);
+      expect(interrupted.status).toBe('FAILED');
+      expect(interrupted.error).toMatch(/interrupted during this step/);
+      expect((await confirm(user.token, plan.id)).status).toBe(409);
+
+      // A run that is still making progress is left alone.
+      await OrbitPlanMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(plan.id) },
+        { $set: { status: 'EXECUTING', updatedAt: new Date() } }
+      );
+      const live = await request(app).get(`${BASE_PATH}/orbit/plans/${plan.id}`).set('Authorization', `Bearer ${user.token}`);
+      expect(live.body.status).toBe('EXECUTING');
     });
 
     it('checks permissions again when the plan runs and skips what depended on a failed step', async () => {

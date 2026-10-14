@@ -44,6 +44,8 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 
 - Lives in `api/src/main/services/orbit/` and is served under `/api/v1/orbit/**`. The model only reads (query tools) and proposes plans; `OrbitPlanService` validates them by code and `OrbitExecutorService` applies a confirmed plan with the user's own permissions, re-checked per step.
 - Configured with `ORBIT_OPENAI_API_KEY` (falls back to `HARVEY_API_KEY`, then `OPENAI_API_KEY`), `ORBIT_OPENAI_MODEL` (default `gpt-5-nano`) and optionally `ORBIT_OPENAI_BASE_URL`. Without a key, `GET /orbit/status` reports `available: false` and messages answer 503.
+- In production ORBIT uses HARVEY's OpenAI key (see the docker-compose files), so both share its rate limits and spending. `ORBIT_MAX_MESSAGES_PER_MINUTE` (default 20) caps the messages of all ORBIT users together to leave room for HARVEY; each user is also limited to 30 messages every 10 minutes.
+- A conversation is one MongoDB document (16 MB cap, files included): new messages are refused with 409 past 12 MB, or 4 MB of files.
 - New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
 
 ## API Documentation

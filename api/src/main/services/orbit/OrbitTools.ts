@@ -10,6 +10,8 @@ import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
 
 const MAX_TOOL_RESULT_CHARS = 12_000;
 const MAX_LOOKUP_IDENTIFIERS = 50;
+// One call covers a whole tree, rather than a round of the conversation per organization.
+const MAX_MEMBER_LISTS = 25;
 
 const orgTarget = {
   organizationId: { type: 'string', description: 'Id of an organization that already exists.' },
@@ -60,11 +62,13 @@ export const ORBIT_TOOLS: LlmTool[] = [
     type: 'function',
     function: {
       name: 'list_members',
-      description: 'The direct members of an organization with their roles.',
+      description: `The direct members of one or more organizations with their roles. Ask for all the organizations you need in one call (up to ${MAX_MEMBER_LISTS}).`,
       parameters: {
         type: 'object',
-        properties: { organizationId: { type: 'string' } },
-        required: ['organizationId'],
+        properties: {
+          organizationIds: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: MAX_MEMBER_LISTS },
+        },
+        required: ['organizationIds'],
         additionalProperties: false,
       },
     },
@@ -329,10 +333,28 @@ class OrbitToolRunner {
       }
 
       case 'list_members': {
-        const members: any[] = await this.organizationService.listMembers(requireId(args.organizationId));
-        return {
-          members: members.map(member => ({ username: member.user?.username, role: member.role })),
-        };
+        // A single organizationId is still taken, as models sometimes send one.
+        const requested: unknown[] = Array.isArray(args.organizationIds)
+          ? args.organizationIds
+          : args.organizationId !== undefined
+            ? [args.organizationId]
+            : [];
+        if (requested.length === 0) throw new Error('INVALID DATA: Give at least one organizationId');
+        const organizations = await Promise.all(
+          requested.slice(0, MAX_MEMBER_LISTS).map(async raw => {
+            try {
+              const organizationId = requireId(raw);
+              const members: any[] = await this.organizationService.listMembers(organizationId);
+              return {
+                organizationId,
+                members: members.map(member => ({ username: member.user?.username, role: member.role })),
+              };
+            } catch (err: any) {
+              return { organizationId: String(raw), error: String(err?.message ?? err) };
+            }
+          })
+        );
+        return { organizations };
       }
 
       case 'list_invitations': {

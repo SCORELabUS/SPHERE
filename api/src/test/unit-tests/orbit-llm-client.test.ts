@@ -1,3 +1,5 @@
+import http from 'node:http';
+import net, { type AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import OrbitLlmClient from '../../main/services/orbit/OrbitLlmClient';
 
@@ -27,6 +29,9 @@ describe('OrbitLlmClient', () => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
     delete process.env.ORBIT_OPENAI_API_KEY;
+    delete process.env.ORBIT_OPENAI_BASE_URL;
+    delete process.env.HTTP_PROXY;
+    delete process.env.NO_PROXY;
   });
 
   it('waits as long as the provider asks and tries again when it is rate limited', async () => {
@@ -72,5 +77,81 @@ describe('OrbitLlmClient', () => {
       { id: 'call_1', type: 'function', function: { name: 'list_members', arguments: '{"organizationId":"x"}' } },
     ]);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).stream).toBe(true);
+  });
+
+  it('asks for whole answers when the provider refuses to stream, and stops trying to stream', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(400, {
+          error: { message: 'Your organization must be verified to stream this model.', param: 'stream', code: 'unsupported_value' },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { choices: [{ message: { content: 'First' } }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { choices: [{ message: { content: 'Second' } }] }));
+    const client = new OrbitLlmClient();
+    const deltas: string[] = [];
+
+    const first = await client.chatStream({ messages: [{ role: 'user', content: 'Hi' }] }, text => deltas.push(text));
+    const second = await client.chatStream({ messages: [{ role: 'user', content: 'Again' }] }, text => deltas.push(text));
+
+    expect(first.content).toBe('First');
+    expect(second.content).toBe('Second');
+    expect(deltas).toEqual(['First', 'Second']);
+    const streamedFlags = fetchMock.mock.calls.map(call => JSON.parse(call[1].body).stream ?? false);
+    expect(streamedFlags).toEqual([true, false, false]);
+  });
+
+  it('does not hide other errors behind the fallback', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: { message: 'Invalid API key' } }));
+
+    await expect(
+      new OrbitLlmClient().chatStream({ messages: [{ role: 'user', content: 'Hi' }] }, () => undefined)
+    ).rejects.toThrow('ORBIT UNAVAILABLE: The language model returned an error (Invalid API key)');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes through the outbound proxy when one is set, and around it for hosts in no_proxy', async () => {
+    // A stand-in for the proxy: it opens tunnels (CONNECT) to a local server
+    // that answers for a host that does not exist, so only a request sent
+    // through the proxy can succeed.
+    const target = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { content: 'Answered' } }] }));
+    });
+    const proxied: string[] = [];
+    const proxyServer = http.createServer((req, res) => res.writeHead(405).end());
+    proxyServer.on('connect', (req, clientSocket: net.Socket, head) => {
+      proxied.push(String(req.url));
+      const upstream = net.connect((target.address() as AddressInfo).port, '127.0.0.1', () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        upstream.write(head);
+        upstream.pipe(clientSocket).pipe(upstream);
+      });
+    });
+    await new Promise<void>(resolve => target.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>(resolve => proxyServer.listen(0, '127.0.0.1', resolve));
+    try {
+      const { port } = proxyServer.address() as AddressInfo;
+      process.env.ORBIT_OPENAI_BASE_URL = 'http://llm.invalid/v1';
+      process.env.HTTP_PROXY = `http://127.0.0.1:${port}`;
+
+      const response = await new OrbitLlmClient().chat({ messages: [{ role: 'user', content: 'Hi' }] });
+
+      expect(response.content).toBe('Answered');
+      expect(proxied).toEqual(['llm.invalid:80']);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // A host in no_proxy is reached directly, without a tunnel.
+      process.env.NO_PROXY = '127.0.0.1';
+      process.env.ORBIT_OPENAI_BASE_URL = `http://127.0.0.1:${(target.address() as AddressInfo).port}/v1`;
+      expect((await new OrbitLlmClient().chat({ messages: [{ role: 'user', content: 'Hi' }] })).content).toBe('Answered');
+      expect(proxied).toHaveLength(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      for (const server of [proxyServer, target]) {
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+      }
+    }
   });
 });

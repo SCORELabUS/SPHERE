@@ -313,7 +313,7 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   // user's organization roles when the plan runs.
   {
     path: '/orbit/**',
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'DELETE'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 

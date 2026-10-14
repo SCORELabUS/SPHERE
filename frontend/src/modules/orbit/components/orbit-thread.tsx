@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { MdInsertDriveFile, MdRefresh } from 'react-icons/md';
+import { MdAdd, MdInsertDriveFile, MdRefresh } from 'react-icons/md';
 import HarveyChatMessage from '../../core/components/harvey-chat/harvey-chat-message';
 import type { ChatMessage } from '../../harvey/types/types';
-import type { OrbitChat } from '../hooks/useOrbitChat';
+import { CONVERSATION_FULL, type OrbitChat } from '../hooks/useOrbitChat';
 import OrbitActivity from './orbit-activity';
+import OrbitLogo from './orbit-logo';
 import PlanCard from './plan-card';
 
 interface Props {
@@ -65,7 +66,7 @@ export default function OrbitThread({ chat, empty, className = '' }: Props) {
               key={message.id}
               message={{ id: message.id, role: message.role, content: message.content, createdAt: message.createdAt } as ChatMessage}
               assistantName="ORBIT"
-              assistantInitial="O"
+              assistantInitial={<OrbitLogo className="h-[18px] w-[18px]" />}
             >
               {message.attachment && (
                 <span className="mt-1 inline-flex items-center gap-1 rounded-lg border border-tp-hairline bg-tp-surface px-2 py-1 text-[11px] text-tp-slate">
@@ -80,6 +81,15 @@ export default function OrbitThread({ chat, empty, className = '' }: Props) {
                   onConfirm={chat.confirm}
                   onCancel={chat.cancel}
                 />
+              )}
+              {message === lastMessage && message.id.startsWith('error-') && CONVERSATION_FULL.test(message.content) && (
+                <button
+                  type="button"
+                  onClick={chat.startNew}
+                  className="mt-1.5 inline-flex cursor-pointer items-center gap-1 rounded-lg border border-tp-hairline bg-tp-canvas px-2.5 py-1 text-[12px] font-medium text-tp-slate transition-colors hover:border-tp-primary/40 hover:text-tp-ink"
+                >
+                  <MdAdd size={14} /> Start a new conversation
+                </button>
               )}
               {chat.canRetry && message === lastMessage && message.id.startsWith('error-') && (
                 <button

@@ -152,7 +152,6 @@
   --animate-wiggle-bubble: wiggle-bubble 2.5s ease-in-out infinite;
   --animate-orbit-shimmer: orbit-shimmer 1.6s linear infinite;
   --animate-orbit-caret: orbit-caret 1s steps(1) infinite;
-  --animate-orbit-spin: orbit-spin 1.4s linear infinite;
   --animate-orbit-indeterminate: orbit-indeterminate 1.3s ease-in-out infinite;
 }
 
@@ -610,17 +609,6 @@ body {
     animation: orbit-caret 1s steps(1) infinite;
   }
 
-  /* ORBIT: the dot that circles the avatar while it is busy */
-  @keyframes orbit-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .animate-orbit-spin {
-    animation: orbit-spin 1.4s linear infinite;
-  }
-
   /* ORBIT: a progress bar for work whose length is not known */
   @keyframes orbit-indeterminate {
     0% {
@@ -639,7 +627,6 @@ body {
   @media (prefers-reduced-motion: reduce) {
     .animate-orbit-shimmer,
     .animate-orbit-caret,
-    .animate-orbit-spin,
     .animate-orbit-indeterminate {
       animation: none;
     }

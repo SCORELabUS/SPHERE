@@ -17,6 +17,10 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return typeof body?.error === 'string' && body.error ? body.error : fallback;
 }
 
+// The server sends a keep-alive every 15 seconds; this long without a byte means
+// the connection died somewhere on the way, even if it was never closed.
+const STREAM_SILENCE_LIMIT_MS = 45_000;
+
 /** Splits a server-sent events stream into its events as they arrive. */
 async function readEventStream<T>(response: Response, onEvent: (event: T) => void) {
   const reader = response.body?.getReader();
@@ -25,7 +29,23 @@ async function readEventStream<T>(response: Response, onEvent: (event: T) => voi
   let buffer = '';
 
   for (;;) {
-    const { done, value } = await reader.read();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const silence = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('The connection with ORBIT was lost. Try again in a moment.')),
+        STREAM_SILENCE_LIMIT_MS
+      );
+    });
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await Promise.race([reader.read(), silence]);
+    } catch (error) {
+      void reader.cancel().catch(() => undefined);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    const { done, value } = chunk;
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
@@ -75,6 +95,11 @@ export function useOrbitApi() {
     const response = await fetchWithInterceptor(`${ORBIT_BASE_PATH}/conversations/${conversationId}`);
     if (!response.ok) throw new Error(await readError(response, 'Conversation not found'));
     return response.json();
+  }, [fetchWithInterceptor]);
+
+  const deleteConversation = useCallback(async (conversationId: string): Promise<void> => {
+    const response = await fetchWithInterceptor(`${ORBIT_BASE_PATH}/conversations/${conversationId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error(await readError(response, 'The conversation could not be deleted'));
   }, [fetchWithInterceptor]);
 
   const sendMessage = useCallback(
@@ -168,6 +193,7 @@ export function useOrbitApi() {
     listConversations,
     createConversation,
     getConversation,
+    deleteConversation,
     sendMessage,
     sendMessageStream,
     getPlan,

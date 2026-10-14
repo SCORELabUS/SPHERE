@@ -14,7 +14,8 @@ const loadFileRoutes = function (app: express.Application) {
 
   app
     .route(baseUrl + '/orbit/conversations/:conversationId')
-    .get(orbitController.showConversation);
+    .get(orbitController.showConversation)
+    .delete(orbitController.deleteConversation);
 
   app
     .route(baseUrl + '/orbit/conversations/:conversationId/messages')

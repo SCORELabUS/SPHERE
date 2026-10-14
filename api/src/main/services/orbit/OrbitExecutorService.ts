@@ -67,18 +67,26 @@ class OrbitExecutorService {
     const run = new PlanRun(actor, this.organizationService);
     let done = 0;
 
-    for (const [index, step] of plan.steps.entries()) {
-      const outcome = await run.apply(step);
-      if (outcome.status === 'DONE') done++;
+    let finished: LeanOrbitPlan;
+    try {
+      for (const [index, step] of plan.steps.entries()) {
+        const outcome = await run.apply(step);
+        if (outcome.status === 'DONE') done++;
 
-      await this.orbitPlanRepository.updateStep(plan.id, step.id, outcome);
-      await this.recordAudit(actor, plan, step, outcome);
-      onEvent({ type: 'step', stepId: step.id, index, ...outcome });
+        await this.orbitPlanRepository.updateStep(plan.id, step.id, outcome);
+        await this.recordAudit(actor, plan, step, outcome);
+        onEvent({ type: 'step', stepId: step.id, index, ...outcome });
+      }
+
+      const status: OrbitPlanStatus =
+        done === plan.steps.length ? 'COMPLETED' : done === 0 ? 'FAILED' : 'PARTIAL';
+      finished = (await this.orbitPlanRepository.finish(plan.id, status)) as LeanOrbitPlan;
+    } catch (err) {
+      // Something around the steps broke, most likely the database. The plan is
+      // closed with what is known rather than left running for ever.
+      await this.orbitPlanRepository.closeInterrupted(plan.id).catch(() => null);
+      throw err;
     }
-
-    const status: OrbitPlanStatus =
-      done === plan.steps.length ? 'COMPLETED' : done === 0 ? 'FAILED' : 'PARTIAL';
-    const finished = (await this.orbitPlanRepository.finish(plan.id, status)) as LeanOrbitPlan;
 
     onEvent({ type: 'done', plan: finished });
     return finished;

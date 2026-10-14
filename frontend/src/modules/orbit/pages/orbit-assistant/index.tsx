@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MdAdd } from 'react-icons/md';
+import { MdAdd, MdDeleteOutline } from 'react-icons/md';
+import customConfirm from '../../../core/utils/custom-confirm';
 import { useOrbitChat } from '../../hooks/useOrbitChat';
 import ConversationList from '../../components/conversation-list';
 import OrbitAvatar from '../../components/orbit-avatar';
@@ -20,7 +21,17 @@ export default function OrbitAssistantPage() {
   const chat = useOrbitChat({ conversationId, onConversationChange: changeConversation });
 
   const selectConversation = (id: string) => setSearchParams({ c: id });
-  const busy = chat.isSending || chat.running !== null;
+
+  const confirmDelete = (conversation: { id: string; title: string }) => {
+    customConfirm(`Delete "${conversation.title}"? A plan still waiting for confirmation in it will be cancelled.`, {
+      danger: true,
+      confirmLabel: 'Delete',
+    })
+      .then(() => chat.deleteConversation(conversation.id).catch(error => chat.reportError((error as Error).message)))
+      .catch(() => undefined);
+  };
+  const currentConversation = chat.conversations.find(conversation => conversation.id === conversationId);
+  const busy = chat.activity !== null || chat.running !== null;
 
   return (
     <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl gap-4 px-4 py-4 md:px-6">
@@ -29,8 +40,10 @@ export default function OrbitAssistantPage() {
         <ConversationList
           conversations={chat.conversations}
           activeId={conversationId}
+          answeringId={chat.answeringConversationId}
           onSelect={selectConversation}
           onNew={chat.startNew}
+          onDelete={confirmDelete}
         />
       </aside>
 
@@ -64,6 +77,16 @@ export default function OrbitAssistantPage() {
                   </option>
                 ))}
               </select>
+            )}
+            {currentConversation && chat.answeringConversationId !== currentConversation.id && (
+              <button
+                type="button"
+                onClick={() => confirmDelete(currentConversation)}
+                aria-label="Delete this conversation"
+                className="cursor-pointer rounded-lg border border-tp-hairline p-1.5 text-tp-slate transition-colors hover:bg-tp-hairline-soft hover:text-tp-severity-error"
+              >
+                <MdDeleteOutline size={16} />
+              </button>
             )}
             <button
               type="button"

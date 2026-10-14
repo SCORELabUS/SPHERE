@@ -57,6 +57,38 @@ class OrbitConversationRepository extends RepositoryBase {
     await OrbitConversationMongoose.updateOne({ _id: id }, update);
   }
 
+  /**
+   * How much a conversation takes in the database: the whole document, which
+   * MongoDB caps at 16 MB, and the part of it that is attached files.
+   */
+  async storageUsage(id: string): Promise<{ totalBytes: number; attachmentBytes: number }> {
+    const [usage] = await OrbitConversationMongoose.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(id) } },
+      {
+        $project: {
+          totalBytes: { $bsonSize: '$$ROOT' },
+          attachmentBytes: {
+            $sum: {
+              $map: { input: { $ifNull: ['$attachments', []] }, as: 'file', in: { $strLenBytes: { $ifNull: ['$$file.content', ''] } } },
+            },
+          },
+        },
+      },
+    ]);
+    return { totalBytes: usage?.totalBytes ?? 0, attachmentBytes: usage?.attachmentBytes ?? 0 };
+  }
+
+  async delete(id: string): Promise<void> {
+    await OrbitConversationMongoose.deleteOne({ _id: id });
+  }
+
+  /** Takes back the messages of a turn that came to nothing, and the file it brought. */
+  async removeTurn(id: string, messageIds: string[], attachmentId: string | null): Promise<void> {
+    const pull: Record<string, any> = { messages: { id: { $in: messageIds } } };
+    if (attachmentId) pull.attachments = { id: attachmentId };
+    await OrbitConversationMongoose.updateOne({ _id: id }, { $pull: pull });
+  }
+
   async addAttachment(id: string, attachment: OrbitAttachment): Promise<void> {
     await OrbitConversationMongoose.updateOne({ _id: id }, { $push: { attachments: attachment } });
   }

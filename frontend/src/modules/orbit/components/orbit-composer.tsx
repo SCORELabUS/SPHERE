@@ -75,12 +75,15 @@ const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitCompo
         onSend={handleSend}
         disabled={disabled}
         busy={chat.isSending}
+        showHint={false}
         allowEmpty={attachment !== null}
         placeholder={
           attachment
             ? 'Say what to do with the file (optional)...'
             : chat.isSending
-              ? 'ORBIT is answering. You can type your next message...'
+              ? chat.activity
+                ? 'ORBIT is answering. You can type your next message...'
+                : 'ORBIT is answering in another conversation...'
               : placeholder
         }
         disabledPlaceholder={chat.availability === 'unavailable' ? 'ORBIT is not available right now' : 'Connecting to ORBIT...'}

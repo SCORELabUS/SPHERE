@@ -5322,6 +5322,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete an ORBIT conversation
+      description: |
+        Deletes a conversation with its messages and files. A plan still waiting for confirmation is cancelled;
+        plans that were already applied are kept, together with their audit log.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the conversation belongs to; anyone else gets 404.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitConversationId'
+      responses:
+        '204':
+          description: The conversation was deleted
+        '401':
+          description: Authentication required
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A plan of this conversation is being applied right now
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /orbit/conversations/{conversationId}/messages:
     post:
@@ -5333,7 +5365,11 @@ paths:
 
         Files are sent as text: CSV, TSV or plain text, up to 512 KB. Their content is treated as data, never as instructions.
 
-        Limited to 30 messages every 10 minutes per user.
+        Limited to 30 messages every 10 minutes per user, and to `ORBIT_MAX_MESSAGES_PER_MINUTE` (20 by default)
+        for all users together, since ORBIT shares HARVEY's OpenAI key and its rate limits.
+
+        A conversation is stored as a single document, so it has a size limit: once it holds about 12 MB, or 4 MB
+        of files, new messages are refused with 409 and the user is asked to start a new conversation.
 
         **Streaming**: send `Accept: text/event-stream` to follow the turn as it happens. The response is then a
         stream of server-sent events instead of the JSON body:
@@ -5410,6 +5446,12 @@ paths:
           description: Authentication required
         '404':
           description: Conversation not found
+        '409':
+          description: The conversation is full, or already holds the most files it can take
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           description: Empty message, message too long, or unsupported/oversized file
           content:
@@ -5417,7 +5459,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '429':
-          description: Too many messages
+          description: Too many messages from this user, or from all users together
           content:
             application/json:
               schema:

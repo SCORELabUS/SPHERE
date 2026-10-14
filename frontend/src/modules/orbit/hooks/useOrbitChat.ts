@@ -9,7 +9,8 @@ import type {
   OrbitProgressEvent,
 } from '../types/orbit';
 
-export type OrbitAvailability = 'idle' | 'loading' | 'available' | 'unavailable';
+/** `unavailable`: the server has no AI configured; `unreachable`: the server could not be reached, and is asked again. */
+export type OrbitAvailability = 'idle' | 'loading' | 'available' | 'unavailable' | 'unreachable';
 
 export interface OrbitActivityStep {
   label: string;
@@ -19,6 +20,8 @@ export interface OrbitActivityStep {
 
 /** What ORBIT is doing for the message being answered right now. */
 export interface OrbitActivity {
+  /** The conversation being answered; null until a new one has been created. */
+  conversationId: string | null;
   startedAt: number;
   steps: OrbitActivityStep[];
   /** The answer as it is being written. */
@@ -38,6 +41,12 @@ interface Options {
 
 // Steps that say ORBIT is between two pieces of work rather than doing one.
 const TRANSIENT_STEP = /^(Sending|Thinking it through|The AI provider is busy)/;
+// How often a plan applied elsewhere (another tab, the widget) is checked on.
+const RUNNING_PLAN_POLL_MS = 2500;
+// The server's answer when a conversation has no room left for more messages.
+export const CONVERSATION_FULL = /Start a new conversation to keep going/;
+const STATUS_RETRY_BASE_MS = 3000;
+const STATUS_RETRY_MAX_MS = 30000;
 
 let localIdCounter = 0;
 const localId = (prefix: string) => `${prefix}-${Date.now()}-${++localIdCounter}`;
@@ -61,24 +70,49 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
   const [running, setRunning] = useState<{ planId: string; index: number } | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
-  const [failedSend, setFailedSend] = useState<{ text: string; attachment: OrbitPendingAttachment | null } | null>(null);
+  const [failedSend, setFailedSend] = useState<{
+    text: string;
+    attachment: OrbitPendingAttachment | null;
+    messageIds: string[];
+  } | null>(null);
 
   // A conversation started by the first message is already on screen; loading
   // it again would wipe the reply that is still on its way.
   const skipLoadRef = useRef<string | null>(null);
+  // The conversation on screen, read by a send that outlives a switch to another one.
+  const currentIdRef = useRef(conversationId);
+  currentIdRef.current = conversationId;
+  // Bumped when a reply lands, so a load that started before it cannot overwrite it.
+  const loadGenerationRef = useRef(0);
   const isSending = activity !== null;
 
   const refreshConversations = useCallback(() => {
     api.listConversations().then(setConversations).catch(() => undefined);
   }, [api]);
 
+  // When the server cannot be reached (it may be restarting), it is asked again,
+  // waiting a little longer each time.
+  const statusRetryRef = useRef<{ attempts: number; timer: ReturnType<typeof setTimeout> | null }>({
+    attempts: 0,
+    timer: null,
+  });
+  useEffect(() => () => clearTimeout(statusRetryRef.current.timer ?? undefined), []);
+
   useEffect(() => {
     if (!enabled || availability !== 'idle') return;
     setAvailability('loading');
     api
       .getStatus()
-      .then(status => setAvailability(status.available ? 'available' : 'unavailable'))
-      .catch(() => setAvailability('unavailable'));
+      .then(status => {
+        statusRetryRef.current.attempts = 0;
+        setAvailability(status.available ? 'available' : 'unavailable');
+      })
+      .catch(() => {
+        setAvailability('unreachable');
+        const retry = statusRetryRef.current;
+        const delay = Math.min(STATUS_RETRY_MAX_MS, STATUS_RETRY_BASE_MS * 2 ** retry.attempts++);
+        retry.timer = setTimeout(() => setAvailability('idle'), delay);
+      });
     refreshConversations();
   }, [api, availability, enabled, refreshConversations]);
 
@@ -94,11 +128,16 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       return;
     }
     let cancelled = false;
+    const generation = ++loadGenerationRef.current;
+    // The previous conversation is cleared at once, so the skeleton shows
+    // instead of its messages lingering under the newly selected one.
+    setMessages([]);
+    setPlans({});
     setIsLoadingConversation(true);
     api
       .getConversation(conversationId)
       .then(conversation => {
-        if (cancelled) return;
+        if (cancelled || generation !== loadGenerationRef.current) return;
         setMessages(conversation.messages);
         setPlans(Object.fromEntries(conversation.plans.map(plan => [plan.id, plan])));
       })
@@ -115,10 +154,11 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   }, [conversationId, enabled]);
 
   const appendLocalError = useCallback((text: string) => {
+    const id = localId('error');
     setMessages(prev => [
       ...prev,
       {
-        id: localId('error'),
+        id,
         role: 'assistant',
         content: `Sorry, something went wrong: ${text}`,
         planId: null,
@@ -126,6 +166,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
         createdAt: new Date().toISOString(),
       },
     ]);
+    return id;
   }, []);
 
   const pushStep = useCallback((label: string) => {
@@ -163,18 +204,26 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       setMessages(prev => [...prev, optimistic]);
       // The first step shows at once, before any byte has left the browser.
       setActivity({
+        conversationId,
         startedAt: Date.now(),
         steps: [{ label: attachment ? 'Sending your file' : 'Sending', startedAt: Date.now(), doneAt: null }],
         draft: '',
       });
 
+      // The user may open another conversation while this one is answered; the
+      // reply is then only shown if they come back to it.
+      let targetId = conversationId;
+      const isOnScreen = () => currentIdRef.current === targetId;
+      let sentMessageId = optimistic.id;
+
       try {
-        let targetId = conversationId;
         if (!targetId) {
           const conversation = await api.createConversation();
           targetId = conversation.id;
           skipLoadRef.current = targetId;
+          setActivity(prev => (prev ? { ...prev, conversationId: targetId } : prev));
           onConversationChange(targetId);
+          currentIdRef.current = targetId;
         }
 
         const result = await api.sendMessageStream(
@@ -183,7 +232,10 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
           attachment ? { filename: attachment.filename, content: attachment.content } : null,
           event => {
             if (event.type === 'accepted') {
-              setMessages(prev => prev.map(message => (message.id === optimistic.id ? event.message : message)));
+              sentMessageId = event.message.id;
+              if (isOnScreen()) {
+                setMessages(prev => prev.map(message => (message.id === optimistic.id ? event.message : message)));
+              }
               setConversations(prev => {
                 const others = prev.filter(conversation => conversation.id !== targetId);
                 const now = new Date().toISOString();
@@ -200,6 +252,8 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
           }
         );
 
+        if (!isOnScreen()) return true;
+        loadGenerationRef.current++;
         setMessages(prev => {
           const sentIds = new Set(result.messages.map(message => message.id));
           return [...prev.filter(message => message.id !== optimistic.id && !sentIds.has(message.id)), ...result.messages];
@@ -217,8 +271,16 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
         }
         return true;
       } catch (error) {
-        setFailedSend({ text: trimmed, attachment });
-        appendLocalError((error as Error).message);
+        // The server takes back a turn that failed, so the message is only on
+        // screen; it stays there, with the error, until it is sent again.
+        if (isOnScreen()) {
+          const message = (error as Error).message;
+          const errorId = appendLocalError(message);
+          // A full conversation would refuse the retry too; the thread offers a new one instead.
+          if (!CONVERSATION_FULL.test(message)) {
+            setFailedSend({ text: trimmed, attachment, messageIds: [optimistic.id, sentMessageId, errorId] });
+          }
+        }
         return false;
       } finally {
         setActivity(null);
@@ -230,13 +292,9 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   /** Sends the message that failed again, without the user retyping it. */
   const retry = useCallback(() => {
     if (!failedSend) return;
-    const { text, attachment } = failedSend;
+    const { text, attachment, messageIds } = failedSend;
     // The failed attempt and its error are replaced by the new one.
-    setMessages(prev => {
-      const withoutError = prev[prev.length - 1]?.id.startsWith('error-') ? prev.slice(0, -1) : prev;
-      const last = withoutError[withoutError.length - 1];
-      return last?.role === 'user' && last.id.startsWith('pending-') ? withoutError.slice(0, -1) : withoutError;
-    });
+    setMessages(prev => prev.filter(message => !messageIds.includes(message.id)));
     void send(text, attachment);
   }, [failedSend, send]);
 
@@ -278,6 +336,28 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     [api, appendLocalError, refreshOrganizations]
   );
 
+  // A plan applied from somewhere else (the widget, another tab), or cut off by
+  // a restart of the server, is followed until it finishes.
+  const watchedPlanIds = Object.values(plans)
+    .filter(plan => plan.status === 'EXECUTING' && plan.id !== running?.planId)
+    .map(plan => plan.id)
+    .join(',');
+  useEffect(() => {
+    if (!enabled || !watchedPlanIds) return;
+    const timer = setInterval(() => {
+      for (const planId of watchedPlanIds.split(',')) {
+        api
+          .getPlan(planId)
+          .then(plan => {
+            setPlans(prev => (prev[planId] ? { ...prev, [planId]: plan } : prev));
+            if (plan.status !== 'EXECUTING') refreshOrganizations();
+          })
+          .catch(() => undefined);
+      }
+    }, RUNNING_PLAN_POLL_MS);
+    return () => clearInterval(timer);
+  }, [api, enabled, refreshOrganizations, watchedPlanIds]);
+
   const cancel = useCallback(
     async (planId: string) => {
       setBusyPlanId(planId);
@@ -293,6 +373,19 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     [api, appendLocalError]
   );
 
+  /** Deletes a conversation; leaving it first when it is the one on screen. */
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      await api.deleteConversation(id);
+      setConversations(prev => prev.filter(conversation => conversation.id !== id));
+      if (currentIdRef.current === id) {
+        setFailedSend(null);
+        onConversationChange(null);
+      }
+    },
+    [api, onConversationChange]
+  );
+
   const startNew = useCallback(() => {
     setFailedSend(null);
     onConversationChange(null);
@@ -304,8 +397,11 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     refreshConversations,
     messages,
     plans,
-    activity,
+    /** What ORBIT is doing, when the conversation it is answering is the one on screen. */
+    activity: activity && activity.conversationId === conversationId ? activity : null,
+    /** Whether ORBIT is answering, in this conversation or another one. */
     isSending,
+    answeringConversationId: activity?.conversationId ?? null,
     isLoadingConversation,
     running,
     busyPlanId,
@@ -315,6 +411,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     confirm,
     cancel,
     startNew,
+    deleteConversation,
     reportError: appendLocalError,
   };
 }

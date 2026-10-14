@@ -55,6 +55,13 @@ class OrbitPlanRepository extends RepositoryBase {
     return plans.map(plan => plan.toObject() as unknown as LeanOrbitPlan);
   }
 
+  async cancelPendingInConversation(conversationId: string): Promise<void> {
+    await OrbitPlanMongoose.updateMany(
+      { _conversationId: new mongoose.Types.ObjectId(conversationId), status: 'PENDING' },
+      { status: 'CANCELLED' }
+    );
+  }
+
   /** A new proposal replaces whatever the conversation still had waiting. */
   async supersedePending(conversationId: string): Promise<void> {
     await OrbitPlanMongoose.updateMany(
@@ -102,6 +109,41 @@ class OrbitPlanRepository extends RepositoryBase {
         },
       }
     );
+  }
+
+  /**
+   * Closes a run that was cut off (the server stopped, or the database failed
+   * mid-run) with what is known: the steps that never ran are marked failed,
+   * and the one that was running is flagged for the user to check. With
+   * `staleBefore`, only a run with no progress since then is closed.
+   */
+  async closeInterrupted(id: string, staleBefore?: Date): Promise<LeanOrbitPlan | null> {
+    const filter: Record<string, any> = { _id: id, status: 'EXECUTING' };
+    if (staleBefore) filter.updatedAt = { $lt: staleBefore };
+    const plan: any = await OrbitPlanMongoose.findOne(filter).lean();
+    if (!plan) return null;
+
+    const steps: OrbitPlanStep[] = plan.steps ?? [];
+    const done = steps.filter(step => step.status === 'DONE').length;
+    const current = steps.find(step => step.status === 'PENDING');
+    const update: Record<string, any> = {
+      $set: { status: done > 0 ? 'PARTIAL' : 'FAILED', completedAt: new Date() },
+    };
+    const arrayFilters: Record<string, any>[] = [];
+    if (current) {
+      update.$set['steps.$[current].status'] = 'FAILED';
+      update.$set['steps.$[current].error'] =
+        'The run was interrupted during this step. Check whether it was applied before trying again';
+      update.$set['steps.$[rest].status'] = 'FAILED';
+      update.$set['steps.$[rest].error'] = 'Not applied: the run was interrupted before this step';
+      arrayFilters.push({ 'current.id': current.id }, { 'rest.status': 'PENDING', 'rest.id': { $ne: current.id } });
+    }
+
+    const closed = await OrbitPlanMongoose.findOneAndUpdate(filter, update, {
+      new: true,
+      ...(arrayFilters.length ? { arrayFilters } : {}),
+    });
+    return closed ? (closed.toObject() as unknown as LeanOrbitPlan) : null;
   }
 
   async finish(id: string, status: OrbitPlanStatus): Promise<LeanOrbitPlan | null> {
