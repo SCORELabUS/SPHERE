@@ -46,6 +46,8 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - Configured with `ORBIT_OPENAI_API_KEY` (falls back to `HARVEY_API_KEY`, then `OPENAI_API_KEY`), `ORBIT_OPENAI_MODEL` (default `gpt-5-nano`) and optionally `ORBIT_OPENAI_BASE_URL`. Without a key, `GET /orbit/status` reports `available: false` and messages answer 503.
 - In production ORBIT uses HARVEY's OpenAI key (see the docker-compose files), so both share its rate limits and spending. `ORBIT_MAX_MESSAGES_PER_MINUTE` (default 20) caps the messages of all ORBIT users together to leave room for HARVEY; each user is also limited to 30 messages every 10 minutes.
 - A conversation is one MongoDB document (16 MB cap, files included): new messages are refused with 409 past 12 MB, or 4 MB of files.
+- Phase 2 (teams and permissions) adds role changes, removals, invitation revocations, moves, ownership transfer and pricing/collection permissions, plus the `list_resources`, `who_can_access` and `get_member_access` review tools. Role changes and removals act on the direct membership; an inherited role is changed in the parent. Revocations are checked against the organization's own invitations, because `OrganizationService.revokeInvitation` accepts any id.
+- An ownership transfer goes alone in its plan, which stores a `confirmationPhrase` (the organization's name); `POST /orbit/plans/:id/confirm` needs it back in `confirmation`.
 - New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
 
 ## API Documentation
@@ -61,7 +63,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
-- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import and plan execution). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
+- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import, plan execution, and teams and permissions). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
 
 In addition, test utilities are organized in `/api/src/test/utils/` with subfolders for auth, users, organizations, collections and pricings.
 

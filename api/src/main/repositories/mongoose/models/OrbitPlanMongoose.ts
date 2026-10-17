@@ -37,6 +37,8 @@ const orbitPlanSchema = new Schema(
       type: [new Schema({ row: Number, reason: String }, { _id: false })],
       default: [],
     },
+    // Text the user must type to confirm a plan that is hard to undo.
+    confirmationPhrase: { type: String, default: null },
     confirmedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
   },

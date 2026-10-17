@@ -2,9 +2,12 @@ import mongoose from 'mongoose';
 import container from '../../config/container';
 import OrganizationService from '../OrganizationService';
 import UserRepository from '../../repositories/mongoose/UserRepository';
-import { LeanOrbitConversation, LeanOrbitPlan } from '../../types/models/Orbit';
+import EntityPermissionRepository from '../../repositories/mongoose/EntityPermissionRepository';
+import PricingRepository from '../../repositories/mongoose/PricingRepository';
+import PricingCollectionRepository from '../../repositories/mongoose/PricingCollectionRepository';
+import { LeanOrbitConversation, LeanOrbitPlan, OrbitAccess } from '../../types/models/Orbit';
 import { LlmTool } from './OrbitLlmClient';
-import OrbitPlanService from './OrbitPlanService';
+import OrbitPlanService, { accessOf, matchResource } from './OrbitPlanService';
 import OrbitImportService from './OrbitImportService';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
 
@@ -12,6 +15,8 @@ const MAX_TOOL_RESULT_CHARS = 12_000;
 const MAX_LOOKUP_IDENTIFIERS = 50;
 // One call covers a whole tree, rather than a round of the conversation per organization.
 const MAX_MEMBER_LISTS = 25;
+const MAX_RESOURCES_LISTED = 100;
+const FULL_ACCESS: OrbitAccess[] = ['GET', 'PUT', 'DELETE', 'CREATE'];
 
 const orgTarget = {
   organizationId: { type: 'string', description: 'Id of an organization that already exists.' },
@@ -77,7 +82,7 @@ export const ORBIT_TOOLS: LlmTool[] = [
     type: 'function',
     function: {
       name: 'list_invitations',
-      description: 'Pending invitation links of an organization. The user must be an OWNER or ADMIN of it.',
+      description: 'Pending invitation links of an organization, with the code used to revoke them. The user must be an OWNER or ADMIN of it.',
       parameters: {
         type: 'object',
         properties: { organizationId: { type: 'string' } },
@@ -109,6 +114,56 @@ export const ORBIT_TOOLS: LlmTool[] = [
           identifiers: { type: 'array', items: { type: 'string' }, maxItems: MAX_LOOKUP_IDENTIFIERS },
         },
         required: ['identifiers'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_resources',
+      description: 'The pricings and collections of an organization the user can see, with whether each is private and the collection a pricing belongs to.',
+      parameters: {
+        type: 'object',
+        properties: {
+          organizationId: { type: 'string' },
+          type: { type: 'string', enum: ['pricing', 'collection'], description: 'Omit for both.' },
+          query: { type: 'string', description: 'Text to look for in the name.' },
+        },
+        required: ['organizationId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'who_can_access',
+      description: 'Who can view, edit, delete or add versions to a pricing or collection, and why (role, own permission, its collection, or being public). The user must be an OWNER or ADMIN of the organization.',
+      parameters: {
+        type: 'object',
+        properties: {
+          organizationId: { type: 'string' },
+          resourceType: { type: 'string', enum: ['pricing', 'collection'] },
+          resource: { type: 'string', description: 'Name or slug of the pricing or collection.' },
+        },
+        required: ['organizationId', 'resourceType', 'resource'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_member_access',
+      description: "What one person can do in an organization: their role and every pricing or collection permission they hold. The user must be an OWNER or ADMIN of it, or be asking about themselves.",
+      parameters: {
+        type: 'object',
+        properties: {
+          organizationId: { type: 'string' },
+          user: { type: 'string', description: 'Email or username.' },
+        },
+        required: ['organizationId', 'user'],
         additionalProperties: false,
       },
     },
@@ -194,6 +249,83 @@ export const ORBIT_TOOLS: LlmTool[] = [
               additionalProperties: false,
             },
           },
+          roleChanges: {
+            type: 'array',
+            description: 'New roles for existing members. One entry per person and organization.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                user: { type: 'string', description: 'Email or username.' },
+                role: { type: 'string', enum: ['ADMIN', 'MEMBER'] },
+              },
+              required: ['organizationId', 'user', 'role'],
+              additionalProperties: false,
+            },
+          },
+          removals: {
+            type: 'array',
+            description: 'Members to remove from an organization (they also leave its sub-organizations).',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                user: { type: 'string', description: 'Email or username.' },
+              },
+              required: ['organizationId', 'user'],
+              additionalProperties: false,
+            },
+          },
+          invitationRevocations: {
+            type: 'array',
+            description: 'Pending invitation links to revoke, by the code list_invitations returns.',
+            items: {
+              type: 'object',
+              properties: { organizationId: { type: 'string' }, code: { type: 'string' } },
+              required: ['organizationId', 'code'],
+              additionalProperties: false,
+            },
+          },
+          moves: {
+            type: 'array',
+            description: 'Organizations to move, with their whole branch. parentId is the new parent; omit it to move to the top level.',
+            items: {
+              type: 'object',
+              properties: { organizationId: { type: 'string' }, parentId: { type: 'string' } },
+              required: ['organizationId'],
+              additionalProperties: false,
+            },
+          },
+          ownershipTransfer: {
+            type: 'object',
+            description: 'Hand an organization over to one of its members. Must be the only change in the plan.',
+            properties: {
+              organizationId: { type: 'string' },
+              user: { type: 'string', description: 'Email or username of the new owner.' },
+            },
+            required: ['organizationId', 'user'],
+            additionalProperties: false,
+          },
+          permissions: {
+            type: 'array',
+            description: 'What a MEMBER ends up being able to do with a pricing or collection. Omit resource for organization-wide CREATE.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                user: { type: 'string', description: 'Email or username.' },
+                resourceType: { type: 'string', enum: ['pricing', 'collection'] },
+                resource: { type: 'string', description: 'Name or slug of the pricing or collection.' },
+                access: {
+                  type: 'array',
+                  items: { type: 'string', enum: ['GET', 'PUT', 'DELETE', 'CREATE'] },
+                  description: 'The full access to end up with; an empty list takes it all away.',
+                },
+              },
+              required: ['organizationId', 'user', 'resourceType', 'access'],
+              additionalProperties: false,
+            },
+          },
         },
         required: ['summary'],
         additionalProperties: false,
@@ -244,6 +376,9 @@ const TOOL_LABELS: Record<string, string> = {
   list_invitations: 'Checking pending invitations',
   search_public_organizations: 'Searching public organizations',
   find_users: 'Looking up people',
+  list_resources: 'Looking up pricings and collections',
+  who_can_access: 'Reviewing who has access',
+  get_member_access: "Reviewing the member's access",
   propose_plan: 'Drafting the plan',
   import_attachment: 'Reading your file',
 };
@@ -268,6 +403,18 @@ class OrbitToolRunner {
 
   private get importService(): OrbitImportService {
     return container.resolve('orbitImportService');
+  }
+
+  private get entityPermissionRepository(): EntityPermissionRepository {
+    return container.resolve('entityPermissionRepository');
+  }
+
+  private get pricingRepository(): PricingRepository {
+    return container.resolve('pricingRepository');
+  }
+
+  private get pricingCollectionRepository(): PricingCollectionRepository {
+    return container.resolve('pricingCollectionRepository');
   }
 
   /** Runs one tool call. Failures come back as data for the model, never as a thrown error. */
@@ -403,6 +550,57 @@ class OrbitToolRunner {
         return { users: results };
       }
 
+      case 'list_resources': {
+        const organizationId = requireId(args.organizationId);
+        const role = await resolveOrgRole(this.organizationService, actor, organizationId);
+        if (!role) throw new Error('PERMISSION ERROR: You do not belong to this organization');
+        const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
+        const matches = (resource: { name: string; slug: string }) =>
+          !query || resource.name.toLowerCase().includes(query) || resource.slug.includes(query);
+
+        const collections = await this.pricingCollectionRepository.findSummariesByOrganization(organizationId);
+        const own = canManage(role) ? [] : await this.entityPermissionRepository.findByUserAndOrganization(actor.id, organizationId);
+        const hasOwnGet = (type: 'pricing' | 'collection', slug: string) =>
+          own.some(record => record.entityType === type && record.entitySlug === slug && record.permissions.GET);
+        const canView = (type: 'pricing' | 'collection', slug: string, isPrivate: boolean) =>
+          canManage(role) || !isPrivate || hasOwnGet(type, slug);
+        const visibleCollections = collections.filter(collection => canView('collection', collection.slug, collection.private));
+
+        const result: Record<string, unknown> = {};
+        if (args.type !== 'collection') {
+          const pricings = (await this.pricingRepository.findSummariesByOrganization(organizationId)).filter(pricing => {
+            // Seeing a collection by permission lets a member see the pricings in it.
+            const collection = collections.find(item => item.id === pricing.collectionId);
+            const throughCollection = !!collection && hasOwnGet('collection', collection.slug);
+            return matches(pricing) && (canView('pricing', pricing.slug, pricing.private) || throughCollection);
+          });
+          result.pricings = pricings.slice(0, MAX_RESOURCES_LISTED).map(pricing => ({
+            name: pricing.name,
+            slug: pricing.slug,
+            private: pricing.private,
+            versions: pricing.versions,
+            collection: collections.find(item => item.id === pricing.collectionId)?.name ?? null,
+          }));
+          result.totalPricings = pricings.length;
+        }
+        if (args.type !== 'pricing') {
+          const listed = visibleCollections.filter(matches);
+          result.collections = listed.slice(0, MAX_RESOURCES_LISTED).map(collection => ({
+            name: collection.name,
+            slug: collection.slug,
+            private: collection.private,
+          }));
+          result.totalCollections = listed.length;
+        }
+        return result;
+      }
+
+      case 'who_can_access':
+        return this.whoCanAccess(actor, args);
+
+      case 'get_member_access':
+        return this.memberAccess(actor, args);
+
       case 'propose_plan': {
         const result = await this.planService.propose(actor, context.conversation.id, args, { source: 'chat' });
         if (!result.ok) return { ok: false, errors: result.errors, warnings: result.warnings };
@@ -441,6 +639,125 @@ class OrbitToolRunner {
       default:
         return { ok: false, error: `Unknown tool "${name}".` };
     }
+  }
+
+  /**
+   * Who can do what with one pricing or collection, by the rules the web app
+   * applies: owners and admins can do everything, anyone can view a public one,
+   * and a plain member needs a permission of their own (or, to view a pricing,
+   * one on its collection). Editing a private one also takes viewing it.
+   */
+  private async whoCanAccess(actor: OrbitActor, args: any) {
+    const organizationId = requireId(args.organizationId);
+    if (!canManage(await resolveOrgRole(this.organizationService, actor, organizationId))) {
+      throw new Error('PERMISSION ERROR: Only an OWNER or ADMIN can review who has access in this organization');
+    }
+    const type = args.resourceType === 'pricing' || args.resourceType === 'collection' ? args.resourceType : null;
+    if (!type) throw new Error('INVALID DATA: resourceType must be pricing or collection');
+    const raw = typeof args.resource === 'string' ? args.resource : '';
+
+    const collections = await this.pricingCollectionRepository.findSummariesByOrganization(organizationId);
+    const pricing = type === 'pricing'
+      ? matchResource(await this.pricingRepository.findSummariesByOrganization(organizationId), raw)
+      : null;
+    const resource = type === 'pricing' ? pricing : matchResource(collections, raw);
+    if (!resource) throw new Error(`NOT FOUND: There is no ${type} called "${raw}" in this organization`);
+    const collection = pricing ? collections.find(item => item.id === pricing.collectionId) ?? null : null;
+
+    const members: any[] = await this.organizationService.listMembers(organizationId);
+    const own = await this.entityPermissionRepository.findByEntity(type, resource.slug, organizationId);
+    const viaCollection = collection
+      ? await this.entityPermissionRepository.findByEntity('collection', collection.slug, organizationId)
+      : [];
+
+    const people: Array<{ username: string; role: string; access: OrbitAccess[]; why: string }> = [];
+    let viewOnlyBecausePublic = 0;
+    for (const member of members) {
+      const userId = String(member._userId);
+      const username = member.user?.username ?? userId;
+      if (member.role === 'OWNER' || member.role === 'ADMIN') {
+        people.push({ username, role: member.role, access: [...FULL_ACCESS], why: `${member.role} of the organization` });
+        continue;
+      }
+      const record = own.find(item => String(item._userId) === userId);
+      const access = new Set<OrbitAccess>(accessOf(record?.permissions));
+      const why: string[] = access.size ? ['own permission'] : [];
+      if (resource.private && !record?.permissions.GET) access.delete('PUT');
+      if (!access.has('GET')) {
+        if (collection && viaCollection.some(item => String(item._userId) === userId && item.permissions.GET)) {
+          access.add('GET');
+          why.push(`can view its collection "${collection.name}"`);
+        } else if (!resource.private) {
+          access.add('GET');
+          why.push('it is public');
+        }
+      }
+      if (access.size === 0) continue;
+      if (access.size === 1 && why.length === 1 && why[0] === 'it is public') {
+        viewOnlyBecausePublic++;
+        continue;
+      }
+      people.push({ username, role: member.role, access: FULL_ACCESS.filter(item => access.has(item)), why: why.join(', ') });
+    }
+
+    return {
+      resource: { type, name: resource.name, private: resource.private, collection: collection?.name ?? null },
+      anyoneSignedInCanView: !resource.private,
+      people: people.slice(0, 200),
+      totalPeople: people.length,
+      otherMembersWhoCanOnlyView: viewOnlyBecausePublic,
+      note: 'Platform administrators can access everything.',
+    };
+  }
+
+  /** Someone's role in an organization and every permission they hold in it. */
+  private async memberAccess(actor: OrbitActor, args: any) {
+    const organizationId = requireId(args.organizationId);
+    const raw = typeof args.user === 'string' ? args.user.trim() : '';
+    const user = !raw
+      ? null
+      : raw.includes('@') && !raw.startsWith('@')
+        ? await this.userRepository.findByEmail(raw)
+        : await this.userRepository.findByUsername(raw.replace(/^@/, ''));
+    if (!user) throw new Error(`NOT FOUND: No SPHERE account matches "${raw}"`);
+    if (user.id !== actor.id && !canManage(await resolveOrgRole(this.organizationService, actor, organizationId))) {
+      throw new Error("PERMISSION ERROR: Only an OWNER or ADMIN can review other people's access in this organization");
+    }
+
+    const role = await this.organizationService.getUserOrgRole(user.id, organizationId);
+    if (!role) return { username: user.username, member: false };
+    if (role === 'OWNER' || role === 'ADMIN') {
+      return {
+        username: user.username,
+        member: true,
+        role,
+        canDo: [
+          'view, edit and delete every pricing and collection, and create new ones',
+          'manage members, invitations and permissions',
+          ...(role === 'OWNER' ? ['move the organization and hand it over to another member'] : []),
+        ],
+      };
+    }
+
+    const records = await this.entityPermissionRepository.findByUserAndOrganization(user.id, organizationId);
+    const createsNew = (type: 'pricing' | 'collection') =>
+      records.some(record => record.entityType === type && record.entitySlug === null && record.permissions.CREATE);
+    return {
+      username: user.username,
+      member: true,
+      role,
+      canViewPublicPricingsAndCollections: true,
+      canCreateNewPricings: createsNew('pricing'),
+      canCreateNewCollections: createsNew('collection'),
+      permissions: records
+        .filter(record => record.entitySlug !== null && accessOf(record.permissions).length > 0)
+        .slice(0, 200)
+        .map(record => ({
+          type: record.entityType,
+          name: (record as any).entityName ?? record.entitySlug,
+          access: accessOf(record.permissions),
+        })),
+    };
   }
 }
 

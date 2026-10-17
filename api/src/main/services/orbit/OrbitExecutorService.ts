@@ -2,6 +2,8 @@ import container from '../../config/container';
 import OrbitPlanRepository from '../../repositories/mongoose/OrbitPlanRepository';
 import OrbitAuditLogRepository from '../../repositories/mongoose/OrbitAuditLogRepository';
 import OrganizationService from '../OrganizationService';
+import PermissionService from '../PermissionService';
+import { SetEntityPermissionInput } from '../../types/models/EntityPermission';
 import {
   LeanOrbitPlan,
   OrbitOperation,
@@ -11,6 +13,7 @@ import {
   OrbitStepStatus,
 } from '../../types/models/Orbit';
 import { canManage, OrbitActor, resolveOrgRole, slugForOrganization } from './orbitAccess';
+import { findPermissionRecord } from './OrbitPlanService';
 
 export type OrbitProgressEvent =
   | { type: 'started'; planId: string; total: number }
@@ -29,6 +32,25 @@ export type OrbitProgressEvent =
 const MEMBERS_PER_BATCH = 100;
 
 /**
+ * A step made of several changes in which some went through and some did not:
+ * it is reported as failed, with what was done kept in its result.
+ */
+class PartialStepError extends Error {
+  constructor(message: string, readonly partialResult: Record<string, any>) {
+    super(message);
+  }
+}
+
+/** Fails the step when any change in it failed, keeping what was applied. */
+function settle(result: Record<string, any>, failed: Array<{ username: string; error: string }>, done: number) {
+  if (failed.length === 0) return result;
+  const detail = failed.slice(0, 5).map(item => `@${item.username}: ${item.error}`).join('; ');
+  const more = failed.length > 5 ? ` and ${failed.length - 5} more` : '';
+  if (done === 0) throw new PartialStepError(`Nothing was applied. ${detail}${more}`, { ...result, failed });
+  throw new PartialStepError(`${failed.length} of ${failed.length + done} changes failed: ${detail}${more}`, { ...result, failed });
+}
+
+/**
  * Applies a confirmed plan exactly as it was confirmed. There is no model here:
  * each step maps to an existing OrganizationService call, made with the user's
  * own permissions, which are checked again at this point because they may have
@@ -43,11 +65,13 @@ class OrbitExecutorService {
   private orbitPlanRepository: OrbitPlanRepository;
   private orbitAuditLogRepository: OrbitAuditLogRepository;
   private organizationService: OrganizationService;
+  private permissionService: PermissionService;
 
   constructor() {
     this.orbitPlanRepository = container.resolve('orbitPlanRepository');
     this.orbitAuditLogRepository = container.resolve('orbitAuditLogRepository');
     this.organizationService = container.resolve('organizationService');
+    this.permissionService = container.resolve('permissionService');
   }
 
   async execute(
@@ -64,7 +88,7 @@ class OrbitExecutorService {
 
     onEvent({ type: 'started', planId: plan.id, total: plan.steps.length });
 
-    const run = new PlanRun(actor, this.organizationService);
+    const run = new PlanRun(actor, this.organizationService, this.permissionService);
     let done = 0;
 
     let finished: LeanOrbitPlan;
@@ -127,7 +151,8 @@ class PlanRun {
 
   constructor(
     private actor: OrbitActor,
-    private organizationService: OrganizationService
+    private organizationService: OrganizationService,
+    private permissionService: PermissionService
   ) {}
 
   async apply(step: OrbitPlanStep): Promise<StepOutcome> {
@@ -143,12 +168,12 @@ class PlanRun {
       return { status: 'DONE', result, error: null };
     } catch (err: any) {
       if (operation.type === 'create_organization') this.unavailableRefs.add(operation.ref);
-      return { status: 'FAILED', result: null, error: String(err?.message ?? err) };
+      return { status: 'FAILED', result: err?.partialResult ?? null, error: String(err?.message ?? err) };
     }
   }
 
   private missingDependency(operation: OrbitOperation): OrbitOrgReference | null {
-    const reference = operation.type === 'create_organization' ? operation.parent : operation.organization;
+    const reference: OrbitOrgReference | null = operation.type === 'create_organization' ? operation.parent : operation.organization;
     if (reference && 'ref' in reference && this.unavailableRefs.has(reference.ref)) return reference;
     return null;
   }
@@ -235,7 +260,126 @@ class PlanRun {
           maxUses: invitation.maxUses ?? null,
         };
       }
+
+      case 'change_member_roles': {
+        const organizationId = await this.targetId(operation.organization, 'change roles in');
+        const changed: Array<{ username: string; from: string; to: string }> = [];
+        const failed: Array<{ username: string; error: string }> = [];
+        for (const change of operation.changes) {
+          try {
+            await this.organizationService.updateMemberRole(change.userId, organizationId, change.to, await this.requester(organizationId));
+            changed.push({ username: change.username, from: change.from, to: change.to });
+          } catch (err: any) {
+            failed.push({ username: change.username, error: String(err?.message ?? err) });
+          }
+        }
+        return settle({ organizationId, changed }, failed, changed.length);
+      }
+
+      case 'remove_members': {
+        const organizationId = await this.targetId(operation.organization, 'remove members from');
+        const removed: string[] = [];
+        const notMembers: string[] = [];
+        const failed: Array<{ username: string; error: string }> = [];
+        for (const member of operation.members) {
+          try {
+            await this.organizationService.removeMember(member.userId, organizationId, await this.requester(organizationId));
+            removed.push(member.username);
+          } catch (err: any) {
+            const message = String(err?.message ?? err);
+            // Someone who already left is where the plan wanted them.
+            if (message.startsWith('NOT FOUND')) notMembers.push(member.username);
+            else failed.push({ username: member.username, error: message });
+          }
+        }
+        return settle({ organizationId, removed, notMembers }, failed, removed.length + notMembers.length);
+      }
+
+      case 'revoke_invitations': {
+        const organizationId = await this.targetId(operation.organization, 'revoke invitations of');
+        // Only invitations of this organization: the service would revoke any id it is given.
+        const pending: any[] = await this.organizationService.listInvitations(organizationId);
+        const pendingIds = new Set(pending.map(invitation => String(invitation.id ?? invitation._id)));
+        const revoked: string[] = [];
+        const alreadyGone: string[] = [];
+        for (const invitation of operation.invitations) {
+          if (!pendingIds.has(invitation.id)) {
+            alreadyGone.push(invitation.code);
+            continue;
+          }
+          await this.organizationService.revokeInvitation(invitation.id);
+          revoked.push(invitation.code);
+        }
+        return { organizationId, revoked, alreadyGone };
+      }
+
+      case 'move_organization': {
+        // Moving checks by itself that the user owns both ends.
+        const organization: any = await this.organizationService.moveToParent(
+          operation.organization.id,
+          operation.to?.id ?? null,
+          { id: this.actor.id, role: this.actor.role }
+        );
+        return { organizationId: operation.organization.id, parentId: organization?._parentId ? String(organization._parentId) : null };
+      }
+
+      case 'transfer_ownership': {
+        // Handing over checks by itself that the user's own seat is the owner's.
+        await this.organizationService.transferOwnership(operation.organization.id, operation.newOwner.userId, {
+          id: this.actor.id,
+          username: this.actor.username,
+          role: this.actor.role,
+        } as any);
+        return { organizationId: operation.organization.id, newOwner: operation.newOwner.username };
+      }
+
+      case 'set_permissions': {
+        const organizationId = await this.targetId(operation.organization, 'manage permissions in');
+        const role = await resolveOrgRole(this.organizationService, this.actor, organizationId);
+        const inputs: SetEntityPermissionInput[] = [];
+        const removals: string[] = [];
+        let alreadyWithout = 0;
+        for (const change of operation.changes) {
+          if (change.access.length > 0) {
+            inputs.push({
+              userId: change.userId,
+              entityType: change.resourceType,
+              entitySlug: change.resourceSlug,
+              permissions: Object.fromEntries(change.access.map(access => [access, true])),
+            });
+            continue;
+          }
+          // Taking access away deletes the record as it is now, not as it was planned.
+          const record = await findPermissionRecord(change.userId, organizationId, change.resourceType, change.resourceSlug);
+          if (record) removals.push(String(record.id));
+          else alreadyWithout++;
+        }
+        const result = await this.permissionService.setPermissionsBulk(
+          organizationId,
+          inputs,
+          removals,
+          this.actor.id,
+          role,
+          this.actor.role === 'ADMIN'
+        );
+        return {
+          organizationId,
+          granted: inputs.length,
+          revoked: result.deleted,
+          alreadyWithout,
+        };
+      }
     }
+  }
+
+  /** The user as the organization services expect the caller of a member change. */
+  private async requester(organizationId: string): Promise<any> {
+    return {
+      id: this.actor.id,
+      username: this.actor.username,
+      role: this.actor.role,
+      orgRole: await resolveOrgRole(this.organizationService, this.actor, organizationId),
+    };
   }
 
   /**

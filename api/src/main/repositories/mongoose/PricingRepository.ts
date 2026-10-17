@@ -334,6 +334,36 @@ class PricingRepository extends RepositoryBase {
     });
   }
 
+  /**
+   * One line per pricing of an organization (its versions share a slug), as of
+   * its latest version: what ORBIT needs to name it and tell who may see it.
+   */
+  async findSummariesByOrganization(organizationId: string): Promise<
+    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number }>
+  > {
+    const rows = await PricingMongoose.aggregate([
+      { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$slug',
+          name: { $first: '$name' },
+          private: { $first: '$private' },
+          collectionId: { $first: '$_collectionId' },
+          versions: { $sum: 1 },
+        },
+      },
+      { $sort: { name: 1 } },
+    ]);
+    return rows.map((row: any) => ({
+      slug: row._id,
+      name: row.name,
+      private: row.private === true,
+      collectionId: row.collectionId ? String(row.collectionId) : null,
+      versions: row.versions,
+    }));
+  }
+
   _processPricingQueryParams(queryParams: PricingIndexQueryParams): {
     filteringPipeline: PipelineStage[];
     sortPipeline: PipelineStage[];

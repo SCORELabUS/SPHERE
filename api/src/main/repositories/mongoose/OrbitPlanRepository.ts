@@ -19,6 +19,7 @@ class OrbitPlanRepository extends RepositoryBase {
     steps: OrbitPlanStep[];
     warnings: string[];
     ignoredRows: OrbitIgnoredRow[];
+    confirmationPhrase?: string | null;
   }): Promise<LeanOrbitPlan> {
     const plan = await new OrbitPlanMongoose({
       _userId: new mongoose.Types.ObjectId(data.userId),
@@ -28,6 +29,7 @@ class OrbitPlanRepository extends RepositoryBase {
       steps: data.steps,
       warnings: data.warnings,
       ignoredRows: data.ignoredRows,
+      confirmationPhrase: data.confirmationPhrase ?? null,
     }).save();
     return plan.toObject() as unknown as LeanOrbitPlan;
   }

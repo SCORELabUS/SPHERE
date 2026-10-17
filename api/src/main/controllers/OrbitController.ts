@@ -174,7 +174,7 @@ class OrbitController {
   async confirmPlan(req: any, res: any) {
     const stream = openEventStream(req, res);
     try {
-      await this.orbitService.confirmPlan(actorOf(req), req.params.planId, stream.send);
+      await this.orbitService.confirmPlan(actorOf(req), req.params.planId, stream.send, req.body?.confirmation);
       stream.end();
     } catch (err: any) {
       const { status, message } = handleError(err);

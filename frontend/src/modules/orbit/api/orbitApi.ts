@@ -158,12 +158,16 @@ export function useOrbitApi() {
     return response.json();
   }, [fetchWithInterceptor]);
 
-  /** Confirms a plan and reports each step as the server applies it. */
+  /**
+   * Confirms a plan and reports each step as the server applies it. Plans that
+   * are hard to undo also need the text the user typed to confirm them.
+   */
   const confirmPlan = useCallback(
-    async (planId: string, onEvent: (event: OrbitProgressEvent) => void): Promise<OrbitPlan> => {
+    async (planId: string, onEvent: (event: OrbitProgressEvent) => void, confirmation?: string): Promise<OrbitPlan> => {
       const response = await fetchWithInterceptor(`${ORBIT_BASE_PATH}/plans/${planId}/confirm`, {
         method: 'POST',
-        headers: { Accept: 'text/event-stream' },
+        headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+        body: JSON.stringify(confirmation === undefined ? {} : { confirmation }),
       });
       if (!response.ok) throw new Error(await readError(response, 'The plan could not be applied'));
 

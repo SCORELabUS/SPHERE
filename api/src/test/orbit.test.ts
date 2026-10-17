@@ -5,7 +5,14 @@ import { shutdownApp, TestApp } from './utils/testApp';
 import { BASE_PATH } from './utils/config/variables';
 import testContainer from './utils/config/testContainer';
 import { createAndLoginUser, deleteTestUser } from './utils/users/userTestUtils';
-import { cleanupOrganization, createMembership, createTestOrganization } from './utils/organizations/organizationTestUtils';
+import {
+  cleanupOrganization,
+  createEntityScopedPermission,
+  createMembership,
+  createTestInvitation,
+  createTestOrganization,
+} from './utils/organizations/organizationTestUtils';
+import { createTestCollection } from './utils/collections/collectionTestUtils';
 import { randomSuffix } from './utils/helpers';
 import {
   answer,
@@ -22,6 +29,8 @@ import OrganizationInvitationMongoose from '../main/repositories/mongoose/models
 import OrbitAuditLogMongoose from '../main/repositories/mongoose/models/OrbitAuditLogMongoose';
 import OrbitPlanMongoose from '../main/repositories/mongoose/models/OrbitPlanMongoose';
 import OrbitConversationMongoose from '../main/repositories/mongoose/models/OrbitConversationMongoose';
+import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
+import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
 import mongoose from 'mongoose';
 import { ORBIT_PLAN_LIMITS } from '../main/services/orbit/OrbitPlanService';
 
@@ -673,6 +682,41 @@ describe('ORBIT assistant API integration', () => {
       expect(String(invitation._organizationId)).toBe(organization.id);
     });
 
+    it('makes the model propose a plan it only wrote out as text', async () => {
+      const { user } = await newUser();
+      const organization = await createTestOrganization(user.token, { displayName: `Linked ${randomSuffix()}` });
+      const conversationId = await startConversation(user.token);
+      const llm = installFakeLlm([
+        answer('**Plan preview**: create an invitation link. Please review the plan card and confirm it.'),
+        toolCall('propose_plan', { summary: 'Crear enlace', invitationLinks: [{ organizationId: organization.id }] }),
+        answer('Revisa el plan y confírmalo en la tarjeta.'),
+      ]);
+
+      const response = await sendMessage(user.token, conversationId, { content: 'Crea un enlace de invitación' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.plan?.steps[0].operation.type).toBe('create_invitation_link');
+      expect(llm.calls[1].messages.at(-1)).toMatchObject({ role: 'system', content: expect.stringContaining('did not call propose_plan') });
+      const answers = response.body.messages.filter((message: any) => message.role === 'assistant');
+      expect(answers.map((message: any) => message.content)).toEqual(['Revisa el plan y confírmalo en la tarjeta.']);
+      expect(answers[0].planId).toBe(response.body.plan.id);
+    });
+
+    it('reminds the model only once and keeps a plain question as the answer', async () => {
+      const { user } = await newUser();
+      const conversationId = await startConversation(user.token);
+      const llm = installFakeLlm([
+        answer('Can you confirm which organization you mean?'),
+        answer('Which organization do you mean?'),
+      ]);
+
+      const response = await sendMessage(user.token, conversationId, { content: 'Crea un enlace' });
+
+      expect(response.body.plan).toBeNull();
+      expect(llm.remaining()).toBe(0);
+      expect(response.body.messages.at(-1).content).toBe('Which organization do you mean?');
+    });
+
     it('replaces the pending plan with a new proposal and lets the user cancel', async () => {
       const { user } = await newUser();
       const { user: stranger } = await newUser();
@@ -802,6 +846,275 @@ describe('ORBIT assistant API integration', () => {
       expect(done.steps[0].error).toMatch(/PERMISSION ERROR/);
       expect(done.steps[1].status).toBe('SKIPPED');
       expect(await OrganizationMongoose.countDocuments({ displayName: `Area ${tag}` })).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // Teams and permissions
+  // =========================================================================
+  describe('teams and permissions', () => {
+    afterEach(async () => {
+      const organizationIds = [...orgsToDelete].map(id => new mongoose.Types.ObjectId(id));
+      await PricingCollectionMongoose.deleteMany({ _organizationId: { $in: organizationIds } });
+      await EntityPermissionMongoose.deleteMany({ _organizationId: { $in: organizationIds } });
+    });
+
+    const confirmWith = (token: string, planId: string, confirmation?: string) =>
+      request(app)
+        .post(`${BASE_PATH}/orbit/plans/${planId}/confirm`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(confirmation === undefined ? {} : { confirmation });
+
+    /** Proposes a plan through the fake model and returns it with the result the model saw. */
+    const propose = async (token: string, args: Record<string, unknown>) => {
+      const conversationId = await startConversation(token);
+      const llm = installFakeLlm([toolCall('propose_plan', { summary: 'Cambios', ...args }), answer('Revísalo.')]);
+      const response = await sendMessage(token, conversationId, { content: 'Hazlo' });
+      expect(response.status).toBe(201);
+      const [result] = toolResultsIn(llm.calls[1]);
+      return { plan: response.body.plan, result };
+    };
+
+    it('changes roles and removes members in bulk, leaving out who is not a member', async () => {
+      const { user: owner } = await newUser();
+      const [promoted, demoted, leaving, stranger] = await Promise.all([newUser(), newUser(), newUser(), newUser()]);
+      const organization = await createTestOrganization(owner.token, { displayName: `Team ${randomSuffix()}` });
+      const child = await createTestOrganization(owner.token, { displayName: `Sub ${randomSuffix()}`, _parentId: organization.id });
+      await createMembership(promoted.user.id, organization.id, 'MEMBER');
+      await createMembership(demoted.user.id, organization.id, 'ADMIN');
+      await createMembership(leaving.user.id, organization.id, 'MEMBER');
+      await createMembership(leaving.user.id, child.id, 'MEMBER');
+
+      const { plan } = await propose(owner.token, {
+        roleChanges: [
+          { organizationId: organization.id, user: promoted.user.username, role: 'ADMIN' },
+          { organizationId: organization.id, user: demoted.user.username, role: 'MEMBER' },
+          { organizationId: organization.id, user: stranger.user.username, role: 'ADMIN' },
+        ],
+        removals: [{ organizationId: organization.id, user: leaving.user.username }],
+      });
+
+      expect(plan.steps.map((step: any) => step.operation.type)).toEqual(['change_member_roles', 'remove_members']);
+      expect(plan.steps[0].operation.changes).toHaveLength(2);
+      expect(plan.warnings.join(' ')).toContain(`@${stranger.user.username} is not a member`);
+      expect(await roleOf(promoted.user.id, organization.id)).toBe('MEMBER');
+
+      const done = parseSse((await confirm(owner.token, plan.id)).text).at(-1)!.data.plan;
+      expect(done.status).toBe('COMPLETED');
+      expect(await roleOf(promoted.user.id, organization.id)).toBe('ADMIN');
+      expect(await roleOf(demoted.user.id, organization.id)).toBe('MEMBER');
+      expect(await roleOf(leaving.user.id, organization.id)).toBeNull();
+      expect(await roleOf(leaving.user.id, child.id)).toBeNull();
+    });
+
+    it('never changes the role of the owner or of the user, and never makes anyone owner', async () => {
+      const { user: owner } = await newUser();
+      const { user: manager } = await newUser();
+      const { user: member } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Guarded ${randomSuffix()}` });
+      await createMembership(manager.id, organization.id, 'ADMIN');
+      await createMembership(member.id, organization.id, 'MEMBER');
+
+      const { plan, result } = await propose(manager.token, {
+        roleChanges: [
+          { organizationId: organization.id, user: owner.username, role: 'MEMBER' },
+          { organizationId: organization.id, user: manager.username, role: 'MEMBER' },
+          { organizationId: organization.id, user: member.username, role: 'OWNER' },
+        ],
+        removals: [{ organizationId: organization.id, user: owner.username }],
+      });
+
+      expect(plan).toBeNull();
+      const errors = result.errors.join(' ');
+      expect(errors).toContain(`@${owner.username} owns`);
+      expect(errors).toContain('your own role');
+      expect(errors).toContain('single owner');
+      expect(errors).toContain('cannot be removed');
+      expect(await roleOf(owner.id, organization.id)).toBe('OWNER');
+    });
+
+    it('revokes invitations of the organization and rejects codes from any other one', async () => {
+      const { user: owner } = await newUser();
+      const { user: other } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Invites ${randomSuffix()}` });
+      const foreign = await createTestOrganization(other.token, { displayName: `Elsewhere ${randomSuffix()}` });
+      const ours = await createTestInvitation(organization.id, owner.id);
+      const theirs = await createTestInvitation(foreign.id, other.id);
+
+      const rejected = await propose(owner.token, {
+        invitationRevocations: [
+          { organizationId: organization.id, code: ours.code },
+          { organizationId: organization.id, code: theirs.code },
+        ],
+      });
+      expect(rejected.plan).toBeNull();
+      expect(rejected.result.errors.join(' ')).toContain(`no pending invitation with the code "${theirs.code}"`);
+
+      const { plan } = await propose(owner.token, {
+        invitationRevocations: [{ organizationId: organization.id, code: `https://sphere.example/orgs/join/${ours.code}` }],
+      });
+      expect(plan.steps[0].operation).toMatchObject({ type: 'revoke_invitations', invitations: [{ id: ours.id, code: ours.code }] });
+
+      const done = parseSse((await confirm(owner.token, plan.id)).text).at(-1)!.data.plan;
+      expect(done.status).toBe('COMPLETED');
+      expect(await OrganizationInvitationMongoose.countDocuments({ code: ours.code })).toBe(0);
+      expect(await OrganizationInvitationMongoose.countDocuments({ code: theirs.code })).toBe(1);
+    });
+
+    it('moves an organization only when the user owns both ends, and never inside itself', async () => {
+      const { user: owner } = await newUser();
+      const { user: other } = await newUser();
+      const left = await createTestOrganization(owner.token, { displayName: `Left ${randomSuffix()}` });
+      const right = await createTestOrganization(owner.token, { displayName: `Right ${randomSuffix()}` });
+      const team = await createTestOrganization(owner.token, { displayName: `Team ${randomSuffix()}`, _parentId: left.id });
+      const squad = await createTestOrganization(owner.token, { displayName: `Squad ${randomSuffix()}`, _parentId: team.id });
+      const foreign = await createTestOrganization(other.token, { displayName: `Foreign ${randomSuffix()}` });
+
+      const refused = await propose(owner.token, {
+        moves: [{ organizationId: team.id, parentId: foreign.id }],
+      });
+      expect(refused.plan).toBeNull();
+      expect(refused.result.errors.join(' ')).toContain('OWNER of');
+
+      const inside = await propose(owner.token, { moves: [{ organizationId: team.id, parentId: squad.id }] });
+      expect(inside.result.errors.join(' ')).toContain('sits inside it');
+
+      const { plan } = await propose(owner.token, { moves: [{ organizationId: team.id, parentId: right.id }] });
+      expect(plan.steps[0].operation).toMatchObject({
+        type: 'move_organization',
+        from: { id: left.id },
+        to: { id: right.id },
+      });
+
+      const done = parseSse((await confirm(owner.token, plan.id)).text).at(-1)!.data.plan;
+      expect(done.status).toBe('COMPLETED');
+      const moved: any = await OrganizationMongoose.findById(team.id).lean();
+      expect(String(moved._parentId)).toBe(right.id);
+      const below: any = await OrganizationMongoose.findById(squad.id).lean();
+      expect(below.ancestors.map(String)).toEqual([right.id, team.id]);
+    });
+
+    it('hands an organization over in a plan of its own, confirmed by typing its name', async () => {
+      const { user: owner } = await newUser();
+      const { user: heir } = await newUser();
+      const name = `Legacy ${randomSuffix()}`;
+      const organization = await createTestOrganization(owner.token, { displayName: name });
+      await createMembership(heir.id, organization.id, 'MEMBER');
+
+      const mixed = await propose(owner.token, {
+        ownershipTransfer: { organizationId: organization.id, user: heir.username },
+        updates: [{ organizationId: organization.id, description: 'Otra' }],
+      });
+      expect(mixed.result.errors.join(' ')).toContain('plan of its own');
+
+      const { plan } = await propose(owner.token, {
+        ownershipTransfer: { organizationId: organization.id, user: heir.email ?? heir.username },
+      });
+      expect(plan.confirmationPhrase).toBe(name);
+      expect(plan.steps[0].operation).toMatchObject({ type: 'transfer_ownership', newOwner: { userId: heir.id } });
+
+      const missing = await confirmWith(owner.token, plan.id);
+      expect(missing.status).toBe(422);
+      const wrong = await confirmWith(owner.token, plan.id, 'Something else');
+      expect(wrong.status).toBe(422);
+      expect(wrong.body.error).toContain(name);
+      expect(await roleOf(owner.id, organization.id)).toBe('OWNER');
+
+      const done = parseSse((await confirmWith(owner.token, plan.id, `  ${name.toLowerCase()} `)).text).at(-1)!.data.plan;
+      expect(done.status).toBe('COMPLETED');
+      expect(await roleOf(heir.id, organization.id)).toBe('OWNER');
+      expect(await roleOf(owner.id, organization.id)).toBe('ADMIN');
+    });
+
+    it('grants, changes and takes away access to collections and to creating pricings', async () => {
+      const { user: owner } = await newUser();
+      const { user: member } = await newUser();
+      const { user: manager } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Access ${randomSuffix()}` });
+      await createMembership(member.id, organization.id, 'MEMBER');
+      await createMembership(manager.id, organization.id, 'ADMIN');
+      const collection = await createTestCollection({ _organizationId: organization.id, private: true, name: `Secret ${randomSuffix()}` });
+
+      const wide = await propose(owner.token, {
+        permissions: [{ organizationId: organization.id, user: member.username, resourceType: 'pricing', access: ['GET'] }],
+      });
+      expect(wide.result.errors.join(' ')).toContain('can only allow CREATE');
+
+      const granted = await propose(owner.token, {
+        permissions: [
+          { organizationId: organization.id, user: member.username, resourceType: 'collection', resource: collection.name, access: ['PUT'] },
+          { organizationId: organization.id, user: member.username, resourceType: 'pricing', access: ['CREATE'] },
+          { organizationId: organization.id, user: manager.username, resourceType: 'collection', resource: collection.slug, access: ['GET'] },
+        ],
+      });
+      const changes = granted.plan.steps[0].operation.changes;
+      expect(changes).toHaveLength(2);
+      expect(changes[0]).toMatchObject({ resourceSlug: collection.slug, access: ['GET', 'PUT'], previous: null });
+      expect(changes[1]).toMatchObject({ resourceSlug: null, access: ['CREATE'] });
+      expect(granted.plan.warnings.join(' ')).toContain('also gets GET');
+      expect(granted.plan.warnings.join(' ')).toContain('already has full access');
+
+      expect(parseSse((await confirm(owner.token, granted.plan.id)).text).at(-1)!.data.plan.status).toBe('COMPLETED');
+      const record: any = await EntityPermissionMongoose.findOne({ _userId: member.id, entitySlug: collection.slug }).lean();
+      expect(record.permissions).toEqual({ GET: true, PUT: true, DELETE: false, CREATE: false });
+      expect(await EntityPermissionMongoose.countDocuments({ _userId: member.id, entityType: 'pricing', entitySlug: null })).toBe(1);
+
+      const changed = await propose(owner.token, {
+        permissions: [
+          { organizationId: organization.id, user: member.username, resourceType: 'collection', resource: collection.name, access: ['GET'] },
+          { organizationId: organization.id, user: member.username, resourceType: 'pricing', access: [] },
+        ],
+      });
+      expect(changed.plan.steps[0].operation.changes[0]).toMatchObject({ access: ['GET'], previous: ['GET', 'PUT'] });
+
+      expect(parseSse((await confirm(owner.token, changed.plan.id)).text).at(-1)!.data.plan.status).toBe('COMPLETED');
+      const after: any = await EntityPermissionMongoose.findOne({ _userId: member.id, entitySlug: collection.slug }).lean();
+      expect(after.permissions).toEqual({ GET: true, PUT: false, DELETE: false, CREATE: false });
+      expect(await EntityPermissionMongoose.countDocuments({ _userId: member.id, entityType: 'pricing', entitySlug: null })).toBe(0);
+    });
+
+    it('reviews who can access a private collection and what a member can do', async () => {
+      const { user: owner } = await newUser();
+      const { user: reader } = await newUser();
+      const { user: outsider } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Review ${randomSuffix()}` });
+      await createMembership(reader.id, organization.id, 'MEMBER');
+      await createMembership(outsider.id, organization.id, 'MEMBER');
+      const collection = await createTestCollection({ _organizationId: organization.id, private: true, name: `Hidden ${randomSuffix()}` });
+      await createEntityScopedPermission(reader.id, organization.id, collection.slug, 'collection', {
+        GET: true, PUT: false, DELETE: false, CREATE: false,
+      });
+
+      const conversationId = await startConversation(owner.token);
+      const llm = installFakeLlm([
+        toolCall('who_can_access', { organizationId: organization.id, resourceType: 'collection', resource: collection.name }),
+        toolCall('get_member_access', { organizationId: organization.id, user: reader.username }),
+        toolCall('list_resources', { organizationId: organization.id, type: 'collection' }),
+        answer('Hecho.'),
+      ]);
+      await sendMessage(owner.token, conversationId, { content: '¿Quién puede ver la colección?' });
+
+      const who = toolResultsIn(llm.calls[1])[0];
+      expect(who.resource).toMatchObject({ type: 'collection', private: true });
+      expect(who.people.map((person: any) => person.username).sort()).toEqual([owner.username, reader.username].sort());
+      expect(who.people.find((person: any) => person.username === reader.username)).toMatchObject({ access: ['GET'] });
+
+      const access = toolResultsIn(llm.calls[2])[1];
+      expect(access).toMatchObject({ role: 'MEMBER', permissions: [{ type: 'collection', access: ['GET'] }] });
+
+      const listed = toolResultsIn(llm.calls[3])[2];
+      expect(listed.collections.map((item: any) => item.slug)).toContain(collection.slug);
+
+      // A plain member sees only what they may, and cannot review others.
+      const memberConversation = await startConversation(outsider.token);
+      const memberLlm = installFakeLlm([
+        toolCall('list_resources', { organizationId: organization.id }),
+        toolCall('who_can_access', { organizationId: organization.id, resourceType: 'collection', resource: collection.slug }),
+        answer('Hecho.'),
+      ]);
+      await sendMessage(outsider.token, memberConversation, { content: '¿Qué hay?' });
+      expect(toolResultsIn(memberLlm.calls[1])[0].collections).toEqual([]);
+      expect(toolResultsIn(memberLlm.calls[2])[1].error).toMatch(/PERMISSION ERROR/);
     });
   });
 

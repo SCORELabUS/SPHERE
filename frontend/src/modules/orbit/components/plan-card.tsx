@@ -19,9 +19,11 @@ interface Props {
   /** Index of the step being applied right now, while the plan runs. */
   runningIndex: number | null;
   busy: boolean;
-  onConfirm: (planId: string) => void;
+  onConfirm: (planId: string, confirmation?: string) => void;
   onCancel: (planId: string) => void;
 }
+
+const normalizePhrase = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
 const STATUS_LABELS: Record<OrbitPlan['status'], string> = {
   PENDING: 'Waiting for your confirmation',
@@ -48,6 +50,10 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
   const counts = countSteps(plan);
   const [showSteps, setShowSteps] = useState(false);
   const [showIgnored, setShowIgnored] = useState(false);
+  const [typed, setTyped] = useState('');
+  const phrase = plan.confirmationPhrase ?? null;
+  // Plans that are hard to undo wait until the user has typed what they name.
+  const phraseMatches = !phrase || normalizePhrase(typed) === normalizePhrase(phrase);
   const inactive = plan.status === 'CANCELLED' || plan.status === 'SUPERSEDED';
   const finished = ['COMPLETED', 'PARTIAL', 'FAILED'].includes(plan.status);
   const progress = plan.status === 'EXECUTING' ? counts.done + counts.failed + counts.skipped : counts.total;
@@ -155,6 +161,25 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
       </Collapsible>
 
       {/* Actions */}
+      {plan.status === 'PENDING' && phrase && (
+        <div className="border-t border-tp-hairline-soft px-4 py-3">
+          <label htmlFor={`confirm-${plan.id}`} className="block text-[12px] text-tp-slate">
+            This cannot be undone by you. Type <strong className="text-tp-ink">{phrase}</strong> to confirm.
+          </label>
+          <input
+            id={`confirm-${plan.id}`}
+            value={typed}
+            onChange={event => setTyped(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && phraseMatches && !busy) onConfirm(plan.id, typed);
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={phrase}
+            className="mt-1.5 w-full rounded-lg border border-tp-hairline bg-tp-canvas px-2.5 py-1.5 text-[13px] text-tp-ink outline-none transition-colors placeholder:text-tp-muted focus:border-tp-primary/60"
+          />
+        </div>
+      )}
       {plan.status === 'PENDING' && (
         <div className="flex items-center justify-end gap-2 border-t border-tp-hairline-soft bg-tp-surface px-4 py-3">
           <button
@@ -167,8 +192,8 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(plan.id)}
-            disabled={busy}
+            onClick={() => onConfirm(plan.id, phrase ? typed : undefined)}
+            disabled={busy || !phraseMatches}
             className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-[12px] font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             Confirm and apply
@@ -227,6 +252,20 @@ function TreeNode({ node, depth }: { node: PlanTreeNode; depth: number }) {
           {node.links.map((link, index) => (
             <InvitationLink key={index} link={link} />
           ))}
+
+          {node.changes.length > 0 && (
+            <ul className="mt-1 space-y-0.5">
+              {node.changes.map((change, index) => (
+                <li
+                  key={index}
+                  className={`flex items-start gap-1 text-[11px] ${change.tone === 'danger' ? 'text-tp-severity-error' : 'text-tp-slate'} ${change.status === 'SKIPPED' ? 'opacity-60' : ''}`}
+                >
+                  {change.status === 'DONE' && <MdCheckCircle size={12} className="mt-[1px] shrink-0 text-tp-severity-success" />}
+                  <span>{change.text}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {node.problems.map(problem => (
             <p key={problem} className="text-[11px] text-tp-severity-error">{problem}</p>

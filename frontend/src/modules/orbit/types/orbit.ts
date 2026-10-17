@@ -11,6 +11,10 @@ export type OrbitStepStatus = 'PENDING' | 'DONE' | 'FAILED' | 'SKIPPED';
 
 export type OrbitOrgReference = { id: string; label: string } | { ref: string; label: string };
 
+export type OrbitAccess = 'GET' | 'PUT' | 'DELETE' | 'CREATE';
+
+type OrbitPerson = { userId: string; username: string; identifier: string };
+
 export type OrbitOperation =
   | {
       type: 'create_organization';
@@ -40,6 +44,46 @@ export type OrbitOperation =
       organization: OrbitOrgReference;
       expiresInDays: number;
       maxUses: number | null;
+    }
+  | {
+      type: 'change_member_roles';
+      organization: { id: string; label: string };
+      changes: Array<OrbitPerson & { from: 'ADMIN' | 'MEMBER'; to: 'ADMIN' | 'MEMBER' }>;
+    }
+  | {
+      type: 'remove_members';
+      organization: { id: string; label: string };
+      members: Array<OrbitPerson & { role: 'ADMIN' | 'MEMBER' }>;
+    }
+  | {
+      type: 'revoke_invitations';
+      organization: { id: string; label: string };
+      invitations: Array<{ id: string; code: string }>;
+    }
+  | {
+      type: 'move_organization';
+      organization: { id: string; label: string };
+      from: { id: string; label: string } | null;
+      to: { id: string; label: string } | null;
+    }
+  | {
+      type: 'transfer_ownership';
+      organization: { id: string; label: string };
+      newOwner: OrbitPerson;
+      subOrganizations: number;
+    }
+  | {
+      type: 'set_permissions';
+      organization: { id: string; label: string };
+      changes: Array<
+        OrbitPerson & {
+          resourceType: 'pricing' | 'collection';
+          resourceSlug: string | null;
+          resourceLabel: string;
+          access: OrbitAccess[];
+          previous: OrbitAccess[] | null;
+        }
+      >;
     };
 
 export interface OrbitPlanStep {
@@ -60,6 +104,8 @@ export interface OrbitPlan {
   steps: OrbitPlanStep[];
   warnings: string[];
   ignoredRows: Array<{ row: number; reason: string }>;
+  /** Set on plans that are hard to undo: the text to type before confirming. */
+  confirmationPhrase?: string | null;
   confirmedAt?: string | null;
   completedAt?: string | null;
   createdAt?: string;

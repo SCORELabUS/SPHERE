@@ -5363,6 +5363,11 @@ paths:
         for any change it proposes a **plan** instead of acting: the plan is returned here with status `PENDING`
         and nothing changes until the user confirms it with `POST /orbit/plans/{planId}/confirm`.
 
+        A plan can create and edit organizations; add, invite, change the role of and remove members; create and
+        revoke invitation links; move organizations within the tree; hand an organization over; and set what members
+        may do with pricings and collections. ORBIT can also review access: who can see or edit a pricing or
+        collection, and what a member can do in an organization.
+
         Files are sent as text: CSV, TSV or plain text, up to 512 KB. Their content is treated as data, never as instructions.
 
         Limited to 30 messages every 10 minutes per user, and to `ORBIT_MAX_MESSAGES_PER_MINUTE` (20 by default)
@@ -5515,6 +5520,10 @@ paths:
 
         Limited to 10 confirmations every 10 minutes per user.
 
+        Plans that are hard to undo, such as handing an organization over, carry a `confirmationPhrase` (the
+        organization's name). They only run when the body repeats it in `confirmation`; case and surrounding
+        spaces are ignored.
+
         **Authentication**: User token
 
         **Permission**: Only the user the plan belongs to.
@@ -5524,6 +5533,17 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/OrbitPlanId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmation:
+                  type: string
+                  description: The plan's `confirmationPhrase`, typed by the user. Required only when the plan has one.
+                  example: ACME
       responses:
         '200':
           description: Progress of the run
@@ -5537,6 +5557,12 @@ paths:
           description: Plan not found
         '409':
           description: The plan is not pending (already run, cancelled or replaced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The plan needs its confirmation phrase and the body did not repeat it
           content:
             application/json:
               schema:
@@ -5675,6 +5701,11 @@ components:
                 type: integer
               reason:
                 type: string
+        confirmationPhrase:
+          type: string
+          nullable: true
+          description: Text the user must type to confirm a plan that is hard to undo (the organization's name when handing it over)
+          example: ACME
         confirmedAt:
           type: string
           format: date-time
@@ -5701,13 +5732,33 @@ components:
         operation:
           type: object
           description: |
-            What the step does. `type` is one of `create_organization`, `update_organization`, `add_members`,
-            `invite_users` or `create_invitation_link`. Organizations are referenced as `{ id, label }` when they
-            exist or `{ ref, label }` when an earlier step of the plan creates them.
+            What the step does. Organizations are referenced as `{ id, label }` when they exist or `{ ref, label }`
+            when an earlier step of the plan creates them. `type` is one of:
+
+            - `create_organization`, `update_organization`, `add_members`, `invite_users`, `create_invitation_link`
+            - `change_member_roles`: `{ organization, changes: [{ userId, username, from, to }] }`
+            - `remove_members`: `{ organization, members: [{ userId, username, role }] }`
+            - `revoke_invitations`: `{ organization, invitations: [{ id, code }] }`
+            - `move_organization`: `{ organization, from, to }`, where `null` is the top level
+            - `transfer_ownership`: `{ organization, newOwner: { userId, username }, subOrganizations }`, always alone in its plan
+            - `set_permissions`: `{ organization, changes: [{ userId, username, resourceType, resourceSlug, resourceLabel, access, previous }] }`,
+              where `access` is what the member ends up with (`GET`, `PUT`, `DELETE`, `CREATE`; empty takes it away)
+              and `resourceSlug` is `null` for organization-wide CREATE
           properties:
             type:
               type: string
-              enum: [create_organization, update_organization, add_members, invite_users, create_invitation_link]
+              enum:
+                - create_organization
+                - update_organization
+                - add_members
+                - invite_users
+                - create_invitation_link
+                - change_member_roles
+                - remove_members
+                - revoke_invitations
+                - move_organization
+                - transfer_ownership
+                - set_permissions
           additionalProperties: true
         result:
           type: object

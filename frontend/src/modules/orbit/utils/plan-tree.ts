@@ -1,4 +1,12 @@
-import type { OrbitOrgReference, OrbitPlan, OrbitStepStatus } from '../types/orbit';
+import type { OrbitAccess, OrbitOrgReference, OrbitPlan, OrbitStepStatus } from '../types/orbit';
+
+/** One change to the people, access or place of an existing organization. */
+export interface PlanChange {
+  text: string;
+  /** Removals, revocations and handovers are shown as what they are: things taken away. */
+  tone: 'normal' | 'danger';
+  status: OrbitStepStatus;
+}
 
 export interface PlanTreeNode {
   key: string;
@@ -12,6 +20,7 @@ export interface PlanTreeNode {
   members: Array<{ username: string; role: 'ADMIN' | 'MEMBER'; status: OrbitStepStatus }>;
   invited: Array<{ username: string; status: OrbitStepStatus }>;
   links: Array<{ expiresInDays: number; maxUses: number | null; code: string | null; status: OrbitStepStatus; error: string | null }>;
+  changes: PlanChange[];
   /** Status of the steps that add members or invite people here, when one failed or was skipped. */
   problems: string[];
   children: PlanTreeNode[];
@@ -42,6 +51,7 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
         members: [],
         invited: [],
         links: [],
+        changes: [],
         problems: [],
         children: [],
       });
@@ -97,6 +107,61 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
           error: step.error ?? null,
         });
         break;
+      case 'change_member_roles':
+        target.changes.push(
+          ...operation.changes.map(change => ({
+            text: `@${change.username}: ${change.from} → ${change.to}`,
+            tone: 'normal' as const,
+            status: step.status,
+          }))
+        );
+        break;
+      case 'remove_members':
+        target.changes.push(
+          ...operation.members.map(member => ({
+            text: `Remove @${member.username} (${member.role}), also from its sub-organizations`,
+            tone: 'danger' as const,
+            status: step.status,
+          }))
+        );
+        break;
+      case 'revoke_invitations':
+        target.changes.push(
+          ...operation.invitations.map(invitation => ({
+            text: `Revoke the invitation link ${invitation.code}`,
+            tone: 'danger' as const,
+            status: step.status,
+          }))
+        );
+        break;
+      case 'move_organization':
+        target.changes.push({
+          text: `${operation.to ? `Move under “${operation.to.label}”` : 'Move to the top level'}${operation.from ? `, out of “${operation.from.label}”` : ''}, with everything below it`,
+          tone: 'normal',
+          status: step.status,
+        });
+        break;
+      case 'transfer_ownership':
+        target.changes.push({
+          text: `Hand over to @${operation.newOwner.username}${operation.subOrganizations ? `, with its ${operation.subOrganizations} sub-organization${operation.subOrganizations === 1 ? '' : 's'}` : ''}. You stay as ADMIN`,
+          tone: 'danger',
+          status: step.status,
+        });
+        break;
+      case 'set_permissions':
+        target.changes.push(
+          ...operation.changes.map(change => {
+            const what = change.resourceSlug ? `${change.resourceType} “${change.resourceLabel}”` : change.resourceLabel;
+            const now = change.access.length ? describeAccess(change.access, !change.resourceSlug) : 'no access';
+            const before = change.previous ? describeAccess(change.previous, !change.resourceSlug) : 'nothing of their own';
+            return {
+              text: `@${change.username} · ${what}: ${now} (was ${before})`,
+              tone: change.access.length ? ('normal' as const) : ('danger' as const),
+              status: step.status,
+            };
+          })
+        );
+        break;
     }
   }
 
@@ -108,6 +173,12 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
     else roots.push(node);
   }
   return roots;
+}
+
+const ACCESS_LABELS: Record<OrbitAccess, string> = { GET: 'view', PUT: 'edit', DELETE: 'delete', CREATE: 'add versions' };
+
+function describeAccess(access: OrbitAccess[], organizationWide: boolean): string {
+  return access.map(item => (organizationWide && item === 'CREATE' ? 'create' : ACCESS_LABELS[item])).join(', ');
 }
 
 export function countSteps(plan: OrbitPlan) {

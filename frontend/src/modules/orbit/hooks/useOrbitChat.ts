@@ -299,7 +299,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   }, [failedSend, send]);
 
   const confirm = useCallback(
-    async (planId: string) => {
+    async (planId: string, confirmation?: string) => {
       setBusyPlanId(planId);
       setRunning({ planId, index: 0 });
       setPlans(prev => ({ ...prev, [planId]: { ...prev[planId], status: 'EXECUTING' } }));
@@ -321,7 +321,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       };
 
       try {
-        const finished = await api.confirmPlan(planId, onEvent);
+        const finished = await api.confirmPlan(planId, onEvent, confirmation);
         setPlans(prev => ({ ...prev, [planId]: finished }));
       } catch (error) {
         appendLocalError((error as Error).message);

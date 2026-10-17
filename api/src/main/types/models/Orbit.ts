@@ -41,6 +41,25 @@ export interface OrbitPlanInvitee {
   identifier: string;
 }
 
+/** What a permission lets a MEMBER do with a pricing or collection: view, edit, delete, create. */
+export type OrbitAccess = 'GET' | 'PUT' | 'DELETE' | 'CREATE';
+
+export type OrbitResourceType = 'pricing' | 'collection';
+
+export interface OrbitPermissionChange {
+  userId: string;
+  username: string;
+  identifier: string;
+  resourceType: OrbitResourceType;
+  /** Slug of the pricing or collection; null for organization-wide access (creating new ones). */
+  resourceSlug: string | null;
+  resourceLabel: string;
+  /** The access the member ends up with; empty takes it away. */
+  access: OrbitAccess[];
+  /** The access they had when the plan was made, or null if they had none. */
+  previous: OrbitAccess[] | null;
+}
+
 export type OrbitOperation =
   | {
       type: 'create_organization';
@@ -70,6 +89,40 @@ export type OrbitOperation =
       organization: OrbitOrgReference;
       expiresInDays: number;
       maxUses: number | null;
+    }
+  | {
+      type: 'change_member_roles';
+      organization: { id: string; label: string };
+      changes: Array<{ userId: string; username: string; identifier: string; from: OrbitAssignableRole; to: OrbitAssignableRole }>;
+    }
+  | {
+      type: 'remove_members';
+      organization: { id: string; label: string };
+      members: Array<{ userId: string; username: string; identifier: string; role: OrbitAssignableRole }>;
+    }
+  | {
+      type: 'revoke_invitations';
+      organization: { id: string; label: string };
+      invitations: Array<{ id: string; code: string }>;
+    }
+  | {
+      type: 'move_organization';
+      organization: { id: string; label: string };
+      /** Where it hangs now and where it will; null is the top level. */
+      from: { id: string; label: string } | null;
+      to: { id: string; label: string } | null;
+    }
+  | {
+      type: 'transfer_ownership';
+      organization: { id: string; label: string };
+      newOwner: { userId: string; username: string; identifier: string };
+      /** Sub-organizations that change hands with it. */
+      subOrganizations: number;
+    }
+  | {
+      type: 'set_permissions';
+      organization: { id: string; label: string };
+      changes: OrbitPermissionChange[];
     };
 
 export type OrbitOperationType = OrbitOperation['type'];
@@ -98,6 +151,11 @@ export interface LeanOrbitPlan {
   steps: OrbitPlanStep[];
   warnings: string[];
   ignoredRows: OrbitIgnoredRow[];
+  /**
+   * For plans that are hard to undo, such as handing an organization over: the
+   * text the user has to type to confirm, so it cannot be confirmed by a slip.
+   */
+  confirmationPhrase?: string | null;
   confirmedAt?: Date | null;
   completedAt?: Date | null;
   createdAt?: Date;
@@ -139,6 +197,21 @@ export interface OrbitPlanDraft {
     organizationRef?: string | null;
     expiresInDays?: number | null;
     maxUses?: number | null;
+  }>;
+  roleChanges?: Array<{ organizationId: string; user: string; role: string }>;
+  removals?: Array<{ organizationId: string; user: string }>;
+  invitationRevocations?: Array<{ organizationId: string; code: string }>;
+  /** parentId null, or left out, moves the organization to the top level. */
+  moves?: Array<{ organizationId: string; parentId?: string | null }>;
+  ownershipTransfer?: { organizationId: string; user: string } | null;
+  permissions?: Array<{
+    organizationId: string;
+    user: string;
+    resourceType: string;
+    /** Slug or name of the pricing or collection; left out for organization-wide access. */
+    resource?: string | null;
+    /** The access to end up with; an empty list takes it all away. */
+    access: string[];
   }>;
 }
 
