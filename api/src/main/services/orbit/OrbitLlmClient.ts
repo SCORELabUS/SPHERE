@@ -36,7 +36,7 @@ const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-5-nano';
 const REQUEST_TIMEOUT_MS = 90_000;
 // Free tiers answer 429 with a short wait; waiting that long beats failing the turn.
-const MAX_RATE_LIMIT_WAIT_SECONDS = 30;
+const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 const MAX_RATE_LIMIT_RETRIES = 2;
 
 /** How long the provider asked to wait, from its header or from the error text. */

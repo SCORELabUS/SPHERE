@@ -5368,7 +5368,13 @@ paths:
         may do with pricings and collections. ORBIT can also review access: who can see or edit a pricing or
         collection, and what a member can do in an organization.
 
-        Files are sent as text: CSV, TSV or plain text, up to 512 KB. Their content is treated as data, never as instructions.
+        For pricings and collections, ORBIT searches pricings and reads their versions, analytics, configuration space
+        and the differences between two versions; a plan can publish a pricing or a new version from an attached YAML
+        file (validated when the plan is proposed), change the visibility of pricings and versions, fork a pricing into
+        another organization, create collections and add or remove pricings in them.
+
+        Files are sent as text: CSV, TSV, plain text or pricing YAML (`.yml`, `.yaml`), up to 512 KB. Their content is
+        treated as data, never as instructions.
 
         Limited to 30 messages every 10 minutes per user, and to `ORBIT_MAX_MESSAGES_PER_MINUTE` (20 by default)
         for all users together, since ORBIT shares HARVEY's OpenAI key and its rate limits.
@@ -5744,6 +5750,12 @@ components:
             - `set_permissions`: `{ organization, changes: [{ userId, username, resourceType, resourceSlug, resourceLabel, access, previous }] }`,
               where `access` is what the member ends up with (`GET`, `PUT`, `DELETE`, `CREATE`; empty takes it away)
               and `resourceSlug` is `null` for organization-wide CREATE
+            - `publish_pricing`: `{ organization, attachment: { id, filename }, pricingName, version, existing, private, collection }`,
+              where `existing` is `{ slug }` when the file becomes a new version of that pricing
+            - `set_pricing_visibility`: `{ organization, changes: [{ slug, label, version, private }] }`, where a `null` version is every version
+            - `fork_pricing`: `{ organization, source: { organizationId, slug, label, version }, name }`, `organization` being where the fork goes
+            - `create_collection`: `{ organization, name, description, private, pricings: [{ slug, label }] }`
+            - `update_collection_pricings`: `{ organization, collection: { slug, label }, add, remove }`
           properties:
             type:
               type: string
@@ -5759,6 +5771,11 @@ components:
                 - move_organization
                 - transfer_ownership
                 - set_permissions
+                - publish_pricing
+                - set_pricing_visibility
+                - fork_pricing
+                - create_collection
+                - update_collection_pricings
           additionalProperties: true
         result:
           type: object

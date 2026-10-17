@@ -48,6 +48,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - A conversation is one MongoDB document (16 MB cap, files included): new messages are refused with 409 past 12 MB, or 4 MB of files.
 - Phase 2 (teams and permissions) adds role changes, removals, invitation revocations, moves, ownership transfer and pricing/collection permissions, plus the `list_resources`, `who_can_access` and `get_member_access` review tools. Role changes and removals act on the direct membership; an inherited role is changed in the parent. Revocations are checked against the organization's own invitations, because `OrganizationService.revokeInvitation` accepts any id.
 - An ownership transfer goes alone in its plan, which stores a `confirmationPhrase` (the organization's name); `POST /orbit/plans/:id/confirm` needs it back in `confirmation`.
+- Phase 3 (pricings and collections) lives in `orbitPricingTools.ts` (read tools), `orbitPricingSteps.ts` (plan validation, with the same `PermissionEngine` checks the API makes) and `orbitPricingDiff.ts` (version comparison). Executed steps call `PricingService`/`PricingCollectionService`, which check permissions again. Pricing YAML is always parsed from text with `retrievePricingFromText`: `retrievePricingFromPath` can rewrite the file it reads.
 - New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
 
 ## API Documentation

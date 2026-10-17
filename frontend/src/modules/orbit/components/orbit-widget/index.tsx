@@ -78,6 +78,17 @@ export default function OrbitWidget() {
 
   // The full page is ORBIT already, so the widget steps aside there.
   const onOrbitPage = location.pathname.startsWith('/orbit');
+
+  // Leaving the ORBIT page while it answers hands the reply over to the widget,
+  // which shows that conversation with its progress instead of losing it.
+  const answeringId = chat.answeringConversationId;
+  useEffect(() => {
+    if (onOrbitPage || !answeringId || answeringId === conversationId) return;
+    changeConversation(answeringId);
+    setWarm(true);
+    // Only when a reply starts or the page is left, not when the user picks another conversation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answeringId, onOrbitPage]);
   // On a page with HARVEY, whose bubble keeps the corner, ORBIT's sits above it.
   const stacked = useAssistantPresence('orbit', 'harvey', !onOrbitPage);
 
@@ -141,9 +152,7 @@ export default function OrbitWidget() {
                 <MdAdd size={17} />
               </HeaderButton>
               <HeaderButton
-                // The reply on its way is followed by this panel; the full page would not see it.
-                label={chat.isSending ? 'Open in full page (once ORBIT has answered)' : 'Open in full page'}
-                disabled={chat.isSending}
+                label="Open in full page"
                 onClick={() => {
                   setOpen(false);
                   navigate(conversationId ? `/orbit?c=${conversationId}` : '/orbit');

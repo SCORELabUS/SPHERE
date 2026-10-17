@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { shutdownApp, TestApp } from './utils/testApp';
@@ -13,6 +15,8 @@ import {
   createTestOrganization,
 } from './utils/organizations/organizationTestUtils';
 import { createTestCollection } from './utils/collections/collectionTestUtils';
+import { createPricingForOrganization } from './utils/pricings/pricingTestUtils';
+import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import { randomSuffix } from './utils/helpers';
 import {
   answer,
@@ -1115,6 +1119,209 @@ describe('ORBIT assistant API integration', () => {
       await sendMessage(outsider.token, memberConversation, { content: '¿Qué hay?' });
       expect(toolResultsIn(memberLlm.calls[1])[0].collections).toEqual([]);
       expect(toolResultsIn(memberLlm.calls[2])[1].error).toMatch(/PERMISSION ERROR/);
+    });
+  });
+
+  // =========================================================================
+  // Pricings and collections
+  // =========================================================================
+  describe('pricings and collections', () => {
+    const template = fs
+      .readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    const pricingYaml = (saasName: string, version: string) =>
+      template.replace(/^saasName:.*$/m, `saasName: ${saasName}`).replace(/^version:.*$/m, `version: "${version}"`);
+
+    afterEach(async () => {
+      const organizationIds = [...orgsToDelete];
+      const objectIds = organizationIds.map(id => new mongoose.Types.ObjectId(id));
+      await PricingMongoose.deleteMany({ _organizationId: { $in: objectIds } });
+      await PricingCollectionMongoose.deleteMany({ _organizationId: { $in: objectIds } });
+      await EntityPermissionMongoose.deleteMany({ _organizationId: { $in: objectIds } });
+      for (const organizationId of organizationIds) {
+        fs.rmSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'uploaded', organizationId), { recursive: true, force: true });
+      }
+    });
+
+    /** Proposes through the fake model, with the file attached when given, and returns what the model saw. */
+    const propose = async (
+      token: string,
+      args: Record<string, unknown> | ((attachmentId: string | null) => Record<string, unknown>),
+      attachment?: { filename: string; content: string }
+    ) => {
+      const conversationId = await startConversation(token);
+      const llm = installFakeLlm([
+        request => {
+          const attachmentId = String(request.messages[0].content).match(/attachmentId "([^"]+)"/)?.[1] ?? null;
+          const draft = typeof args === 'function' ? args(attachmentId) : args;
+          return toolCall('propose_plan', { summary: 'Cambios', ...draft });
+        },
+        answer('Revísalo.'),
+      ]);
+      const response = await sendMessage(token, conversationId, { content: 'Hazlo', ...(attachment ? { attachment } : {}) });
+      expect(response.status).toBe(201);
+      return { plan: response.body.plan, result: toolResultsIn(llm.calls[1])[0] };
+    };
+
+    const ask = async (token: string, calls: Array<[string, Record<string, unknown>]>) => {
+      const conversationId = await startConversation(token);
+      const llm = installFakeLlm([...calls.map(([name, args]) => toolCall(name, args)), answer('Hecho.')]);
+      await sendMessage(token, conversationId, { content: 'Consulta' });
+      return calls.map((_, index) => toolResultsIn(llm.calls[index + 1])[index]);
+    };
+
+    const applied = async (token: string, planId: string) =>
+      parseSse((await confirm(token, planId)).text).at(-1)!.data.plan;
+
+    it('searches pricings, reads their versions and compares two of them, hiding private ones from outsiders', async () => {
+      const { user: owner } = await newUser();
+      const { user: outsider } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Catalog ${randomSuffix()}` });
+      const name = `Orbit_Pricing_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: name, version: '1.0.0', isPrivate: true });
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: name, version: '2.0.0', isPrivate: true });
+
+      const [search, pricing, diff] = await ask(owner.token, [
+        ['search_pricings', { organizationId: organization.id, query: name }],
+        ['get_pricing', { organizationId: organization.id, pricing: name }],
+        ['compare_pricing_versions', { organizationId: organization.id, pricing: name, from: '1.0.0', to: '2.0.0' }],
+      ]);
+      expect(search.pricings.map((item: any) => item.name)).toContain(name);
+      expect(pricing.versions.map((version: any) => version.version).sort()).toEqual(['1.0.0', '2.0.0']);
+      expect(pricing.versions.every((version: any) => version.private)).toBe(true);
+      expect(diff).toMatchObject({ pricing: name, unchanged: true });
+
+      const [hidden] = await ask(outsider.token, [['get_pricing', { organizationId: organization.id, pricing: name }]]);
+      expect(hidden.error).toMatch(/NOT FOUND/);
+    });
+
+    it('publishes a pricing from an attached YAML file, then a new version of it', async () => {
+      const { user: owner } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Publisher ${randomSuffix()}` });
+      const name = `Orbit_Published_${randomSuffix()}`;
+
+      const first = await propose(
+        owner.token,
+        attachmentId => ({ pricingPublications: [{ attachmentId, organizationId: organization.id, private: true }] }),
+        { filename: 'pricing.yml', content: pricingYaml(name, '1.0.0') }
+      );
+      expect(first.plan.steps[0].operation).toMatchObject({ type: 'publish_pricing', pricingName: name, version: '1.0.0', existing: null, private: true });
+      expect(await PricingMongoose.countDocuments({ name })).toBe(0);
+      expect((await applied(owner.token, first.plan.id)).status).toBe('COMPLETED');
+      const stored: any = await PricingMongoose.findOne({ name, _organizationId: organization.id }).lean();
+      expect(stored.private).toBe(true);
+
+      const second = await propose(
+        owner.token,
+        attachmentId => ({ pricingPublications: [{ attachmentId, organizationId: organization.id }] }),
+        { filename: 'pricing-v2.yaml', content: pricingYaml(name, '2.0.0') }
+      );
+      expect(second.plan.steps[0].operation.existing).toEqual({ slug: stored.slug });
+      expect((await applied(owner.token, second.plan.id)).status).toBe('COMPLETED');
+      expect(await PricingMongoose.countDocuments({ slug: stored.slug, _organizationId: organization.id })).toBe(2);
+
+      const again = await propose(
+        owner.token,
+        attachmentId => ({ pricingPublications: [{ attachmentId, organizationId: organization.id }] }),
+        { filename: 'pricing-v2.yaml', content: pricingYaml(name, '2.0.0') }
+      );
+      expect(again.plan).toBeNull();
+      expect(again.result.errors.join(' ')).toContain('already has a version');
+    });
+
+    it('rejects invalid pricing files and members who cannot create pricings', async () => {
+      const { user: owner } = await newUser();
+      const { user: member } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Strict ${randomSuffix()}` });
+      await createMembership(member.id, organization.id, 'MEMBER');
+
+      const broken = await propose(
+        owner.token,
+        attachmentId => ({ pricingPublications: [{ attachmentId, organizationId: organization.id }] }),
+        { filename: 'broken.yml', content: 'saasName: Broken\nplans: [' }
+      );
+      expect(broken.result.errors.join(' ')).toContain('is not a valid pricing');
+
+      const denied = await propose(
+        member.token,
+        attachmentId => ({ pricingPublications: [{ attachmentId, organizationId: organization.id }] }),
+        { filename: 'pricing.yml', content: pricingYaml(`Orbit_Denied_${randomSuffix()}`, '1.0.0') }
+      );
+      expect(denied.result.errors.join(' ')).toContain('cannot create pricings');
+    });
+
+    it('changes the visibility of a whole pricing or of one version', async () => {
+      const { user: owner } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Visible ${randomSuffix()}` });
+      const name = `Orbit_Visibility_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: name, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: name, version: '2.0.0' });
+
+      const hide = await propose(owner.token, { visibilityChanges: [{ organizationId: organization.id, pricing: name, private: true }] });
+      expect((await applied(owner.token, hide.plan.id)).status).toBe('COMPLETED');
+      expect(await PricingMongoose.countDocuments({ name, private: true })).toBe(2);
+
+      const show = await propose(owner.token, {
+        visibilityChanges: [
+          { organizationId: organization.id, pricing: name, version: '2.0.0', private: false },
+          { organizationId: organization.id, pricing: name, version: '1.0.0', private: true },
+        ],
+      });
+      expect(show.plan.steps[0].operation.changes).toHaveLength(1);
+      expect(show.plan.warnings.join(' ')).toContain('already private');
+      expect((await applied(owner.token, show.plan.id)).status).toBe('COMPLETED');
+      const latest: any = await PricingMongoose.findOne({ name, version: '2.0.0' }).lean();
+      expect(latest.private).toBe(false);
+    });
+
+    it('forks a pricing into another organization and refuses a name already taken there', async () => {
+      const { user: owner } = await newUser();
+      const source = await createTestOrganization(owner.token, { displayName: `Source ${randomSuffix()}` });
+      const target = await createTestOrganization(owner.token, { displayName: `Target ${randomSuffix()}` });
+      const name = `Orbit_Fork_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: source.id, serviceName: name, version: '1.0.0' });
+
+      const { plan } = await propose(owner.token, {
+        forks: [{ sourceOrganizationId: source.id, pricing: name, targetOrganizationId: target.id }],
+      });
+      expect(plan.steps[0].operation).toMatchObject({ type: 'fork_pricing', name, source: { version: '1.0.0' } });
+      expect((await applied(owner.token, plan.id)).status).toBe('COMPLETED');
+      const fork: any = await PricingMongoose.findOne({ name, _organizationId: target.id }).lean();
+      expect(String(fork.forkedFrom.organizationId)).toBe(source.id);
+
+      const again = await propose(owner.token, {
+        forks: [{ sourceOrganizationId: source.id, pricing: name, targetOrganizationId: target.id }],
+      });
+      expect(again.result.errors.join(' ')).toContain('give it another name');
+    });
+
+    it('creates a collection with pricings and moves pricings in and out of it', async () => {
+      const { user: owner } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Shelves ${randomSuffix()}` });
+      const first = `Orbit_First_${randomSuffix()}`;
+      const second = `Orbit_Second_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: first, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: second, version: '1.0.0' });
+      const collectionName = `Shelf ${randomSuffix()}`;
+
+      const created = await propose(owner.token, {
+        newCollections: [{ organizationId: organization.id, name: collectionName, pricings: [first, 'ghost'] }],
+      });
+      expect(created.plan.steps[0].operation.pricings).toHaveLength(1);
+      expect(created.plan.warnings.join(' ')).toContain('"ghost"');
+      expect((await applied(owner.token, created.plan.id)).status).toBe('COMPLETED');
+      const collection: any = await PricingCollectionMongoose.findOne({ name: collectionName, _organizationId: organization.id }).lean();
+      expect(String((await PricingMongoose.findOne({ name: first }).lean() as any)._collectionId)).toBe(collection._id.toString());
+
+      const changed = await propose(owner.token, {
+        collectionChanges: [{ organizationId: organization.id, collection: collectionName, add: [second], remove: [first] }],
+      });
+      expect((await applied(owner.token, changed.plan.id)).status).toBe('COMPLETED');
+      expect((await PricingMongoose.findOne({ name: first }).lean() as any)._collectionId ?? null).toBeNull();
+      expect(String((await PricingMongoose.findOne({ name: second }).lean() as any)._collectionId)).toBe(collection._id.toString());
+
+      const [read] = await ask(owner.token, [['get_collection', { organizationId: organization.id, collection: collectionName }]]);
+      expect(read).toMatchObject({ name: collectionName, pricings: [second] });
     });
   });
 

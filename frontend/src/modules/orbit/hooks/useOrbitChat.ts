@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useOrganization } from '../../organization/hooks/useOrganization';
 import { useOrbitApi } from '../api/orbitApi';
 import type {
@@ -8,25 +8,12 @@ import type {
   OrbitPlan,
   OrbitProgressEvent,
 } from '../types/orbit';
+import { mergeTurn, mergeTurnPlans, orbitTurnStore } from './orbitTurnStore';
+
+export type { OrbitActivity, OrbitActivityStep } from './orbitTurnStore';
 
 /** `unavailable`: the server has no AI configured; `unreachable`: the server could not be reached, and is asked again. */
 export type OrbitAvailability = 'idle' | 'loading' | 'available' | 'unavailable' | 'unreachable';
-
-export interface OrbitActivityStep {
-  label: string;
-  startedAt: number;
-  doneAt: number | null;
-}
-
-/** What ORBIT is doing for the message being answered right now. */
-export interface OrbitActivity {
-  /** The conversation being answered; null until a new one has been created. */
-  conversationId: string | null;
-  startedAt: number;
-  steps: OrbitActivityStep[];
-  /** The answer as it is being written. */
-  draft: string;
-}
 
 export interface OrbitPendingAttachment extends OrbitAttachmentInput {
   size: number;
@@ -66,7 +53,9 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   const [conversations, setConversations] = useState<OrbitConversationSummary[]>([]);
   const [messages, setMessages] = useState<OrbitMessage[]>([]);
   const [plans, setPlans] = useState<Record<string, OrbitPlan>>({});
-  const [activity, setActivity] = useState<OrbitActivity | null>(null);
+  // Shared by every view, so the progress of a reply survives leaving the page that asked.
+  const activity = useSyncExternalStore(orbitTurnStore.subscribe, orbitTurnStore.getActivity);
+  const outcome = useSyncExternalStore(orbitTurnStore.subscribe, orbitTurnStore.getOutcome);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
   const [running, setRunning] = useState<{ planId: string; index: number } | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
@@ -82,8 +71,11 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   // The conversation on screen, read by a send that outlives a switch to another one.
   const currentIdRef = useRef(conversationId);
   currentIdRef.current = conversationId;
-  // Bumped when a reply lands, so a load that started before it cannot overwrite it.
   const loadGenerationRef = useRef(0);
+  // Outcomes that ended before this view existed are already in what it loads.
+  const seenOutcomeRef = useRef(orbitTurnStore.getOutcome()?.id ?? 0);
+  // Set while a conversation is being fetched; a reply landing meanwhile is merged into the result.
+  const loadingIdRef = useRef<string | null>(null);
   const isSending = activity !== null;
 
   const refreshConversations = useCallback(() => {
@@ -129,6 +121,8 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     }
     let cancelled = false;
     const generation = ++loadGenerationRef.current;
+    const outcomeBefore = orbitTurnStore.getOutcome()?.id ?? 0;
+    loadingIdRef.current = conversationId;
     // The previous conversation is cleared at once, so the skeleton shows
     // instead of its messages lingering under the newly selected one.
     setMessages([]);
@@ -138,13 +132,22 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       .getConversation(conversationId)
       .then(conversation => {
         if (cancelled || generation !== loadGenerationRef.current) return;
-        setMessages(conversation.messages);
-        setPlans(Object.fromEntries(conversation.plans.map(plan => [plan.id, plan])));
+        let loaded = conversation.messages;
+        let loadedPlans = Object.fromEntries(conversation.plans.map(plan => [plan.id, plan]));
+        // A reply that landed while this was on its way may be missing from it.
+        const latest = orbitTurnStore.getOutcome();
+        if (latest?.ok && latest.id > outcomeBefore && latest.conversationId === conversationId) {
+          loaded = mergeTurn(loaded, latest);
+          loadedPlans = mergeTurnPlans(loadedPlans, latest.plan);
+        }
+        setMessages(loaded);
+        setPlans(loadedPlans);
       })
       .catch(() => {
         if (!cancelled) onConversationChange(null);
       })
       .finally(() => {
+        if (generation === loadGenerationRef.current) loadingIdRef.current = null;
         if (!cancelled) setIsLoadingConversation(false);
       });
     return () => {
@@ -170,7 +173,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
   }, []);
 
   const pushStep = useCallback((label: string) => {
-    setActivity(prev => {
+    orbitTurnStore.setActivity(prev => {
       if (!prev) return prev;
       const last = prev.steps[prev.steps.length - 1];
       if (last && last.label === label && last.doneAt === null) return prev;
@@ -203,7 +206,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       };
       setMessages(prev => [...prev, optimistic]);
       // The first step shows at once, before any byte has left the browser.
-      setActivity({
+      orbitTurnStore.setActivity({
         conversationId,
         startedAt: Date.now(),
         steps: [{ label: attachment ? 'Sending your file' : 'Sending', startedAt: Date.now(), doneAt: null }],
@@ -221,7 +224,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
           const conversation = await api.createConversation();
           targetId = conversation.id;
           skipLoadRef.current = targetId;
-          setActivity(prev => (prev ? { ...prev, conversationId: targetId } : prev));
+          orbitTurnStore.setActivity(prev => (prev ? { ...prev, conversationId: targetId } : prev));
           onConversationChange(targetId);
           currentIdRef.current = targetId;
         }
@@ -245,49 +248,59 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
             } else if (event.type === 'status') {
               pushStep(event.label);
             } else if (event.type === 'delta') {
-              setActivity(prev => (prev ? { ...prev, draft: prev.draft + event.text } : prev));
+              orbitTurnStore.setActivity(prev => (prev ? { ...prev, draft: prev.draft + event.text } : prev));
             } else if (event.type === 'reset') {
-              setActivity(prev => (prev ? { ...prev, draft: '' } : prev));
+              orbitTurnStore.setActivity(prev => (prev ? { ...prev, draft: '' } : prev));
             }
           }
         );
 
-        if (!isOnScreen()) return true;
-        loadGenerationRef.current++;
-        setMessages(prev => {
-          const sentIds = new Set(result.messages.map(message => message.id));
-          return [...prev.filter(message => message.id !== optimistic.id && !sentIds.has(message.id)), ...result.messages];
+        // Shown by whichever view has the conversation open now, which may not be this one.
+        orbitTurnStore.finish({
+          ok: true,
+          conversationId: targetId,
+          messages: result.messages,
+          plan: result.plan,
+          replaces: [optimistic.id],
         });
-        if (result.plan) {
-          const newPlan = result.plan;
-          setPlans(prev => {
-            const next: Record<string, OrbitPlan> = {};
-            for (const [id, plan] of Object.entries(prev)) {
-              next[id] = plan.status === 'PENDING' ? { ...plan, status: 'SUPERSEDED' } : plan;
-            }
-            next[newPlan.id] = newPlan;
-            return next;
-          });
-        }
         return true;
       } catch (error) {
-        // The server takes back a turn that failed, so the message is only on
-        // screen; it stays there, with the error, until it is sent again.
-        if (isOnScreen()) {
-          const message = (error as Error).message;
-          const errorId = appendLocalError(message);
-          // A full conversation would refuse the retry too; the thread offers a new one instead.
-          if (!CONVERSATION_FULL.test(message)) {
-            setFailedSend({ text: trimmed, attachment, messageIds: [optimistic.id, sentMessageId, errorId] });
-          }
-        }
+        orbitTurnStore.finish({
+          ok: false,
+          conversationId: targetId,
+          error: (error as Error).message,
+          userMessage: optimistic,
+          retry: { text: trimmed, attachment },
+          replaces: [optimistic.id, sentMessageId],
+        });
         return false;
-      } finally {
-        setActivity(null);
       }
     },
-    [api, appendLocalError, availability, conversationId, isSending, onConversationChange, pushStep]
+    [api, availability, conversationId, isSending, onConversationChange, pushStep]
   );
+
+  // A finished turn lands in the view showing its conversation, whichever sent it.
+  useEffect(() => {
+    if (!outcome || outcome.id <= seenOutcomeRef.current) return;
+    seenOutcomeRef.current = outcome.id;
+    refreshConversations();
+    if (outcome.conversationId !== currentIdRef.current) return;
+    if (outcome.ok) {
+      // A conversation still being fetched takes the reply in when it arrives.
+      if (loadingIdRef.current === outcome.conversationId) return;
+      setMessages(prev => mergeTurn(prev, outcome));
+      setPlans(prev => mergeTurnPlans(prev, outcome.plan));
+      return;
+    }
+    // The server takes back a turn that failed, so the message is only on
+    // screen; it stays there, with the error, until it is sent again.
+    setMessages(prev => (prev.some(message => outcome.replaces.includes(message.id)) ? prev : [...prev, outcome.userMessage]));
+    const errorId = appendLocalError(outcome.error);
+    // A full conversation would refuse the retry too; the thread offers a new one instead.
+    if (!CONVERSATION_FULL.test(outcome.error)) {
+      setFailedSend({ ...outcome.retry, messageIds: [...outcome.replaces, outcome.userMessage.id, errorId] });
+    }
+  }, [appendLocalError, outcome, refreshConversations]);
 
   /** Sends the message that failed again, without the user retyping it. */
   const retry = useCallback(() => {

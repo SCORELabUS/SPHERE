@@ -148,6 +148,50 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
           status: step.status,
         });
         break;
+      case 'publish_pricing':
+        target.changes.push({
+          text: `${operation.existing ? `New version ${operation.version} of` : 'Publish'} “${operation.pricingName}”${operation.existing ? '' : ` ${operation.version}`} from ${operation.attachment.filename}, ${operation.private ? 'private' : 'public'}${operation.collection ? `, in the collection “${operation.collection.label}”` : ''}`,
+          tone: 'normal',
+          status: step.status,
+        });
+        break;
+      case 'set_pricing_visibility':
+        target.changes.push(
+          ...operation.changes.map(change => ({
+            text: `Make “${change.label}”${change.version ? ` ${change.version}` : ', every version,'} ${change.private ? 'private' : 'public'}`,
+            tone: 'normal' as const,
+            status: step.status,
+          }))
+        );
+        break;
+      case 'fork_pricing':
+        target.changes.push({
+          text: `Fork “${operation.source.label}” ${operation.source.version} from “${operation.source.organizationLabel}” as “${operation.name}”`,
+          tone: 'normal',
+          status: step.status,
+        });
+        break;
+      case 'create_collection':
+        target.changes.push({
+          text: `New ${operation.private ? 'private' : 'public'} collection “${operation.name}”${operation.pricings.length ? ` with ${operation.pricings.map(pricing => pricing.label).join(', ')}` : ''}`,
+          tone: 'normal',
+          status: step.status,
+        });
+        break;
+      case 'update_collection_pricings':
+        target.changes.push(
+          ...operation.add.map(pricing => ({
+            text: `Add “${pricing.label}” to the collection “${operation.collection.label}”`,
+            tone: 'normal' as const,
+            status: step.status,
+          })),
+          ...operation.remove.map(pricing => ({
+            text: `Take “${pricing.label}” out of the collection “${operation.collection.label}”`,
+            tone: 'danger' as const,
+            status: step.status,
+          }))
+        );
+        break;
       case 'set_permissions':
         target.changes.push(
           ...operation.changes.map(change => {

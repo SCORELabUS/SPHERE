@@ -1,6 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import container from '../../config/container';
 import OrbitPlanRepository from '../../repositories/mongoose/OrbitPlanRepository';
 import OrbitAuditLogRepository from '../../repositories/mongoose/OrbitAuditLogRepository';
+import OrbitConversationRepository from '../../repositories/mongoose/OrbitConversationRepository';
+import PricingService from '../PricingService';
+import PricingCollectionService from '../PricingCollectionService';
+import { sanitizePathSegment } from '../../utils/path-utils';
 import OrganizationService from '../OrganizationService';
 import PermissionService from '../PermissionService';
 import { SetEntityPermissionInput } from '../../types/models/EntityPermission';
@@ -14,6 +20,7 @@ import {
 } from '../../types/models/Orbit';
 import { canManage, OrbitActor, resolveOrgRole, slugForOrganization } from './orbitAccess';
 import { findPermissionRecord } from './OrbitPlanService';
+import { requesterOf } from './orbitPricingTools';
 
 export type OrbitProgressEvent =
   | { type: 'started'; planId: string; total: number }
@@ -39,6 +46,27 @@ class PartialStepError extends Error {
   constructor(message: string, readonly partialResult: Record<string, any>) {
     super(message);
   }
+}
+
+/**
+ * Saves a pricing file where the upload endpoint would, under the organization
+ * and the pricing. The name is made unique so it can never overwrite the file
+ * of a version that is already published.
+ */
+function writePricingUpload(organizationId: string, pricing: string, version: string, content: string): string {
+  const directory = path.resolve(
+    process.cwd(),
+    'public',
+    'static',
+    'pricings',
+    'uploaded',
+    sanitizePathSegment(organizationId, 'unknown-organization'),
+    sanitizePathSegment(pricing, 'unknown-saas')
+  );
+  fs.mkdirSync(directory, { recursive: true });
+  const file = path.resolve(directory, `${sanitizePathSegment(version, '0.0.0')}-orbit-${Date.now()}.yml`);
+  fs.writeFileSync(file, content, 'utf8');
+  return file;
 }
 
 /** Fails the step when any change in it failed, keeping what was applied. */
@@ -88,7 +116,11 @@ class OrbitExecutorService {
 
     onEvent({ type: 'started', planId: plan.id, total: plan.steps.length });
 
-    const run = new PlanRun(actor, this.organizationService, this.permissionService);
+    const run = new PlanRun(actor, this.organizationService, this.permissionService, async attachmentId => {
+      const conversations: OrbitConversationRepository = container.resolve('orbitConversationRepository');
+      const conversation = await conversations.findByIdForUser(plan.conversationId, actor.id);
+      return conversation?.attachments.find(attachment => attachment.id === attachmentId)?.content ?? null;
+    });
     let done = 0;
 
     let finished: LeanOrbitPlan;
@@ -152,8 +184,17 @@ class PlanRun {
   constructor(
     private actor: OrbitActor,
     private organizationService: OrganizationService,
-    private permissionService: PermissionService
+    private permissionService: PermissionService,
+    private attachmentContent: (attachmentId: string) => Promise<string | null>
   ) {}
+
+  private get pricingService(): PricingService {
+    return container.resolve('pricingService');
+  }
+
+  private get collectionService(): PricingCollectionService {
+    return container.resolve('pricingCollectionService');
+  }
 
   async apply(step: OrbitPlanStep): Promise<StepOutcome> {
     const operation = step.operation;
@@ -368,6 +409,99 @@ class PlanRun {
           revoked: result.deleted,
           alreadyWithout,
         };
+      }
+
+      // The pricing services check the user's permissions on every call, so
+      // these steps only hand them the change as it was confirmed.
+      case 'publish_pricing': {
+        const content = await this.attachmentContent(operation.attachment.id);
+        if (content === null) throw new Error(`NOT FOUND: The file ${operation.attachment.filename} is no longer in the conversation`);
+        const file = writePricingUpload(operation.organization.id, operation.existing?.slug ?? operation.pricingName, operation.version, content);
+        try {
+          const user = requesterOf(this.actor);
+          const created: any = operation.existing
+            ? await this.pricingService.createVersion({ path: file }, operation.organization.id, operation.existing.slug, operation.private, user, operation.collection?.id)
+            : await this.pricingService.create({ path: file }, operation.organization.id, operation.private, user, operation.collection?.id, operation.pricingName);
+          const pricing = created?.[0] ?? created;
+          return { organizationId: operation.organization.id, name: pricing?.name, slug: pricing?.slug, version: pricing?.version ?? operation.version };
+        } catch (err) {
+          fs.rmSync(file, { force: true });
+          throw err;
+        }
+      }
+
+      case 'set_pricing_visibility': {
+        const user = requesterOf(this.actor);
+        const changed: string[] = [];
+        const failed: Array<{ username: string; error: string }> = [];
+        for (const change of operation.changes) {
+          const label = change.version ? `${change.label} ${change.version}` : change.label;
+          try {
+            if (change.version) {
+              await this.pricingService.updateVersionVisibility(change.slug, change.version, operation.organization.id, user, change.private);
+            } else {
+              await this.pricingService.update(change.slug, operation.organization.id, user, { private: change.private });
+            }
+            changed.push(label);
+          } catch (err: any) {
+            failed.push({ username: label, error: String(err?.message ?? err) });
+          }
+        }
+        return settle({ organizationId: operation.organization.id, changed }, failed, changed.length);
+      }
+
+      case 'fork_pricing': {
+        const result: any = await this.pricingService.forkPricing(
+          operation.source.organizationId,
+          operation.source.slug,
+          operation.source.version,
+          operation.organization.id,
+          requesterOf(this.actor),
+          { name: operation.name }
+        );
+        const pricing = Array.isArray(result) ? result[0] : result;
+        if (pricing?.nameTaken) throw new Error(`CONFLICT: "${operation.organization.label}" already has a pricing called "${operation.name}"`);
+        return { organizationId: operation.organization.id, name: pricing?.name, slug: pricing?.slug };
+      }
+
+      case 'create_collection': {
+        const collection: any = await this.collectionService.create(
+          {
+            name: operation.name,
+            description: operation.description ?? undefined,
+            private: operation.private,
+            pricings: operation.pricings.map(pricing => pricing.slug),
+          },
+          operation.organization.id,
+          requesterOf(this.actor)
+        );
+        if (!collection) throw new Error(`The collection "${operation.name}" could not be created`);
+        return { organizationId: operation.organization.id, name: collection.name, slug: collection.slug, pricings: operation.pricings.length };
+      }
+
+      case 'update_collection_pricings': {
+        const user = requesterOf(this.actor);
+        const organizationId = operation.organization.id;
+        const added: string[] = [];
+        const removed: string[] = [];
+        const failed: Array<{ username: string; error: string }> = [];
+        for (const pricing of operation.add) {
+          try {
+            await this.pricingService.addPricingToCollection(pricing.slug, organizationId, operation.collection.slug, user);
+            added.push(pricing.label);
+          } catch (err: any) {
+            failed.push({ username: pricing.label, error: String(err?.message ?? err) });
+          }
+        }
+        for (const pricing of operation.remove) {
+          try {
+            await this.collectionService.removePricingFromCollection(pricing.slug, organizationId, operation.collection.slug, user);
+            removed.push(pricing.label);
+          } catch (err: any) {
+            failed.push({ username: pricing.label, error: String(err?.message ?? err) });
+          }
+        }
+        return settle({ organizationId, collection: operation.collection.label, added, removed }, failed, added.length + removed.length);
       }
     }
   }

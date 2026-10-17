@@ -123,7 +123,54 @@ export type OrbitOperation =
       type: 'set_permissions';
       organization: { id: string; label: string };
       changes: OrbitPermissionChange[];
+    }
+  | {
+      type: 'publish_pricing';
+      organization: { id: string; label: string };
+      attachment: { id: string; filename: string };
+      /** The name the pricing is stored under, and its version as the file states it. */
+      pricingName: string;
+      version: string;
+      /** The pricing it becomes a new version of, or null for a new pricing. */
+      existing: { slug: string } | null;
+      private: boolean;
+      collection: { id: string; slug: string; label: string } | null;
+    }
+  | {
+      type: 'set_pricing_visibility';
+      organization: { id: string; label: string };
+      changes: OrbitVisibilityChange[];
+    }
+  | {
+      type: 'fork_pricing';
+      /** Where the fork is created. */
+      organization: { id: string; label: string };
+      source: { organizationId: string; organizationLabel: string; slug: string; label: string; version: string };
+      name: string;
+    }
+  | {
+      type: 'create_collection';
+      organization: { id: string; label: string };
+      name: string;
+      description: string | null;
+      private: boolean;
+      pricings: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'update_collection_pricings';
+      organization: { id: string; label: string };
+      collection: { slug: string; label: string };
+      add: Array<{ slug: string; label: string }>;
+      remove: Array<{ slug: string; label: string }>;
     };
+
+export interface OrbitVisibilityChange {
+  slug: string;
+  label: string;
+  /** One version, or null for every version of the pricing. */
+  version: string | null;
+  private: boolean;
+}
 
 export type OrbitOperationType = OrbitOperation['type'];
 
@@ -213,6 +260,30 @@ export interface OrbitPlanDraft {
     /** The access to end up with; an empty list takes it all away. */
     access: string[];
   }>;
+  /** Pricing YAML files attached to the conversation, to publish as a pricing or a new version. */
+  pricingPublications?: Array<{
+    attachmentId: string;
+    organizationId: string;
+    private?: boolean | null;
+    collection?: string | null;
+    name?: string | null;
+  }>;
+  visibilityChanges?: Array<{ organizationId: string; pricing: string; version?: string | null; private: boolean }>;
+  forks?: Array<{
+    sourceOrganizationId: string;
+    pricing: string;
+    version?: string | null;
+    targetOrganizationId: string;
+    name?: string | null;
+  }>;
+  newCollections?: Array<{
+    organizationId: string;
+    name: string;
+    description?: string | null;
+    private?: boolean | null;
+    pricings?: string[];
+  }>;
+  collectionChanges?: Array<{ organizationId: string; collection: string; add?: string[]; remove?: string[] }>;
 }
 
 export type OrbitMessageRole = 'user' | 'assistant' | 'tool';

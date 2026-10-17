@@ -72,7 +72,7 @@ export default function OrbitWelcome({ onPick, onImport, disabled, compact = fal
           <span className="text-left">
             <span className="block text-[13px] font-medium text-tp-slate group-hover:text-tp-ink">Import from a file</span>
             <span className="block text-[11px] text-tp-stone">
-              A CSV, TSV or text file with your organizations and people, in whatever layout you have
+              A CSV, TSV or text file with your organizations and people, or a pricing YAML to publish
             </span>
           </span>
         </button>

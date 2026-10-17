@@ -10,6 +10,7 @@ import { LlmTool } from './OrbitLlmClient';
 import OrbitPlanService, { accessOf, matchResource } from './OrbitPlanService';
 import OrbitImportService from './OrbitImportService';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
+import { PRICING_TOOL_LABELS, PRICING_TOOLS, runPricingTool } from './orbitPricingTools';
 
 const MAX_TOOL_RESULT_CHARS = 12_000;
 const MAX_LOOKUP_IDENTIFIERS = 50;
@@ -168,6 +169,7 @@ export const ORBIT_TOOLS: LlmTool[] = [
       },
     },
   },
+  ...PRICING_TOOLS,
   {
     type: 'function',
     function: {
@@ -326,6 +328,84 @@ export const ORBIT_TOOLS: LlmTool[] = [
               additionalProperties: false,
             },
           },
+          pricingPublications: {
+            type: 'array',
+            description: 'Pricing YAML files attached to this conversation to publish. A file whose pricing already exists in the organization becomes a new version of it.',
+            items: {
+              type: 'object',
+              properties: {
+                attachmentId: { type: 'string' },
+                organizationId: { type: 'string' },
+                private: { type: 'boolean', description: 'Default false (public).' },
+                collection: { type: 'string', description: 'Name or slug of an existing collection to put it in.' },
+                name: { type: 'string', description: 'Name to publish it under, if not the saasName of the file.' },
+              },
+              required: ['attachmentId', 'organizationId'],
+              additionalProperties: false,
+            },
+          },
+          visibilityChanges: {
+            type: 'array',
+            description: 'Make pricings public or private: one version, or every version when version is omitted.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                pricing: { type: 'string', description: 'Name or slug of the pricing.' },
+                version: { type: 'string' },
+                private: { type: 'boolean' },
+              },
+              required: ['organizationId', 'pricing', 'private'],
+              additionalProperties: false,
+            },
+          },
+          forks: {
+            type: 'array',
+            description: 'Copy a version of a pricing into another organization as a new pricing.',
+            items: {
+              type: 'object',
+              properties: {
+                sourceOrganizationId: { type: 'string' },
+                pricing: { type: 'string', description: 'Name or slug of the pricing to fork.' },
+                version: { type: 'string', description: 'Omit for the latest one.' },
+                targetOrganizationId: { type: 'string' },
+                name: { type: 'string', description: 'Name for the fork, if not the original one.' },
+              },
+              required: ['sourceOrganizationId', 'pricing', 'targetOrganizationId'],
+              additionalProperties: false,
+            },
+          },
+          newCollections: {
+            type: 'array',
+            description: 'Collections to create, optionally with existing pricings of the organization in them.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                name: { type: 'string' },
+                description: { type: 'string' },
+                private: { type: 'boolean' },
+                pricings: { type: 'array', items: { type: 'string' }, description: 'Names or slugs of pricings.' },
+              },
+              required: ['organizationId', 'name'],
+              additionalProperties: false,
+            },
+          },
+          collectionChanges: {
+            type: 'array',
+            description: 'Pricings to add to or remove from an existing collection.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                collection: { type: 'string', description: 'Name or slug of the collection.' },
+                add: { type: 'array', items: { type: 'string' } },
+                remove: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['organizationId', 'collection'],
+              additionalProperties: false,
+            },
+          },
         },
         required: ['summary'],
         additionalProperties: false,
@@ -338,6 +418,7 @@ export const ORBIT_TOOLS: LlmTool[] = [
       name: 'import_attachment',
       description:
         'Reads a file the user attached (CSV, TSV or text) describing organizations and/or members, and proposes a plan from it. ' +
+        'Not for pricing YAML files: publish those with pricingPublications in propose_plan. ' +
         'Code interprets every row and reports ignored ones. Call it again with instructions to redo the interpretation.',
       parameters: {
         type: 'object',
@@ -379,6 +460,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_resources: 'Looking up pricings and collections',
   who_can_access: 'Reviewing who has access',
   get_member_access: "Reviewing the member's access",
+  ...PRICING_TOOL_LABELS,
   propose_plan: 'Drafting the plan',
   import_attachment: 'Reading your file',
 };
@@ -602,7 +684,10 @@ class OrbitToolRunner {
         return this.memberAccess(actor, args);
 
       case 'propose_plan': {
-        const result = await this.planService.propose(actor, context.conversation.id, args, { source: 'chat' });
+        const result = await this.planService.propose(actor, context.conversation.id, args, {
+          source: 'chat',
+          attachments: context.conversation.attachments,
+        });
         if (!result.ok) return { ok: false, errors: result.errors, warnings: result.warnings };
         context.onPlan(result.plan);
         return { ok: true, plan: describePlan(result.plan) };
@@ -636,8 +721,10 @@ class OrbitToolRunner {
         };
       }
 
-      default:
-        return { ok: false, error: `Unknown tool "${name}".` };
+      default: {
+        const result = await runPricingTool(name, args, actor);
+        return result === undefined ? { ok: false, error: `Unknown tool "${name}".` } : result;
+      }
     }
   }
 

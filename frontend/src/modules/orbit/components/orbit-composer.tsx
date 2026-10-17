@@ -3,7 +3,7 @@ import { MdAttachFile, MdClose, MdInsertDriveFile } from 'react-icons/md';
 import HarveyChatInput from '../../core/components/harvey-chat/harvey-chat-input';
 import type { OrbitChat, OrbitPendingAttachment } from '../hooks/useOrbitChat';
 
-const ACCEPTED_EXTENSIONS = ['.csv', '.tsv', '.txt'];
+const ACCEPTED_EXTENSIONS = ['.csv', '.tsv', '.txt', '.yml', '.yaml'];
 const MAX_FILE_BYTES = 512 * 1024;
 
 export interface OrbitComposerHandle {
@@ -19,7 +19,7 @@ interface Props {
 
 /** The message box, with the file a message can carry. */
 const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitComposer(
-  { chat, placeholder = 'Ask ORBIT to create or review organizations...' },
+  { chat, placeholder = 'Ask ORBIT about your organizations, teams or pricings...' },
   ref
 ) {
   const [value, setValue] = useState('');
@@ -111,8 +111,8 @@ const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitCompo
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || chat.isSending}
-            aria-label="Attach a CSV, TSV or text file"
-            title="Attach a CSV, TSV or text file"
+            aria-label="Attach a CSV, TSV, text or pricing YAML file"
+            title="Attach a CSV, TSV, text or pricing YAML file"
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-tp-steel transition-colors hover:bg-tp-hairline-soft hover:text-tp-ink disabled:cursor-not-allowed disabled:opacity-40"
           >
             <MdAttachFile size={18} />

@@ -15,6 +15,7 @@ import {
   LeanOrbitPlan,
   OrbitAccess,
   OrbitAssignableRole,
+  OrbitAttachment,
   OrbitIgnoredRow,
   OrbitOperation,
   OrbitOrgReference,
@@ -27,6 +28,7 @@ import {
   OrbitResourceType,
 } from '../../types/models/Orbit';
 import { canManage, isRenameAllowed, OrbitActor, resolveOrgRole } from './orbitAccess';
+import { ORBIT_PRICING_LIMITS, PricingStepBuilder } from './orbitPricingSteps';
 
 /**
  * Hard limits on what ORBIT may do, enforced here by code whatever the model
@@ -128,9 +130,15 @@ class OrbitPlanService {
     actor: OrbitActor,
     conversationId: string,
     draft: OrbitPlanDraft,
-    options: { source?: OrbitPlanSource; ignoredRows?: OrbitIgnoredRow[]; warnings?: string[] } = {}
+    options: {
+      source?: OrbitPlanSource;
+      ignoredRows?: OrbitIgnoredRow[];
+      warnings?: string[];
+      /** The conversation's files, for pricings published from one of them. */
+      attachments?: OrbitAttachment[];
+    } = {}
   ): Promise<OrbitProposeResult> {
-    const built = await this.build(actor, draft, options.warnings ?? []);
+    const built = await this.build(actor, draft, options.warnings ?? [], options.attachments ?? []);
     if (!built.ok) return built;
 
     await this.orbitPlanRepository.supersedePending(conversationId);
@@ -150,7 +158,8 @@ class OrbitPlanService {
   async build(
     actor: OrbitActor,
     draft: OrbitPlanDraft,
-    initialWarnings: string[] = []
+    initialWarnings: string[] = [],
+    attachments: OrbitAttachment[] = []
   ): Promise<OrbitPlanBuildResult> {
     const context = new BuildContext(actor, {
       organizationRepository: this.organizationRepository,
@@ -174,6 +183,15 @@ class OrbitPlanService {
     const moves = asArray(draft.moves);
     const permissions = asArray(draft.permissions);
     const transfer = draft.ownershipTransfer ?? null;
+    const publications = asArray(draft.pricingPublications);
+    const visibilityChanges = asArray(draft.visibilityChanges);
+    const forks = asArray(draft.forks);
+    const newCollections = asArray(draft.newCollections);
+    const collectionChanges = asArray(draft.collectionChanges);
+    const collectionPricingChanges = collectionChanges.reduce(
+      (total, change) => total + asArray(change?.add).length + asArray(change?.remove).length,
+      0
+    );
 
     const inviteeCount = invitations.reduce((total, invitation) => total + asArray(invitation?.users).length, 0);
     if (organizations.length > ORBIT_PLAN_LIMITS.organizations) {
@@ -206,13 +224,29 @@ class OrbitPlanService {
     if (permissions.length > ORBIT_PLAN_LIMITS.permissionChanges) {
       errors.push(`A plan can change at most ${ORBIT_PLAN_LIMITS.permissionChanges} permissions (got ${permissions.length}).`);
     }
+    if (publications.length > ORBIT_PRICING_LIMITS.publications) {
+      errors.push(`A plan can publish at most ${ORBIT_PRICING_LIMITS.publications} pricing files (got ${publications.length}).`);
+    }
+    if (visibilityChanges.length > ORBIT_PRICING_LIMITS.visibilityChanges) {
+      errors.push(`A plan can change the visibility of at most ${ORBIT_PRICING_LIMITS.visibilityChanges} pricings or versions (got ${visibilityChanges.length}).`);
+    }
+    if (forks.length > ORBIT_PRICING_LIMITS.forks) {
+      errors.push(`A plan can fork at most ${ORBIT_PRICING_LIMITS.forks} pricings (got ${forks.length}).`);
+    }
+    if (newCollections.length > ORBIT_PRICING_LIMITS.newCollections) {
+      errors.push(`A plan can create at most ${ORBIT_PRICING_LIMITS.newCollections} collections (got ${newCollections.length}).`);
+    }
+    if (collectionPricingChanges > ORBIT_PRICING_LIMITS.collectionPricingChanges) {
+      errors.push(`A plan can add or remove at most ${ORBIT_PRICING_LIMITS.collectionPricingChanges} pricings in collections (got ${collectionPricingChanges}).`);
+    }
     if (errors.length > 0) return { ok: false, errors, warnings };
 
     // Handing an organization over cannot be undone by the one who gave it away,
     // so it is never mixed with anything else and is confirmed by typing its name.
     if (transfer) {
       const others = organizations.length + updates.length + members.length + invitations.length + links.length +
-        roleChanges.length + removals.length + revocations.length + moves.length + permissions.length;
+        roleChanges.length + removals.length + revocations.length + moves.length + permissions.length +
+        publications.length + visibilityChanges.length + forks.length + newCollections.length + collectionChanges.length;
       if (others > 0) {
         return {
           ok: false,
@@ -258,6 +292,12 @@ class OrbitPlanService {
     const revocationSteps = await this.buildRevocationSteps(context, revocations, errors);
     const moveSteps = await this.buildMoveSteps(context, moves, errors, warnings);
     checkRemovalConflicts(roleSteps, permissionSteps, removalSteps, errors);
+    const pricingSteps = new PricingStepBuilder(context, attachments);
+    const publicationSteps = await pricingSteps.publications(publications, errors, warnings);
+    const forkSteps = await pricingSteps.forks(forks, errors);
+    const newCollectionSteps = await pricingSteps.newCollections(newCollections, errors, warnings);
+    const collectionSteps = await pricingSteps.collectionChanges(collectionChanges, errors, warnings);
+    const visibilitySteps = await pricingSteps.visibility(visibilityChanges, errors, warnings);
 
     if (errors.length > 0) return { ok: false, errors: unique(errors), warnings: unique(warnings) };
 
@@ -274,6 +314,12 @@ class OrbitPlanService {
       ...linkSteps,
       ...revocationSteps,
       ...moveSteps,
+      ...publicationSteps,
+      // Before forking, since a fork copies the visibility of what it forks.
+      ...visibilitySteps,
+      ...forkSteps,
+      ...newCollectionSteps,
+      ...collectionSteps,
     ];
     if (operations.length === 0) {
       return {
@@ -1079,7 +1125,7 @@ interface BuildRepositories {
 
 type ResourceSummary = { slug: string; name: string; private: boolean };
 
-class BuildContext {
+export class BuildContext {
   readonly planOrganizations = new Map<string, string>();
   private organizations = new Map<string, any | null>();
   private roles = new Map<string, OrgRole | null>();
@@ -1352,7 +1398,7 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
-function labelOf(organization: any): string {
+export function labelOf(organization: any): string {
   return organization?.displayName || organization?.name || 'organization';
 }
 
@@ -1436,6 +1482,27 @@ function describeOperation(operation: OrbitOperation): string {
       const people = new Set(operation.changes.map(change => change.userId)).size;
       return `Change ${plural(operation.changes.length, 'permission')} of ${plural(people, 'member')} in "${operation.organization.label}"`;
     }
+    case 'publish_pricing':
+      return operation.existing
+        ? `Publish version ${operation.version} of "${operation.pricingName}" in "${operation.organization.label}" from ${operation.attachment.filename}`
+        : `Publish the pricing "${operation.pricingName}" ${operation.version} in "${operation.organization.label}" from ${operation.attachment.filename}`;
+    case 'set_pricing_visibility':
+      if (operation.changes.length === 1) {
+        const [change] = operation.changes;
+        return `Make "${change.label}"${change.version ? ` ${change.version}` : ''} ${change.private ? 'private' : 'public'} in "${operation.organization.label}"`;
+      }
+      return `Change the visibility of ${plural(operation.changes.length, 'pricing')} in "${operation.organization.label}"`;
+    case 'fork_pricing':
+      return `Fork "${operation.source.label}" ${operation.source.version} from "${operation.source.organizationLabel}" into "${operation.organization.label}" as "${operation.name}"`;
+    case 'create_collection':
+      return `Create the collection "${operation.name}" in "${operation.organization.label}"${operation.pricings.length ? ` with ${plural(operation.pricings.length, 'pricing')}` : ''}`;
+    case 'update_collection_pricings': {
+      const parts = [
+        operation.add.length ? `add ${plural(operation.add.length, 'pricing')}` : '',
+        operation.remove.length ? `remove ${plural(operation.remove.length, 'pricing')}` : '',
+      ].filter(Boolean).join(' and ');
+      return `In the collection "${operation.collection.label}": ${parts}`;
+    }
   }
 }
 
@@ -1462,11 +1529,21 @@ function summarizeSteps(steps: OrbitPlanStep[]): string {
   if (revoked) parts.push(`revoke ${plural(revoked, 'invitation link')}`);
   const moves = count('move_organization').length;
   if (moves) parts.push(`move ${plural(moves, 'organization')}`);
+  const published = count('publish_pricing').length;
+  if (published) parts.push(`publish ${plural(published, 'pricing file')}`);
+  const forked = count('fork_pricing').length;
+  if (forked) parts.push(`fork ${plural(forked, 'pricing')}`);
+  const collections = count('create_collection').length;
+  if (collections) parts.push(`create ${plural(collections, 'collection')}`);
+  const collectionEdits = count('update_collection_pricings').length;
+  if (collectionEdits) parts.push(`change ${plural(collectionEdits, 'collection')}`);
+  const visibility = count('set_pricing_visibility').reduce((total, step) => total + (step.operation as any).changes.length, 0);
+  if (visibility) parts.push(`change the visibility of ${plural(visibility, 'pricing')}`);
   const text = parts.join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function plural(count: number, noun: string): string {
+export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 

@@ -84,6 +84,42 @@ export type OrbitOperation =
           previous: OrbitAccess[] | null;
         }
       >;
+    }
+  | {
+      type: 'publish_pricing';
+      organization: { id: string; label: string };
+      attachment: { id: string; filename: string };
+      pricingName: string;
+      version: string;
+      existing: { slug: string } | null;
+      private: boolean;
+      collection: { id: string; slug: string; label: string } | null;
+    }
+  | {
+      type: 'set_pricing_visibility';
+      organization: { id: string; label: string };
+      changes: Array<{ slug: string; label: string; version: string | null; private: boolean }>;
+    }
+  | {
+      type: 'fork_pricing';
+      organization: { id: string; label: string };
+      source: { organizationId: string; organizationLabel: string; slug: string; label: string; version: string };
+      name: string;
+    }
+  | {
+      type: 'create_collection';
+      organization: { id: string; label: string };
+      name: string;
+      description: string | null;
+      private: boolean;
+      pricings: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'update_collection_pricings';
+      organization: { id: string; label: string };
+      collection: { slug: string; label: string };
+      add: Array<{ slug: string; label: string }>;
+      remove: Array<{ slug: string; label: string }>;
     };
 
 export interface OrbitPlanStep {
