@@ -441,6 +441,44 @@ export const ORBIT_TOOLS: LlmTool[] = [
             },
             additionalProperties: false,
           },
+          organizationDeletions: {
+            type: 'array',
+            description: 'Organizations to delete, each with all its sub-organizations, pricings, collections, members and invitations. Only alone in a plan.',
+            items: {
+              type: 'object',
+              properties: { organizationId: { type: 'string' } },
+              required: ['organizationId'],
+              additionalProperties: false,
+            },
+          },
+          pricingDeletions: {
+            type: 'array',
+            description: 'Pricings to delete: every version, or only the versions listed. Only alone in a plan.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                pricing: { type: 'string', description: 'Name or slug of the pricing.' },
+                versions: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['organizationId', 'pricing'],
+              additionalProperties: false,
+            },
+          },
+          collectionDeletions: {
+            type: 'array',
+            description: 'Collections to delete; withPricings also deletes the pricings in them, otherwise they stay. Only alone in a plan.',
+            items: {
+              type: 'object',
+              properties: {
+                organizationId: { type: 'string' },
+                collection: { type: 'string', description: 'Name or slug of the collection.' },
+                withPricings: { type: 'boolean' },
+              },
+              required: ['organizationId', 'collection'],
+              additionalProperties: false,
+            },
+          },
         },
         required: ['summary'],
         additionalProperties: false,

@@ -177,6 +177,40 @@ export type OrbitOperation =
   | {
       type: 'update_profile';
       changes: OrbitProfileChange[];
+    }
+  | {
+      type: 'delete_pricing_versions';
+      organization: { id: string; label: string };
+      pricing: { slug: string; label: string };
+      versions: string[];
+      /** Versions the pricing keeps. */
+      remaining: number;
+    }
+  | {
+      type: 'delete_pricing';
+      organization: { id: string; label: string };
+      pricing: { slug: string; label: string };
+      versions: number;
+      followers: number;
+      collection: string | null;
+    }
+  | {
+      type: 'delete_collection';
+      organization: { id: string; label: string };
+      collection: { slug: string; label: string };
+      /** Whether its pricings go too; otherwise they stay in the organization, out of any collection. */
+      withPricings: boolean;
+      pricings: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'delete_organization';
+      organization: { id: string; label: string };
+      /** Everything below it, which goes with it. */
+      subOrganizations: Array<{ id: string; label: string }>;
+      pricings: number;
+      collections: number;
+      members: number;
+      invitations: number;
     };
 
 export interface OrbitNotificationChannels {
@@ -327,6 +361,11 @@ export interface OrbitPlanDraft {
   notificationPreferences?: Array<{ kind: string; email?: boolean | null; inbox?: boolean | null }>;
   /** Public profile fields to change; an empty string clears one. */
   profile?: Partial<Record<OrbitProfileField, string | null>> | null;
+  /** Organizations to delete, each with everything below it. */
+  organizationDeletions?: Array<{ organizationId: string }>;
+  /** Pricings to delete: every version, or only the versions listed. */
+  pricingDeletions?: Array<{ organizationId: string; pricing: string; versions?: string[] | null }>;
+  collectionDeletions?: Array<{ organizationId: string; collection: string; withPricings?: boolean | null }>;
 }
 
 export type OrbitMessageRole = 'user' | 'assistant' | 'tool';

@@ -257,6 +257,15 @@ class PricingRepository extends RepositoryBase {
     return families[0]._id;
   }
 
+  /** The id shared by every version of a pricing, or null when there is not exactly one such pricing. */
+  async familyIdOf(slug: string, organizationId: string): Promise<string | null> {
+    try {
+      return String(await this.familyId(slug, organizationId));
+    } catch {
+      return null;
+    }
+  }
+
   private async moveFamilies(ids: mongoose.Types.ObjectId[], collectionId: string | null) {
     const families = await PricingIdentity.find({ _id: { $in: ids } }).lean();
     const destinations = new Set<string>();

@@ -139,6 +139,37 @@ export type OrbitOperation =
   | {
       type: 'update_profile';
       changes: Array<{ field: string; label: string; from: string; to: string }>;
+    }
+  | {
+      type: 'delete_pricing_versions';
+      organization: { id: string; label: string };
+      pricing: { slug: string; label: string };
+      versions: string[];
+      remaining: number;
+    }
+  | {
+      type: 'delete_pricing';
+      organization: { id: string; label: string };
+      pricing: { slug: string; label: string };
+      versions: number;
+      followers: number;
+      collection: string | null;
+    }
+  | {
+      type: 'delete_collection';
+      organization: { id: string; label: string };
+      collection: { slug: string; label: string };
+      withPricings: boolean;
+      pricings: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'delete_organization';
+      organization: { id: string; label: string };
+      subOrganizations: Array<{ id: string; label: string }>;
+      pricings: number;
+      collections: number;
+      members: number;
+      invitations: number;
     };
 
 export interface OrbitPlanStep {

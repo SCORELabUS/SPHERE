@@ -5377,6 +5377,10 @@ paths:
         mark notifications as read (all or some), turn email and in-app delivery on or off per kind of notification, and
         change the display name, bio and social links of the public profile.
 
+        ORBIT can also delete organizations (with everything below them, which takes being their OWNER), pricings or
+        some of their versions, and collections (with or without their pricings). Deletions go in a plan of their own
+        that lists everything each one takes with it, and are confirmed by typing a phrase (see the confirm endpoint).
+
         Files are sent as text: CSV, TSV, plain text or pricing YAML (`.yml`, `.yaml`), up to 512 KB. Their content is
         treated as data, never as instructions.
 
@@ -5530,9 +5534,9 @@ paths:
 
         Limited to 10 confirmations every 10 minutes per user.
 
-        Plans that are hard to undo, such as handing an organization over, carry a `confirmationPhrase` (the
-        organization's name). They only run when the body repeats it in `confirmation`; case and surrounding
-        spaces are ignored.
+        Plans that are hard to undo carry a `confirmationPhrase`: the organization's name when handing it over; for
+        deletions, the name of what is deleted, or `delete N items` when there are several. They only run when the
+        body repeats it in `confirmation`; case and surrounding spaces are ignored.
 
         **Authentication**: User token
 
@@ -5714,7 +5718,7 @@ components:
         confirmationPhrase:
           type: string
           nullable: true
-          description: Text the user must type to confirm a plan that is hard to undo (the organization's name when handing it over)
+          description: Text the user must type to confirm a plan that is hard to undo (the organization's name when handing it over, what is deleted, or "delete N items")
           example: ACME
         confirmedAt:
           type: string
@@ -5763,6 +5767,10 @@ components:
             - `mark_notifications_read`: `{ all, count, notifications: [{ id, title }] }`, where `notifications` is empty when `all` is true
             - `update_notification_preferences`: `{ changes: [{ kind, label, from: { email, inbox }, to: { email, inbox } }] }`
             - `update_profile`: `{ changes: [{ field, label, from, to }] }`, `field` being `displayName`, `bio`, `linkedin`, `instagram`, `facebook` or `x`; an empty `to` clears it
+            - `delete_pricing_versions`: `{ organization, pricing: { slug, label }, versions, remaining }`
+            - `delete_pricing`: `{ organization, pricing: { slug, label }, versions, followers, collection }`
+            - `delete_collection`: `{ organization, collection: { slug, label }, withPricings, pricings: [{ slug, label }] }`
+            - `delete_organization`: `{ organization, subOrganizations: [{ id, label }], pricings, collections, members, invitations }`, the counts covering its whole tree
           properties:
             type:
               type: string
@@ -5786,6 +5794,10 @@ components:
                 - mark_notifications_read
                 - update_notification_preferences
                 - update_profile
+                - delete_pricing_versions
+                - delete_pricing
+                - delete_collection
+                - delete_organization
           additionalProperties: true
         result:
           type: object

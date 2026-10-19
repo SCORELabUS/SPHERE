@@ -11,6 +11,8 @@ import OrganizationService from '../OrganizationService';
 import PermissionService from '../PermissionService';
 import NotificationService from '../NotificationService';
 import UserSettingsService from '../UserSettingsService';
+import OrganizationRepository from '../../repositories/mongoose/OrganizationRepository';
+import OrganizationMembershipRepository from '../../repositories/mongoose/OrganizationMembershipRepository';
 import { SetEntityPermissionInput } from '../../types/models/EntityPermission';
 import {
   LeanOrbitPlan,
@@ -549,7 +551,82 @@ class PlanRun {
         if (Object.keys(socialLinks).length) await this.userSettingsService.updateSocialLinks(this.actor.id, socialLinks);
         return { changed: operation.changes.map(change => change.label) };
       }
+
+      // Deletions: the pricing services check the DELETE permission themselves.
+      case 'delete_pricing_versions': {
+        const user = requesterOf(this.actor);
+        const deleted: string[] = [];
+        const failed: Array<{ username: string; error: string }> = [];
+        for (const version of operation.versions) {
+          try {
+            await this.pricingService.destroyVersion(operation.pricing.slug, version, operation.organization.id, user);
+            deleted.push(version);
+          } catch (err: any) {
+            failed.push({ username: version, error: String(err?.message ?? err) });
+          }
+        }
+        return settle({ organizationId: operation.organization.id, pricing: operation.pricing.label, deleted }, failed, deleted.length);
+      }
+
+      case 'delete_pricing': {
+        await this.pricingService.destroy(operation.pricing.slug, operation.organization.id, requesterOf(this.actor));
+        return { organizationId: operation.organization.id, deleted: operation.pricing.label };
+      }
+
+      case 'delete_collection': {
+        await this.collectionService.destroy(
+          operation.organization.id,
+          operation.collection.slug,
+          operation.withPricings,
+          false,
+          requesterOf(this.actor)
+        );
+        return { organizationId: operation.organization.id, deleted: operation.collection.label, withPricings: operation.withPricings };
+      }
+
+      case 'delete_organization':
+        return this.deleteOrganization(operation);
     }
+  }
+
+  /**
+   * Deletes an organization and everything below it, the deepest first, so no
+   * organization is ever left under a parent that is gone. The OrganizationService
+   * call checks nothing about the caller, so the run does: the user must still be
+   * the OWNER, and the tree must be the one the user confirmed.
+   */
+  private async deleteOrganization(operation: Extract<OrbitOperation, { type: 'delete_organization' }>) {
+    const memberships: OrganizationMembershipRepository = container.resolve('organizationMembershipRepository');
+    const organizations: OrganizationRepository = container.resolve('organizationRepository');
+    const { id, label } = operation.organization;
+
+    const membership: any = await memberships.findExistingMembership(this.actor.id, id);
+    if (membership?.role !== 'OWNER') {
+      throw new Error(`PERMISSION ERROR: Only the OWNER of "${label}" can delete it`);
+    }
+    const descendants = await organizations.findDescendants(id);
+    const confirmed = new Set(operation.subOrganizations.map(organization => organization.id));
+    if (descendants.length !== confirmed.size || descendants.some(descendant => !confirmed.has(descendant.id))) {
+      throw new Error(`CONFLICT: The sub-organizations of "${label}" changed after the plan was made. Ask ORBIT for a new plan`);
+    }
+
+    const labels = new Map(operation.subOrganizations.map(organization => [organization.id, organization.label]));
+    const deleted: string[] = [];
+    const deepestFirst = [...descendants].sort((a, b) => b.ancestors.length - a.ancestors.length);
+    try {
+      for (const descendant of deepestFirst) {
+        await this.organizationService.destroy(descendant.id);
+        deleted.push(labels.get(descendant.id) ?? descendant.id);
+      }
+      await this.organizationService.destroy(id);
+      deleted.push(label);
+    } catch (err: any) {
+      throw new PartialStepError(
+        deleted.length ? `${deleted.length} organizations were deleted before this failed: ${String(err?.message ?? err)}` : String(err?.message ?? err),
+        { deleted }
+      );
+    }
+    return { deleted };
   }
 
   /** The user as the organization services expect the caller of a member change. */

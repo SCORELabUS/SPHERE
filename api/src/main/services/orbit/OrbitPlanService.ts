@@ -30,6 +30,7 @@ import {
 import { canManage, isRenameAllowed, OrbitActor, resolveOrgRole } from './orbitAccess';
 import { ORBIT_PRICING_LIMITS, PricingStepBuilder } from './orbitPricingSteps';
 import { AccountStepBuilder } from './orbitAccountSteps';
+import { DeletionStepBuilder, deletionConfirmationPhrase, ORBIT_DELETION_LIMITS } from './orbitDeletionSteps';
 
 /**
  * Hard limits on what ORBIT may do, enforced here by code whatever the model
@@ -191,6 +192,10 @@ class OrbitPlanService {
     const collectionChanges = asArray(draft.collectionChanges);
     const notificationPreferences = asArray(draft.notificationPreferences);
     const accountChanges = (draft.notificationsRead ? 1 : 0) + notificationPreferences.length + (draft.profile ? 1 : 0);
+    const organizationDeletions = asArray(draft.organizationDeletions);
+    const pricingDeletions = asArray(draft.pricingDeletions);
+    const collectionDeletions = asArray(draft.collectionDeletions);
+    const deletions = organizationDeletions.length + pricingDeletions.length + collectionDeletions.length;
     const collectionPricingChanges = collectionChanges.reduce(
       (total, change) => total + asArray(change?.add).length + asArray(change?.remove).length,
       0
@@ -242,7 +247,51 @@ class OrbitPlanService {
     if (collectionPricingChanges > ORBIT_PRICING_LIMITS.collectionPricingChanges) {
       errors.push(`A plan can add or remove at most ${ORBIT_PRICING_LIMITS.collectionPricingChanges} pricings in collections (got ${collectionPricingChanges}).`);
     }
+    if (deletions > ORBIT_DELETION_LIMITS.deletions) {
+      errors.push(`A plan can delete at most ${ORBIT_DELETION_LIMITS.deletions} things (got ${deletions}).`);
+    }
     if (errors.length > 0) return { ok: false, errors, warnings };
+
+    // Deleting cannot be undone, so it is never mixed with anything else and is
+    // confirmed by typing what goes.
+    if (deletions > 0) {
+      const others = organizations.length + updates.length + members.length + invitations.length + links.length +
+        roleChanges.length + removals.length + revocations.length + moves.length + permissions.length +
+        publications.length + visibilityChanges.length + forks.length + newCollections.length + collectionChanges.length +
+        accountChanges + (transfer ? 1 : 0);
+      if (others > 0) {
+        return {
+          ok: false,
+          errors: ['Deletions go in a plan of their own: propose the other changes in a separate plan.'],
+          warnings,
+        };
+      }
+      const deletionSteps = new DeletionStepBuilder(context, new PricingStepBuilder(context, attachments));
+      const organizationSteps = await deletionSteps.organizations(organizationDeletions, errors, warnings);
+      const collectionSteps = await deletionSteps.collections(collectionDeletions, errors, warnings);
+      const pricingSteps = await deletionSteps.pricings(pricingDeletions, errors, warnings);
+      if (errors.length > 0) return { ok: false, errors: unique(errors), warnings: unique(warnings) };
+      // Smallest first: an organization goes last, once what was named inside others is gone.
+      const operations = [...pricingSteps, ...collectionSteps, ...organizationSteps];
+      if (operations.length === 0) {
+        return { ok: false, errors: ['The plan has nothing left to delete once the items above are left out.'], warnings: unique(warnings) };
+      }
+      const steps: OrbitPlanStep[] = operations.map((operation, index) => ({
+        id: `s${index + 1}`,
+        description: describeOperation(operation),
+        operation,
+        status: 'PENDING',
+        result: null,
+        error: null,
+      }));
+      return {
+        ok: true,
+        summary: typeof draft.summary === 'string' && draft.summary.trim() ? draft.summary.trim().slice(0, 500) : summarizeSteps(steps),
+        steps,
+        warnings: unique(warnings),
+        confirmationPhrase: deletionConfirmationPhrase(operations),
+      };
+    }
 
     // Handing an organization over cannot be undone by the one who gave it away,
     // so it is never mixed with anything else and is confirmed by typing its name.
@@ -250,7 +299,7 @@ class OrbitPlanService {
       const others = organizations.length + updates.length + members.length + invitations.length + links.length +
         roleChanges.length + removals.length + revocations.length + moves.length + permissions.length +
         publications.length + visibilityChanges.length + forks.length + newCollections.length + collectionChanges.length +
-        accountChanges;
+        accountChanges + deletions;
       if (others > 0) {
         return {
           ok: false,
@@ -1532,6 +1581,20 @@ function describeOperation(operation: OrbitOperation): string {
       const shown = change.to.length > 60 ? `${change.to.slice(0, 57)}...` : change.to;
       return `Set your ${change.label} to "${shown}"`;
     }
+    case 'delete_pricing_versions':
+      return operation.versions.length === 1
+        ? `Delete version ${operation.versions[0]} of "${operation.pricing.label}" in "${operation.organization.label}"`
+        : `Delete ${plural(operation.versions.length, 'version')} of "${operation.pricing.label}" in "${operation.organization.label}"`;
+    case 'delete_pricing':
+      return `Delete the pricing "${operation.pricing.label}" from "${operation.organization.label}", with its ${plural(operation.versions, 'version')}`;
+    case 'delete_collection':
+      return operation.withPricings
+        ? `Delete the collection "${operation.collection.label}" of "${operation.organization.label}" and its ${plural(operation.pricings.length, 'pricing')}`
+        : `Delete the collection "${operation.collection.label}" of "${operation.organization.label}", keeping its pricings`;
+    case 'delete_organization':
+      return operation.subOrganizations.length
+        ? `Delete "${operation.organization.label}" and its ${plural(operation.subOrganizations.length, 'sub-organization')}`
+        : `Delete "${operation.organization.label}"`;
   }
 }
 
@@ -1580,6 +1643,14 @@ function summarizeSteps(steps: OrbitPlanStep[]): string {
   if (count('update_notification_preferences').length) parts.push('change your notification settings');
   const marked = count('mark_notifications_read').reduce((total, step) => total + (step.operation as any).count, 0);
   if (marked) parts.push(`mark ${plural(marked, 'notification')} as read`);
+  const deletedVersions = count('delete_pricing_versions').reduce((total, step) => total + (step.operation as any).versions.length, 0);
+  if (deletedVersions) parts.push(`delete ${plural(deletedVersions, 'pricing version')}`);
+  const deletedPricings = count('delete_pricing').length;
+  if (deletedPricings) parts.push(`delete ${plural(deletedPricings, 'pricing')}`);
+  const deletedCollections = count('delete_collection').length;
+  if (deletedCollections) parts.push(`delete ${plural(deletedCollections, 'collection')}`);
+  const deletedOrganizations = count('delete_organization').length;
+  if (deletedOrganizations) parts.push(`delete ${plural(deletedOrganizations, 'organization')}`);
   const text = parts.join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

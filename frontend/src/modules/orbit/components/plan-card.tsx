@@ -12,7 +12,7 @@ import {
   MdInsertDriveFile,
 } from 'react-icons/md';
 import type { OrbitPlan, OrbitStepStatus } from '../types/orbit';
-import { buildPlanTree, countSteps, type PlanTreeNode } from '../utils/plan-tree';
+import { buildPlanTree, countSteps, deletesSomething, type PlanTreeNode } from '../utils/plan-tree';
 
 interface Props {
   plan: OrbitPlan;
@@ -52,6 +52,7 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
   const [showIgnored, setShowIgnored] = useState(false);
   const [typed, setTyped] = useState('');
   const phrase = plan.confirmationPhrase ?? null;
+  const deleting = deletesSomething(plan);
   // Plans that are hard to undo wait until the user has typed what they name.
   const phraseMatches = !phrase || normalizePhrase(typed) === normalizePhrase(phrase);
   const inactive = plan.status === 'CANCELLED' || plan.status === 'SUPERSEDED';
@@ -164,7 +165,8 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
       {plan.status === 'PENDING' && phrase && (
         <div className="border-t border-tp-hairline-soft px-4 py-3">
           <label htmlFor={`confirm-${plan.id}`} className="block text-[12px] text-tp-slate">
-            This cannot be undone by you. Type <strong className="text-tp-ink">{phrase}</strong> to confirm.
+            {deleting ? 'Deleting cannot be undone.' : 'This cannot be undone by you.'} Type{' '}
+            <strong className="text-tp-ink">{phrase}</strong> to confirm.
           </label>
           <input
             id={`confirm-${plan.id}`}
@@ -194,9 +196,13 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
             type="button"
             onClick={() => onConfirm(plan.id, phrase ? typed : undefined)}
             disabled={busy || !phraseMatches}
-            className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-[12px] font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+            className={`cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              deleting
+                ? 'bg-tp-severity-error text-white hover:bg-red-600'
+                : 'bg-tp-primary text-tp-on-primary hover:bg-tp-primary-deep'
+            }`}
           >
-            Confirm and apply
+            {deleting ? 'Delete permanently' : 'Confirm and apply'}
           </button>
         </div>
       )}

@@ -50,6 +50,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - An ownership transfer goes alone in its plan, which stores a `confirmationPhrase` (the organization's name); `POST /orbit/plans/:id/confirm` needs it back in `confirmation`.
 - Phase 3 (pricings and collections) lives in `orbitPricingTools.ts` (read tools), `orbitPricingSteps.ts` (plan validation, with the same `PermissionEngine` checks the API makes) and `orbitPricingDiff.ts` (version comparison). Executed steps call `PricingService`/`PricingCollectionService`, which check permissions again. Pricing YAML is always parsed from text with `retrievePricingFromText`: `retrievePricingFromPath` can rewrite the file it reads.
 - Phase 4 (account and notifications) lives in `orbitAccountTools.ts` (read tools) and `orbitAccountSteps.ts` (plan validation). It only touches the user's own notifications, notification preferences and public profile, through `NotificationService` and `UserSettingsService`; social links are checked with the same `isValidSocialUrl` as the settings endpoint.
+- Phase 5 (deletions) lives in `orbitDeletionSteps.ts`. A deletion plan holds nothing else and stores a `confirmationPhrase` (the name of what goes, or `delete N items`). Deleting an organization takes being its OWNER and deletes its whole tree, deepest first, because `OrganizationService.destroy` checks no permissions and leaves sub-organizations behind; the run fails if the tree changed after the plan.
 - New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
 
 ## API Documentation
@@ -65,7 +66,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
-- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import, plan execution, teams and permissions, pricings and collections, and account and notifications). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
+- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import, plan execution, teams and permissions, pricings and collections, account and notifications, and deletions). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
 
 In addition, test utilities are organized in `/api/src/test/utils/` with subfolders for auth, users, organizations, collections and pricings.
 

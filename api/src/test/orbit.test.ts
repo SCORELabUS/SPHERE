@@ -1421,6 +1421,124 @@ describe('ORBIT assistant API integration', () => {
   });
 
   // =========================================================================
+  // Deletions
+  // =========================================================================
+  describe('deletions', () => {
+    afterEach(async () => {
+      const objectIds = [...orgsToDelete].map(id => new mongoose.Types.ObjectId(id));
+      await PricingMongoose.deleteMany({ _organizationId: { $in: objectIds } });
+      await PricingCollectionMongoose.deleteMany({ _organizationId: { $in: objectIds } });
+    });
+
+    const confirmWith = (token: string, planId: string, confirmation?: string) =>
+      request(app)
+        .post(`${BASE_PATH}/orbit/plans/${planId}/confirm`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(confirmation === undefined ? {} : { confirmation });
+
+    const appliedWith = async (token: string, planId: string, confirmation: string) =>
+      parseSse((await confirmWith(token, planId, confirmation)).text).at(-1)!.data.plan;
+
+    it('deletes an organization with everything below it, only for its owner and once its name is typed', async () => {
+      const { user: owner } = await newUser();
+      const { user: admin } = await newUser();
+      const name = `Doomed ${randomSuffix()}`;
+      const root = await createTestOrganization(owner.token, { displayName: name });
+      const child = await createTestOrganization(owner.token, { displayName: `Branch ${randomSuffix()}`, _parentId: root.id });
+      await createMembership(admin.id, root.id, 'ADMIN');
+      await createPricingForOrganization({ organizationId: child.id, serviceName: `Orbit_Doomed_${randomSuffix()}`, version: '1.0.0' });
+
+      const byAdmin = await propose(admin.token, { organizationDeletions: [{ organizationId: root.id }] });
+      expect(byAdmin.result.errors.join(' ')).toContain(`Only the OWNER of "${name}"`);
+
+      const mixed = await propose(owner.token, {
+        organizationDeletions: [{ organizationId: root.id }],
+        updates: [{ organizationId: root.id, description: 'Otra' }],
+      });
+      expect(mixed.result.errors.join(' ')).toContain('plan of their own');
+
+      const { plan } = await propose(owner.token, {
+        organizationDeletions: [{ organizationId: root.id }, { organizationId: child.id }],
+      });
+      expect(plan.steps).toHaveLength(1);
+      expect(plan.warnings.join(' ')).toContain('goes with an organization above it');
+      expect(plan.confirmationPhrase).toBe(name);
+      expect(plan.steps[0].operation).toMatchObject({
+        type: 'delete_organization',
+        subOrganizations: [{ id: child.id }],
+        pricings: 1,
+        members: 1,
+      });
+
+      expect((await confirmWith(owner.token, plan.id)).status).toBe(422);
+      expect(await OrganizationMongoose.exists({ _id: root.id })).toBeTruthy();
+
+      const done = await appliedWith(owner.token, plan.id, name.toUpperCase());
+      expect(done.status).toBe('COMPLETED');
+      expect(done.steps[0].result.deleted).toHaveLength(2);
+      expect(await OrganizationMongoose.exists({ _id: { $in: [root.id, child.id] } })).toBeNull();
+      expect(await PricingMongoose.countDocuments({ _organizationId: child.id })).toBe(0);
+      expect(await OrganizationMembershipMongoose.countDocuments({ _organizationId: { $in: [root.id, child.id] } })).toBe(0);
+    });
+
+    it('refuses to delete an organization whose sub-organizations changed after the plan', async () => {
+      const { user: owner } = await newUser();
+      const name = `Moving ${randomSuffix()}`;
+      const root = await createTestOrganization(owner.token, { displayName: name });
+      const { plan } = await propose(owner.token, { organizationDeletions: [{ organizationId: root.id }] });
+      await createTestOrganization(owner.token, { displayName: `Late ${randomSuffix()}`, _parentId: root.id });
+
+      const done = await appliedWith(owner.token, plan.id, name);
+      expect(done.status).toBe('FAILED');
+      expect(done.steps[0].error).toContain('changed after the plan was made');
+      expect(await OrganizationMongoose.exists({ _id: root.id })).toBeTruthy();
+    });
+
+    it('deletes versions, pricings and collections, saying what goes with each', async () => {
+      const { user: owner } = await newUser();
+      const { user: member } = await newUser();
+      const organization = await createTestOrganization(owner.token, { displayName: `Cleanup ${randomSuffix()}` });
+      await createMembership(member.id, organization.id, 'MEMBER');
+      const versioned = `Orbit_Versioned_${randomSuffix()}`;
+      const shelved = `Orbit_Shelved_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: versioned, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: versioned, version: '2.0.0' });
+      await createPricingForOrganization({ organizationId: organization.id, serviceName: shelved, version: '1.0.0' });
+      const shelf = `Shelf ${randomSuffix()}`;
+      const created = await propose(owner.token, { newCollections: [{ organizationId: organization.id, name: shelf, pricings: [shelved] }] });
+      expect((await applied(owner.token, created.plan.id)).status).toBe('COMPLETED');
+
+      const byMember = await propose(member.token, { pricingDeletions: [{ organizationId: organization.id, pricing: versioned }] });
+      expect(byMember.result.errors.join(' ')).toContain('not allowed to delete');
+
+      const unknown = await propose(owner.token, { pricingDeletions: [{ organizationId: organization.id, pricing: versioned, versions: ['9.9.9'] }] });
+      expect(unknown.result.errors.join(' ')).toContain('has no version "9.9.9"');
+
+      const oneVersion = await propose(owner.token, { pricingDeletions: [{ organizationId: organization.id, pricing: versioned, versions: ['1.0.0'] }] });
+      expect(oneVersion.plan.steps[0].operation).toMatchObject({ type: 'delete_pricing_versions', versions: ['1.0.0'], remaining: 1 });
+      expect(oneVersion.plan.confirmationPhrase).toBe(versioned);
+      expect((await appliedWith(owner.token, oneVersion.plan.id, versioned)).status).toBe('COMPLETED');
+      expect((await PricingMongoose.find({ name: versioned }).lean()).map((pricing: any) => pricing.version)).toEqual(['2.0.0']);
+
+      const lastVersion = await propose(owner.token, { pricingDeletions: [{ organizationId: organization.id, pricing: versioned, versions: ['2.0.0'] }] });
+      expect(lastVersion.plan.steps[0].operation).toMatchObject({ type: 'delete_pricing', versions: 1 });
+      expect(lastVersion.plan.warnings.join(' ')).toContain('all the versions');
+
+      const both = await propose(owner.token, {
+        collectionDeletions: [{ organizationId: organization.id, collection: shelf, withPricings: true }],
+        pricingDeletions: [{ organizationId: organization.id, pricing: shelved }, { organizationId: organization.id, pricing: versioned }],
+      });
+      expect(both.plan.warnings.join(' ')).toContain('goes with its collection');
+      expect(both.plan.steps.map((step: any) => step.operation.type)).toEqual(['delete_pricing', 'delete_collection']);
+      expect(both.plan.steps[1].operation.pricings.map((pricing: any) => pricing.label)).toEqual([shelved]);
+      expect(both.plan.confirmationPhrase).toBe('delete 2 items');
+      expect((await appliedWith(owner.token, both.plan.id, 'Delete 2 items')).status).toBe('COMPLETED');
+      expect(await PricingMongoose.countDocuments({ _organizationId: organization.id })).toBe(0);
+      expect(await PricingCollectionMongoose.countDocuments({ _organizationId: organization.id })).toBe(0);
+    });
+  });
+
+  // =========================================================================
   // Plans from files
   // =========================================================================
   describe('plans imported from files', () => {

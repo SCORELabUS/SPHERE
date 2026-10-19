@@ -210,6 +210,49 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
           }))
         );
         break;
+      case 'delete_pricing_versions':
+        target.changes.push({
+          text: `Delete ${operation.versions.length === 1 ? 'version' : 'versions'} ${operation.versions.join(', ')} of “${operation.pricing.label}” (${count(operation.remaining, 'version')} left)`,
+          tone: 'danger',
+          status: step.status,
+        });
+        break;
+      case 'delete_pricing':
+        target.changes.push({
+          text: [
+            `Delete the pricing “${operation.pricing.label}” and its ${count(operation.versions, 'version')}`,
+            operation.collection ? `, out of the collection “${operation.collection}”` : '',
+            operation.followers ? `. ${count(operation.followers, 'follower')} stop getting its updates` : '',
+          ].join(''),
+          tone: 'danger',
+          status: step.status,
+        });
+        break;
+      case 'delete_collection':
+        target.changes.push({
+          text: operation.withPricings
+            ? `Delete the collection “${operation.collection.label}” and its ${count(operation.pricings.length, 'pricing')}${operation.pricings.length ? `: ${operation.pricings.map(pricing => pricing.label).join(', ')}` : ''}`
+            : `Delete the collection “${operation.collection.label}”. Its ${count(operation.pricings.length, 'pricing')} stay in the organization`,
+          tone: 'danger',
+          status: step.status,
+        });
+        break;
+      case 'delete_organization': {
+        const goes = [
+          operation.subOrganizations.length
+            ? `${count(operation.subOrganizations.length, 'sub-organization')} (${operation.subOrganizations.map(organization => organization.label).join(', ')})`
+            : '',
+          count(operation.pricings, 'pricing'),
+          count(operation.collections, 'collection'),
+          operation.invitations ? count(operation.invitations, 'pending invitation') : '',
+        ].filter(Boolean);
+        target.changes.push({
+          text: `Delete this organization with ${goes.join(', ')}${operation.members ? `. ${count(operation.members, 'member')} lose access` : ''}`,
+          tone: 'danger',
+          status: step.status,
+        });
+        break;
+      }
       case 'set_permissions':
         target.changes.push(
           ...operation.changes.map(change => {
@@ -259,6 +302,11 @@ function accountChanges(operation: AccountOperation): string[] {
       );
   }
 }
+
+const count = (value: number, noun: string) => `${value} ${noun}${value === 1 ? '' : 's'}`;
+
+/** Whether a plan deletes anything, which the card confirms differently. */
+export const deletesSomething = (plan: OrbitPlan) => plan.steps.some(step => step.operation.type.startsWith('delete_'));
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 

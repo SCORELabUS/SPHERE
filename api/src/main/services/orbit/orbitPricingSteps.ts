@@ -22,8 +22,8 @@ export const ORBIT_PRICING_LIMITS = {
   collectionNameLength: 255,
 };
 
-type PricingSummary = { slug: string; name: string; private: boolean; collectionId: string | null; versions: number };
-type CollectionSummary = { id: string; slug: string; name: string; private: boolean };
+export type PricingSummary = { slug: string; name: string; private: boolean; collectionId: string | null; versions: number };
+export type CollectionSummary = { id: string; slug: string; name: string; private: boolean };
 type Ref = { slug: string; label: string };
 
 /**
@@ -353,7 +353,7 @@ export class PricingStepBuilder {
   }
 
   /** An existing organization the user belongs to; what they may do in it is checked per change. */
-  private async organization(rawId: unknown, action: string, errors: string[]): Promise<{ id: string; label: string } | null> {
+  async organization(rawId: unknown, action: string, errors: string[]): Promise<{ id: string; label: string } | null> {
     const id = typeof rawId === 'string' ? rawId.trim() : '';
     const organization = await this.context.findOrganization(id);
     if (!organization) {
@@ -367,7 +367,7 @@ export class PricingStepBuilder {
     return { id, label: labelOf(organization) };
   }
 
-  private async pricing(organization: { id: string; label: string }, raw: unknown, errors: string[]): Promise<PricingSummary | null> {
+  async pricing(organization: { id: string; label: string }, raw: unknown, errors: string[]): Promise<PricingSummary | null> {
     const found = matchResource(await this.pricingsOf(organization.id), String(raw ?? ''));
     if (!found) errors.push(`"${organization.label}" has no pricing called "${raw}". Check the names with search_pricings.`);
     return found;
@@ -393,14 +393,14 @@ export class PricingStepBuilder {
     return refs;
   }
 
-  private async pricingsOf(organizationId: string): Promise<PricingSummary[]> {
+  async pricingsOf(organizationId: string): Promise<PricingSummary[]> {
     if (!this.pricings.has(organizationId)) {
       this.pricings.set(organizationId, await this.pricingRepository.findSummariesByOrganization(organizationId));
     }
     return this.pricings.get(organizationId)!;
   }
 
-  private async collectionsOf(organizationId: string): Promise<CollectionSummary[]> {
+  async collectionsOf(organizationId: string): Promise<CollectionSummary[]> {
     if (!this.collections.has(organizationId)) {
       this.collections.set(organizationId, await this.collectionRepository.findSummariesByOrganization(organizationId));
     }
@@ -408,7 +408,7 @@ export class PricingStepBuilder {
   }
 
   /** Whether the user may do this, by the policies the API applies to the same request. */
-  private async allowed(
+  async allowed(
     organizationId: string,
     entityType: EntityType,
     action: PermissionType,
