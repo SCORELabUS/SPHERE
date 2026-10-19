@@ -215,7 +215,7 @@ function TreeNode({ node, depth }: { node: PlanTreeNode; depth: number }) {
             {node.isNew ? (
               <span className="rounded bg-tp-cream px-1.5 text-[10px] font-semibold uppercase text-tp-primary">new</span>
             ) : (
-              <span className="text-[10px] uppercase text-tp-stone">existing</span>
+              !node.account && <span className="text-[10px] uppercase text-tp-stone">existing</span>
             )}
           </div>
           {node.description && <p className="text-[11px] text-tp-steel">{node.description}</p>}

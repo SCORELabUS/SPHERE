@@ -35,6 +35,8 @@ import OrbitPlanMongoose from '../main/repositories/mongoose/models/OrbitPlanMon
 import OrbitConversationMongoose from '../main/repositories/mongoose/models/OrbitConversationMongoose';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
+import NotificationMongoose from '../main/repositories/mongoose/models/NotificationMongoose';
+import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
 import mongoose from 'mongoose';
 import { ORBIT_PLAN_LIMITS } from '../main/services/orbit/OrbitPlanService';
 
@@ -105,6 +107,36 @@ describe('ORBIT assistant API integration', () => {
     }).lean();
     return membership?.role ?? null;
   };
+
+  /** Proposes through the fake model, with the file attached when given, and returns what the model saw. */
+  const propose = async (
+    token: string,
+    args: Record<string, unknown> | ((attachmentId: string | null) => Record<string, unknown>),
+    attachment?: { filename: string; content: string }
+  ) => {
+    const conversationId = await startConversation(token);
+    const llm = installFakeLlm([
+      request => {
+        const attachmentId = String(request.messages[0].content).match(/attachmentId "([^"]+)"/)?.[1] ?? null;
+        const draft = typeof args === 'function' ? args(attachmentId) : args;
+        return toolCall('propose_plan', { summary: 'Cambios', ...draft });
+      },
+      answer('Revísalo.'),
+    ]);
+    const response = await sendMessage(token, conversationId, { content: 'Hazlo', ...(attachment ? { attachment } : {}) });
+    expect(response.status).toBe(201);
+    return { plan: response.body.plan, result: toolResultsIn(llm.calls[1])[0] };
+  };
+
+  const ask = async (token: string, calls: Array<[string, Record<string, unknown>]>) => {
+    const conversationId = await startConversation(token);
+    const llm = installFakeLlm([...calls.map(([name, args]) => toolCall(name, args)), answer('Hecho.')]);
+    await sendMessage(token, conversationId, { content: 'Consulta' });
+    return calls.map((_, index) => toolResultsIn(llm.calls[index + 1])[index]);
+  };
+
+  const applied = async (token: string, planId: string) =>
+    parseSse((await confirm(token, planId)).text).at(-1)!.data.plan;
 
   // =========================================================================
   // Conversations
@@ -1143,36 +1175,6 @@ describe('ORBIT assistant API integration', () => {
       }
     });
 
-    /** Proposes through the fake model, with the file attached when given, and returns what the model saw. */
-    const propose = async (
-      token: string,
-      args: Record<string, unknown> | ((attachmentId: string | null) => Record<string, unknown>),
-      attachment?: { filename: string; content: string }
-    ) => {
-      const conversationId = await startConversation(token);
-      const llm = installFakeLlm([
-        request => {
-          const attachmentId = String(request.messages[0].content).match(/attachmentId "([^"]+)"/)?.[1] ?? null;
-          const draft = typeof args === 'function' ? args(attachmentId) : args;
-          return toolCall('propose_plan', { summary: 'Cambios', ...draft });
-        },
-        answer('Revísalo.'),
-      ]);
-      const response = await sendMessage(token, conversationId, { content: 'Hazlo', ...(attachment ? { attachment } : {}) });
-      expect(response.status).toBe(201);
-      return { plan: response.body.plan, result: toolResultsIn(llm.calls[1])[0] };
-    };
-
-    const ask = async (token: string, calls: Array<[string, Record<string, unknown>]>) => {
-      const conversationId = await startConversation(token);
-      const llm = installFakeLlm([...calls.map(([name, args]) => toolCall(name, args)), answer('Hecho.')]);
-      await sendMessage(token, conversationId, { content: 'Consulta' });
-      return calls.map((_, index) => toolResultsIn(llm.calls[index + 1])[index]);
-    };
-
-    const applied = async (token: string, planId: string) =>
-      parseSse((await confirm(token, planId)).text).at(-1)!.data.plan;
-
     it('searches pricings, reads their versions and compares two of them, hiding private ones from outsiders', async () => {
       const { user: owner } = await newUser();
       const { user: outsider } = await newUser();
@@ -1322,6 +1324,99 @@ describe('ORBIT assistant API integration', () => {
 
       const [read] = await ask(owner.token, [['get_collection', { organizationId: organization.id, collection: collectionName }]]);
       expect(read).toMatchObject({ name: collectionName, pricings: [second] });
+    });
+  });
+
+  // =========================================================================
+  // Account and notifications
+  // =========================================================================
+  describe('account and notifications', () => {
+    afterEach(async () => {
+      await NotificationMongoose.deleteMany({ _userId: { $in: [...orbitUserIds].map(id => new mongoose.Types.ObjectId(id)) } });
+    });
+
+    const notify = async (userId: string, title: string) =>
+      (await NotificationMongoose.create({ _userId: userId, kind: 'System', title, message: `${title} message` })).id as string;
+
+    const settingsOf = async (userId: string) => ((await UserMongoose.findById(userId).lean()) as any).settings;
+
+    it('reads the notifications and marks some or all of them as read, only ever the user\'s own', async () => {
+      const { user } = await newUser();
+      const { user: other } = await newUser();
+      const first = await notify(user.id, 'First');
+      await notify(user.id, 'Second');
+      await notify(user.id, 'Third');
+      const foreign = await notify(other.id, 'Not yours');
+
+      const [read] = await ask(user.token, [['get_notifications', { unreadOnly: true }]]);
+      expect(read.unread).toBe(3);
+      expect(read.notifications.map((notification: any) => notification.title)).toEqual(['Third', 'Second', 'First']);
+      expect(read.notifications[0].kind).toBe('System notices');
+
+      const some = await propose(user.token, { notificationsRead: { ids: [first, foreign, 'not-an-id'] } });
+      expect(some.plan.steps[0].operation).toMatchObject({ type: 'mark_notifications_read', all: false, count: 1 });
+      expect(some.plan.warnings.join(' ')).toContain('not among yours');
+      expect((await applied(user.token, some.plan.id)).status).toBe('COMPLETED');
+      expect(((await NotificationMongoose.findById(first).lean()) as any).read).toBe(true);
+      expect(((await NotificationMongoose.findById(foreign).lean()) as any).read).toBe(false);
+
+      const all = await propose(user.token, { notificationsRead: { all: true } });
+      expect(all.plan.steps[0].description).toBe('Mark all 2 unread notifications as read');
+      expect((await applied(user.token, all.plan.id)).status).toBe('COMPLETED');
+      expect(await NotificationMongoose.countDocuments({ _userId: user.id, read: false })).toBe(0);
+
+      const nothing = await propose(user.token, { notificationsRead: { all: true } });
+      expect(nothing.plan).toBeNull();
+      expect(nothing.result.warnings.join(' ')).toContain('no unread notifications');
+    });
+
+    it('turns notification channels on and off and rejects kinds that do not exist', async () => {
+      const { user } = await newUser();
+
+      const { plan } = await propose(user.token, {
+        notificationPreferences: [
+          { kind: 'PricingUpdated', email: false },
+          { kind: 'System', inbox: true },
+        ],
+      });
+      expect(plan.steps).toHaveLength(1);
+      expect(plan.steps[0].operation.changes).toEqual([
+        expect.objectContaining({ kind: 'PricingUpdated', from: { email: true, inbox: true }, to: { email: false, inbox: true } }),
+      ]);
+      expect(plan.warnings.join(' ')).toContain('System notices already reach you');
+      expect((await applied(user.token, plan.id)).status).toBe('COMPLETED');
+      expect((await settingsOf(user.id)).notificationPrefs.PricingUpdated).toMatchObject({ email: false, inbox: true });
+
+      const [profile] = await ask(user.token, [['get_my_profile', {}]]);
+      expect(profile.notificationPreferences).toContainEqual(expect.objectContaining({ kind: 'PricingUpdated', email: false, inbox: true }));
+
+      const wrong = await propose(user.token, { notificationPreferences: [{ kind: 'Spam', email: false }] });
+      expect(wrong.result.errors.join(' ')).toContain('is not a kind of notification');
+    });
+
+    it('updates the public profile, checking social links as the settings page does', async () => {
+      const { user } = await newUser();
+
+      const { plan } = await propose(user.token, {
+        profile: { displayName: 'Ana Orbit', bio: 'Pricing nerd', linkedin: 'https://www.linkedin.com/in/ana-orbit' },
+      });
+      expect(plan.steps[0].description).toBe('Update your public profile: display name, bio, LinkedIn');
+      expect((await applied(user.token, plan.id)).status).toBe('COMPLETED');
+      let settings = await settingsOf(user.id);
+      expect(settings.profile).toMatchObject({ displayName: 'Ana Orbit', bio: 'Pricing nerd' });
+      expect(settings.socialLinks.linkedin).toBe('https://www.linkedin.com/in/ana-orbit');
+
+      const cleared = await propose(user.token, { profile: { displayName: 'Ana Orbit', bio: '' } });
+      expect(cleared.plan.steps[0].description).toBe('Clear your bio');
+      expect(cleared.plan.warnings.join(' ')).toContain('display name is already "Ana Orbit"');
+      expect((await applied(user.token, cleared.plan.id)).status).toBe('COMPLETED');
+      settings = await settingsOf(user.id);
+      expect(settings.profile.bio).toBe('');
+
+      const badLink = await propose(user.token, { profile: { x: 'https://example.com/ana' } });
+      expect(badLink.result.errors.join(' ')).toContain('is not a valid X profile link');
+      const longBio = await propose(user.token, { profile: { bio: 'a'.repeat(201) } });
+      expect(longBio.result.errors.join(' ')).toContain('at most 200 characters');
     });
   });
 

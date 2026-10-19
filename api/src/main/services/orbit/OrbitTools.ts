@@ -11,6 +11,7 @@ import OrbitPlanService, { accessOf, matchResource } from './OrbitPlanService';
 import OrbitImportService from './OrbitImportService';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
 import { PRICING_TOOL_LABELS, PRICING_TOOLS, runPricingTool } from './orbitPricingTools';
+import { ACCOUNT_TOOL_LABELS, ACCOUNT_TOOLS, runAccountTool } from './orbitAccountTools';
 
 const MAX_TOOL_RESULT_CHARS = 12_000;
 const MAX_LOOKUP_IDENTIFIERS = 50;
@@ -170,6 +171,7 @@ export const ORBIT_TOOLS: LlmTool[] = [
     },
   },
   ...PRICING_TOOLS,
+  ...ACCOUNT_TOOLS,
   {
     type: 'function',
     function: {
@@ -406,6 +408,39 @@ export const ORBIT_TOOLS: LlmTool[] = [
               additionalProperties: false,
             },
           },
+          notificationsRead: {
+            type: 'object',
+            description: "Mark the user's notifications as read: all unread ones, or the ids from get_notifications.",
+            properties: { all: { type: 'boolean' }, ids: { type: 'array', items: { type: 'string' } } },
+            additionalProperties: false,
+          },
+          notificationPreferences: {
+            type: 'array',
+            description: 'Turn email and/or in-app delivery on or off per kind of notification; a channel left out stays as it is.',
+            items: {
+              type: 'object',
+              properties: {
+                kind: { type: 'string', enum: ['OrganizationInvitation', 'System', 'PricingUpdated'] },
+                email: { type: 'boolean' },
+                inbox: { type: 'boolean', description: 'In-app notifications.' },
+              },
+              required: ['kind'],
+              additionalProperties: false,
+            },
+          },
+          profile: {
+            type: 'object',
+            description: "The user's public profile; give only the fields to change, an empty string clears one. Social fields take full profile URLs.",
+            properties: {
+              displayName: { type: 'string' },
+              bio: { type: 'string' },
+              linkedin: { type: 'string' },
+              instagram: { type: 'string' },
+              facebook: { type: 'string' },
+              x: { type: 'string' },
+            },
+            additionalProperties: false,
+          },
         },
         required: ['summary'],
         additionalProperties: false,
@@ -461,6 +496,7 @@ const TOOL_LABELS: Record<string, string> = {
   who_can_access: 'Reviewing who has access',
   get_member_access: "Reviewing the member's access",
   ...PRICING_TOOL_LABELS,
+  ...ACCOUNT_TOOL_LABELS,
   propose_plan: 'Drafting the plan',
   import_attachment: 'Reading your file',
 };
@@ -722,7 +758,7 @@ class OrbitToolRunner {
       }
 
       default: {
-        const result = await runPricingTool(name, args, actor);
+        const result = (await runPricingTool(name, args, actor)) ?? (await runAccountTool(name, args, actor));
         return result === undefined ? { ok: false, error: `Unknown tool "${name}".` } : result;
       }
     }

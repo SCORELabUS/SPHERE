@@ -9,6 +9,8 @@ import PricingCollectionService from '../PricingCollectionService';
 import { sanitizePathSegment } from '../../utils/path-utils';
 import OrganizationService from '../OrganizationService';
 import PermissionService from '../PermissionService';
+import NotificationService from '../NotificationService';
+import UserSettingsService from '../UserSettingsService';
 import { SetEntityPermissionInput } from '../../types/models/EntityPermission';
 import {
   LeanOrbitPlan,
@@ -196,6 +198,14 @@ class PlanRun {
     return container.resolve('pricingCollectionService');
   }
 
+  private get notificationService(): NotificationService {
+    return container.resolve('notificationService');
+  }
+
+  private get userSettingsService(): UserSettingsService {
+    return container.resolve('userSettingsService');
+  }
+
   async apply(step: OrbitPlanStep): Promise<StepOutcome> {
     const operation = step.operation;
     const missing = this.missingDependency(operation);
@@ -214,7 +224,8 @@ class PlanRun {
   }
 
   private missingDependency(operation: OrbitOperation): OrbitOrgReference | null {
-    const reference: OrbitOrgReference | null = operation.type === 'create_organization' ? operation.parent : operation.organization;
+    const reference: OrbitOrgReference | null =
+      operation.type === 'create_organization' ? operation.parent : 'organization' in operation ? operation.organization : null;
     if (reference && 'ref' in reference && this.unavailableRefs.has(reference.ref)) return reference;
     return null;
   }
@@ -502,6 +513,41 @@ class PlanRun {
           }
         }
         return settle({ organizationId, collection: operation.collection.label, added, removed }, failed, added.length + removed.length);
+      }
+
+      // The account steps only ever touch the user's own notifications and settings.
+      case 'mark_notifications_read': {
+        if (operation.all) {
+          const { updated } = await this.notificationService.markAllAsRead(this.actor.id);
+          return { marked: updated };
+        }
+        let marked = 0;
+        for (const notification of operation.notifications) {
+          // One read since the plan was made, or deleted, is no longer a reason to fail.
+          const changed = await this.notificationService.markAsRead(notification.id, this.actor.id).then(() => true, () => false);
+          if (changed) marked++;
+        }
+        return { marked, alreadyReadOrGone: operation.notifications.length - marked };
+      }
+
+      case 'update_notification_preferences': {
+        await this.userSettingsService.updateNotificationPrefs(
+          this.actor.id,
+          Object.fromEntries(operation.changes.map(change => [change.kind, change.to]))
+        );
+        return { changed: operation.changes.map(change => change.label) };
+      }
+
+      case 'update_profile': {
+        const profile: Record<string, string> = {};
+        const socialLinks: Record<string, string> = {};
+        for (const change of operation.changes) {
+          (change.field === 'displayName' || change.field === 'bio' ? profile : socialLinks)[change.field] = change.to;
+        }
+        if (Object.keys(profile).length) await this.userSettingsService.updateProfile(this.actor.id, profile);
+        // UserSettingsService checks the shape of each link again.
+        if (Object.keys(socialLinks).length) await this.userSettingsService.updateSocialLinks(this.actor.id, socialLinks);
+        return { changed: operation.changes.map(change => change.label) };
       }
     }
   }

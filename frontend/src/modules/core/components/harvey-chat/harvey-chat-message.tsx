@@ -12,6 +12,8 @@ interface Props {
   assistantInitial?: ReactNode;
   /** Rendered below the bubble, such as a plan card or an attached file. */
   children?: ReactNode;
+  /** Extra classes for the rendered Markdown, such as how tables are laid out. */
+  contentClassName?: string;
 }
 
 const bubbleVariants = {
@@ -26,7 +28,7 @@ const bubbleVariants = {
 
 // Takes a ref so AnimatePresence's popLayout mode can measure the message.
 const HarveyChatMessage = forwardRef<HTMLDivElement, Props>(function HarveyChatMessage(
-  { message, assistantName = 'H.A.R.V.E.Y.', assistantInitial = 'H', children },
+  { message, assistantName = 'H.A.R.V.E.Y.', assistantInitial = 'H', children, contentClassName = '' },
   ref
 ) {
   const isUser = message.role === 'user';
@@ -66,7 +68,7 @@ const HarveyChatMessage = forwardRef<HTMLDivElement, Props>(function HarveyChatM
                 : 'rounded-tl-md bg-tp-surface text-tp-ink'
             }`}
           >
-            <div className="prose prose-sm max-w-none prose-p:mb-1 prose-p:leading-relaxed prose-pre:rounded-lg prose-pre:bg-tp-surface-code prose-pre:text-tp-on-dark [&_p:last-child]:mb-0">
+            <div className={`prose prose-sm max-w-none prose-p:mb-1 prose-p:leading-relaxed prose-pre:rounded-lg prose-pre:bg-tp-surface-code prose-pre:text-tp-on-dark [&_p:last-child]:mb-0 ${contentClassName}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>

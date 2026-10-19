@@ -162,7 +162,44 @@ export type OrbitOperation =
       collection: { slug: string; label: string };
       add: Array<{ slug: string; label: string }>;
       remove: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'mark_notifications_read';
+      /** Every unread notification, or only the ones listed. */
+      all: boolean;
+      count: number;
+      notifications: Array<{ id: string; title: string }>;
+    }
+  | {
+      type: 'update_notification_preferences';
+      changes: OrbitNotificationPreferenceChange[];
+    }
+  | {
+      type: 'update_profile';
+      changes: OrbitProfileChange[];
     };
+
+export interface OrbitNotificationChannels {
+  email: boolean;
+  inbox: boolean;
+}
+
+export interface OrbitNotificationPreferenceChange {
+  kind: string;
+  label: string;
+  from: OrbitNotificationChannels;
+  to: OrbitNotificationChannels;
+}
+
+export type OrbitProfileField = 'displayName' | 'bio' | 'linkedin' | 'instagram' | 'facebook' | 'x';
+
+export interface OrbitProfileChange {
+  field: OrbitProfileField;
+  label: string;
+  /** Empty when the field was not set, or is being cleared. */
+  from: string;
+  to: string;
+}
 
 export interface OrbitVisibilityChange {
   slug: string;
@@ -284,6 +321,12 @@ export interface OrbitPlanDraft {
     pricings?: string[];
   }>;
   collectionChanges?: Array<{ organizationId: string; collection: string; add?: string[]; remove?: string[] }>;
+  /** The user's own notifications to mark as read: every unread one, or those ids. */
+  notificationsRead?: { all?: boolean | null; ids?: string[] | null } | null;
+  /** Channels to turn on or off per kind of notification; a channel left out stays as it is. */
+  notificationPreferences?: Array<{ kind: string; email?: boolean | null; inbox?: boolean | null }>;
+  /** Public profile fields to change; an empty string clears one. */
+  profile?: Partial<Record<OrbitProfileField, string | null>> | null;
 }
 
 export type OrbitMessageRole = 'user' | 'assistant' | 'tool';

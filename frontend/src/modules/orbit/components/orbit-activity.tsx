@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { ORBIT_MARKDOWN_CLASSES } from '../utils/markdown';
 import remarkGfm from 'remark-gfm';
 import { MdCheck } from 'react-icons/md';
 import OrbitAvatar from './orbit-avatar';
@@ -47,7 +48,7 @@ export default function OrbitActivity({ activity }: Props) {
 
           {writing ? (
             <div className="rounded-2xl rounded-tl-md bg-tp-surface px-3.5 py-2.5 text-[13px] leading-relaxed text-tp-ink">
-              <div className="prose prose-sm max-w-none prose-p:mb-1 prose-p:leading-relaxed [&_p:last-child]:mb-0 [&_p:last-child]:inline">
+              <div className={`prose prose-sm max-w-none prose-p:mb-1 prose-p:leading-relaxed [&_p:last-child]:mb-0 [&_p:last-child]:inline [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto ${ORBIT_MARKDOWN_CLASSES}`}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{activity.draft}</ReactMarkdown>
               </div>
               <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-orbit-caret bg-tp-primary align-baseline" />

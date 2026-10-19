@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { MdAdd, MdInsertDriveFile, MdRefresh } from 'react-icons/md';
 import HarveyChatMessage from '../../core/components/harvey-chat/harvey-chat-message';
+import { ORBIT_MARKDOWN_CLASSES } from '../utils/markdown';
 import type { ChatMessage } from '../../harvey/types/types';
 import { CONVERSATION_FULL, type OrbitChat } from '../hooks/useOrbitChat';
 import OrbitActivity from './orbit-activity';
@@ -67,6 +68,7 @@ export default function OrbitThread({ chat, empty, className = '' }: Props) {
               message={{ id: message.id, role: message.role, content: message.content, createdAt: message.createdAt } as ChatMessage}
               assistantName="ORBIT"
               assistantInitial={<OrbitLogo className="h-[18px] w-[18px]" />}
+              contentClassName={ORBIT_MARKDOWN_CLASSES}
             >
               {message.attachment && (
                 <span className="mt-1 inline-flex items-center gap-1 rounded-lg border border-tp-hairline bg-tp-surface px-2 py-1 text-[11px] text-tp-slate">

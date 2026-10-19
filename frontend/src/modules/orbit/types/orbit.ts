@@ -120,6 +120,25 @@ export type OrbitOperation =
       collection: { slug: string; label: string };
       add: Array<{ slug: string; label: string }>;
       remove: Array<{ slug: string; label: string }>;
+    }
+  | {
+      type: 'mark_notifications_read';
+      all: boolean;
+      count: number;
+      notifications: Array<{ id: string; title: string }>;
+    }
+  | {
+      type: 'update_notification_preferences';
+      changes: Array<{
+        kind: string;
+        label: string;
+        from: { email: boolean; inbox: boolean };
+        to: { email: boolean; inbox: boolean };
+      }>;
+    }
+  | {
+      type: 'update_profile';
+      changes: Array<{ field: string; label: string; from: string; to: string }>;
     };
 
 export interface OrbitPlanStep {

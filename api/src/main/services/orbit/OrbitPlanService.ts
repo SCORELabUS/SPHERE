@@ -29,6 +29,7 @@ import {
 } from '../../types/models/Orbit';
 import { canManage, isRenameAllowed, OrbitActor, resolveOrgRole } from './orbitAccess';
 import { ORBIT_PRICING_LIMITS, PricingStepBuilder } from './orbitPricingSteps';
+import { AccountStepBuilder } from './orbitAccountSteps';
 
 /**
  * Hard limits on what ORBIT may do, enforced here by code whatever the model
@@ -188,6 +189,8 @@ class OrbitPlanService {
     const forks = asArray(draft.forks);
     const newCollections = asArray(draft.newCollections);
     const collectionChanges = asArray(draft.collectionChanges);
+    const notificationPreferences = asArray(draft.notificationPreferences);
+    const accountChanges = (draft.notificationsRead ? 1 : 0) + notificationPreferences.length + (draft.profile ? 1 : 0);
     const collectionPricingChanges = collectionChanges.reduce(
       (total, change) => total + asArray(change?.add).length + asArray(change?.remove).length,
       0
@@ -246,7 +249,8 @@ class OrbitPlanService {
     if (transfer) {
       const others = organizations.length + updates.length + members.length + invitations.length + links.length +
         roleChanges.length + removals.length + revocations.length + moves.length + permissions.length +
-        publications.length + visibilityChanges.length + forks.length + newCollections.length + collectionChanges.length;
+        publications.length + visibilityChanges.length + forks.length + newCollections.length + collectionChanges.length +
+        accountChanges;
       if (others > 0) {
         return {
           ok: false,
@@ -298,6 +302,10 @@ class OrbitPlanService {
     const newCollectionSteps = await pricingSteps.newCollections(newCollections, errors, warnings);
     const collectionSteps = await pricingSteps.collectionChanges(collectionChanges, errors, warnings);
     const visibilitySteps = await pricingSteps.visibility(visibilityChanges, errors, warnings);
+    const accountSteps = new AccountStepBuilder(actor);
+    const profileSteps = await accountSteps.profile(draft.profile, errors, warnings);
+    const preferenceSteps = await accountSteps.notificationPreferences(notificationPreferences, errors, warnings);
+    const readSteps = await accountSteps.notificationsRead(draft.notificationsRead, errors, warnings);
 
     if (errors.length > 0) return { ok: false, errors: unique(errors), warnings: unique(warnings) };
 
@@ -320,6 +328,9 @@ class OrbitPlanService {
       ...forkSteps,
       ...newCollectionSteps,
       ...collectionSteps,
+      ...profileSteps,
+      ...preferenceSteps,
+      ...readSteps,
     ];
     if (operations.length === 0) {
       return {
@@ -1503,7 +1514,33 @@ function describeOperation(operation: OrbitOperation): string {
       ].filter(Boolean).join(' and ');
       return `In the collection "${operation.collection.label}": ${parts}`;
     }
+    case 'mark_notifications_read':
+      if (operation.all) return `Mark all ${plural(operation.count, 'unread notification')} as read`;
+      return operation.count === 1
+        ? `Mark the notification "${operation.notifications[0].title}" as read`
+        : `Mark ${plural(operation.count, 'notification')} as read`;
+    case 'update_notification_preferences':
+      return operation.changes.length === 1
+        ? `${operation.changes[0].label}: ${describeChannels(operation.changes[0])}`
+        : `Change how ${plural(operation.changes.length, 'kind')} of notification reach you`;
+    case 'update_profile': {
+      if (operation.changes.length > 1) {
+        return `Update your public profile: ${operation.changes.map(change => change.label).join(', ')}`;
+      }
+      const [change] = operation.changes;
+      if (!change.to) return `Clear your ${change.label}`;
+      const shown = change.to.length > 60 ? `${change.to.slice(0, 57)}...` : change.to;
+      return `Set your ${change.label} to "${shown}"`;
+    }
   }
+}
+
+/** What a notification preference change turns on and off. */
+function describeChannels(change: { from: { email: boolean; inbox: boolean }; to: { email: boolean; inbox: boolean } }): string {
+  const parts: string[] = [];
+  if (change.from.email !== change.to.email) parts.push(`turn ${change.to.email ? 'on' : 'off'} email`);
+  if (change.from.inbox !== change.to.inbox) parts.push(`turn ${change.to.inbox ? 'on' : 'off'} in-app`);
+  return parts.join(' and ');
 }
 
 function summarizeSteps(steps: OrbitPlanStep[]): string {
@@ -1539,6 +1576,10 @@ function summarizeSteps(steps: OrbitPlanStep[]): string {
   if (collectionEdits) parts.push(`change ${plural(collectionEdits, 'collection')}`);
   const visibility = count('set_pricing_visibility').reduce((total, step) => total + (step.operation as any).changes.length, 0);
   if (visibility) parts.push(`change the visibility of ${plural(visibility, 'pricing')}`);
+  if (count('update_profile').length) parts.push('update your public profile');
+  if (count('update_notification_preferences').length) parts.push('change your notification settings');
+  const marked = count('mark_notifications_read').reduce((total, step) => total + (step.operation as any).count, 0);
+  if (marked) parts.push(`mark ${plural(marked, 'notification')} as read`);
   const text = parts.join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

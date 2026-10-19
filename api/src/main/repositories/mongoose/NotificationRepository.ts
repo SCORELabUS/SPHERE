@@ -17,6 +17,11 @@ class NotificationRepository extends RepositoryBase {
     return notifications.map((n) => n.toObject());
   }
 
+  async findByIdsForUser(ids: string[], userId: string): Promise<any[]> {
+    const notifications = await NotificationMongoose.find({ _id: { $in: ids }, _userId: userId }).exec();
+    return notifications.map((n) => n.toObject());
+  }
+
   async countUnread(userId: string): Promise<number> {
     return NotificationMongoose.countDocuments({ _userId: userId, read: false });
   }

@@ -1,4 +1,4 @@
-import type { OrbitAccess, OrbitOrgReference, OrbitPlan, OrbitStepStatus } from '../types/orbit';
+import type { OrbitAccess, OrbitOperation, OrbitOrgReference, OrbitPlan, OrbitStepStatus } from '../types/orbit';
 
 /** One change to the people, access or place of an existing organization. */
 export interface PlanChange {
@@ -13,6 +13,8 @@ export interface PlanTreeNode {
   label: string;
   /** Created by this plan, as opposed to an organization that already exists. */
   isNew: boolean;
+  /** The user's own account rather than an organization: notifications and public profile. */
+  account: boolean;
   status: OrbitStepStatus | null;
   error: string | null;
   description: string | null;
@@ -25,6 +27,8 @@ export interface PlanTreeNode {
   problems: string[];
   children: PlanTreeNode[];
 }
+
+const ACCOUNT_KEY = 'account';
 
 const keyOf = (reference: OrbitOrgReference) => ('id' in reference ? `id:${reference.id}` : `ref:${reference.ref}`);
 
@@ -44,6 +48,7 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
         key,
         label,
         isNew,
+        account: key === ACCOUNT_KEY,
         status: null,
         error: null,
         description: null,
@@ -73,6 +78,19 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
       node.status = step.status;
       node.error = step.error ?? null;
       node.description = operation.description;
+      continue;
+    }
+
+    if (
+      operation.type === 'mark_notifications_read' ||
+      operation.type === 'update_notification_preferences' ||
+      operation.type === 'update_profile'
+    ) {
+      const account = ensure(ACCOUNT_KEY, 'Your account', false);
+      if (step.status === 'FAILED' || step.status === 'SKIPPED') {
+        account.problems.push(`${step.description}: ${step.error ?? step.status.toLowerCase()}`);
+      }
+      account.changes.push(...accountChanges(operation).map(text => ({ text, tone: 'normal' as const, status: step.status })));
       continue;
     }
 
@@ -218,6 +236,31 @@ export function buildPlanTree(plan: OrbitPlan): PlanTreeNode[] {
   }
   return roots;
 }
+
+type AccountOperation = Extract<
+  OrbitOperation,
+  { type: 'mark_notifications_read' | 'update_notification_preferences' | 'update_profile' }
+>;
+
+function accountChanges(operation: AccountOperation): string[] {
+  switch (operation.type) {
+    case 'mark_notifications_read':
+      if (operation.all) return [`Mark all ${operation.count} unread notification${operation.count === 1 ? '' : 's'} as read`];
+      return operation.notifications.map(notification => `Mark “${notification.title}” as read`);
+    case 'update_notification_preferences':
+      return operation.changes.map(
+        change => `${change.label}: email ${change.to.email ? 'on' : 'off'}, in-app ${change.to.inbox ? 'on' : 'off'}`
+      );
+    case 'update_profile':
+      return operation.changes.map(change =>
+        change.to
+          ? `${capitalize(change.label)}: “${change.to}”${change.from ? ` (was “${change.from}”)` : ''}`
+          : `Clear your ${change.label}`
+      );
+  }
+}
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const ACCESS_LABELS: Record<OrbitAccess, string> = { GET: 'view', PUT: 'edit', DELETE: 'delete', CREATE: 'add versions' };
 
