@@ -8,10 +8,11 @@ import {
 } from '../../types/models/Orbit';
 
 class OrbitConversationRepository extends RepositoryBase {
-  async create(userId: string, title: string): Promise<LeanOrbitConversation> {
+  async create(userId: string, title: string, channel: 'web' | 'mcp' = 'web'): Promise<LeanOrbitConversation> {
     const conversation = await new OrbitConversationMongoose({
       _userId: new mongoose.Types.ObjectId(userId),
       title,
+      channel,
     }).save();
     return conversation.toObject() as unknown as LeanOrbitConversation;
   }
@@ -23,6 +24,15 @@ class OrbitConversationRepository extends RepositoryBase {
       _id: id,
       _userId: new mongoose.Types.ObjectId(userId),
     });
+    return conversation ? (conversation.toObject() as unknown as LeanOrbitConversation) : null;
+  }
+
+  /** The user's latest conversation of a channel. */
+  async findLatestByChannel(userId: string, channel: 'web' | 'mcp'): Promise<LeanOrbitConversation | null> {
+    const conversation = await OrbitConversationMongoose.findOne({
+      _userId: new mongoose.Types.ObjectId(userId),
+      channel,
+    }).sort({ updatedAt: -1 });
     return conversation ? (conversation.toObject() as unknown as LeanOrbitConversation) : null;
   }
 

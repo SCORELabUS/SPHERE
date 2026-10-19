@@ -5613,6 +5613,81 @@ paths:
         '409':
           description: The plan is not pending
 
+  /orbit/mcp:
+    post:
+      summary: ORBIT as an MCP server
+      description: |
+        A [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP transport, stateless,
+        JSON responses) that offers ORBIT's tools to assistants such as Claude or an IDE. The body is a JSON-RPC
+        message (`initialize`, `tools/list`, `tools/call`...). No language model is called: the assistant reads with
+        the same tools as the chat (`list_my_organizations`, `search_pricings`, `get_notifications`...) and its changes
+        go through `propose_plan`, which leaves a plan waiting in a conversation of the user called "Plans from
+        assistants (MCP)". The user confirms it in SPHERE, at the `confirmUrl` of the result; there is no way to confirm
+        a plan through MCP. `attach_file` sends a file a plan can use, `get_plan` reports a plan's outcome and
+        `cancel_plan` withdraws one.
+
+        The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
+        (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
+        changes, and handing over, moving or deleting an organization takes the ALL scope on it.
+
+        Limited to 120 tool calls a minute per user.
+
+        **Authentication**: User API key in `x-api-key`. A user token is refused.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 message of the MCP protocol
+              properties:
+                jsonrpc:
+                  type: string
+                  example: '2.0'
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                method:
+                  type: string
+                  example: tools/call
+                params:
+                  type: object
+                  example:
+                    name: list_my_organizations
+                    arguments: {}
+      responses:
+        '200':
+          description: The JSON-RPC response; a tool that fails answers with `isError` set in its result
+          content:
+            application/json:
+              schema:
+                type: object
+        '202':
+          description: A notification, accepted with no body
+        '401':
+          description: No API key, or a user token instead of one
+    get:
+      summary: Not available on the ORBIT MCP server
+      description: The server keeps no sessions, so there is no stream to open. Answers 405.
+      tags:
+        - ORBIT
+      responses:
+        '405':
+          description: Method not allowed
+    delete:
+      summary: Not available on the ORBIT MCP server
+      description: The server keeps no sessions, so there is none to end. Answers 405.
+      tags:
+        - ORBIT
+      responses:
+        '405':
+          description: Method not allowed
+
 components:
   schemas:
     OrbitConversationSummary:
@@ -5690,7 +5765,7 @@ components:
           example: Create ACME with Sales and IT
         source:
           type: string
-          enum: [chat, file]
+          enum: [chat, file, mcp]
         status:
           type: string
           enum: [PENDING, EXECUTING, COMPLETED, PARTIAL, FAILED, CANCELLED, SUPERSEDED]

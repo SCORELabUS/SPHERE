@@ -185,7 +185,7 @@ export interface OrbitPlan {
   id: string;
   conversationId: string;
   summary: string;
-  source: 'chat' | 'file';
+  source: 'chat' | 'file' | 'mcp';
   status: OrbitPlanStatus;
   steps: OrbitPlanStep[];
   warnings: string[];

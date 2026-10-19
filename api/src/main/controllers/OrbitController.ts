@@ -1,5 +1,6 @@
 import container from '../config/container';
 import OrbitService from '../services/orbit/OrbitService';
+import OrbitMcpService from '../services/orbit/OrbitMcpService';
 import { OrbitActor } from '../services/orbit/orbitAccess';
 import { handleError } from '../utils/users/helpers';
 
@@ -84,6 +85,8 @@ class OrbitController {
     this.showPlan = this.showPlan.bind(this);
     this.confirmPlan = this.confirmPlan.bind(this);
     this.cancelPlan = this.cancelPlan.bind(this);
+    this.mcp = this.mcp.bind(this);
+    this.mcpMethodNotAllowed = this.mcpMethodNotAllowed.bind(this);
   }
 
   async status(req: any, res: any) {
@@ -190,6 +193,29 @@ class OrbitController {
       res.status(status).send({ error: message });
     }
   }
+
+  /** The MCP endpoint, for assistants that use ORBIT's tools with one of the user's API keys. */
+  async mcp(req: any, res: any) {
+    if (req.authType !== 'api-key' || !req.user?.apiKey) {
+      res.status(401).json(mcpError('UNAUTHORIZED: The MCP endpoint takes one of your API keys, in the x-api-key header'));
+      return;
+    }
+    try {
+      const mcpService: OrbitMcpService = container.resolve('orbitMcpService');
+      await mcpService.handle(actorOf(req), req.user.apiKey, req, res, req.body);
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json(mcpError(String(err?.message ?? err)));
+    }
+  }
+
+  /** The server keeps no sessions, so there is no stream to open with GET nor session to end with DELETE. */
+  async mcpMethodNotAllowed(req: any, res: any) {
+    res.status(405).set('Allow', 'POST').json(mcpError('Method not allowed: send MCP messages with POST'));
+  }
+}
+
+function mcpError(message: string) {
+  return { jsonrpc: '2.0', error: { code: -32000, message }, id: null };
 }
 
 export default OrbitController;

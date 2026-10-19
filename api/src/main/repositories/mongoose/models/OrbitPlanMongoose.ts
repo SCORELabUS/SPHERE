@@ -24,7 +24,7 @@ const orbitPlanSchema = new Schema(
     _userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     _conversationId: { type: Schema.Types.ObjectId, ref: 'OrbitConversation', required: true },
     summary: { type: String, required: true },
-    source: { type: String, required: true, enum: ['chat', 'file'], default: 'chat' },
+    source: { type: String, required: true, enum: ['chat', 'file', 'mcp'], default: 'chat' },
     status: {
       type: String,
       required: true,

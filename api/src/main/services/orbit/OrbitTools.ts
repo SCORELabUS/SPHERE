@@ -520,6 +520,8 @@ export interface OrbitToolContext {
   onPlan: (plan: LeanOrbitPlan) => void;
   /** Progress of a long tool, such as reading a file, for the user to see. */
   onStatus?: (label: string) => void;
+  /** Where a proposed plan comes from: the chat, or an assistant through MCP. */
+  planSource?: 'chat' | 'mcp';
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -582,13 +584,18 @@ class OrbitToolRunner {
       return toResult({ ok: false, error: 'The tool arguments were not valid JSON.' });
     }
 
+    return toResult(await this.runParsed(name, args ?? {}, context));
+  }
+
+  /** Runs one tool call with its arguments already parsed, and returns the result as data. */
+  async runParsed(name: string, args: any, context: OrbitToolContext): Promise<unknown> {
     try {
-      return toResult(await this.dispatch(name, args ?? {}, context));
+      return await this.dispatch(name, args ?? {}, context);
     } catch (err: any) {
       const message = String(err?.message ?? err);
       // The model being unreachable is the request failing, not the tool.
       if (message.toLowerCase().startsWith('orbit unavailable')) throw err;
-      return toResult({ ok: false, error: message });
+      return { ok: false, error: message };
     }
   }
 
@@ -759,7 +766,7 @@ class OrbitToolRunner {
 
       case 'propose_plan': {
         const result = await this.planService.propose(actor, context.conversation.id, args, {
-          source: 'chat',
+          source: context.planSource ?? 'chat',
           attachments: context.conversation.attachments,
         });
         if (!result.ok) return { ok: false, errors: result.errors, warnings: result.warnings };
@@ -940,7 +947,7 @@ function simplifyTreeNode(node: any): any {
 }
 
 /** The plan as the model needs it to talk about it: what each step does, not how. */
-function describePlan(plan: LeanOrbitPlan) {
+export function describePlan(plan: LeanOrbitPlan) {
   return {
     id: plan.id,
     status: plan.status,

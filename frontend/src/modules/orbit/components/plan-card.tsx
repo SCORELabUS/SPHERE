@@ -10,6 +10,7 @@ import {
   MdLink,
   MdContentCopy,
   MdInsertDriveFile,
+  MdSmartToy,
 } from 'react-icons/md';
 import type { OrbitPlan, OrbitStepStatus } from '../types/orbit';
 import { buildPlanTree, countSteps, deletesSomething, type PlanTreeNode } from '../utils/plan-tree';
@@ -75,6 +76,11 @@ export default function PlanCard({ plan, runningIndex, busy, onConfirm, onCancel
           {plan.source === 'file' && (
             <span className="inline-flex items-center gap-1 rounded-full bg-tp-hairline-soft px-2 py-0.5 text-[11px] text-tp-slate">
               <MdInsertDriveFile size={12} /> From a file
+            </span>
+          )}
+          {plan.source === 'mcp' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-tp-hairline-soft px-2 py-0.5 text-[11px] text-tp-slate">
+              <MdSmartToy size={12} /> From an assistant (MCP)
             </span>
           )}
         </div>

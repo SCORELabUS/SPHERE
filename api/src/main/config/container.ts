@@ -36,6 +36,7 @@ import OrbitPlanService from '../services/orbit/OrbitPlanService';
 import OrbitImportService from '../services/orbit/OrbitImportService';
 import OrbitExecutorService from '../services/orbit/OrbitExecutorService';
 import OrbitService from '../services/orbit/OrbitService';
+import OrbitMcpService from '../services/orbit/OrbitMcpService';
 
 dotenv.config();
 
@@ -94,6 +95,7 @@ function initContainer(databaseType: string): AwilixContainer {
     orbitImportService: asClass(OrbitImportService).singleton(),
     orbitExecutorService: asClass(OrbitExecutorService).singleton(),
     orbitService: asClass(OrbitService).singleton(),
+    orbitMcpService: asClass(OrbitMcpService).singleton(),
   });
   return container;
 }

@@ -26,6 +26,12 @@ const loadFileRoutes = function (app: express.Application) {
   app.route(baseUrl + '/orbit/plans/:planId/confirm').post(orbitController.confirmPlan);
 
   app.route(baseUrl + '/orbit/plans/:planId/cancel').post(orbitController.cancelPlan);
+
+  app
+    .route(baseUrl + '/orbit/mcp')
+    .post(orbitController.mcp)
+    .get(orbitController.mcpMethodNotAllowed)
+    .delete(orbitController.mcpMethodNotAllowed);
 };
 
 export default loadFileRoutes;

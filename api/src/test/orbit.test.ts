@@ -1539,6 +1539,119 @@ describe('ORBIT assistant API integration', () => {
   });
 
   // =========================================================================
+  // MCP
+  // =========================================================================
+  describe('MCP server', () => {
+    const createApiKey = async (user: { username: string; token: string }, scopes: Array<{ organizationId: string; scope: string }>) => {
+      const response = await request(app)
+        .post(`${BASE_PATH}/users/${user.username}/api-keys`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({ name: 'Claude', scopes });
+      expect(response.status).toBe(201);
+      return response.body.plainKey as string;
+    };
+
+    let nextId = 1;
+    const mcp = (key: string, method: string, params: Record<string, unknown> = {}) =>
+      request(app)
+        .post(`${BASE_PATH}/orbit/mcp`)
+        .set('x-api-key', key)
+        .set('Accept', 'application/json, text/event-stream')
+        .send({ jsonrpc: '2.0', id: nextId++, method, params });
+
+    /** Calls a tool and returns its result as data, with whether the server flagged it as an error. */
+    const callTool = async (key: string, name: string, args: Record<string, unknown> = {}) => {
+      const response = await mcp(key, 'tools/call', { name, arguments: args });
+      expect(response.status).toBe(200);
+      const result = response.body.result;
+      return { data: JSON.parse(result.content[0].text), isError: result.isError === true };
+    };
+
+    it('serves ORBIT\'s tools to assistants with an API key, and nothing without one', async () => {
+      const { user } = await newUser();
+      const organization = await createTestOrganization(user.token, { displayName: `Mcp ${randomSuffix()}` });
+      const key = await createApiKey(user, [{ organizationId: organization.id, scope: 'VIEW' }]);
+
+      const withToken = await request(app)
+        .post(`${BASE_PATH}/orbit/mcp`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .set('Accept', 'application/json, text/event-stream')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+      expect(withToken.status).toBe(401);
+      expect((await request(app).get(`${BASE_PATH}/orbit/mcp`).set('x-api-key', key)).status).toBe(405);
+
+      const initialized = await mcp(key, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test-client', version: '1.0.0' },
+      });
+      expect(initialized.status).toBe(200);
+      expect(initialized.body.result.serverInfo.name).toBe('sphere-orbit');
+      expect(initialized.body.result.instructions).toContain('confirmUrl');
+
+      const listed = await mcp(key, 'tools/list');
+      const names = listed.body.result.tools.map((tool: any) => tool.name);
+      expect(names).toEqual(expect.arrayContaining(['list_my_organizations', 'search_pricings', 'propose_plan', 'attach_file', 'get_plan', 'cancel_plan']));
+      expect(names).not.toContain('import_attachment');
+    });
+
+    it('reads within the scopes of the key and leaves its changes as plans the user confirms in SPHERE', async () => {
+      const { user } = await newUser();
+      const managed = await createTestOrganization(user.token, { displayName: `Managed ${randomSuffix()}` });
+      const outside = await createTestOrganization(user.token, { displayName: `Outside ${randomSuffix()}` });
+      const key = await createApiKey(user, [{ organizationId: managed.id, scope: 'MANAGEMENT' }]);
+
+      const mine = await callTool(key, 'list_my_organizations');
+      expect(mine.data.organizations.map((organization: any) => organization.id)).toEqual([managed.id]);
+      const denied = await callTool(key, 'get_organization', { organizationId: outside.id });
+      expect(denied.isError).toBe(true);
+      expect(denied.data.error).toContain('no access');
+
+      const proposed = await callTool(key, 'propose_plan', {
+        summary: 'Describir la organización',
+        updates: [{ organizationId: managed.id, description: 'Desde Claude' }],
+      });
+      expect(proposed.isError).toBe(false);
+      expect(proposed.data.confirmUrl).toMatch(/\/orbit\?c=/);
+      const plan: any = await OrbitPlanMongoose.findById(proposed.data.plan.id).lean();
+      expect(plan).toMatchObject({ status: 'PENDING', source: 'mcp' });
+      expect(((await OrganizationMongoose.findById(managed.id).lean()) as any).description).not.toBe('Desde Claude');
+      const conversation: any = await OrbitConversationMongoose.findById(plan._conversationId).lean();
+      expect(conversation.channel).toBe('mcp');
+      expect(conversation.messages.at(-1)).toMatchObject({ role: 'assistant', planId: plan._id.toString() });
+
+      const deletion = await callTool(key, 'propose_plan', { summary: 'Borrar', organizationDeletions: [{ organizationId: managed.id }] });
+      expect(deletion.data.error).toContain('ALL scope');
+
+      expect((await callTool(key, 'get_plan', { planId: plan._id.toString() })).data.status).toBe('PENDING');
+      const done = parseSse((await confirm(user.token, plan._id.toString())).text).at(-1)!.data.plan;
+      expect(done.status).toBe('COMPLETED');
+      const after = await callTool(key, 'get_plan', { planId: plan._id.toString() });
+      expect(after.data).toMatchObject({ status: 'COMPLETED', steps: [{ status: 'DONE' }] });
+
+      const file = await callTool(key, 'attach_file', { filename: 'team.csv', content: 'email\nana@example.com\n' });
+      expect(file.data.attachmentId).toBeTruthy();
+      expect((await callTool(key, 'attach_file', { filename: 'notes.pdf', content: 'x' })).isError).toBe(true);
+
+      const again = await callTool(key, 'propose_plan', { summary: 'Otra', updates: [{ organizationId: managed.id, description: 'Otra' }] });
+      const cancelled = await callTool(key, 'cancel_plan', { planId: again.data.plan.id });
+      expect(cancelled.data.plan.status).toBe('CANCELLED');
+    });
+
+    it('only reads with a key that has VIEW scopes', async () => {
+      const { user } = await newUser();
+      const organization = await createTestOrganization(user.token, { displayName: `Viewed ${randomSuffix()}` });
+      const key = await createApiKey(user, [{ organizationId: organization.id, scope: 'VIEW' }]);
+
+      expect((await callTool(key, 'get_organization', { organizationId: organization.id })).isError).toBe(false);
+      const refused = await callTool(key, 'propose_plan', { summary: 'Cambiar', updates: [{ organizationId: organization.id, description: 'No' }] });
+      expect(refused.isError).toBe(true);
+      expect(refused.data.error).toContain('VIEW');
+      expect(await OrbitPlanMongoose.countDocuments({ _userId: user.id })).toBe(0);
+    });
+  });
+
+  // =========================================================================
   // Plans from files
   // =========================================================================
   describe('plans imported from files', () => {

@@ -19,7 +19,7 @@ export type OrbitPlanStatus =
 
 export type OrbitStepStatus = 'PENDING' | 'DONE' | 'FAILED' | 'SKIPPED';
 
-export type OrbitPlanSource = 'chat' | 'file';
+export type OrbitPlanSource = 'chat' | 'file' | 'mcp';
 
 /**
  * An organization a step works on: one that already exists, or one created by an
@@ -399,6 +399,8 @@ export interface LeanOrbitConversation {
   id: string;
   userId: string;
   title: string;
+  /** Where its messages come from: the chat, or assistants that reach ORBIT through MCP. */
+  channel?: 'web' | 'mcp';
   messages: OrbitStoredMessage[];
   attachments: OrbitAttachment[];
   createdAt?: Date;

@@ -39,8 +39,8 @@ const MAX_PAST_TOOL_RESULT_CHARS = 1200;
 const MAX_CONVERSATIONS_LISTED = 50;
 // MongoDB caps a document at 16 MB. A turn adds at most a couple of MB (its
 // message, its file and the results of its tools), so new turns stop at 12 MB.
-const MAX_CONVERSATION_BYTES = 12 * 1024 * 1024;
-const MAX_ATTACHMENT_BYTES_PER_CONVERSATION = 4 * 1024 * 1024;
+export const MAX_CONVERSATION_BYTES = 12 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES_PER_CONVERSATION = 4 * 1024 * 1024;
 // The chat recognises this sentence and offers a new conversation instead of a retry.
 const START_NEW_CONVERSATION = 'Start a new conversation to keep going.';
 const RECENT_PLANS_IN_PROMPT = 3;
@@ -548,7 +548,7 @@ function toDisplay(message: OrbitStoredMessage, conversation: LeanOrbitConversat
   };
 }
 
-function parseAttachment(raw: unknown): OrbitAttachment | null {
+export function parseAttachment(raw: unknown): OrbitAttachment | null {
   if (raw === undefined || raw === null) return null;
   const value = raw as { filename?: unknown; content?: unknown };
   const filename = typeof value.filename === 'string' ? value.filename.trim().slice(0, 200) : '';
@@ -585,7 +585,7 @@ function formatMegabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function newId(): string {
+export function newId(): string {
   return crypto.randomUUID();
 }
 
@@ -593,7 +593,7 @@ function isPresent<T>(value: T | null): value is T {
   return value !== null;
 }
 
-class SlidingWindowLimiter {
+export class SlidingWindowLimiter {
   private hits = new Map<string, number[]>();
 
   /** `max` may be a function, for a limit read from the environment when it is used. */

@@ -33,6 +33,8 @@ const orbitConversationSchema = new Schema(
   {
     _userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, default: 'New conversation' },
+    // Plans proposed through MCP land in a conversation of their own, where the user confirms them.
+    channel: { type: String, enum: ['web', 'mcp'], default: 'web' },
     messages: { type: [orbitMessageSchema], default: [] },
     attachments: { type: [orbitAttachmentSchema], default: [] },
   },
