@@ -7,6 +7,7 @@ import ConversationList from '../../components/conversation-list';
 import OrbitAvatar from '../../components/orbit-avatar';
 import OrbitThread from '../../components/orbit-thread';
 import OrbitComposer, { type OrbitComposerHandle } from '../../components/orbit-composer';
+import OrbitDropZone from '../../components/orbit-drop-zone';
 import OrbitWelcome from '../../components/orbit-welcome';
 
 export default function OrbitAssistantPage() {
@@ -105,18 +106,24 @@ export default function OrbitAssistantPage() {
           </div>
         )}
 
-        <OrbitThread
-          chat={chat}
-          className="px-4 py-5"
-          empty={
-            <OrbitWelcome
-              onPick={prompt => void chat.send(prompt)}
-              onImport={() => composerRef.current?.pickFile()}
-              disabled={chat.availability !== 'available'}
-            />
-          }
-        />
-        <OrbitComposer ref={composerRef} chat={chat} />
+        <OrbitDropZone
+          onFile={file => composerRef.current?.attachFile(file)}
+          onTooMany={() => chat.reportError('Drop one file at a time: a message carries a single file.')}
+          disabled={chat.availability !== 'available' || chat.isSending}
+        >
+          <OrbitThread
+            chat={chat}
+            className="px-4 py-5"
+            empty={
+              <OrbitWelcome
+                onPick={prompt => void chat.send(prompt)}
+                onImport={() => composerRef.current?.pickFile()}
+                disabled={chat.availability !== 'available'}
+              />
+            }
+          />
+          <OrbitComposer ref={composerRef} chat={chat} />
+        </OrbitDropZone>
       </section>
     </div>
   );

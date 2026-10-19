@@ -9,6 +9,7 @@ import OrbitAvatar from '../orbit-avatar';
 import OrbitLogo from '../orbit-logo';
 import OrbitThread from '../orbit-thread';
 import OrbitComposer, { type OrbitComposerHandle } from '../orbit-composer';
+import OrbitDropZone from '../orbit-drop-zone';
 import OrbitWelcome from '../orbit-welcome';
 
 const storageKey = (userId: string) => `orbit.widget.conversation.${userId}`;
@@ -172,19 +173,26 @@ export default function OrbitWidget() {
             </div>
           )}
 
-          <OrbitThread
-            chat={chat}
-            className="px-3.5 py-4"
-            empty={
-              <OrbitWelcome
-                compact
-                onPick={prompt => void chat.send(prompt)}
-                onImport={() => composerRef.current?.pickFile()}
-                disabled={chat.availability !== 'available'}
-              />
-            }
-          />
-          <OrbitComposer ref={composerRef} chat={chat} placeholder="Ask ORBIT..." />
+          <OrbitDropZone
+            onFile={file => composerRef.current?.attachFile(file)}
+            onTooMany={() => chat.reportError('Drop one file at a time: a message carries a single file.')}
+            disabled={chat.availability !== 'available' || chat.isSending}
+            compact
+          >
+            <OrbitThread
+              chat={chat}
+              className="px-3.5 py-4"
+              empty={
+                <OrbitWelcome
+                  compact
+                  onPick={prompt => void chat.send(prompt)}
+                  onImport={() => composerRef.current?.pickFile()}
+                  disabled={chat.availability !== 'available'}
+                />
+              }
+            />
+            <OrbitComposer ref={composerRef} chat={chat} placeholder="Ask ORBIT..." />
+          </OrbitDropZone>
         </section>
       )}
 

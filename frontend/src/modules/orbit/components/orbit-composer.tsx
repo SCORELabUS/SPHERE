@@ -9,6 +9,8 @@ const MAX_FILE_BYTES = 512 * 1024;
 export interface OrbitComposerHandle {
   /** Opens the file picker, for an "import a file" shortcut elsewhere. */
   pickFile: () => void;
+  /** Attaches a file from elsewhere, such as one dropped on the conversation. */
+  attachFile: (file: File) => void;
   focus: () => void;
 }
 
@@ -27,11 +29,6 @@ const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitCompo
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  useImperativeHandle(ref, () => ({
-    pickFile: () => fileInputRef.current?.click(),
-    focus: () => wrapperRef.current?.querySelector('textarea')?.focus(),
-  }));
-
   const disabled = chat.availability !== 'available';
 
   const handleSend = useCallback(
@@ -46,11 +43,8 @@ const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitCompo
     [attachment, chat, disabled]
   );
 
-  const handleFile = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = '';
-      if (!file) return;
+  const attachFile = useCallback(
+    async (file: File) => {
       const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
       if (!ACCEPTED_EXTENSIONS.includes(extension)) {
         chat.reportError(`ORBIT reads ${ACCEPTED_EXTENSIONS.join(', ')} files. Save spreadsheets as CSV first.`);
@@ -65,6 +59,21 @@ const OrbitComposer = forwardRef<OrbitComposerHandle, Props>(function OrbitCompo
     },
     [chat]
   );
+
+  const handleFile = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (file) void attachFile(file);
+    },
+    [attachFile]
+  );
+
+  useImperativeHandle(ref, () => ({
+    pickFile: () => fileInputRef.current?.click(),
+    attachFile: file => void attachFile(file),
+    focus: () => wrapperRef.current?.querySelector('textarea')?.focus(),
+  }));
 
   return (
     <div ref={wrapperRef}>
