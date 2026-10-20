@@ -14,6 +14,20 @@ class UserSettingsService {
     if (rest.settings?.avatar) {
       processFileUris(rest.settings, ['avatar']);
     }
+    // notificationPrefs is a Mongoose Map, which JSON serializes as `{}`: the client
+    // would never see the saved preferences.
+    const prefs = rest.settings?.notificationPrefs;
+    if (prefs instanceof Map) {
+      rest.settings = {
+        ...rest.settings,
+        notificationPrefs: Object.fromEntries(
+          [...prefs.entries()].map(([kind, channels]: [string, any]) => [
+            kind,
+            { email: channels?.email !== false, inbox: channels?.inbox !== false },
+          ])
+        ),
+      };
+    }
     return rest;
   }
 

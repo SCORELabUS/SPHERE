@@ -4071,6 +4071,89 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /pricing-follows/{organizationId}/{pricingSlug}:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationId'
+      - $ref: '#/components/parameters/PricingSlug'
+    get:
+      summary: Check whether the authenticated user follows a pricing
+      description: |
+        Returns whether the authenticated user follows the pricing. Followers are notified
+        (kind `PricingUpdated`) when a new version of the pricing is published, through the
+        channels they enabled for that kind in their notification settings.
+
+        **Authentication**: Required
+
+        **Permission**: the pricing must be visible to the caller. PUBLIC pricings are visible
+        to any authenticated user; PRIVATE ones only to members of its organization (or a
+        global ADMIN). A pricing the caller cannot see answers 404.
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Follow status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingFollowStatus'
+        '401':
+          description: Missing or invalid token
+        '404':
+          description: Pricing not found, or not visible to the caller
+    put:
+      summary: Follow a pricing
+      description: |
+        Follows the pricing so the authenticated user is notified of its new versions.
+        Idempotent: following a pricing twice keeps a single follow. The follow is bound to
+        the pricing's identity, so it survives renames.
+
+        The author of a new version is never notified of their own publish, and a private
+        version only reaches followers who can see it.
+
+        **Authentication**: Required
+
+        **Permission**: the pricing must be visible to the caller (see GET).
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The pricing is now followed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingFollowStatus'
+        '401':
+          description: Missing or invalid token
+        '404':
+          description: Pricing not found, or not visible to the caller
+    delete:
+      summary: Unfollow a pricing
+      description: |
+        Stops notifying the authenticated user of the pricing's new versions. Idempotent.
+
+        **Authentication**: Required
+
+        **Permission**: the pricing must be visible to the caller (see GET).
+      tags:
+        - Pricings
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The pricing is no longer followed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingFollowStatus'
+        '401':
+          description: Missing or invalid token
+        '404':
+          description: Pricing not found, or not visible to the caller
+
   /collections:
     get:
       summary: Get all public collections.
@@ -5132,6 +5215,14 @@ paths:
 
 components:
   schemas:
+    PricingFollowStatus:
+      type: object
+      properties:
+        following:
+          type: boolean
+          description: Whether the authenticated user follows the pricing
+          example: true
+
 
     # ------------------------------
     # --          FIELDS          --

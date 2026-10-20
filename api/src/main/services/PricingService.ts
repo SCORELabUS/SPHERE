@@ -626,6 +626,14 @@ class PricingService {
         await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
       }
 
+      if (isAddingVersion && !forkedFrom) {
+        // Not awaited: telling followers must not delay or fail the publish itself.
+        void container
+          .resolve('pricingFollowService')
+          .notifyNewVersion({ ...pricingData, pricingId: previousPricing.pricingId }, reqUser)
+          .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
+      }
+
       return pricing;
     } catch (err) {
       const error = err as Error & { code?: number };

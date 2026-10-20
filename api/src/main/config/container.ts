@@ -12,6 +12,7 @@ import OrganizationMembershipRepository from '../repositories/mongoose/Organizat
 import OrganizationInvitationRepository from '../repositories/mongoose/OrganizationInvitationRepository';
 import EntityPermissionRepository from '../repositories/mongoose/EntityPermissionRepository';
 import NotificationRepository from '../repositories/mongoose/NotificationRepository';
+import PricingFollowRepository from '../repositories/mongoose/PricingFollowRepository';
 
 import UserService from "../services/UserService";
 import PricingService from "../services/PricingService";
@@ -21,6 +22,7 @@ import OrganizationService from '../services/OrganizationService';
 import PermissionService from '../services/PermissionService';
 import UserSettingsService from '../services/UserSettingsService';
 import NotificationService from '../services/NotificationService';
+import PricingFollowService from '../services/PricingFollowService';
 import ApiKeyService from '../services/ApiKeyService';
 import AuthProviderService from '../services/AuthProviderService';
 import BrevoEmailService from '../services/email/BrevoEmailService';
@@ -31,7 +33,7 @@ dotenv.config();
 
 function initContainer(databaseType: string): AwilixContainer {
   const container: AwilixContainer = createContainer();
-  let userRepository, pricingRepository, pricingCollectionRepository, organizationRepository, organizationMembershipRepository, organizationInvitationRepository, entityPermissionRepository, notificationRepository;
+  let userRepository, pricingRepository, pricingCollectionRepository, organizationRepository, organizationMembershipRepository, organizationInvitationRepository, entityPermissionRepository, notificationRepository, pricingFollowRepository;
 
   switch (databaseType) {
     case "mongoDB":
@@ -43,6 +45,7 @@ function initContainer(databaseType: string): AwilixContainer {
       organizationInvitationRepository = new OrganizationInvitationRepository();
       entityPermissionRepository = new EntityPermissionRepository();
       notificationRepository = new NotificationRepository();
+      pricingFollowRepository = new PricingFollowRepository();
       break;
     default:
       throw new Error(`Unsupported database type: ${databaseType}`);
@@ -56,6 +59,7 @@ function initContainer(databaseType: string): AwilixContainer {
     organizationInvitationRepository: asValue(organizationInvitationRepository),
     entityPermissionRepository: asValue(entityPermissionRepository),
     notificationRepository: asValue(notificationRepository),
+    pricingFollowRepository: asValue(pricingFollowRepository),
     userService: asClass(UserService).singleton(),
     permanentLinkService: asClass(PermanentLinkService).singleton(),
     pricingService: asClass(PricingService).singleton(),
@@ -65,6 +69,7 @@ function initContainer(databaseType: string): AwilixContainer {
     permissionService: asClass(PermissionService).singleton(),
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
+    pricingFollowService: asClass(PricingFollowService).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
     emailService: asClass(BrevoEmailService).singleton(),

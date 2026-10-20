@@ -12,7 +12,6 @@ interface Props {
 const NOTIFICATION_KINDS = [
   { key: 'OrganizationInvitation', label: 'Organization Invitations', description: 'When someone invites you to an organization' },
   { key: 'System', label: 'System Notices', description: 'Important platform updates and maintenance notices' },
-  { key: 'CollectionShared', label: 'Collection Shared', description: 'When someone shares a pricing collection with you' },
   { key: 'PricingUpdated', label: 'Pricing Updated', description: 'When a pricing you follow is updated' },
 ] as const;
 
@@ -21,22 +20,28 @@ const CHANNELS = [
   { key: 'inbox' as const, label: 'In-App', icon: FiInbox, description: 'Notification panel' },
 ];
 
-const DEFAULT_PREFS: Record<string, { email: boolean; inbox: boolean }> = {};
-NOTIFICATION_KINDS.forEach((kind) => {
-  DEFAULT_PREFS[kind.key] = { email: true, inbox: true };
-});
+// A kind with no saved preference is delivered on both channels, as the server does.
+const withDefaults = (saved?: Record<string, { email: boolean; inbox: boolean }>) => {
+  const prefs: Record<string, { email: boolean; inbox: boolean }> = {};
+  NOTIFICATION_KINDS.forEach(({ key }) => {
+    prefs[key] = { email: saved?.[key]?.email !== false, inbox: saved?.[key]?.inbox !== false };
+  });
+  return prefs;
+};
 
 export default function NotificationsSection({ settings, onUpdate, onDirtyChange }: Props) {
   const api = useUserSettingsApi();
   const [prefs, setPrefs] = useState<Record<string, { email: boolean; inbox: boolean }>>(
-    settings.settings?.notificationPrefs || DEFAULT_PREFS
+    () => withDefaults(settings.settings?.notificationPrefs)
   );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const defaultPrefs = useMemo(() => settings.settings?.notificationPrefs || DEFAULT_PREFS, [settings.settings?.notificationPrefs]);
+  const savedPrefs = useMemo(() => withDefaults(settings.settings?.notificationPrefs), [settings.settings?.notificationPrefs]);
 
-  const hasChanges = JSON.stringify(prefs) !== JSON.stringify(defaultPrefs);
+  const hasChanges = NOTIFICATION_KINDS.some(
+    ({ key }) => prefs[key].email !== savedPrefs[key].email || prefs[key].inbox !== savedPrefs[key].inbox
+  );
 
   useEffect(() => {
     onDirtyChange?.(hasChanges);
