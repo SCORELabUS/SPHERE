@@ -37,7 +37,7 @@ import { DeletionStepBuilder, deletionConfirmationPhrase, ORBIT_DELETION_LIMITS 
  * proposes. The model is told them too, so it can split the work or ask first.
  */
 export const ORBIT_PLAN_LIMITS = {
-  organizations: 200,
+  organizations: 50,
   /** Direct sub-organizations any organization may end up with, counting the ones it already has. */
   childrenPerOrganization: 50,
   /** Levels from the top of the tree down to the deepest organization, existing ancestors included. */

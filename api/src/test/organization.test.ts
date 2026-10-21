@@ -14,6 +14,7 @@ import { LeanUser } from '../main/types/models/User';
 import OrganizationMembershipMongoose from '../main/repositories/mongoose/models/OrganizationMembershipMongoose';
 import OrganizationInvitationMongoose from '../main/repositories/mongoose/models/OrganizationInvitationMongoose';
 import OrganizationMongoose from '../main/repositories/mongoose/models/OrganizationMongoose';
+import { MAX_CHILDREN_PER_BULK } from '../main/controllers/validation/OrganizationValidation';
 
 dotenv.config();
 
@@ -711,6 +712,33 @@ describe('Organizations API integration', () => {
 
       expect(response.status).toBe(422);
       expect(await OrganizationMongoose.countDocuments({ _parentId: parent.id })).toBe(0);
+    });
+
+    it(`accepts up to ${MAX_CHILDREN_PER_BULK} child organizations per request and rejects more`, async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const parent = await createTestOrganization(owner.token);
+      const children = (count: number) => Array.from({ length: count }, (_, index) => ({
+        name: `limit_child_${index}_${randomSuffix()}`,
+        displayName: `Limit Child ${index}`,
+      }));
+
+      const tooMany = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ organizations: children(MAX_CHILDREN_PER_BULK + 1) });
+
+      expect(tooMany.status).toBe(422);
+      expect(JSON.stringify(tooMany.body)).toContain(`between 1 and ${MAX_CHILDREN_PER_BULK} organizations`);
+      expect(await OrganizationMongoose.countDocuments({ _parentId: parent.id })).toBe(0);
+
+      const atLimit = await request(app)
+        .post(`${BASE_PATH}/orgs/${parent.id}/children`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ organizations: children(MAX_CHILDREN_PER_BULK) });
+
+      expect(atLimit.status).toBe(201);
+      expect(atLimit.body.created).toBe(MAX_CHILDREN_PER_BULK);
+      atLimit.body.organizations.forEach((organization: { id: string }) => orgsToDelete.add(organization.id));
     });
 
     it('does not allow a MEMBER to create child organizations', async () => {
