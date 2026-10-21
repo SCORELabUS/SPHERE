@@ -257,6 +257,15 @@ class PricingRepository extends RepositoryBase {
     return families[0]._id;
   }
 
+  /** The id shared by every version of a pricing, or null when there is not exactly one such pricing. */
+  async familyIdOf(slug: string, organizationId: string): Promise<string | null> {
+    try {
+      return String(await this.familyId(slug, organizationId));
+    } catch {
+      return null;
+    }
+  }
+
   private async moveFamilies(ids: mongoose.Types.ObjectId[], collectionId: string | null) {
     const families = await PricingIdentity.find({ _id: { $in: ids } }).lean();
     const destinations = new Set<string>();
@@ -332,6 +341,36 @@ class PricingRepository extends RepositoryBase {
     await PricingMongoose.deleteMany({
       _organizationId: new mongoose.Types.ObjectId(organizationId),
     });
+  }
+
+  /**
+   * One line per pricing of an organization (its versions share a slug), as of
+   * its latest version: what ORBIT needs to name it and tell who may see it.
+   */
+  async findSummariesByOrganization(organizationId: string): Promise<
+    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number }>
+  > {
+    const rows = await PricingMongoose.aggregate([
+      { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$slug',
+          name: { $first: '$name' },
+          private: { $first: '$private' },
+          collectionId: { $first: '$_collectionId' },
+          versions: { $sum: 1 },
+        },
+      },
+      { $sort: { name: 1 } },
+    ]);
+    return rows.map((row: any) => ({
+      slug: row._id,
+      name: row.name,
+      private: row.private === true,
+      collectionId: row.collectionId ? String(row.collectionId) : null,
+      versions: row.versions,
+    }));
   }
 
   _processPricingQueryParams(queryParams: PricingIndexQueryParams): {
