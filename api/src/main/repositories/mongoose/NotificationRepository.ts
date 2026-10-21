@@ -9,7 +9,7 @@ class NotificationRepository extends RepositoryBase {
     const filter: any = { _userId: userId };
     if (options?.unreadOnly) filter.read = false;
 
-    const query = NotificationMongoose.find(filter).sort({ createdAt: -1 });
+    const query = NotificationMongoose.find(filter).sort({ createdAt: -1, _id: -1 });
     if (options?.offset) query.skip(options.offset);
     if (options?.limit) query.limit(options.limit);
 
