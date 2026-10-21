@@ -250,6 +250,24 @@ class PricingCollectionRepository extends RepositoryBase {
     });
   }
 
+  /** The collections of an organization, just what ORBIT needs to name them and tell who may see them. */
+  async findSummariesByOrganization(organizationId: string): Promise<
+    Array<{ id: string; slug: string; name: string; private: boolean }>
+  > {
+    const rows = await PricingCollectionMongoose.find({
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+    })
+      .select('_id slug name private')
+      .sort({ name: 1 })
+      .lean();
+    return rows.map((row: any) => ({
+      id: row._id.toString(),
+      slug: row.slug,
+      name: row.name,
+      private: row.private === true,
+    }));
+  }
+
   _processCollectionQueryParams(queryParams: CollectionIndexQueryParams): {
     filteringPipeline: PipelineStage[];
     sortPipeline: PipelineStage[];

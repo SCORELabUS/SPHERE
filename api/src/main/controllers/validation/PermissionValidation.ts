@@ -42,11 +42,14 @@ const setPermission = [
     .withMessage('permissions.CREATE must be a boolean'),
 ];
 
+/** Each item grants access to one user, so this caps the users a single request reaches. */
+export const MAX_PERMISSIONS_PER_BULK = 500;
+
 const setPermissionsBulk = [
   check('permissions')
     .optional()
-    .isArray({ max: 100 })
-    .withMessage('The permissions field must contain at most 100 items')
+    .isArray({ max: MAX_PERMISSIONS_PER_BULK })
+    .withMessage(`The permissions field must contain at most ${MAX_PERMISSIONS_PER_BULK} items`)
     .custom((items) => {
       if (!Array.isArray(items)) return true;
 
@@ -121,8 +124,8 @@ const setPermissionsBulk = [
       ? req.body.removePermissionIds
       : [];
     const totalChanges = permissions.length + removePermissionIds.length;
-    if (totalChanges < 1 || totalChanges > 100) {
-      throw new Error('The bulk request must contain between 1 and 100 total changes');
+    if (totalChanges < 1 || totalChanges > MAX_PERMISSIONS_PER_BULK) {
+      throw new Error(`The bulk request must contain between 1 and ${MAX_PERMISSIONS_PER_BULK} total changes`);
     }
     return true;
   }),
