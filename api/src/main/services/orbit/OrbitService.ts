@@ -65,6 +65,8 @@ const MAX_EXECUTIONS_PER_WINDOW = 10;
 /** Messages a user may send to ORBIT in a rolling hour: `maxOrbitMessages` in SPHERE's pricing. */
 export const ORBIT_MESSAGES_PER_HOUR = 10;
 const HOUR_MS = 60 * 60 * 1000;
+/** The plugin and extension that connect a user's own Claude to ORBIT's MCP server. */
+const DEFAULT_SKILL_URL = 'https://github.com/SCORELabUS/sphere-orbit-plugin';
 // Messages per minute from all users together; see globalMessageLimiter.
 const DEFAULT_GLOBAL_MESSAGES_PER_MINUTE = 20;
 function globalMessagesPerMinute(): number {
@@ -599,7 +601,8 @@ function titleFrom(content: string, attachment: OrbitAttachment | null): string 
  */
 function hourlyLimitRefusal(retryInMs: number): string {
   const minutes = Math.max(1, Math.ceil(retryInMs / 60000));
-  const skillUrl = process.env.ORBIT_SKILL_URL?.trim();
+  // ORBIT_SKILL_URL overrides the default; set empty, the refusal points to the MCP server instead.
+  const skillUrl = (process.env.ORBIT_SKILL_URL ?? DEFAULT_SKILL_URL).trim();
   const elsewhere = skillUrl
     ? `using the SPHERE skill: ${skillUrl}`
     : "through SPHERE's MCP server (`/api/v1/orbit/mcp`) and one of your API keys.";

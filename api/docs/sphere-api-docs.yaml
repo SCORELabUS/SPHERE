@@ -5387,7 +5387,8 @@ paths:
         Limited to 10 messages an hour and 30 every 10 minutes per user, and to `ORBIT_MAX_MESSAGES_PER_MINUTE`
         (20 by default) for all users together, since ORBIT shares HARVEY's OpenAI key and its rate limits. Past
         the hourly limit, the 429 tells the user when they can write again and that they can keep working from
-        their own Claude or ChatGPT with the SPHERE skill (`ORBIT_SKILL_URL`) or the MCP server (`/orbit/mcp`),
+        their own Claude with the SPHERE plugin (https://github.com/SCORELabUS/sphere-orbit-plugin, or
+        `ORBIT_SKILL_URL`), which uses the MCP server (`/orbit/mcp`),
         which does not count towards it.
 
         A conversation is stored as a single document, so it has a size limit: once it holds about 12 MB, or 4 MB

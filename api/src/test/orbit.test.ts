@@ -1601,7 +1601,6 @@ describe('ORBIT assistant API integration', () => {
       const organization = await createTestOrganization(user.token, { displayName: `Hourly ${randomSuffix()}` });
       const conversationId = await startConversation(user.token);
       installFakeLlm(Array.from({ length: ORBIT_MESSAGES_PER_HOUR }, () => answer('Hola')));
-      process.env.ORBIT_SKILL_URL = 'https://example.com/sphere-skill';
       try {
         for (let index = 0; index < ORBIT_MESSAGES_PER_HOUR; index++) {
           expect((await sendMessage(user.token, conversationId, { content: `Hola ${index}` })).status).toBe(201);
@@ -1610,10 +1609,13 @@ describe('ORBIT assistant API integration', () => {
         expect(refused.status).toBe(429);
         expect(refused.body.error).toContain(`limit of ${ORBIT_MESSAGES_PER_HOUR} messages per hour`);
         expect(refused.body.error).toMatch(/write again in (59|60) minutes/);
-        expect(refused.body.error).toContain('your own Claude or ChatGPT using the SPHERE skill: https://example.com/sphere-skill');
+        expect(refused.body.error).toContain('your own Claude or ChatGPT using the SPHERE skill: https://github.com/SCORELabUS/sphere-orbit-plugin');
 
-        delete process.env.ORBIT_SKILL_URL;
-        expect((await sendMessage(user.token, conversationId, { content: 'Otra' })).body.error).toContain("SPHERE's MCP server");
+        process.env.ORBIT_SKILL_URL = 'https://example.com/sphere-skill';
+        expect((await sendMessage(user.token, conversationId, { content: 'Otra' })).body.error).toContain('SPHERE skill: https://example.com/sphere-skill');
+
+        process.env.ORBIT_SKILL_URL = '';
+        expect((await sendMessage(user.token, conversationId, { content: 'Otra más' })).body.error).toContain("SPHERE's MCP server");
       } finally {
         delete process.env.ORBIT_SKILL_URL;
       }

@@ -178,8 +178,6 @@ services:
       - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
       - ORBIT_OPENAI_MODEL=gpt-5-nano
       - ORBIT_MAX_MESSAGES_PER_MINUTE=20
-      # Where users past ORBIT's hourly limit get the skill for their own Claude or ChatGPT.
-      - ORBIT_SKILL_URL=${ORBIT_SKILL_URL:-}
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml
