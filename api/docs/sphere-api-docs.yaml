@@ -125,6 +125,9 @@ tags:
     description: User notifications and real-time updates
   - name: Cache
     description: Redis cache operations for temporary data storage
+  - name: ORBIT
+    description: |
+      Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
 
 paths:
   /healthcheck:
@@ -5213,8 +5216,676 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # ============================================
+  # ORBIT assistant
+  # ============================================
+
+  /orbit/status:
+    get:
+      summary: Whether ORBIT is available
+      description: |
+        Tells the client whether this server has a language model configured for ORBIT.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Availability of ORBIT
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+        '401':
+          description: Authentication required
+
+  /orbit/conversations:
+    get:
+      summary: List the user's ORBIT conversations
+      description: |
+        The signed-in user's conversations with ORBIT, most recently updated first (at most 50), without their messages.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER). Users only ever see their own conversations.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Conversations of the user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrbitConversationSummary'
+        '401':
+          description: Authentication required
+    post:
+      summary: Start an ORBIT conversation
+      description: |
+        Creates an empty conversation with ORBIT for the signed-in user.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '201':
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrbitConversation'
+        '401':
+          description: Authentication required
+
+  /orbit/conversations/{conversationId}:
+    get:
+      summary: Show an ORBIT conversation
+      description: |
+        The messages of a conversation as the chat shows them (tool traffic is left out) and every plan proposed in it.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the conversation belongs to; anyone else gets 404.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitConversationId'
+      responses:
+        '200':
+          description: The conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrbitConversation'
+        '401':
+          description: Authentication required
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete an ORBIT conversation
+      description: |
+        Deletes a conversation with its messages and files. A plan still waiting for confirmation is cancelled;
+        plans that were already applied are kept, together with their audit log.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the conversation belongs to; anyone else gets 404.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitConversationId'
+      responses:
+        '204':
+          description: The conversation was deleted
+        '401':
+          description: Authentication required
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A plan of this conversation is being applied right now
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orbit/conversations/{conversationId}/messages:
+    post:
+      summary: Send a message to ORBIT
+      description: |
+        Sends a message, optionally with a file, and returns ORBIT's answer. ORBIT may query SPHERE to answer, and
+        for any change it proposes a **plan** instead of acting: the plan is returned here with status `PENDING`
+        and nothing changes until the user confirms it with `POST /orbit/plans/{planId}/confirm`.
+
+        A plan can create and edit organizations; add, invite, change the role of and remove members; create and
+        revoke invitation links; move organizations within the tree; hand an organization over; and set what members
+        may do with pricings and collections. ORBIT can also review access: who can see or edit a pricing or
+        collection, and what a member can do in an organization.
+
+        For pricings and collections, ORBIT searches pricings and reads their versions, analytics, configuration space
+        and the differences between two versions; a plan can publish a pricing or a new version from an attached YAML
+        file (validated when the plan is proposed), change the visibility of pricings and versions, fork a pricing into
+        another organization, create collections and add or remove pricings in them.
+
+        For the user's own account, ORBIT reads and summarizes their notifications and their public profile; a plan can
+        mark notifications as read (all or some), turn email and in-app delivery on or off per kind of notification, and
+        change the display name, bio and social links of the public profile.
+
+        ORBIT can also delete organizations (with everything below them, which takes being their OWNER), pricings or
+        some of their versions, and collections (with or without their pricings). Deletions go in a plan of their own
+        that lists everything each one takes with it, and are confirmed by typing a phrase (see the confirm endpoint).
+
+        Files are sent as text: CSV, TSV, plain text or pricing YAML (`.yml`, `.yaml`), up to 512 KB. Their content is
+        treated as data, never as instructions.
+
+        Limited to 10 messages an hour and 30 every 10 minutes per user, and to `ORBIT_MAX_MESSAGES_PER_MINUTE`
+        (20 by default) for all users together, since ORBIT shares HARVEY's OpenAI key and its rate limits. Past
+        the hourly limit, the 429 tells the user when they can write again and that they can keep working from
+        their own Claude with the SPHERE plugin (https://github.com/SCORELabUS/sphere-orbit-plugin, or
+        `ORBIT_SKILL_URL`), which uses the MCP server (`/orbit/mcp`),
+        which does not count towards it.
+
+        A conversation is stored as a single document, so it has a size limit: once it holds about 12 MB, or 4 MB
+        of files, new messages are refused with 409 and the user is asked to start a new conversation.
+
+        **Streaming**: send `Accept: text/event-stream` to follow the turn as it happens. The response is then a
+        stream of server-sent events instead of the JSON body:
+
+        - `accepted`: `{ message, title }` once the user's message is stored
+        - `status`: `{ label, tool? }` each time ORBIT starts something (reading the request, running a tool, reading
+          lines of a file, waiting for the AI provider's rate limit)
+        - `delta`: `{ text }` a piece of the answer as it is written
+        - `reset`: the text streamed so far was a preamble to tool calls and should be discarded
+        - `done`: `{ messages, plan }`, the same body as the JSON response
+        - `error`: `{ error, status }` if the turn fails after the stream started
+
+        Errors found before the turn starts (unknown conversation, invalid message, rate limit) are answered with
+        their status code and a JSON body even when streaming was requested.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the conversation belongs to.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  maxLength: 8000
+                  description: The message. May be empty when a file is attached.
+                  example: Create ACME with Sales and IT, and add ana@acme.com to Sales as admin
+                attachment:
+                  type: object
+                  properties:
+                    filename:
+                      type: string
+                      description: Name of the file; must end in .csv, .tsv or .txt
+                      example: team.csv
+                    content:
+                      type: string
+                      description: Text content of the file
+                  required:
+                    - filename
+                    - content
+      responses:
+        '200':
+          description: The turn as server-sent events, when `Accept` is `text/event-stream`
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '201':
+          description: ORBIT's answer, with the plan it proposed in this turn if any
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    description: The user's message and ORBIT's answer
+                    items:
+                      $ref: '#/components/schemas/OrbitMessage'
+                  plan:
+                    nullable: true
+                    allOf:
+                      - $ref: '#/components/schemas/OrbitPlan'
+        '401':
+          description: Authentication required
+        '404':
+          description: Conversation not found
+        '409':
+          description: The conversation is full, or already holds the most files it can take
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Empty message, message too long, or unsupported/oversized file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many messages from this user, or from all users together
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: ORBIT is not configured or the language model could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orbit/plans/{planId}:
+    get:
+      summary: Show an ORBIT plan
+      description: |
+        A plan with the state of each of its steps.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the plan belongs to; anyone else gets 404.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitPlanId'
+      responses:
+        '200':
+          description: The plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrbitPlan'
+        '401':
+          description: Authentication required
+        '404':
+          description: Plan not found
+
+  /orbit/plans/{planId}/confirm:
+    post:
+      summary: Confirm and apply an ORBIT plan
+      description: |
+        Applies a pending plan exactly as it was proposed, step by step, with the user's own permissions (checked
+        again for every step). A plan runs only once. Progress is streamed as server-sent events:
+
+        - `started`: `{ planId, total }`
+        - `step`: `{ stepId, index, status, result, error }` after each step (`DONE`, `FAILED` or `SKIPPED`)
+        - `done`: `{ plan }` with the final plan (`COMPLETED`, `PARTIAL` or `FAILED`)
+        - `error`: `{ error }` if the run could not finish
+
+        A failed step does not stop the run; steps that depended on it are skipped. Every step is recorded in the
+        ORBIT audit log. The run carries on if the client disconnects.
+
+        Limited to 10 confirmations every 10 minutes per user.
+
+        Plans that are hard to undo carry a `confirmationPhrase`: the organization's name when handing it over; for
+        deletions, the name of what is deleted, or `delete N items` when there are several. They only run when the
+        body repeats it in `confirmation`; case and surrounding spaces are ignored.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the plan belongs to.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitPlanId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmation:
+                  type: string
+                  description: The plan's `confirmationPhrase`, typed by the user. Required only when the plan has one.
+                  example: ACME
+      responses:
+        '200':
+          description: Progress of the run
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Authentication required
+        '404':
+          description: Plan not found
+        '409':
+          description: The plan is not pending (already run, cancelled or replaced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The plan needs its confirmation phrase and the body did not repeat it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many confirmations
+
+  /orbit/plans/{planId}/cancel:
+    post:
+      summary: Cancel a pending ORBIT plan
+      description: |
+        Drops a pending plan without applying it.
+
+        **Authentication**: User token
+
+        **Permission**: Only the user the plan belongs to.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrbitPlanId'
+      responses:
+        '200':
+          description: The cancelled plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrbitPlan'
+        '401':
+          description: Authentication required
+        '404':
+          description: Plan not found
+        '409':
+          description: The plan is not pending
+
+  /orbit/mcp:
+    post:
+      summary: ORBIT as an MCP server
+      description: |
+        A [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP transport, stateless,
+        JSON responses) that offers ORBIT's tools to assistants such as Claude or an IDE. The body is a JSON-RPC
+        message (`initialize`, `tools/list`, `tools/call`...). No language model is called: the assistant reads with
+        the same tools as the chat (`list_my_organizations`, `search_pricings`, `get_notifications`...) and its changes
+        go through `propose_plan`, which leaves a plan waiting in a conversation of the user called "Plans from
+        assistants (MCP)". The user confirms it in SPHERE, at the `confirmUrl` of the result; there is no way to confirm
+        a plan through MCP. `attach_file` sends a file a plan can use, `get_plan` reports a plan's outcome and
+        `cancel_plan` withdraws one.
+
+        The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
+        (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
+        changes, and handing over, moving or deleting an organization takes the ALL scope on it.
+
+        Limited to 120 tool calls a minute per user.
+
+        **Authentication**: User API key in `x-api-key`. A user token is refused.
+      tags:
+        - ORBIT
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 message of the MCP protocol
+              properties:
+                jsonrpc:
+                  type: string
+                  example: '2.0'
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                method:
+                  type: string
+                  example: tools/call
+                params:
+                  type: object
+                  example:
+                    name: list_my_organizations
+                    arguments: {}
+      responses:
+        '200':
+          description: The JSON-RPC response; a tool that fails answers with `isError` set in its result
+          content:
+            application/json:
+              schema:
+                type: object
+        '202':
+          description: A notification, accepted with no body
+        '401':
+          description: No API key, or a user token instead of one
+    get:
+      summary: Not available on the ORBIT MCP server
+      description: The server keeps no sessions, so there is no stream to open. Answers 405.
+      tags:
+        - ORBIT
+      responses:
+        '405':
+          description: Method not allowed
+    delete:
+      summary: Not available on the ORBIT MCP server
+      description: The server keeps no sessions, so there is none to end. Answers 405.
+      tags:
+        - ORBIT
+      responses:
+        '405':
+          description: Method not allowed
+
 components:
   schemas:
+    OrbitConversationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          example: Create ACME with Sales and IT
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    OrbitConversation:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrbitMessage'
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrbitPlan'
+    OrbitMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          description: Markdown text
+        planId:
+          type: string
+          nullable: true
+          description: Plan proposed in the turn this answer closes
+        attachment:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            filename:
+              type: string
+            size:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+    OrbitPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        conversationId:
+          type: string
+        summary:
+          type: string
+          example: Create ACME with Sales and IT
+        source:
+          type: string
+          enum: [chat, file, mcp]
+        status:
+          type: string
+          enum: [PENDING, EXECUTING, COMPLETED, PARTIAL, FAILED, CANCELLED, SUPERSEDED]
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrbitPlanStep'
+        warnings:
+          type: array
+          description: Items left out of the plan and other notes the user should see before confirming
+          items:
+            type: string
+          example:
+            - No SPHERE account matches "ghost@acme.com"; it was left out.
+        ignoredRows:
+          type: array
+          description: Rows of an imported file that the plan does not use, with the reason
+          items:
+            type: object
+            properties:
+              row:
+                type: integer
+              reason:
+                type: string
+        confirmationPhrase:
+          type: string
+          nullable: true
+          description: Text the user must type to confirm a plan that is hard to undo (the organization's name when handing it over, what is deleted, or "delete N items")
+          example: ACME
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    OrbitPlanStep:
+      type: object
+      properties:
+        id:
+          type: string
+          example: s1
+        description:
+          type: string
+          example: Create "Sales" under "ACME"
+        status:
+          type: string
+          enum: [PENDING, DONE, FAILED, SKIPPED]
+        operation:
+          type: object
+          description: |
+            What the step does. Organizations are referenced as `{ id, label }` when they exist or `{ ref, label }`
+            when an earlier step of the plan creates them. `type` is one of:
+
+            - `create_organization`, `update_organization`, `add_members`, `invite_users`, `create_invitation_link`
+            - `change_member_roles`: `{ organization, changes: [{ userId, username, from, to }] }`
+            - `remove_members`: `{ organization, members: [{ userId, username, role }] }`
+            - `revoke_invitations`: `{ organization, invitations: [{ id, code }] }`
+            - `move_organization`: `{ organization, from, to }`, where `null` is the top level
+            - `transfer_ownership`: `{ organization, newOwner: { userId, username }, subOrganizations }`, always alone in its plan
+            - `set_permissions`: `{ organization, changes: [{ userId, username, resourceType, resourceSlug, resourceLabel, access, previous }] }`,
+              where `access` is what the member ends up with (`GET`, `PUT`, `DELETE`, `CREATE`; empty takes it away)
+              and `resourceSlug` is `null` for organization-wide CREATE
+            - `publish_pricing`: `{ organization, attachment: { id, filename }, pricingName, version, existing, private, collection }`,
+              where `existing` is `{ slug }` when the file becomes a new version of that pricing
+            - `set_pricing_visibility`: `{ organization, changes: [{ slug, label, version, private }] }`, where a `null` version is every version
+            - `fork_pricing`: `{ organization, source: { organizationId, slug, label, version }, name }`, `organization` being where the fork goes
+            - `create_collection`: `{ organization, name, description, private, pricings: [{ slug, label }] }`
+            - `update_collection_pricings`: `{ organization, collection: { slug, label }, add, remove }`
+            - `mark_notifications_read`: `{ all, count, notifications: [{ id, title }] }`, where `notifications` is empty when `all` is true
+            - `update_notification_preferences`: `{ changes: [{ kind, label, from: { email, inbox }, to: { email, inbox } }] }`
+            - `update_profile`: `{ changes: [{ field, label, from, to }] }`, `field` being `displayName`, `bio`, `linkedin`, `instagram`, `facebook` or `x`; an empty `to` clears it
+            - `delete_pricing_versions`: `{ organization, pricing: { slug, label }, versions, remaining }`
+            - `delete_pricing`: `{ organization, pricing: { slug, label }, versions, followers, collection }`
+            - `delete_collection`: `{ organization, collection: { slug, label }, withPricings, pricings: [{ slug, label }] }`
+            - `delete_organization`: `{ organization, subOrganizations: [{ id, label }], pricings, collections, members, invitations }`, the counts covering its whole tree
+          properties:
+            type:
+              type: string
+              enum:
+                - create_organization
+                - update_organization
+                - add_members
+                - invite_users
+                - create_invitation_link
+                - change_member_roles
+                - remove_members
+                - revoke_invitations
+                - move_organization
+                - transfer_ownership
+                - set_permissions
+                - publish_pricing
+                - set_pricing_visibility
+                - fork_pricing
+                - create_collection
+                - update_collection_pricings
+                - mark_notifications_read
+                - update_notification_preferences
+                - update_profile
+                - delete_pricing_versions
+                - delete_pricing
+                - delete_collection
+                - delete_organization
+          additionalProperties: true
+        result:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: What the step produced (for example the id of the organization it created)
+        error:
+          type: string
+          nullable: true
     PricingFollowStatus:
       type: object
       properties:
@@ -7658,6 +8329,24 @@ components:
       required: false
       schema:
         type: boolean
+
+    OrbitConversationId:
+      name: conversationId
+      in: path
+      required: true
+      description: The id of an ORBIT conversation of the signed-in user.
+      schema:
+        type: string
+        example: "6720a1b2c3d4e5f601234567"
+
+    OrbitPlanId:
+      name: planId
+      in: path
+      required: true
+      description: The id of an ORBIT plan of the signed-in user.
+      schema:
+        type: string
+        example: "6720a1b2c3d4e5f601234568"
 
     OrganizationId:
       name: organizationId

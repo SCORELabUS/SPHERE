@@ -2,6 +2,28 @@ import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import { processFileUris } from './FileService';
 
+export const SOCIAL_URL_PATTERNS: Record<string, RegExp[]> = {
+  linkedin: [
+    /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w\-%.]+\/?$/,
+    /^https?:\/\/(www\.)?linkedin\.com\/company\/[\w\-%.]+\/?$/,
+  ],
+  instagram: [/^https?:\/\/(www\.)?instagram\.com\/[\w%.]+\/?$/],
+  facebook: [
+    /^https?:\/\/(www\.)?facebook\.com\/[\w%.]+\/?$/,
+    /^https?:\/\/(www\.)?facebook\.com\/pages\/[\w\-%.]+\/\d+\/?$/,
+  ],
+  x: [
+    /^https?:\/\/(www\.)?x\.com\/[\w]+\/?$/,
+    /^https?:\/\/(www\.)?twitter\.com\/[\w]+\/?$/,
+  ],
+};
+
+/** Whether a link has the shape of a profile on that network; networks without a pattern take any link. */
+export function isValidSocialUrl(platform: string, url: string): boolean {
+  const patterns = SOCIAL_URL_PATTERNS[platform];
+  return !patterns || patterns.some(pattern => pattern.test(url));
+}
+
 class UserSettingsService {
   private userRepository: UserRepository;
 
@@ -79,27 +101,8 @@ class UserSettingsService {
     const user = await this.userRepository.findById(userId);
     if (!user) throw new Error('NOT FOUND: User not found');
 
-    const SOCIAL_URL_PATTERNS: Record<string, RegExp[]> = {
-      linkedin: [
-        /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w\-%.]+\/?$/,
-        /^https?:\/\/(www\.)?linkedin\.com\/company\/[\w\-%.]+\/?$/,
-      ],
-      instagram: [/^https?:\/\/(www\.)?instagram\.com\/[\w%.]+\/?$/],
-      facebook: [
-        /^https?:\/\/(www\.)?facebook\.com\/[\w%.]+\/?$/,
-        /^https?:\/\/(www\.)?facebook\.com\/pages\/[\w\-%.]+\/\d+\/?$/,
-      ],
-      x: [
-        /^https?:\/\/(www\.)?x\.com\/[\w]+\/?$/,
-        /^https?:\/\/(www\.)?twitter\.com\/[\w]+\/?$/,
-      ],
-    };
-
     for (const [platform, url] of Object.entries(data)) {
-      if (url && SOCIAL_URL_PATTERNS[platform]) {
-        const isValid = SOCIAL_URL_PATTERNS[platform].some((p) => p.test(url));
-        if (!isValid) throw new Error(`INVALID DATA: Invalid URL for ${platform}`);
-      }
+      if (url && !isValidSocialUrl(platform, url)) throw new Error(`INVALID DATA: Invalid URL for ${platform}`);
     }
 
     const updateData: Record<string, any> = {};

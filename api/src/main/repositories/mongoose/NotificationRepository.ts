@@ -9,11 +9,16 @@ class NotificationRepository extends RepositoryBase {
     const filter: any = { _userId: userId };
     if (options?.unreadOnly) filter.read = false;
 
-    const query = NotificationMongoose.find(filter).sort({ createdAt: -1 });
+    const query = NotificationMongoose.find(filter).sort({ createdAt: -1, _id: -1 });
     if (options?.offset) query.skip(options.offset);
     if (options?.limit) query.limit(options.limit);
 
     const notifications = await query.exec();
+    return notifications.map((n) => n.toObject());
+  }
+
+  async findByIdsForUser(ids: string[], userId: string): Promise<any[]> {
+    const notifications = await NotificationMongoose.find({ _id: { $in: ids }, _userId: userId }).exec();
     return notifications.map((n) => n.toObject());
   }
 
