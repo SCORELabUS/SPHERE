@@ -25,6 +25,8 @@ const orbitPlanSchema = new Schema(
     _conversationId: { type: Schema.Types.ObjectId, ref: 'OrbitConversation', required: true },
     summary: { type: String, required: true },
     source: { type: String, required: true, enum: ['chat', 'file', 'mcp'], default: 'chat' },
+    // The API key of a plan proposed through MCP, the only one that may confirm it there.
+    apiKeyId: { type: String, default: null },
     status: {
       type: String,
       required: true,

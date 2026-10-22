@@ -265,6 +265,8 @@ export interface LeanOrbitPlan {
   conversationId: string;
   summary: string;
   source: OrbitPlanSource;
+  /** The API key an assistant proposed it with through MCP: only that key may confirm it there. */
+  apiKeyId?: string | null;
   status: OrbitPlanStatus;
   steps: OrbitPlanStep[];
   warnings: string[];

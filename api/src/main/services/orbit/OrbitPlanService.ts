@@ -134,6 +134,8 @@ class OrbitPlanService {
     draft: OrbitPlanDraft,
     options: {
       source?: OrbitPlanSource;
+      /** The API key an assistant proposes it with through MCP. */
+      apiKeyId?: string | null;
       ignoredRows?: OrbitIgnoredRow[];
       warnings?: string[];
       /** The conversation's files, for pricings published from one of them. */
@@ -149,6 +151,7 @@ class OrbitPlanService {
       conversationId,
       summary: built.summary,
       source: options.source ?? 'chat',
+      apiKeyId: options.apiKeyId ?? null,
       steps: built.steps,
       warnings: built.warnings,
       ignoredRows: options.ignoredRows ?? [],

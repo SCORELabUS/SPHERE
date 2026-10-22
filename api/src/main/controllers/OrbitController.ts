@@ -86,7 +86,6 @@ class OrbitController {
     this.confirmPlan = this.confirmPlan.bind(this);
     this.cancelPlan = this.cancelPlan.bind(this);
     this.mcp = this.mcp.bind(this);
-    this.mcpMethodNotAllowed = this.mcpMethodNotAllowed.bind(this);
   }
 
   async status(req: any, res: any) {
@@ -206,11 +205,6 @@ class OrbitController {
     } catch (err: any) {
       if (!res.headersSent) res.status(500).json(mcpError(String(err?.message ?? err)));
     }
-  }
-
-  /** The server keeps no sessions, so there is no stream to open with GET nor session to end with DELETE. */
-  async mcpMethodNotAllowed(req: any, res: any) {
-    res.status(405).set('Allow', 'POST').json(mcpError('Method not allowed: send MCP messages with POST'));
   }
 }
 

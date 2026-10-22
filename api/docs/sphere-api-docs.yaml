@@ -5626,9 +5626,16 @@ paths:
         message (`initialize`, `tools/list`, `tools/call`...). No language model is called: the assistant reads with
         the same tools as the chat (`list_my_organizations`, `search_pricings`, `get_notifications`...) and its changes
         go through `propose_plan`, which leaves a plan waiting in a conversation of the user called "Plans from
-        assistants (MCP)". The user confirms it in SPHERE, at the `confirmUrl` of the result; there is no way to confirm
-        a plan through MCP. `attach_file` sends a file a plan can use, `get_plan` reports a plan's outcome and
-        `cancel_plan` withdraws one.
+        assistants (MCP)". `confirm_plan` applies it, only with the API key that proposed it: when the client supports
+        MCP elicitation, SPHERE asks the user in a confirmation dialog the model cannot answer (deletions and handovers
+        are confirmed by typing their phrase there); otherwise the assistant's call confirms it, passing the phrase the
+        user typed when one is needed. The user can also confirm it in SPHERE, at the `confirmUrl`. `attach_file`
+        sends a file a plan can use, `get_plan` reports a plan's outcome and `cancel_plan` withdraws one.
+
+        **Sessions**: an `initialize` starts a session; its id comes back in the `Mcp-Session-Id` header and its answers
+        as server-sent events, which is how the confirmation dialog reaches the client. Sessions belong to the user and
+        the API key that started them and end after 30 idle minutes. A request without a session stands alone and
+        answers in JSON.
 
         The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
         (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
@@ -5676,21 +5683,39 @@ paths:
         '401':
           description: No API key, or a user token instead of one
     get:
-      summary: Not available on the ORBIT MCP server
-      description: The server keeps no sessions, so there is no stream to open. Answers 405.
+      summary: Open the stream of an ORBIT MCP session
+      description: |
+        Opens the server-sent event stream of the session named in `Mcp-Session-Id`. Without a session, answers 405.
+
+        **Authentication**: User API key in `x-api-key`, the one that started the session.
       tags:
         - ORBIT
+      security:
+        - ApiKeyAuth: []
       responses:
+        '200':
+          description: The session's event stream
+        '404':
+          description: No such session for this user and API key
         '405':
-          description: Method not allowed
+          description: No session was named
     delete:
-      summary: Not available on the ORBIT MCP server
-      description: The server keeps no sessions, so there is none to end. Answers 405.
+      summary: End an ORBIT MCP session
+      description: |
+        Ends the session named in `Mcp-Session-Id`. Without a session, answers 405.
+
+        **Authentication**: User API key in `x-api-key`, the one that started the session.
       tags:
         - ORBIT
+      security:
+        - ApiKeyAuth: []
       responses:
+        '200':
+          description: Session ended
+        '404':
+          description: No such session for this user and API key
         '405':
-          description: Method not allowed
+          description: No session was named
 
 components:
   schemas:
