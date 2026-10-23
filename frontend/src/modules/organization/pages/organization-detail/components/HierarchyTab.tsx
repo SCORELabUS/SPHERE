@@ -106,7 +106,7 @@ export default function HierarchyTab({
             <h2 className="font-display text-lg text-tp-ink">Organization Hierarchy</h2>
             <p className="text-xs text-tp-steel">
               {org._parentId
-                ? 'Ancestors above, descendants below. Only accessible nodes are shown.'
+                ? 'Ancestors above, descendants below. Locked organizations only show their public content.'
                 : 'This is a root organization. All descendants are shown below.'}
             </p>
             {canManage && (

@@ -2769,7 +2769,16 @@ paths:
   /orgs/{organizationId}/hierarchy:
     get:
       summary: Get the whole branch an organization sits in
-      description: Returns the organization branch as a flat list, including an access flag for each node.
+      description: |
+        Returns the organization branch (its ancestors, its siblings and everything below it)
+        as a flat list, including an access flag for each node.
+
+        **Authentication**: Optional (public endpoint)
+
+        **Access flag**: `hasAccess` is `true` for the organizations the caller belongs to and
+        for those below an organization where the caller is `OWNER` or `ADMIN`. It is always
+        `true` for a global **ADMIN** and always `false` for unauthenticated callers. Every
+        organization in the branch can still be opened through its public page.
       tags: [Organizations]
       security: [{ ApiKeyAuth: [] }]
       parameters:
@@ -2792,8 +2801,6 @@ paths:
                     isPersonal: { type: boolean }
                     _parentId: { type: string, nullable: true }
                     hasAccess: { type: boolean }
-        '401': { description: Authentication required }
-        '403': { description: The caller is not a member of the organization }
         '404': { description: Organization not found }
 
   /orgs/{organizationId}/parent:
