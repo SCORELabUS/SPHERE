@@ -72,6 +72,17 @@ info:
 
     ---
 
+    ## Rate Limiting
+
+    Every request counts against its user (or the owner of its API key) and, when there is
+    none, against its IP address. By default a client may make **300 requests every 10 seconds**.
+    Logins, registrations, password resets and verification resends are limited further, to
+    **10 requests every 5 minutes** per address and account. Over the limit the API answers
+    `429 Too Many Requests` with a `Retry-After` header; every limited response also carries
+    `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`.
+
+    ---
+
     ## Authentication Flow
 
     1. Request arrives with either `Authorization: Bearer <token>` or `x-api-key: <key>`. 

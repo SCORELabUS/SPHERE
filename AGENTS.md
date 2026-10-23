@@ -39,6 +39,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - API entry point: `api/src/main/backend.ts`
 - Migrations auto-run via `npx migrate up` in `dev:api` script
 - API uses `ts-migrate-mongoose` for MongoDB migrations
+- The API is rate limited (`api/src/main/middlewares/RateLimitMiddleware.ts`), with counters in Redis: 300 requests every 10 seconds per user or, without one, per IP (`RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`), and 10 every 5 minutes per address and account on login, registration and password reset (`AUTH_RATE_LIMIT_MAX_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`). A value of 0 turns a limiter off. Both are off under Vitest unless set explicitly, and requests go through if Redis is down.
 
 ## API Documentation
 
