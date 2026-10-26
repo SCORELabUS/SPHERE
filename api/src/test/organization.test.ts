@@ -1022,6 +1022,42 @@ describe('Organizations API integration', () => {
       expect(nodes[mine.id].hasAccess).toBe(true);
       expect(nodes[theirs.id].hasAccess).toBe(false);
     });
+
+    it('lets visitors browse the branch without opening any node', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+
+      const response = await request(app).get(BASE_PATH + '/orgs/' + child.id + '/hierarchy');
+
+      expect(response.status).toBe(200);
+      expect(response.body.map((node: any) => node.id).sort()).toEqual(
+        [root.id, child.id, grandchild.id].sort()
+      );
+      expect(response.body.some((node: any) => node.hasAccess)).toBe(false);
+    });
+
+    it('lets users browse the branch of an organization they do not belong to', async () => {
+      const { user: owner } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+
+      const response = await request(app)
+        .get(BASE_PATH + '/orgs/' + child.id + '/hierarchy')
+        .set('Authorization', 'Bearer ' + outsider.token);
+
+      expect(response.status).toBe(200);
+      expect(response.body.map((node: any) => node.id).sort()).toEqual([root.id, child.id].sort());
+      expect(response.body.some((node: any) => node.hasAccess)).toBe(false);
+    });
+
+    it('returns 404 for an organization that does not exist', async () => {
+      const response = await request(app).get(BASE_PATH + '/orgs/aaaaaaaaaaaaaaaaaaaaaaaa/hierarchy');
+
+      expect(response.status).toBe(404);
+    });
   });
 
   describe('PUT /orgs/:organizationId/parent', () => {

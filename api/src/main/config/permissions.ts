@@ -217,6 +217,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     methods: ['GET'],
     isPublic: true,
   },
+  // The tree of a branch is public too: every organization in it already has a
+  // public page, and the caller's memberships only decide which nodes are marked
+  // as open to them.
+  {
+    path: '/orgs/*/hierarchy',
+    methods: ['GET'],
+    isPublic: true,
+  },
   // Handing an organization over is owner-only. The service checks that the
   // caller's own seat is the owner's, since it is that seat being given away.
   {

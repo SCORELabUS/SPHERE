@@ -377,11 +377,15 @@ export function useOrganizationsApi() {
     return body;
   }, [fetchWithInterceptor, token]);
 
-  /** The organization's whole branch, flat, in one request. */
+  /**
+   * The organization's whole branch, flat, in one request. Visitors may ask for
+   * it too, so the token is left to the interceptor, which only sends one when
+   * there is a session.
+   */
   const getOrgHierarchy = useCallback(async (orgId: string): Promise<OrgHierarchyNode[]> => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}/hierarchy`, {
       method: 'GET',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
     });
     if (!response.ok) throw new Error('Failed to fetch organization hierarchy');
     return response.json();
