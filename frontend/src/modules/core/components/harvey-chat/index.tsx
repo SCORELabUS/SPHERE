@@ -3,6 +3,8 @@ import { AnimatePresence } from 'framer-motion';
 import { retrievePricingFromYaml } from 'pricing4ts';
 import HarveyChatBubble from './harvey-chat-bubble';
 import HarveyChatPanel from './harvey-chat-panel';
+import { announcePanelOpen, closeWhenOtherPanelOpens } from '../../utils/assistant-panels';
+import { useAssistantPresence } from '../../hooks/useAssistantPresence';
 import { chatWithAgent, createContextBodyPayload } from '../../../harvey/utils';
 import type { ChatMessage, ChatRequest } from '../../../harvey/types/types';
 
@@ -44,6 +46,7 @@ export default function HarveyChat({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const hasOpened = useRef(false);
+  const orbitPresent = useAssistantPresence('harvey', 'orbit');
 
   const pricingName = useMemo(
     () => (yamlContent ? extractPricingName(yamlContent) : null),
@@ -119,8 +122,11 @@ export default function HarveyChat({
   );
 
   const handleToggle = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
+    if (!isOpen) announcePanelOpen('harvey');
+    setIsOpen(!isOpen);
+  }, [isOpen]);
+
+  useEffect(() => closeWhenOtherPanelOpens('harvey', () => setIsOpen(false)), []);
 
   return (
     <>
@@ -136,6 +142,7 @@ export default function HarveyChat({
             pricingName={pricingName ?? undefined}
             suggestedQuestions={suggestedQuestions}
             isLoading={isLoading}
+            stacked={orbitPresent}
           />
         )}
       </AnimatePresence>

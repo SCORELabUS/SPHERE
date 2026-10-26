@@ -27,6 +27,7 @@ const NAV_STRUCTURE = [
     children: [
       { label: 'Pricing2Yaml Editor', to: '/editor' },
       { label: 'HARVEY', to: '/harvey' },
+      { label: 'ORBIT', to: '/orbit' },
     ],
   },
   { label: 'Pricing', to: '/pricing' },

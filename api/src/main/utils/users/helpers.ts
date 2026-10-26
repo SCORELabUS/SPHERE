@@ -39,7 +39,11 @@ async function hashPassword(password: string): Promise<string> {
 function handleError(err: any): {status: number, message: string} {
   const message = String(err?.message ?? err);
   const normalized = message.toLowerCase();
-  if (normalized.includes('unauthorized')) {
+  // Checked first: the model's own error text, quoted inside, could otherwise
+  // match one of the phrases below.
+  if (normalized.startsWith('orbit unavailable')) {
+    return { status: 503, message };
+  } else if (normalized.includes('unauthorized')) {
     return { status: 401, message };
   } else if (normalized.includes('permission error')) {
     return { status: 403, message };
@@ -51,6 +55,8 @@ function handleError(err: any): {status: number, message: string} {
     return { status: 419, message };
   } else if (normalized.includes('invalid data')) {
     return { status: 422, message };
+  } else if (normalized.includes('too many requests')) {
+    return { status: 429, message };
   } else if (normalized.includes('validation errors') || normalized.includes('dead features') || normalized.includes('should not be')) {
     return { status: 400, message };
   } else {
