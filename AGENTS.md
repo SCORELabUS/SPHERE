@@ -42,6 +42,20 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - The API is rate limited (`api/src/main/middlewares/RateLimitMiddleware.ts`), with counters in Redis: 300 requests every 10 seconds per user or, without one, per IP (`RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`), and 10 every 5 minutes per address and account on login, registration and password reset (`AUTH_RATE_LIMIT_MAX_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`). A value of 0 turns a limiter off. Both are off under Vitest unless set explicitly, and requests go through if Redis is down.
 - NGINX also limits each IP (`nginx/*/nginx.conf`): 50 requests/s with bursts of 100 on `/api/v1`, and 20/s with bursts of 40 on `/harvey-api`, answering 429. It is the barrier against floods; the per-user limits are the API's.
 
+## ORBIT assistant
+
+- Lives in `api/src/main/services/orbit/` and is served under `/api/v1/orbit/**`. The model only reads (query tools) and proposes plans; `OrbitPlanService` validates them by code and `OrbitExecutorService` applies a confirmed plan with the user's own permissions, re-checked per step.
+- Configured with `ORBIT_OPENAI_API_KEY` (falls back to `HARVEY_API_KEY`, then `OPENAI_API_KEY`), `ORBIT_OPENAI_MODEL` (default `gpt-5-nano`) and optionally `ORBIT_OPENAI_BASE_URL`. Without a key, `GET /orbit/status` reports `available: false` and messages answer 503.
+- In production ORBIT uses HARVEY's OpenAI key (see the docker-compose files), so both share its rate limits and spending. `ORBIT_MAX_MESSAGES_PER_MINUTE` (default 20) caps the messages of all ORBIT users together to leave room for HARVEY; each user is also limited to 30 messages every 10 minutes.
+- A conversation is one MongoDB document (16 MB cap, files included): new messages are refused with 409 past 12 MB, or 4 MB of files.
+- Phase 2 (teams and permissions) adds role changes, removals, invitation revocations, moves, ownership transfer and pricing/collection permissions, plus the `list_resources`, `who_can_access` and `get_member_access` review tools. Role changes and removals act on the direct membership; an inherited role is changed in the parent. Revocations are checked against the organization's own invitations, because `OrganizationService.revokeInvitation` accepts any id.
+- An ownership transfer goes alone in its plan, which stores a `confirmationPhrase` (the organization's name); `POST /orbit/plans/:id/confirm` needs it back in `confirmation`.
+- Phase 3 (pricings and collections) lives in `orbitPricingTools.ts` (read tools), `orbitPricingSteps.ts` (plan validation, with the same `PermissionEngine` checks the API makes) and `orbitPricingDiff.ts` (version comparison). Executed steps call `PricingService`/`PricingCollectionService`, which check permissions again. Pricing YAML is always parsed from text with `retrievePricingFromText`: `retrievePricingFromPath` can rewrite the file it reads.
+- Phase 4 (account and notifications) lives in `orbitAccountTools.ts` (read tools) and `orbitAccountSteps.ts` (plan validation). It only touches the user's own notifications, notification preferences and public profile, through `NotificationService` and `UserSettingsService`; social links are checked with the same `isValidSocialUrl` as the settings endpoint.
+- Phase 5 (deletions) lives in `orbitDeletionSteps.ts`. A deletion plan holds nothing else and stores a `confirmationPhrase` (the name of what goes, or `delete N items`). Deleting an organization takes being its OWNER and deletes its whole tree, deepest first, because `OrganizationService.destroy` checks no permissions and leaves sub-organizations behind; the run fails if the tree changed after the plan.
+- Phase 6 (MCP) lives in `OrbitMcpService.ts` and is served at `POST /api/v1/orbit/mcp` with the official SDK (`@modelcontextprotocol/sdk`, stateless Streamable HTTP). It only takes user API keys (`x-api-key`) and calls no language model: it runs ORBIT's tools through `OrbitToolRunner.runParsed`, leaves `propose_plan` plans in a conversation with `channel: 'mcp'` (plan `source: 'mcp'`) for the user to confirm in the web, and never confirms plans itself. The key's scopes bound every organization named in the arguments and filter `list_my_organizations` and `search_pricings`: VIEW only reads, and ownership transfer, moves and organization deletions need ALL.
+- New operations for later phases are added as tools in `OrbitTools.ts`, plan operations in `types/models/Orbit.ts`, validation in `OrbitPlanService` and execution in `OrbitExecutorService`.
+
 ## API Documentation
 
 - `/api/docs/sphere-api-docs.yaml` contains the OpenAPI specification for the API. Use it as the primary reference for understanding available endpoints, request and response schemas, authentication requirements, and general API behavior.
@@ -55,6 +69,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
+- /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import, plan execution, teams and permissions, pricings and collections, account and notifications, deletions, and the MCP server). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
 
 In addition, test utilities are organized in `/api/src/test/utils/` with subfolders for auth, users, organizations, collections and pricings.
 

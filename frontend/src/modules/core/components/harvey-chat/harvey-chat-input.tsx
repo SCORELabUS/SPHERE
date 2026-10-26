@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
+import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 
 interface Props {
@@ -6,12 +6,38 @@ interface Props {
   onChange: (value: string) => void;
   onSend: (text: string) => void;
   disabled?: boolean;
+  /** Keeps the box editable but holds sending, so the next message can be typed while waiting. */
+  busy?: boolean;
+  placeholder?: string;
+  disabledPlaceholder?: string;
+  /** Lets an empty message be sent, for example when a file is attached. */
+  allowEmpty?: boolean;
+  /** Rendered before the text box, such as an attach button. */
+  leading?: ReactNode;
+  /** Rendered above the text box, such as the chip of an attached file. */
+  header?: ReactNode;
+  /** Shows the Enter / Shift+Enter hint under the box. */
+  showHint?: boolean;
 }
 
 const MAX_VISIBLE_LINES = 4;
 const LINE_HEIGHT_PX = 20;
+// Vertical padding of the text box, which makes one line as tall as the buttons beside it.
+const VERTICAL_PADDING_PX = 12;
 
-export default function HarveyChatInput({ value, onChange, onSend, disabled = false }: Props) {
+export default function HarveyChatInput({
+  value,
+  onChange,
+  onSend,
+  disabled = false,
+  busy = false,
+  placeholder = 'Ask about this pricing...',
+  disabledPlaceholder = 'Waiting for response...',
+  allowEmpty = false,
+  leading,
+  header,
+  showHint = true,
+}: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea (WhatsApp-style)
@@ -22,7 +48,7 @@ export default function HarveyChatInput({ value, onChange, onSend, disabled = fa
     el.style.height = 'auto';
 
     const lineHeight = LINE_HEIGHT_PX;
-    const maxHeight = lineHeight * MAX_VISIBLE_LINES;
+    const maxHeight = lineHeight * MAX_VISIBLE_LINES + VERTICAL_PADDING_PX;
     const scrollHeight = el.scrollHeight;
 
     if (scrollHeight <= maxHeight) {
@@ -38,12 +64,12 @@ export default function HarveyChatInput({ value, onChange, onSend, disabled = fa
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (value.trim()) {
+        if (!busy && (value.trim() || allowEmpty)) {
           onSend(value);
         }
       }
     },
-    [value, onSend],
+    [value, onSend, allowEmpty, busy],
   );
 
   const handleChange = useCallback(
@@ -54,26 +80,29 @@ export default function HarveyChatInput({ value, onChange, onSend, disabled = fa
   );
 
   const handleSendClick = useCallback(() => {
-    if (value.trim()) {
+    if (!busy && (value.trim() || allowEmpty)) {
       onSend(value);
     }
-  }, [value, onSend]);
+  }, [value, onSend, allowEmpty, busy]);
 
-  const hasContent = value.trim().length > 0;
+  const hasContent = value.trim().length > 0 || allowEmpty;
 
   return (
     <div className="border-t border-tp-hairline bg-tp-canvas px-3 py-3">
+      {header}
       <div className="flex items-end gap-2 rounded-xl border border-tp-hairline-strong bg-tp-surface px-3 py-2 transition-colors focus-within:border-tp-primary/40">
+        {leading}
+
         {/* Textarea — WhatsApp-style */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Waiting for response..." : "Ask about this pricing..."}
+          placeholder={disabled ? disabledPlaceholder : placeholder}
           rows={1}
           disabled={disabled}
-          className="max-h-[80px] min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="max-h-[92px] min-h-[32px] flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-[20px] text-tp-ink placeholder-tp-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           style={{ scrollbarWidth: 'thin' }}
         />
 
@@ -81,7 +110,7 @@ export default function HarveyChatInput({ value, onChange, onSend, disabled = fa
         <motion.button
           type="button"
           onClick={handleSendClick}
-          disabled={!hasContent || disabled}
+          disabled={!hasContent || disabled || busy}
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"
           animate={
             hasContent
@@ -107,9 +136,11 @@ export default function HarveyChatInput({ value, onChange, onSend, disabled = fa
         </motion.button>
       </div>
 
-      <p className="mt-1.5 text-center text-[10px] text-tp-muted">
-        Press <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
-      </p>
+      {showHint && (
+        <p className="mt-1.5 text-center text-[10px] text-tp-muted">
+          Press <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Enter</kbd> to send · <kbd className="rounded border border-tp-hairline bg-tp-surface px-1 py-0.5 text-[9px] font-medium text-tp-steel">Shift+Enter</kbd> for new line
+        </p>
+      )}
     </div>
   );
 }

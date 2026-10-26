@@ -1,6 +1,7 @@
 import AppHeader from './app-header';
 import AppFooter from './app-footer';
 import SunsetStripeBand from '../../../core/components/sunset-stripe';
+import OrbitWidget from '../../../orbit/components/orbit-widget';
 
 export default function AuthenticatedLayout({ children }: { children?: React.ReactNode }) {
   return (
@@ -13,6 +14,8 @@ export default function AuthenticatedLayout({ children }: { children?: React.Rea
 
       <SunsetStripeBand />
       <AppFooter />
+
+      <OrbitWidget />
     </div>
   );
 }

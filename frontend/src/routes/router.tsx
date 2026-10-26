@@ -41,6 +41,7 @@ import CollectionsListPage from '../modules/pricing/pages/collections-list';
 import UserPricingListPage from '../modules/pricing/pages/user-list';
 import UserCollectionsListPage from '../modules/pricing/pages/user-collections-list';
 import PricingAssistantPage from '../modules/harvey/pages/pricing-assistant';
+import OrbitAssistantPage from '../modules/orbit/pages/orbit-assistant';
 import OrganizationsListPage from '../modules/organization/pages/organizations-list';
 import CreateOrganizationPage from '../modules/organization/pages/create-organization';
 import OrganizationDetailPage from '../modules/organization/pages/organization-detail';
@@ -173,6 +174,7 @@ export default function Router() {
         { element: <OrganizationsListPage />, path: '/me/orgs' },
         { element: <SettingsPage />, path: '/me/settings' },
         { element: <ApiKeysPage />, path: '/me/api-keys' },
+        { element: <OrbitAssistantPage />, path: '/orbit' },
         { element: <UserPricingListPage />, path: '/me/pricings' },
         { element: <UserCollectionsListPage />, path: '/me/collections' },
         { element: <CreateOrganizationPage />, path: '/orgs/new' },

@@ -150,6 +150,9 @@
   --animate-slide-up: slide-up 0.3s ease-out;
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
   --animate-wiggle-bubble: wiggle-bubble 2.5s ease-in-out infinite;
+  --animate-orbit-shimmer: orbit-shimmer 1.6s linear infinite;
+  --animate-orbit-caret: orbit-caret 1s steps(1) infinite;
+  --animate-orbit-indeterminate: orbit-indeterminate 1.3s ease-in-out infinite;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -561,5 +564,76 @@ body {
 
   .animate-wiggle-bubble {
     animation: wiggle-bubble 2.5s ease-in-out infinite;
+  }
+
+  /* ORBIT: text that glints while the assistant works on a step */
+  @keyframes orbit-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  .animate-orbit-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-tp-steel) 0%,
+      var(--color-tp-steel) 35%,
+      var(--color-tp-ink) 50%,
+      var(--color-tp-steel) 65%,
+      var(--color-tp-steel) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: orbit-shimmer 1.6s linear infinite;
+  }
+
+  /* ORBIT: the caret at the end of an answer being written */
+  @keyframes orbit-caret {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0;
+    }
+  }
+
+  .animate-orbit-caret {
+    animation: orbit-caret 1s steps(1) infinite;
+  }
+
+  /* ORBIT: a progress bar for work whose length is not known */
+  @keyframes orbit-indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+
+    100% {
+      transform: translateX(250%);
+    }
+  }
+
+  .animate-orbit-indeterminate {
+    animation: orbit-indeterminate 1.3s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-orbit-shimmer,
+    .animate-orbit-caret,
+    .animate-orbit-indeterminate {
+      animation: none;
+    }
+
+    .animate-orbit-shimmer {
+      color: var(--color-tp-steel);
+      background-image: none;
+    }
   }
 }
