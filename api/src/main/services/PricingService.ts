@@ -21,10 +21,23 @@ import { OrgRole } from '../types/models/Organization';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
 import UserService from './UserService';
+import {
+  formatPricingEtag,
+  PreconditionFailedError,
+  PricingRevisionContext,
+} from '../utils/pricing-etag';
 import PermissionService from './PermissionService';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+
+/** Who is asking about a pricing's revision, for `_mayReadRevision`. */
+interface RevisionReader {
+  reqUser: LeanUser;
+  organizationId: string;
+  slug: string;
+  collectionSlug?: string;
+}
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -263,7 +276,8 @@ class PricingService {
     isPrivate: boolean,
     reqUser: LeanUser,
     collectionId?: string,
-    name?: string
+    name?: string,
+    revisionContext?: PricingRevisionContext
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -272,7 +286,11 @@ class PricingService {
       reqUser,
       collectionId,
       undefined,
-      name
+      name,
+      undefined,
+      undefined,
+      undefined,
+      revisionContext
     );
   }
 
@@ -283,7 +301,8 @@ class PricingService {
     isPrivate: boolean,
     reqUser: LeanUser,
     collectionId?: string,
-    createdAt?: Date
+    createdAt?: Date,
+    revisionContext?: PricingRevisionContext
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -295,7 +314,8 @@ class PricingService {
       undefined,
       undefined,
       undefined,
-      createdAt
+      createdAt,
+      revisionContext
     );
   }
 
@@ -434,7 +454,8 @@ class PricingService {
     name?: string,
     forkedFrom?: ForkedFrom,
     previousPricingOverride?: any,
-    createdAtOverride?: Date
+    createdAtOverride?: Date,
+    revisionContext?: PricingRevisionContext
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -580,6 +601,15 @@ class PricingService {
         analytics: {},
       };
 
+      // An If-Match names an existing pricing: with none to add to, it cannot match.
+      const reader = {
+        reqUser,
+        organizationId,
+        slug: pricingSlug,
+        collectionSlug: isAddingVersion ? previousPricing.collection?.slug : undefined,
+      };
+      await this._claimRevision(isAddingVersion ? previousPricing.pricingId : undefined, revisionContext, reader);
+
       const pricing = await this.pricingRepository.create([pricingData]);
 
       if (!isAddingVersion && orgRole === 'MEMBER') {
@@ -633,8 +663,13 @@ class PricingService {
           .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
       }
 
+      // A new pricing's creator may only have been granted access above.
+      if (!isAddingVersion && revisionContext) delete revisionContext.mayRead;
+      await this._setEtag(pricing[0].pricingId, revisionContext, reader);
+
       return pricing;
     } catch (err) {
+      if (err instanceof PreconditionFailedError) throw err;
       const error = err as Error & { code?: number };
       if (error.code === 11000 || error.message.includes('E11000')) {
         const pricingName = name || uploadedPricing?.saasName || 'Pricing';
@@ -712,7 +747,8 @@ class PricingService {
     organizationId: string,
     reqUser: LeanUser,
     data: any,
-    queryParams: { collectionSlug?: string; organizationId?: string } = {}
+    queryParams: { collectionSlug?: string; organizationId?: string } = {},
+    revisionContext?: PricingRevisionContext
   ) {
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
@@ -758,6 +794,9 @@ class PricingService {
       });
     }
 
+    const reader = { reqUser, organizationId: effectiveOrgId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
+    await this._claimRevision(pricing.pricingId, revisionContext, reader);
+
     for (const pricingVersion of pricing.versions) {
       await this.pricingRepository.update(pricingVersion.id, data);
     }
@@ -784,6 +823,9 @@ class PricingService {
       }
     }
 
+    // Before the read below, for the same reason as in showWithEtag().
+    await this._setEtag(pricing.pricingId, revisionContext, reader);
+
     const effectiveSlug = data.slug || pricingSlug;
     const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
       ...queryParams,
@@ -802,7 +844,8 @@ class PricingService {
     pricingVersion: string,
     organizationId: string,
     reqUser: LeanUser,
-    isPrivate: boolean
+    isPrivate: boolean,
+    revisionContext?: PricingRevisionContext
   ) {
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
@@ -841,7 +884,12 @@ class PricingService {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
     }
 
+    const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
+    await this._claimRevision(pricing.pricingId, revisionContext, reader);
+
     await this.pricingRepository.update(target.id, { private: isPrivate });
+    // Before the read below, for the same reason as in showWithEtag().
+    await this._setEtag(pricing.pricingId, revisionContext, reader);
 
     return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
   }
@@ -888,7 +936,8 @@ class PricingService {
     pricingSlug: string,
     organizationId: string,
     reqUser: LeanUser,
-    queryParams: { collectionSlug?: string; organizationId?: string } = {}
+    queryParams: { collectionSlug?: string; organizationId?: string } = {},
+    revisionContext?: PricingRevisionContext
   ) {
     const effectiveOrgId = queryParams.organizationId || organizationId;
     let collectionId;
@@ -941,6 +990,13 @@ class PricingService {
       collectionId = collection.id;
     }
 
+    await this._claimRevision(pricing.pricingId, revisionContext, {
+      reqUser,
+      organizationId: effectiveOrgId,
+      slug: pricingSlug,
+      collectionSlug: pricing.collection?.slug,
+    });
+
     const result = await this.pricingRepository.destroyBySlugOrganizationAndCollectionId(
       pricingSlug,
       effectiveOrgId,
@@ -958,7 +1014,8 @@ class PricingService {
     pricingSlug: string,
     pricingVersion: string,
     organizationId: string,
-    reqUser: LeanUser
+    reqUser: LeanUser,
+    revisionContext?: PricingRevisionContext
   ) {
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
@@ -994,6 +1051,19 @@ class PricingService {
       throw new Error(`PERMISSION ERROR: ${deleteResult.reason}`);
     }
 
+    // A missing version is a 404 before any If-Match is applied, so that claiming
+    // the revision is never wasted on a delete that cannot happen.
+    if (
+      revisionContext?.precondition &&
+      !pricing.versions.some((candidate: { version: string }) =>
+        [pricingVersion, pricingVersion.replace('_', '.')].includes(candidate.version)
+      )
+    ) {
+      throw new Error('NOT FOUND: Pricing version not found');
+    }
+    const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
+    await this._claimRevision(pricing.pricingId, revisionContext, reader);
+
     let result;
 
     result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
@@ -1016,7 +1086,84 @@ class PricingService {
       );
     }
 
+    // Unset when that was the last version: the pricing is gone.
+    await this._setEtag(pricing.pricingId, revisionContext, reader);
+
     return true;
+  }
+
+  /**
+   * show(), plus the pricing's ETag. The revision is read before the versions:
+   * a write landing in between then leaves an older ETag, which a later
+   * If-Match refuses, never a newer one that would let a stale edit through.
+   *
+   * The ETag moves on with changes to private versions too, so only a caller
+   * who may read the private versions gets it (see `_mayReadRevision`).
+   */
+  async showWithEtag(...args: Parameters<PricingService['show']>) {
+    const [slug, organizationId, reqUser] = args;
+    const revisions = await this.pricingRepository.findRevisionsBySlug(slug, organizationId);
+    const pricing = await this.show(...args);
+    const pricingId = (pricing as { pricingId?: string }).pricingId;
+    let etag: string | undefined;
+    if (
+      pricingId &&
+      (await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))
+    ) {
+      const revision = revisions.get(pricingId) ?? (await this.pricingRepository.findRevision(pricingId));
+      if (revision !== null) etag = formatPricingEtag(pricingId, revision);
+    }
+    return { pricing, etag };
+  }
+
+  /**
+   * Whether the caller may know the pricing's revision: it moves on with every
+   * change to any version, private ones included, so only a caller who may
+   * read the private versions (the rule show() applies) gets an ETag. Worked
+   * out once per request, before the write, and kept in the context.
+   */
+  private async _mayReadRevision(revisionContext: PricingRevisionContext, reader: RevisionReader) {
+    if (revisionContext.mayRead === undefined) {
+      revisionContext.mayRead = await this._canSeePrivateVersions(
+        reader.reqUser,
+        reader.organizationId,
+        reader.slug,
+        reader.collectionSlug
+      );
+    }
+    return revisionContext.mayRead;
+  }
+
+  /**
+   * Applies a write's If-Match before the write: claims the pricing's current
+   * revision atomically, or fails with 412 and, for a caller who may read it,
+   * the pricing's current ETag. Without If-Match nothing is checked. A caller
+   * who may not read the revision was never given a tag, so no tag of theirs
+   * matches: If-Match cannot be used to probe for changes to private versions.
+   */
+  private async _claimRevision(
+    pricingId: string | undefined,
+    revisionContext: PricingRevisionContext | undefined,
+    reader: RevisionReader
+  ) {
+    if (!revisionContext) return;
+    const mayRead = await this._mayReadRevision(revisionContext, reader);
+    const precondition = revisionContext.precondition;
+    if (!precondition) return;
+    const mayMatch = mayRead || precondition.kind === 'any';
+    if (mayMatch && pricingId && (await this.pricingRepository.claimRevision(pricingId, precondition))) return;
+    throw new PreconditionFailedError(pricingId && mayRead ? await this._etagOf(pricingId) : undefined);
+  }
+
+  private async _etagOf(pricingId: string): Promise<string | undefined> {
+    const revision = await this.pricingRepository.findRevision(pricingId);
+    return revision === null ? undefined : formatPricingEtag(pricingId, revision);
+  }
+
+  private async _setEtag(pricingId: unknown, revisionContext: PricingRevisionContext | undefined, reader: RevisionReader) {
+    if (!revisionContext) return;
+    const mayRead = await this._mayReadRevision(revisionContext, reader);
+    revisionContext.etag = pricingId && mayRead ? await this._etagOf(String(pricingId)) : undefined;
   }
 }
 

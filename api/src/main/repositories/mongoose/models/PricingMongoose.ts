@@ -132,10 +132,11 @@ async function refreshIdentities(ids: any[], pricingModel: any) {
     connection.model('PricingIdentity', PricingIdentity.schema, 'pricingIdentities');
   for (const id of identityIds) {
     const current: any = await Model.findOne({ pricingId: id }).lean();
+    // Every write to a version moves the pricing's revision on, so its ETag changes.
     await Identity.updateOne({ _id: id }, current ? { $set: {
       name: current.name, slug: current.slug, _organizationId: current._organizationId,
       _collectionId: current._collectionId ?? null, deleted: false,
-    } } : { $set: { deleted: true } });
+    }, $inc: { revision: 1 } } : { $set: { deleted: true }, $inc: { revision: 1 } });
   }
 }
 pricingSchema.post('save', async function(doc) { await refreshIdentities([doc.pricingId], doc.constructor); });
