@@ -89,24 +89,6 @@ export function usePricingsApi() {
       });
   }, [basicHeaders]);
 
-  const getLoggedUserPricings = useCallback(async () => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${authUser.user?.username}`, {
-      method: 'GET',
-      headers: basicHeaders,
-    })
-      .then(response => {
-        if (!response.ok) {
-          return Promise.reject(response);
-        } else {
-          return response.json();
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
-  }, [fetchWithInterceptor, basicHeaders]);
-
   const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
 
   const getPermissionBasedUserPricings = useCallback(async (filters: Record<string, string | number> = {}) => {
@@ -419,7 +401,6 @@ export function usePricingsApi() {
     () => ({
       getPricings,
       getPricingBySlug,
-      getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
@@ -439,7 +420,6 @@ export function usePricingsApi() {
     [
       getPricings,
       getPricingBySlug,
-      getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,

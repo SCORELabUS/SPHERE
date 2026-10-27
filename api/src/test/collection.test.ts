@@ -7,8 +7,9 @@ import { shutdownApp, TestApp } from './utils/testApp';
 import { createAndLoginUser, createTestUser, deleteTestUser } from './utils/users/userTestUtils';
 import { createCollectionForOrganization, createTestCollection, createTestCollectionWithPricings } from './utils/collections/collectionTestUtils';
 import { createBulkZipFixture, removeTempPaths } from './utils/pricingFixtures';
-import { createPricingForOrganization } from './utils/pricings/pricingTestUtils';
+import { createPricingForOrganization, forkPricingIntoOrganization } from './utils/pricings/pricingTestUtils';
 import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
+import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import testContainer from './utils/config/testContainer';
 import { BASE_PATH } from './utils/config/variables';
 import { randomSuffix } from './utils/helpers';
@@ -675,6 +676,68 @@ describe('Pricing Collections API integration', () => {
       expect(response.body.collections[0].name).toBe(getPutCollection.name);
     });
 
+    it('leaves out public collections a MEMBER can see but not edit when writableOnly=true', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      const publicCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `Public_${randomSuffix()}`,
+        private: false,
+      });
+
+      const editableCollection = await createTestCollection({
+        _organizationId: organizationId,
+        name: `Editable_${randomSuffix()}`,
+        private: false,
+      });
+
+      await createEntityScopedPermission(member.id, organizationId, editableCollection.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${organizationId}&writableOnly=true`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      const names = response.body.collections.map((c: any) => c.name);
+      expect(names).toEqual([editableCollection.name]);
+      expect(names).not.toContain(publicCollection.name);
+    });
+
+    it('does not treat a writable collection as writable in another organization with the same slug when writableOnly=true', async () => {
+      const { organizationId: firstOrgId } = await createTestUser('USER');
+      const { organizationId: secondOrgId } = await createTestUser('USER');
+      const { user: member } = await createAndLoginUser('USER');
+
+      await createMembership(member.id, firstOrgId, 'MEMBER');
+      await createMembership(member.id, secondOrgId, 'MEMBER');
+
+      const sharedName = `Shared_${randomSuffix()}`;
+      const editableCollection = await createTestCollection({ _organizationId: firstOrgId, name: sharedName, private: true });
+      await createTestCollection({ _organizationId: secondOrgId, name: sharedName, private: true });
+
+      await createEntityScopedPermission(member.id, firstOrgId, editableCollection.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      const response = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${firstOrgId},${secondOrgId}&writableOnly=true`)
+        .set('Authorization', `Bearer ${member.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.collections.map((c: any) => c.organization.id)).toEqual([firstOrgId]);
+    });
+
     it('returns 200 with all collections for OWNER when writableOnly=true', async () => {
       const { user, organizationId } = await createAndLoginUser('USER');
 
@@ -959,6 +1022,54 @@ describe('Pricing Collections API integration', () => {
       expect(response.body.error).toContain('PERMISSION ERROR');
     });
 
+    it('Return 200 when the collection already holds a pricing version without analytics.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const collection = await createCollectionForOrganization(organizationId);
+
+      // A version whose analytics were never stored, as left by older publishes.
+      const broken = await createPricingForOrganization({ organizationId });
+      await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ pricingSlug: broken.serviceName })
+        .expect(200);
+      await PricingMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(broken.id) },
+        { $unset: { analytics: 1 } }
+      );
+
+      const { serviceName } = await createPricingForOrganization({ organizationId });
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ pricingSlug: serviceName });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+      const detail = await request(app)
+        .get(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.analytics.evolutionOfPlans.values.every(Number.isFinite)).toBe(true);
+    });
+
+    it('Return 200 when adding a pricing version without analytics.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const collection = await createCollectionForOrganization(organizationId);
+      const broken = await createPricingForOrganization({ organizationId });
+      await PricingMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(broken.id) },
+        { $unset: { analytics: 1 } }
+      );
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ pricingSlug: broken.serviceName });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+    });
+
     it('Return 200 when OWNER adds pricing to any collection.', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
 
@@ -980,6 +1091,105 @@ describe('Pricing Collections API integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.message).toBeDefined();
+    });
+  });
+
+  // Forking parses and analyses the source YAML: slower than the 5s default.
+  describe('Forked pricings in collections', { timeout: 20000 }, () => {
+    const forkIntoNewOrganization = async () => {
+      const { user: sourceOwner, organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+
+      // The origin lives in a collection of its own organization, as most public pricings do.
+      const sourceCollection = await createCollectionForOrganization(sourceOrganizationId);
+      await request(app)
+        .post(`${BASE_PATH}/collections/${sourceOrganizationId}/${sourceCollection.slug}`)
+        .set('Authorization', `Bearer ${sourceOwner.token}`)
+        .send({ pricingSlug: source.serviceName })
+        .expect(200);
+
+      const fork = await forkPricingIntoOrganization({
+        token: owner.token,
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: organizationId,
+        name: `Forked ${randomSuffix()}`,
+      });
+
+      return { owner, organizationId, fork };
+    };
+
+    const collectionPricingSlugs = async (organizationId: string, collectionSlug: string, token: string) => {
+      const response = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?collection=${collectionSlug}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.status).toBe(200);
+      return response.body.pricings.map((p: any) => p.slug);
+    };
+
+    it('Return 200 and move the fork into the collection when adding a forked pricing.', async () => {
+      const { owner, organizationId, fork } = await forkIntoNewOrganization();
+      const collection = await createCollectionForOrganization(organizationId);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ pricingSlug: fork.slug });
+
+      expect(response.status).toBe(200);
+      expect(await collectionPricingSlugs(organizationId, collection.slug, owner.token)).toEqual([fork.slug]);
+    });
+
+    it('List the fork among the organization pricings without a collection, and create a collection with it.', async () => {
+      const { owner, organizationId, fork } = await forkIntoNewOrganization();
+
+      // What the collection form offers to pick from.
+      const unassigned = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}?excludePricingsInCollection=true&limit=500`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(unassigned.status).toBe(200);
+      expect(unassigned.body.pricings.map((p: any) => p.slug)).toContain(fork.slug);
+
+      const response = await request(app)
+        .post(`${BASE_PATH}/collections/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ name: `ForkCollection_${randomSuffix()}`, private: false, pricings: [fork.slug] });
+
+      expect(response.status).toBe(201);
+      if (response.body.id) collectionIdsToDelete.add(response.body.id);
+      expect(await collectionPricingSlugs(organizationId, response.body.slug, owner.token)).toEqual([fork.slug]);
+    });
+
+    it('Accept the pricing in every collection a MEMBER is offered as writable.', async () => {
+      const { organizationId, fork } = await forkIntoNewOrganization();
+      const { user: member } = await createAndLoginUser('USER');
+      await createMembership(member.id, organizationId, 'MEMBER');
+
+      await createTestCollection({ _organizationId: organizationId, private: false });
+      const editable = await createTestCollection({ _organizationId: organizationId, private: true });
+      await createEntityScopedPermission(member.id, organizationId, editable.slug, 'collection', {
+        GET: true,
+        PUT: true,
+        DELETE: false,
+        CREATE: false,
+      });
+
+      // The "Add to collection" dialog lists these, then posts to the one picked.
+      const offered = await request(app)
+        .get(`${BASE_PATH}/users/me/collections?organizationIds=${organizationId}&writableOnly=true`)
+        .set('Authorization', `Bearer ${member.token}`);
+      expect(offered.status).toBe(200);
+      expect(offered.body.collections.map((c: any) => c.slug)).toEqual([editable.slug]);
+
+      for (const collection of offered.body.collections) {
+        const response = await request(app)
+          .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
+          .set('Authorization', `Bearer ${member.token}`)
+          .send({ pricingSlug: fork.slug });
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+      }
     });
   });
 
