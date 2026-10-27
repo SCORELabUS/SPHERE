@@ -13,6 +13,7 @@ import TextmateTheme from '../../../core/theme/editor-themes/Textmate.json';
 import monaco from 'monaco-editor';
 import { useEditorValue } from '../../hooks/useEditorValue';
 import { parseEncodedYamlToStringYaml } from '../../services/export.service';
+import { takePricingFragment, type PricingFragment } from '../../services/pricing-fragment';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 import { PRICING2YAML_SNIPPETS } from './templates/snippets';
@@ -80,6 +81,12 @@ export default function EditorPage() {
   const [pricing, setPricing] = useState<Pricing>();
   const [errors, setErrors] = useState<string[]>([]);
   const [selectedSyntaxVersion, setSelectedSyntaxVersion] = useState<SyntaxVersion>('3.1');
+  /** Why the pricing the editor was opened with could not be shown, when it could not. */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // The `#pricing=` fragment is removed from the URL as soon as it is read, so it
+  // is read once per mount: React's strict mode runs the loading effect twice,
+  // and its second run would no longer find it.
+  const pricingFragmentRef = useRef<PricingFragment | null>(null);
 
   const { mode } = useMode();
   const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft, setSourcePricing } = useEditorValue();
@@ -119,6 +126,7 @@ export default function EditorPage() {
 
   function handleEditorChange(value: string | undefined) {
     if (value) {
+      setLoadError(null);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -199,7 +207,58 @@ export default function EditorPage() {
   }
 
   useEffect(() => {
+    // Read and removed from the URL before anything else runs (see
+    // `takePricingFragment`), whether or not it can be decoded.
+    if (pricingFragmentRef.current === null) {
+      pricingFragmentRef.current = takePricingFragment(globalThis.location, globalThis.history);
+    }
+    const fragment = pricingFragmentRef.current;
+
+    // Shows a pricing's YAML, then the pricing parsed from it.
+    const showPricing = async (templatePricing: string) => {
+      // Shown as soon as it's known, even if parsing below fails: otherwise a
+      // pricing that fails validation (e.g. an invalid currency code) leaves
+      // the editor blank instead of showing the YAML the user needs to fix.
+      setEditorValue(templatePricing);
+
+      const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
+      const syntaxVersion = templatePricing.match(regex)?.[1];
+      let parsedPricing: Pricing;
+      const normalizedVersion = normalizeSyntaxVersion(syntaxVersion);
+
+      setSelectedSyntaxVersion(normalizedVersion);
+
+      if (syntaxVersion !== '3.1'){
+        const response = await fetch('/api/v1/pricings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ pricing: templatePricing }),
+        })
+
+        parsedPricing = await response.json();
+      }else{
+        parsedPricing = retrievePricingFromYaml(templatePricing);
+      }
+
+      setPricing(parsedPricing);
+      setErrors([]);
+    };
+
     const fetchPricing = async () => {
+      // `#pricing=` goes before every query parameter. Only a caller that means
+      // to hand over this exact content writes it (SPACE's "View in SPHERE"),
+      // and it is the one source that stays in the browser: letting a query
+      // parameter win would load something else (possibly fetched from a
+      // server) while the content the user opened silently disappears.
+      if (fragment.status === 'invalid') {
+        // No template in its place: the user would take it for their pricing.
+        setLoadError(fragment.error);
+        setErrors([fragment.error]);
+        return;
+      }
+
       const queryParams = new URLSearchParams(globalThis.location.search);
       const pricingParam = queryParams.get('pricing');
       const pricingUrlParam = queryParams.get('pricingUrl');
@@ -208,7 +267,9 @@ export default function EditorPage() {
       let templatePricing: string = '';
 
       try {
-        if (sourceParam) {
+        if (fragment.status === 'ok') {
+          templatePricing = fragment.yaml;
+        } else if (sourceParam) {
           // `source=<organizationId>/<slug>`: a published version opened for editing.
           const [organizationId, slug] = sourceParam.split('/');
           const collectionSlug = queryParams.get('collection');
@@ -245,40 +306,38 @@ export default function EditorPage() {
           }
         }
 
-        // Shown as soon as it's known, even if parsing below fails: otherwise a
-        // pricing that fails validation (e.g. an invalid currency code) leaves
-        // the editor blank instead of showing the YAML the user needs to fix.
-        setEditorValue(templatePricing);
-
-        const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
-        const syntaxVersion = templatePricing.match(regex)?.[1];
-        let parsedPricing: Pricing;
-        const normalizedVersion = normalizeSyntaxVersion(syntaxVersion);
-
-        setSelectedSyntaxVersion(normalizedVersion);
-
-        if (syntaxVersion !== '3.1'){
-          const response = await fetch('/api/v1/pricings', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ pricing: templatePricing }),
-          })
-
-          parsedPricing = await response.json();
-        }else{
-          parsedPricing = retrievePricingFromYaml(templatePricing);
-        }
-
-        setPricing(parsedPricing);
-        setErrors([]);
+        await showPricing(templatePricing);
       } catch (err) {
         setErrors([(err as Error).message]);
       }
     };
 
+    // A `#pricing=` link opened in a tab that already shows the editor (same
+    // path and query) only changes the fragment, so the page does not reload.
+    const handleHashChange = () => {
+      const next = takePricingFragment(globalThis.location, globalThis.history);
+
+      if (next.status === 'absent') {
+        return;
+      }
+
+      if (next.status === 'invalid') {
+        // What the editor holds stays: it may be the user's own work.
+        setErrors([next.error]);
+        return;
+      }
+
+      // Like importing a file, the new pricing replaces the editor's content,
+      // and it is no longer a version of the pricing it was opened from.
+      setSourcePricing(null);
+      setLoadError(null);
+      showPricing(next.yaml).catch(err => setErrors([(err as Error).message]));
+    };
+
     fetchPricing();
+    globalThis.addEventListener('hashchange', handleHashChange);
+
+    return () => globalThis.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   useEffect(() => {
@@ -474,7 +533,12 @@ export default function EditorPage() {
                   })(editorValue, variables);
 
                   setEditorValue(newYaml);
-                }} /> : <EditorSkeleton />}
+                }} /> : loadError ? (
+                  <div role="alert" className="m-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <p className="font-semibold">There is no pricing to show</p>
+                    <p className="mt-1">{loadError}</p>
+                  </div>
+                ) : <EditorSkeleton />}
               </div>
             </div>
           </motion.div>
