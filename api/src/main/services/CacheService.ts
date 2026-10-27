@@ -2,6 +2,22 @@ import dotenv from 'dotenv';
 import { RedisClientType } from 'redis';
 dotenv.config();
 
+/** Prefix of the entries only the server reads and writes, such as computed configuration spaces. */
+export const INTERNAL_CACHE_PREFIX = 'internal:';
+
+/**
+ * Prefixes of the server's own entries: its computed results, SSO login state
+ * and rate-limit counters. The public `/cache` endpoint neither reads nor
+ * writes keys under them.
+ */
+export const SERVER_CACHE_PREFIXES = [INTERNAL_CACHE_PREFIX, 'sso:', 'ratelimit:'] as const;
+
+/** Whether a key belongs to the server's own entries (keys are case-insensitive). */
+export function isServerCacheKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  return SERVER_CACHE_PREFIXES.some(prefix => normalized.startsWith(prefix));
+}
+
 class CacheService {
   private redisClient: RedisClientType | null = null;
   private readonly namespace = (process.env.REDIS_KEY_PREFIX ?? 'sphere:').replace(/:$/, '') + ':';

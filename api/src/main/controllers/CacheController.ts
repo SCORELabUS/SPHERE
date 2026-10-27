@@ -1,5 +1,5 @@
 import container from '../config/container';
-import CacheService from '../services/CacheService';
+import CacheService, { isServerCacheKey } from '../services/CacheService';
 import { handleError } from '../utils/users/helpers';
 
 class CacheController {
@@ -10,6 +10,7 @@ class CacheController {
     this.cacheService = container.resolve('cacheService');
     this.get = this.get.bind(this);
     this.set = this.set.bind(this);
+    this.refuseServerKey = this.refuseServerKey.bind(this);
   }
 
   async get(req: any, res: any) {
@@ -33,6 +34,7 @@ class CacheController {
       }
 
       const { key } = req.query;
+      if (this.refuseServerKey(key, res)) return;
       const data = await this.cacheService.get(key);
 
       res.status(200).json(data);
@@ -40,6 +42,18 @@ class CacheController {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });
     }
+  }
+
+  /**
+   * The server's own entries (computed configuration spaces, SSO state,
+   * rate-limit counters) are never served or written here, whoever asks.
+   */
+  private refuseServerKey(key: unknown, res: any): boolean {
+    if (typeof key === 'string' && isServerCacheKey(key)) {
+      res.status(403).send({ error: 'PERMISSION ERROR: This cache key is reserved for the server' });
+      return true;
+    }
+    return false;
   }
 
   async set(req: any, res: any) {
@@ -64,6 +78,7 @@ class CacheController {
       }
 
       const { key, value, expirationInSeconds } = req.body;
+      if (this.refuseServerKey(key, res)) return;
 
       if (!expirationInSeconds) {
         await this.cacheService.set(key, value);

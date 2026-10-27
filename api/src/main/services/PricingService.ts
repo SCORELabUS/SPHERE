@@ -14,7 +14,7 @@ import {
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import PricingCollectionService from './PricingCollectionService';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
-import CacheService from './CacheService';
+import CacheService, { INTERNAL_CACHE_PREFIX } from './CacheService';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
@@ -236,7 +236,9 @@ class PricingService {
     }
 
     let configurationSpace = null;
-    const key: string = `${organizationId}.${pricingSlug}.${pricingVersion}.configurationSpace`;
+    // Under the server's own prefix: the public /cache endpoint can neither read
+    // it (a private version's configuration space) nor plant a forged one.
+    const key: string = `${INTERNAL_CACHE_PREFIX}configuration-space:${organizationId}.${pricingSlug}.${pricingVersion}`;
     const cachedConfigurationSpace = await this.cacheService.get(key);
 
     if (cachedConfigurationSpace) {
