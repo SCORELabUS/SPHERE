@@ -5736,8 +5736,10 @@ paths:
         - A private collection requires the same kind of permission on the collection.
         - Anything the caller may not see is answered with 404, exactly like an unknown ID.
 
-        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag`; send it back in
-        `If-None-Match` to get `304 Not Modified`. Visibility is checked before any 304.
+        **Caching**: a strong `ETag`; send it back in `If-None-Match` to get `304 Not
+        Modified`. Visibility is checked before any 304. `Cache-Control: private, no-cache`
+        for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
       tags:
         - Public Synchronization
       security:
@@ -5769,6 +5771,8 @@ paths:
               $ref: '#/components/headers/PublicSyncETag'
             Cache-Control:
               $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
           content:
             application/json:
               schema:
@@ -5801,16 +5805,29 @@ paths:
         poll it (with `If-None-Match`) and download the versions whose `contentHash` changed.
 
         **Authentication**: Public. Credentials, when sent, are validated like on the rest of
-        the API (an invalid or expired token or API key is rejected with 401) but do not
-        change the response: the manifest only lists public versions, for every caller.
+        the API (an invalid or expired token or API key is rejected with 401). Anonymous
+        callers, and authenticated callers who may not read the pricing, get the public
+        versions only.
+
+        **Private versions**: a caller authenticated with a user token or an API key who may
+        read the pricing (OWNER/ADMIN of its organization, global ADMIN through a user token,
+        or GET permission on the pricing or its collection) also gets its private versions,
+        each flagged `private: true`. API keys are limited by their scope: `ALL` and
+        `MANAGEMENT` keys act with the user's role, a `VIEW` key acts as a plain MEMBER (so it
+        only sees private versions where the user holds GET on the pricing or its collection),
+        and a key scoped to another organization grants nothing.
 
         **Versions**: sorted newest first by the pricing `createdAt` (from the YAML), with
-        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them.
-        A family whose versions are all private, or a deleted family, is answered with 404.
+        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them,
+        so for an authorized caller it can be a private version. A deleted family is answered
+        with 404; so is a family whose versions are all private, unless the caller may read
+        them.
 
-        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag` computed from the
-        body; `If-None-Match` yields `304 Not Modified` only while the listed versions are
-        still public.
+        **Caching**: a strong `ETag` computed from the body (so the anonymous and the
+        authorized view of a family have different ETags); `If-None-Match` yields `304 Not
+        Modified` only while the versions listed for that caller are still visible to it.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key` on every response.
       tags:
         - Public Synchronization
       security:
@@ -5828,10 +5845,42 @@ paths:
               $ref: '#/components/headers/PublicSyncETag'
             Cache-Control:
               $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicPricingManifest'
+              examples:
+                anonymous:
+                  summary: Anonymous caller (public versions only)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f80
+                    versions:
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+                authorized:
+                  summary: Caller who may read the pricing (private versions flagged)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f91
+                    versions:
+                      - versionId: 68050bd09890322c57842f91
+                        version: "2025"
+                        createdAt: '2025-01-01T00:00:00Z'
+                        contentHash: 9a8f7e6d5c4b3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b
+                        private: true
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
         '304':
           $ref: '#/components/responses/PublicSyncNotModified'
         '401':
@@ -5848,15 +5897,19 @@ paths:
       description: |
         Returns the Pricing2Yaml file of one version of a pricing family, as stored by SPHERE.
         Visibility is checked before and again after reading the file, so a version made
-        private meanwhile is never released.
+        private meanwhile is never released to a caller who may not read it.
 
-        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid)
-        but only public versions are served.
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Public versions are served to everyone; private versions only to a caller who may
+        read the pricing, under the same rules (and API key scopes) as the manifest. For
+        anyone else a private version is answered with 404.
 
         **Limits**: files larger than 5 MiB are not served through this endpoint (503).
 
-        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag` (SHA-256 of the
-        file); `If-None-Match` yields `304 Not Modified` while the version stays public.
+        **Caching**: a strong `ETag` (SHA-256 of the file); `If-None-Match` yields `304 Not
+        Modified` while the version stays visible to the caller. `Cache-Control: private,
+        no-cache` for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
       tags:
         - Public Synchronization
       security:
@@ -5880,6 +5933,8 @@ paths:
               $ref: '#/components/headers/PublicSyncETag'
             Cache-Control:
               $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
           content:
             application/yaml:
               schema:
@@ -5910,15 +5965,16 @@ paths:
         Returns a ZIP archive with one `<pricing-slug>/<version>.yaml` entry per version of
         the family.
 
-        **Authentication**: Public. Anonymous callers get the public versions only.
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Anonymous callers, and authenticated callers who may not read the pricing, get the
+        public versions only (404 when the family has none).
 
-        **Permission**: when the family has private versions and the request is
-        authenticated (user token or API key), the caller must be allowed to read the
-        pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or GET
-        permission on the pricing; API keys limited by their scope); the archive then
-        includes the private versions. An authenticated caller who is not allowed gets 404.
+        **Private versions**: a caller who may read the pricing, under the same rules (and
+        API key scopes) as the manifest, also gets the private versions in the archive.
 
         The archive is streamed: it carries no `ETag` and is not revalidated.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key`.
       tags:
         - Public Synchronization
       security:
@@ -5935,6 +5991,10 @@ paths:
               description: '`attachment; filename="<pricingId>-versions.zip"`'
               schema:
                 type: string
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
           content:
             application/zip:
               schema:
@@ -6249,6 +6309,14 @@ components:
             excluded, so a rename alone does not change it.
           pattern: '^[a-f0-9]{64}$'
           example: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+        private:
+          type: boolean
+          enum: [true]
+          description: |
+            Present (and `true`) only on private versions, which are listed only to callers
+            who may read them. Omitted on public versions, so anonymous manifests never carry
+            it. Clients that must not handle unpublished versions should skip these entries.
+          example: true
       required:
         - versionId
         - version
@@ -6273,11 +6341,14 @@ components:
           example: https://sphere.score.us.es/p/68050bd09890322c57842f7a
         latestVersionId:
           type: string
-          description: '`versionId` of the newest listed version.'
+          description: |
+            `versionId` of the newest listed version. For a caller who may read private
+            versions it can be a private one; such callers can find the newest public
+            version as the first entry without `private: true`.
           example: 68050bd09890322c57842f80
         versions:
           type: array
-          description: Versions, newest first.
+          description: Versions visible to the caller, newest first.
           minItems: 1
           items:
             $ref: '#/components/schemas/PublicPricingVersionSummary'
@@ -8785,10 +8856,19 @@ components:
         type: string
         example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
     PublicSyncCacheControl:
-      description: Responses may be stored by the client only, and must be revalidated.
+      description: |
+        `private, no-cache` for anonymous requests: only the client may store the response,
+        and it must revalidate it. `private, no-store` for requests that carry a user token
+        or an API key, whose responses may hold private content and must not be stored.
       schema:
         type: string
+        enum: ['private, no-cache', 'private, no-store']
         example: private, no-cache
+    PublicSyncVary:
+      description: The response depends on the caller's credentials.
+      schema:
+        type: string
+        example: Authorization, x-api-key
 
   securitySchemes:
     ApiKeyAuth:
