@@ -4,6 +4,8 @@ SPHERE exposes `/p/{pricingId}` for a pricing family and `/c/{collectionId}` for
 
 Private links require normal authentication and permissions. Knowing a permanent URL never grants access. Anonymous unavailable/private resources return 404. The public synchronization API always filters private versions, even for authenticated callers.
 
+The same rule applies to the YAML files under `/static`. The file of a private version is only served to a caller who may read that version (`Authorization: Bearer <token>` or `x-api-key`, with the same role, entity-permission and API key scope rules as the rest of the API), with `Cache-Control: private, no-store`. For anyone else it is answered exactly like a file that does not exist. Files under `static/pricings/uploaded/` and `static/collections/` that no pricing version references (drafts, files left after deleting a version) are not served. Public versions, the seeded datasets, templates and avatars are served as before.
+
 ## Public API
 
 - `GET /api/v1/permalinks/{resourceType}/{resourceId}`, with `resourceType=pricing|collection`: `{ "location": "/pricings/..." }` or the collection destination. Responses are revalidated; no permanent redirect to a mutable slug is cached.

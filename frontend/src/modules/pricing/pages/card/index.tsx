@@ -8,6 +8,7 @@ import {
   getPublicOrganization,
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
@@ -181,7 +182,7 @@ export default function CardPage() {
     const url = currentVersion.yaml.startsWith('http')
       ? currentVersion.yaml
       : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(async text => {
         setYamlText(text);
@@ -208,7 +209,7 @@ export default function CardPage() {
         setPricing(null);
       })
       .finally(() => setIsLoadingYaml(false));
-  }, [currentVersion]);
+  }, [currentVersion, authUser?.token]);
 
   const handleApplyVariables = async (variables: Record<string, unknown>) => {
     if (!yamlText) return;
@@ -295,7 +296,7 @@ export default function CardPage() {
 
   const handleDownload = (v: VersionData) => {
     const url = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(text => downloadYaml(text))
       .catch(() => {});
