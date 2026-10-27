@@ -193,34 +193,40 @@ describe('Pricing ETag and If-Match', () => {
     it('Gives a writer who may not read the private versions no ETag, and no If-Match of theirs matches.', async () => {
       const target = await pricingWithPrivateVersion();
       const editor = await memberOf(target, { GET: false, PUT: true, DELETE: false, CREATE: false });
+      // The public version: a writer without private access may change it, but
+      // not the private one (nor, with private versions, the whole pricing).
+      const publicVersionUrl = `${target.pricingUrl}/${target.version}`;
 
       const read = await request(app).get(target.pricingUrl).set('Authorization', `Bearer ${editor}`);
       expect(read.headers.etag ?? '').not.toMatch(PRICING_ETAG);
 
       const written = await request(app)
-        .put(target.pricingUrl)
+        .put(publicVersionUrl)
         .set('Authorization', `Bearer ${editor}`)
-        .send({ url: 'https://example.com/editor' });
+        .send({ private: false });
       expect(written.status).toBe(200);
       expect(written.headers.etag ?? '').not.toMatch(PRICING_ETAG);
 
       // Even the right tag, guessed from the public pricing id, tells them nothing.
+      const guessed = await storedTag(target.organizationId, target.slug);
       const probe = await request(app)
-        .put(target.pricingUrl)
+        .put(publicVersionUrl)
         .set('Authorization', `Bearer ${editor}`)
-        .set('If-Match', await storedTag(target.organizationId, target.slug))
-        .send({ url: 'https://example.com/probe' });
+        .set('If-Match', guessed)
+        .send({ private: true });
       expect(probe.status).toBe(412);
       expect(probe.headers.etag ?? '').not.toMatch(PRICING_ETAG);
       const versions = await storedVersions(target.organizationId, target.slug);
-      expect(versions.every(version => version.url === 'https://example.com/editor')).toBe(true);
+      expect(versions.find(version => version.version === target.version)?.private).toBe(false);
+      expect(await storedTag(target.organizationId, target.slug)).toBe(guessed);
 
       const anyVersion = await request(app)
-        .put(target.pricingUrl)
+        .put(publicVersionUrl)
         .set('Authorization', `Bearer ${editor}`)
         .set('If-Match', '*')
-        .send({ url: 'https://example.com/star' });
+        .send({ private: false });
       expect(anyVersion.status).toBe(200);
+      expect(anyVersion.headers.etag ?? '').not.toMatch(PRICING_ETAG);
     });
   });
 
