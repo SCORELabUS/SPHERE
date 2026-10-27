@@ -28,6 +28,12 @@ features:
     defaultValue: false
     expression: "pricingContext['features']['harvey'] && subscriptionContext['maxHarveyRequests'] < pricingContext['usageLimits']['maxHarveyRequests']"
     type: DOMAIN
+  orbit:
+    description: "ORBIT, the assistant that manages your organizations, pricings and collections for you"
+    valueType: BOOLEAN
+    defaultValue: true
+    expression: "pricingContext['features']['orbit'] && subscriptionContext['maxOrbitMessages'] < pricingContext['usageLimits']['maxOrbitMessages']"
+    type: DOMAIN
   advancePricingAnalytics:
     description: "Improve your understanding on your pricings with analytics on the evolution of optimal subscriptions"
     valueType: BOOLEAN
@@ -92,6 +98,18 @@ usageLimits:
       unit: MONTH
     linkedFeatures:
       - harvey
+    render: ENABLED
+  maxOrbitMessages:
+    description: "Maximum number of messages that can be exchanged with ORBIT per hour. Past it, you can keep working from your own Claude or ChatGPT with the SPHERE skill"
+    valueType: NUMERIC
+    defaultValue: 10
+    unit: message
+    type: RENEWABLE
+    period:
+      value: 1
+      unit: HOUR
+    linkedFeatures:
+      - orbit
     render: ENABLED
 plans:
   BASIC:

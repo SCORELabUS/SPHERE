@@ -132,6 +132,12 @@ services:
       - 8080:8080
     env_file:
       - ../../api/.env.testing
+    environment:
+      # ORBIT, the assistant, uses the same model and key as HARVEY, so they share
+      # OpenAI's rate limits: ORBIT caps the messages of all its users per minute.
+      - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
+      - ORBIT_OPENAI_MODEL=gpt-5-nano
+      - ORBIT_MAX_MESSAGES_PER_MINUTE=20
     volumes:
       - 'sphere-statics:/usr/src/server/public'
     depends_on:

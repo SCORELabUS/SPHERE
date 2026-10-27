@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { shutdownApp, TestApp } from './utils/testApp';
 import { createTestUser, createAndLoginUser, deleteTestUser } from './utils/users/userTestUtils';
 import {
@@ -13,6 +13,8 @@ import { randomSuffix } from './utils/helpers';
 import { LeanUser } from '../main/types/models/User';
 import { BASE_PATH, TEST_PASSWORD } from './utils/config/variables';
 import testContainer from './utils/config/testContainer';
+import appContainer from '../main/config/container';
+import { EmailService } from '../main/services/email/EmailService';
 import OrganizationMongoose from '../main/repositories/mongoose/models/OrganizationMongoose';
 import OrganizationMembershipMongoose from '../main/repositories/mongoose/models/OrganizationMembershipMongoose';
 import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
@@ -1335,6 +1337,13 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
 
       expect(response.status).toBe(200);
       expect(response.body.settings).toHaveProperty('notificationPrefs');
+      expect(response.body.settings.notificationPrefs.OrganizationInvitation).toEqual({ email: true, inbox: false });
+      expect(response.body.settings.notificationPrefs.PricingUpdated).toEqual({ email: false, inbox: true });
+
+      const settings = await request(app)
+        .get(`${BASE_PATH}/users/me/settings`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(settings.body.settings.notificationPrefs.PricingUpdated).toEqual({ email: false, inbox: true });
     });
 
     it('Return 401 without authorization header.', async () => {
@@ -1343,6 +1352,88 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
         .send({ pricingCreated: { email: true, inbox: true } });
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe('Notification delivery follows the notification settings', () => {
+    const invite = async (inviterToken: string, organizationId: string, inviteeId: string) =>
+      request(app)
+        .post(`${BASE_PATH}/orgs/${organizationId}/invitations/invite-users`)
+        .set('Authorization', `Bearer ${inviterToken}`)
+        .send({ userIds: [inviteeId] });
+
+    const inbox = async (token: string) =>
+      request(app).get(`${BASE_PATH}/notifications`).set('Authorization', `Bearer ${token}`);
+
+    const setPrefs = async (token: string, prefs: Record<string, { email: boolean; inbox: boolean }>) =>
+      request(app)
+        .put(`${BASE_PATH}/users/me/settings/notifications`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(prefs);
+
+    const spyOnEmails = () => vi.spyOn(appContainer.resolve<EmailService>('emailService'), 'sendNotificationEmail');
+    // The email is sent without awaiting it, so let it settle before asserting.
+    const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('Deliver an invitation in-app and by email with the default settings.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: invitee } = await createAndLoginUser('USER');
+      const emails = spyOnEmails().mockResolvedValue(undefined);
+
+      const response = await invite(owner.token, organizationId, invitee.id);
+      await settle();
+
+      expect(response.status).toBe(201);
+      const list = await inbox(invitee.token);
+      expect(list.status).toBe(200);
+      expect(JSON.stringify(list.body)).toContain('OrganizationInvitation');
+      expect(emails).toHaveBeenCalledTimes(1);
+      expect(emails.mock.calls[0][0].recipientEmail).toBe(invitee.email);
+    });
+
+    it('Skip the in-app notification when the invitation inbox channel is off.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: invitee } = await createAndLoginUser('USER');
+      await setPrefs(invitee.token, { OrganizationInvitation: { email: true, inbox: false } });
+      const emails = spyOnEmails().mockResolvedValue(undefined);
+
+      const response = await invite(owner.token, organizationId, invitee.id);
+      await settle();
+
+      expect(response.status).toBe(201);
+      expect(JSON.stringify((await inbox(invitee.token)).body)).not.toContain('OrganizationInvitation');
+      expect(emails).toHaveBeenCalledTimes(1);
+    });
+
+    it('Skip the email when the invitation email channel is off.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: invitee } = await createAndLoginUser('USER');
+      await setPrefs(invitee.token, { OrganizationInvitation: { email: false, inbox: true } });
+      const emails = spyOnEmails().mockResolvedValue(undefined);
+
+      const response = await invite(owner.token, organizationId, invitee.id);
+      await settle();
+
+      expect(response.status).toBe(201);
+      expect(JSON.stringify((await inbox(invitee.token)).body)).toContain('OrganizationInvitation');
+      expect(emails).not.toHaveBeenCalled();
+    });
+
+    it('Still create the invitation when the email provider fails.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: invitee } = await createAndLoginUser('USER');
+      spyOnEmails().mockRejectedValue(new Error('provider down'));
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const response = await invite(owner.token, organizationId, invitee.id);
+      await settle();
+
+      expect(response.status).toBe(201);
+      expect(JSON.stringify((await inbox(invitee.token)).body)).toContain('OrganizationInvitation');
     });
   });
 

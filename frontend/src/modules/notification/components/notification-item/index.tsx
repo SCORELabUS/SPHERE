@@ -40,6 +40,12 @@ export default function NotificationItem({ notification, onClose }: Notification
 
       if (notification.kind === 'OrganizationInvitation' && notification.data?.invitationCode) {
         navigate(`/orgs/join/${notification.data.invitationCode}`);
+      } else if (
+        notification.kind === 'PricingUpdated' &&
+        notification.data?.organizationId &&
+        notification.data?.pricingSlug
+      ) {
+        navigate(`/pricings/${notification.data.organizationId}/${notification.data.pricingSlug}`);
       }
     }
 

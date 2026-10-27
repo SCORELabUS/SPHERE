@@ -12,6 +12,16 @@ import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
 import { escapeRegex } from '../../utils/regex';
 
+/**
+ * Mongoose refuses NaN for a Number, which fails the whole write: a value that
+ * could not be computed (e.g. a price with no numeric plans) is left out instead.
+ */
+export function storableAnalytics(analytics: object | null | undefined) {
+  return Object.fromEntries(
+    Object.entries(analytics ?? {}).filter(([, value]) => typeof value !== 'number' || Number.isFinite(value))
+  );
+}
+
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
@@ -197,19 +207,8 @@ class PricingRepository extends RepositoryBase {
         item.slug = generateSlug(item.name);
       }
 
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.minSubscriptionPrice)
-      ) {
-        item.analytics.minSubscriptionPrice = undefined;
-      }
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.maxSubscriptionPrice)
-      ) {
-        item.analytics.maxSubscriptionPrice = undefined;
+      if (item.analytics) {
+        item.analytics = storableAnalytics(item.analytics);
       }
     });
 
@@ -231,7 +230,7 @@ class PricingRepository extends RepositoryBase {
       return null;
     }
 
-    pricing.set({ analytics: analytics });
+    pricing.set({ analytics: storableAnalytics(analytics) });
     await pricing.save();
 
     return pricing.toObject();
@@ -255,6 +254,15 @@ class PricingRepository extends RepositoryBase {
       ...(collectionId !== undefined ? { _collectionId: collectionId } : {}) }).select('_id').lean();
     if (families.length !== 1) throw new Error(families.length ? 'CONFLICT: Ambiguous pricing family' : 'NOT FOUND: Pricing identity');
     return families[0]._id;
+  }
+
+  /** The id shared by every version of a pricing, or null when there is not exactly one such pricing. */
+  async familyIdOf(slug: string, organizationId: string): Promise<string | null> {
+    try {
+      return String(await this.familyId(slug, organizationId));
+    } catch {
+      return null;
+    }
   }
 
   private async moveFamilies(ids: mongoose.Types.ObjectId[], collectionId: string | null) {
@@ -332,6 +340,36 @@ class PricingRepository extends RepositoryBase {
     await PricingMongoose.deleteMany({
       _organizationId: new mongoose.Types.ObjectId(organizationId),
     });
+  }
+
+  /**
+   * One line per pricing of an organization (its versions share a slug), as of
+   * its latest version: what ORBIT needs to name it and tell who may see it.
+   */
+  async findSummariesByOrganization(organizationId: string): Promise<
+    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number }>
+  > {
+    const rows = await PricingMongoose.aggregate([
+      { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$slug',
+          name: { $first: '$name' },
+          private: { $first: '$private' },
+          collectionId: { $first: '$_collectionId' },
+          versions: { $sum: 1 },
+        },
+      },
+      { $sort: { name: 1 } },
+    ]);
+    return rows.map((row: any) => ({
+      slug: row._id,
+      name: row.name,
+      private: row.private === true,
+      collectionId: row.collectionId ? String(row.collectionId) : null,
+      versions: row.versions,
+    }));
   }
 
   _processPricingQueryParams(queryParams: PricingIndexQueryParams): {

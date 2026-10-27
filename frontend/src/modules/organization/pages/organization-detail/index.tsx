@@ -258,19 +258,11 @@ export default function OrganizationDetailPage() {
       }
     }
 
-    // A branch the viewer cannot open stays closed: what is under it is none of
-    // their business, the same way it was hidden before.
-    for (const treeNode of byId.values()) {
-      if (!treeNode.hasAccess) {
-        treeNode.children = [];
-      }
-    }
-
     setHierarchyTree(root ?? byId.get(org.id) ?? null);
   }, [org, getOrgHierarchy]);
 
   useEffect(() => {
-    if (org && myRole) buildHierarchyTree();
+    if (org) buildHierarchyTree();
   }, [org, myRole, buildHierarchyTree]);
 
   const autoExpandedOrgIdRef = useRef<string | null>(null);
@@ -449,7 +441,7 @@ export default function OrganizationDetailPage() {
   /* ─── Tabs ─── */
   const availableTabs = useMemo(() => {
     if (isPublicView) {
-      return ['overview', 'members', 'pricings', 'collections'] as Tab[];
+      return ['overview', 'members', 'pricings', 'collections', 'children'] as Tab[];
     }
     const tabs: Tab[] = [
       'overview',
@@ -764,7 +756,7 @@ export default function OrganizationDetailPage() {
             />
           )}
 
-          {!isPublicView && activeTab === 'children' && (
+          {activeTab === 'children' && (
             <HierarchyTab
               org={org}
               canManage={canManage}

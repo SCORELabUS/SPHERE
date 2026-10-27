@@ -141,6 +141,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // Following a pricing to be notified of new versions. PricingFollowService applies the
+  // pricing's visibility rule; this only requires login.
+  {
+    path: '/pricing-follows/*/*',
+    methods: ['GET', 'PUT', 'DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
   // Collection Management Routes
   // ============================================
@@ -206,6 +214,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   {
     path: '/orgs/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  // The tree of a branch is public too: every organization in it already has a
+  // public page, and the caller's memberships only decide which nodes are marked
+  // as open to them.
+  {
+    path: '/orgs/*/hierarchy',
     methods: ['GET'],
     isPublic: true,
   },
@@ -294,6 +310,18 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   {
     path: '/notifications/**',
     methods: ['GET', 'PUT', 'DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
+  // ============================================
+  // ORBIT assistant
+  // ============================================
+  // Conversations and plans belong to the signed-in user; the service answers 404
+  // for anyone else's. Every change ORBIT makes is checked again against the
+  // user's organization roles when the plan runs.
+  {
+    path: '/orbit/**',
+    methods: ['GET', 'POST', 'DELETE'],
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 

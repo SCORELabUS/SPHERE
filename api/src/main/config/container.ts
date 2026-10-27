@@ -12,6 +12,10 @@ import OrganizationMembershipRepository from '../repositories/mongoose/Organizat
 import OrganizationInvitationRepository from '../repositories/mongoose/OrganizationInvitationRepository';
 import EntityPermissionRepository from '../repositories/mongoose/EntityPermissionRepository';
 import NotificationRepository from '../repositories/mongoose/NotificationRepository';
+import PricingFollowRepository from '../repositories/mongoose/PricingFollowRepository';
+import OrbitConversationRepository from '../repositories/mongoose/OrbitConversationRepository';
+import OrbitPlanRepository from '../repositories/mongoose/OrbitPlanRepository';
+import OrbitAuditLogRepository from '../repositories/mongoose/OrbitAuditLogRepository';
 
 import UserService from "../services/UserService";
 import PricingService from "../services/PricingService";
@@ -21,17 +25,24 @@ import OrganizationService from '../services/OrganizationService';
 import PermissionService from '../services/PermissionService';
 import UserSettingsService from '../services/UserSettingsService';
 import NotificationService from '../services/NotificationService';
+import PricingFollowService from '../services/PricingFollowService';
 import ApiKeyService from '../services/ApiKeyService';
 import AuthProviderService from '../services/AuthProviderService';
 import BrevoEmailService from '../services/email/BrevoEmailService';
 import EmailVerificationService from '../services/EmailVerificationService';
 import PasswordResetService from '../services/PasswordResetService';
+import OrbitLlmClient from '../services/orbit/OrbitLlmClient';
+import OrbitPlanService from '../services/orbit/OrbitPlanService';
+import OrbitImportService from '../services/orbit/OrbitImportService';
+import OrbitExecutorService from '../services/orbit/OrbitExecutorService';
+import OrbitService from '../services/orbit/OrbitService';
+import OrbitMcpService from '../services/orbit/OrbitMcpService';
 
 dotenv.config();
 
 function initContainer(databaseType: string): AwilixContainer {
   const container: AwilixContainer = createContainer();
-  let userRepository, pricingRepository, pricingCollectionRepository, organizationRepository, organizationMembershipRepository, organizationInvitationRepository, entityPermissionRepository, notificationRepository;
+  let userRepository, pricingRepository, pricingCollectionRepository, organizationRepository, organizationMembershipRepository, organizationInvitationRepository, entityPermissionRepository, notificationRepository, pricingFollowRepository, orbitConversationRepository, orbitPlanRepository, orbitAuditLogRepository;
 
   switch (databaseType) {
     case "mongoDB":
@@ -43,6 +54,10 @@ function initContainer(databaseType: string): AwilixContainer {
       organizationInvitationRepository = new OrganizationInvitationRepository();
       entityPermissionRepository = new EntityPermissionRepository();
       notificationRepository = new NotificationRepository();
+      pricingFollowRepository = new PricingFollowRepository();
+      orbitConversationRepository = new OrbitConversationRepository();
+      orbitPlanRepository = new OrbitPlanRepository();
+      orbitAuditLogRepository = new OrbitAuditLogRepository();
       break;
     default:
       throw new Error(`Unsupported database type: ${databaseType}`);
@@ -56,6 +71,10 @@ function initContainer(databaseType: string): AwilixContainer {
     organizationInvitationRepository: asValue(organizationInvitationRepository),
     entityPermissionRepository: asValue(entityPermissionRepository),
     notificationRepository: asValue(notificationRepository),
+    pricingFollowRepository: asValue(pricingFollowRepository),
+    orbitConversationRepository: asValue(orbitConversationRepository),
+    orbitPlanRepository: asValue(orbitPlanRepository),
+    orbitAuditLogRepository: asValue(orbitAuditLogRepository),
     userService: asClass(UserService).singleton(),
     permanentLinkService: asClass(PermanentLinkService).singleton(),
     pricingService: asClass(PricingService).singleton(),
@@ -65,11 +84,18 @@ function initContainer(databaseType: string): AwilixContainer {
     permissionService: asClass(PermissionService).singleton(),
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
+    pricingFollowService: asClass(PricingFollowService).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
     emailService: asClass(BrevoEmailService).singleton(),
     emailVerificationService: asClass(EmailVerificationService).singleton(),
     passwordResetService: asClass(PasswordResetService).singleton(),
+    orbitLlmClient: asClass(OrbitLlmClient).singleton(),
+    orbitPlanService: asClass(OrbitPlanService).singleton(),
+    orbitImportService: asClass(OrbitImportService).singleton(),
+    orbitExecutorService: asClass(OrbitExecutorService).singleton(),
+    orbitService: asClass(OrbitService).singleton(),
+    orbitMcpService: asClass(OrbitMcpService).singleton(),
   });
   return container;
 }

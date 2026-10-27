@@ -89,24 +89,6 @@ export function usePricingsApi() {
       });
   }, [basicHeaders]);
 
-  const getLoggedUserPricings = useCallback(async () => {
-    return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${authUser.user?.username}`, {
-      method: 'GET',
-      headers: basicHeaders,
-    })
-      .then(response => {
-        if (!response.ok) {
-          return Promise.reject(response);
-        } else {
-          return response.json();
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
-  }, [fetchWithInterceptor, basicHeaders]);
-
   const USERS_BASE_PATH = import.meta.env.VITE_API_URL + '/users';
 
   const getPermissionBasedUserPricings = useCallback(async (filters: Record<string, string | number> = {}) => {
@@ -360,6 +342,37 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
+  const followRequest = useCallback(async (method: 'GET' | 'PUT' | 'DELETE', organizationId: string, pricingSlug: string) => {
+    return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-follows/${organizationId}/${pricingSlug}`, {
+      method,
+      headers: basicHeaders,
+    })
+      .then(async response => {
+        const parsedResponse = await response.json();
+
+        if (!response.ok) {
+          throw new Error(parsedResponse.error);
+        }
+
+        return parsedResponse as { following: boolean };
+      });
+  }, [fetchWithInterceptor, basicHeaders]);
+
+  const getPricingFollow = useCallback(
+    (organizationId: string, pricingSlug: string) => followRequest('GET', organizationId, pricingSlug),
+    [followRequest]
+  );
+
+  const followPricing = useCallback(
+    (organizationId: string, pricingSlug: string) => followRequest('PUT', organizationId, pricingSlug),
+    [followRequest]
+  );
+
+  const unfollowPricing = useCallback(
+    (organizationId: string, pricingSlug: string) => followRequest('DELETE', organizationId, pricingSlug),
+    [followRequest]
+  );
+
   const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
@@ -388,12 +401,14 @@ export function usePricingsApi() {
     () => ({
       getPricings,
       getPricingBySlug,
-      getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingFollow,
+      followPricing,
+      unfollowPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,
@@ -405,12 +420,14 @@ export function usePricingsApi() {
     [
       getPricings,
       getPricingBySlug,
-      getLoggedUserPricings,
       getPermissionBasedUserPricings,
       getConfigurationSpace,
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingFollow,
+      followPricing,
+      unfollowPricing,
       addPricingToCollection,
       removePricingFromCollection,
       removePricingBySlug,

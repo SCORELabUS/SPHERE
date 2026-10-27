@@ -614,9 +614,8 @@ class PricingService {
 
       await pricingAnalytics
         .getAnalytics()
-        .then((analytics: any) => {
-          this.pricingRepository.updateAnalytics(pricing[0]._id.toString(), analytics);
-        })
+        // Awaited: a version whose analytics are never stored breaks its collection's analytics.
+        .then((analytics: any) => this.pricingRepository.updateAnalytics(pricing[0]._id.toString(), analytics))
         .catch(async (err: any) => {
           await this.pricingRepository.destroy(pricing[0]._id.toString());
           throw new Error((err as Error).message);
@@ -624,6 +623,14 @@ class PricingService {
 
       if (collectionId) {
         await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
+      }
+
+      if (isAddingVersion && !forkedFrom) {
+        // Not awaited: telling followers must not delay or fail the publish itself.
+        void container
+          .resolve('pricingFollowService')
+          .notifyNewVersion({ ...pricingData, pricingId: previousPricing.pricingId }, reqUser)
+          .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
       }
 
       return pricing;
