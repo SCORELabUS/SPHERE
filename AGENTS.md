@@ -71,6 +71,8 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
+- /api/src/test/private-versions.test.ts — tests related to who may read private pricing versions (server-managed fields, permissions across organizations, collections, forks, follows, API keys, ORBIT and the MCP server)
+- /api/src/test/zip-upload-links.test.ts — tests for `scripts/link-zip-uploads-to-collections.ts`, which links pricings of old ZIP uploads to their collection
 - /api/src/test/orbit.test.ts — tests related to the ORBIT assistant (conversations, plans, file import, plan execution, teams and permissions, pricings and collections, account and notifications, deletions, and the MCP server). The language model is replaced with a scripted fake from `/api/src/test/utils/orbit/`
 
 In addition, test utilities are organized in `/api/src/test/utils/` with subfolders for auth, users, organizations, collections and pricings.
