@@ -331,7 +331,8 @@ class PricingCollectionService {
               uploadedPricing.saasName.split(' ')[0].charAt(0).toUpperCase() +
               uploadedPricing.saasName.split(' ')[0].slice(1).toLowerCase(),
             version: uploadedPricing.version,
-            _collectionId: collection._id,
+            // The stored collection comes without `_id` (toObject transform).
+            _collectionId: collection.id ?? collection._id,
             _organizationId: organizationId,
             currency: uploadedPricing.currency,
             createdAt: new Date(uploadedPricing.createdAt),
