@@ -82,7 +82,9 @@ class PermissionService {
     return {
       orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
       pricings: pricingsWithGetPermissions,
+      pricingKeys: pricingsWithGetPermissions.map(slug => `${organizationId}:${slug}`),
       collections: collectionsWithGetPermissions,
+      collectionKeys: collectionsWithGetPermissions.map(slug => `${organizationId}:${slug}`),
       isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
       adminOrgIds: (orgRole === 'OWNER' || orgRole === 'ADMIN' || orgPermissions.isGlobalAdmin)
         ? [organizationId]
@@ -97,8 +99,10 @@ class PermissionService {
     );
 
     const pricingsWithGetPermissions: string[] = [];
+    const pricingKeys: string[] = [];
     const collectionsWithGetPermissions: string[] = [];
     const collectionsWithPutPermissions: string[] = [];
+    const collectionKeys: string[] = [];
     const adminOrgIds: string[] = [];
 
     for (const [orgId, orgPermissions] of permissions) {
@@ -121,6 +125,13 @@ class PermissionService {
           .map(key => key.split(':')[1])
       );
 
+      // Qualified by organization too, as slugs repeat across organizations.
+      pricingKeys.push(
+        ...entriesWithGetPermissions
+          .filter(key => key.startsWith('pricing:'))
+          .map(key => `${orgId}:${key.split(':')[1]}`)
+      );
+
       collectionsWithGetPermissions.push(
         ...entriesWithGetPermissions
           .filter(key => key.startsWith('collection:'))
@@ -133,13 +144,22 @@ class PermissionService {
           .filter(key => key.startsWith('collection:'))
           .map(key => `${orgId}:${key.split(':')[1]}`)
       );
+
+      // The same for the collections it may see.
+      collectionKeys.push(
+        ...entriesWithGetPermissions
+          .filter(key => key.startsWith('collection:'))
+          .map(key => `${orgId}:${key.split(':')[1]}`)
+      );
     }
 
     return {
       orgRole: null,
       pricings: pricingsWithGetPermissions,
+      pricingKeys,
       collections: collectionsWithGetPermissions,
       collectionsWritable: collectionsWithPutPermissions,
+      collectionKeys,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       adminOrgIds,
     };

@@ -86,11 +86,15 @@ export interface BatchEvaluationOptions {
 export interface OrgUserPermissionsContext {
   orgRole: OrgRole | null;
   pricings: string[];
+  /** The pricings with GET, as `organizationId:slug` (slugs repeat across organizations). */
+  pricingKeys?: string[];
   collections: string[];
   /** `<organizationId>:<collectionSlug>` of the collections the user may edit (GET and PUT) */
   collectionsWritable?: string[];
   /** List only the collections the user may edit, leaving out the public ones they can merely see */
   writableOnly?: boolean;
+  /** The collections with GET, as `organizationId:slug` (slugs repeat across organizations). */
+  collectionKeys?: string[];
   isGlobalAdmin: boolean;
   /** Org IDs where user has OWNER or ADMIN role (full access to all entities) */
   adminOrgIds: string[];
