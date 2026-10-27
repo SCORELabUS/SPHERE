@@ -17,6 +17,8 @@ const spec: any = yaml.load(
 const registeredRoutes = (): string[] => {
   const app = express();
   loadRoutes(app);
+  // `app._router` is Express 4 internals (SPHERE uses express ^4). Express 5
+  // removed it: use `app.router.stack` there when the dependency is upgraded.
   return app._router.stack
     .filter((layer: any) => layer.route)
     .map((layer: any) => layer.route.path.replace(/^\/api\/v1/, '').replace(/:([A-Za-z]+)/g, '{$1}'));
