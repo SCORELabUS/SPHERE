@@ -5648,9 +5648,14 @@ paths:
         a plan through MCP. `attach_file` sends a file a plan can use, `get_plan` reports a plan's outcome and
         `cancel_plan` withdraws one.
 
-        The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
-        (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
-        changes, and handing over, moving or deleting an organization takes the ALL scope on it.
+        The API key's scopes bound what the assistant reaches, exactly as on the REST API: it only sees and names the
+        organizations the key covers (an ALL scope also covers everything below its organization), a key with only
+        VIEW scopes cannot propose changes, and handing over, moving or deleting an organization takes the ALL scope
+        on it. Within an organization a VIEW scope acts as a plain MEMBER and MANAGEMENT at most as an ADMIN, and the
+        global ADMIN bypass does not apply to keys: private versions and private collections are only read where the
+        key's user may read them as such (OWNER/ADMIN, or GET granted on the pricing or its collection). An assistant
+        that needs private reads without write power should use a VIEW key of a dedicated member account granted GET
+        on the specific pricings or collections (or a MANAGEMENT key, if write power is acceptable).
 
         Limited to 120 tool calls a minute per user.
 

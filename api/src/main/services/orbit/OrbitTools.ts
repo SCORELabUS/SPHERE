@@ -10,7 +10,8 @@ import { LlmTool } from './OrbitLlmClient';
 import OrbitPlanService, { accessOf, matchResource } from './OrbitPlanService';
 import OrbitImportService from './OrbitImportService';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
-import { PRICING_TOOL_LABELS, PRICING_TOOLS, runPricingTool } from './orbitPricingTools';
+import { PRICING_TOOL_LABELS, PRICING_TOOLS, requesterOf, runPricingTool } from './orbitPricingTools';
+import type PermissionService from '../PermissionService';
 import { ACCOUNT_TOOL_LABELS, ACCOUNT_TOOLS, runAccountTool } from './orbitAccountTools';
 
 const MAX_TOOL_RESULT_CHARS = 12_000;
@@ -571,6 +572,10 @@ class OrbitToolRunner {
     return container.resolve('pricingRepository');
   }
 
+  private get permissionService(): PermissionService {
+    return container.resolve('permissionService');
+  }
+
   private get pricingCollectionRepository(): PricingCollectionRepository {
     return container.resolve('pricingCollectionRepository');
   }
@@ -721,28 +726,30 @@ class OrbitToolRunner {
         const matches = (resource: { name: string; slug: string }) =>
           !query || resource.name.toLowerCase().includes(query) || resource.slug.includes(query);
 
+        // Private versions and collections by the rule every read applies
+        // (PermissionService.privateReader), API key scopes included.
+        const reader = await this.permissionService.privateReader(requesterOf(actor), organizationId);
         const collections = await this.pricingCollectionRepository.findSummariesByOrganization(organizationId);
-        const own = canManage(role) ? [] : await this.entityPermissionRepository.findByUserAndOrganization(actor.id, organizationId);
-        const hasOwnGet = (type: 'pricing' | 'collection', slug: string) =>
-          own.some(record => record.entityType === type && record.entitySlug === slug && record.permissions.GET);
-        const canView = (type: 'pricing' | 'collection', slug: string, isPrivate: boolean) =>
-          canManage(role) || !isPrivate || hasOwnGet(type, slug);
-        const visibleCollections = collections.filter(collection => canView('collection', collection.slug, collection.private));
+        const visibleCollections = collections.filter(collection => !collection.private || reader('collection', collection.slug));
 
         const result: Record<string, unknown> = {};
         if (args.type !== 'collection') {
-          const pricings = (await this.pricingRepository.findSummariesByOrganization(organizationId)).filter(pricing => {
-            // Seeing a collection by permission lets a member see the pricings in it.
-            const collection = collections.find(item => item.id === pricing.collectionId);
-            const throughCollection = !!collection && hasOwnGet('collection', collection.slug);
-            return matches(pricing) && (canView('pricing', pricing.slug, pricing.private) || throughCollection);
-          });
+          const pricings = (await this.pricingRepository.findSummariesByOrganization(organizationId))
+            .map(pricing => {
+              const collection = collections.find(item => item.id === pricing.collectionId);
+              // Only the versions the user may read are counted, or the pricing is left out.
+              return reader('pricing', pricing.slug, collection?.slug)
+                ? pricing
+                : { ...pricing, private: false, versions: pricing.publicVersions };
+            })
+            .filter(pricing => pricing.versions > 0 && matches(pricing));
           result.pricings = pricings.slice(0, MAX_RESOURCES_LISTED).map(pricing => ({
             name: pricing.name,
             slug: pricing.slug,
             private: pricing.private,
             versions: pricing.versions,
-            collection: collections.find(item => item.id === pricing.collectionId)?.name ?? null,
+            // A private collection the user may not see is not named.
+            collection: visibleCollections.find(item => item.id === pricing.collectionId)?.name ?? null,
           }));
           result.totalPricings = pricings.length;
         }

@@ -97,7 +97,8 @@ class OrbitMcpService {
 
   /** Answers one MCP request. Each request stands alone: the server keeps no session. */
   async handle(actor: OrbitActor, apiKey: ApiKey, req: IncomingMessage, res: ServerResponse, body: unknown): Promise<void> {
-    const server = this.createServer(actor, new KeyScopes(apiKey));
+    // The tools read with the key's scopes, as the REST API does (a VIEW key as a plain member).
+    const server = this.createServer({ ...actor, apiKey }, new KeyScopes(apiKey));
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => {
       void transport.close();
