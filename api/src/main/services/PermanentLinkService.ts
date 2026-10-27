@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import Pricing from '../repositories/mongoose/models/PricingMongoose';
 import Collection from '../repositories/mongoose/models/PricingCollectionMongoose';
 import Identity from '../repositories/mongoose/models/PricingIdentityMongoose';
-import { PermissionEngine } from '../policies/PermissionEngine';
+import { privateReader } from '../policies/privateReadRule';
 
 export function functionalHash(text: string): string {
   const value = yaml.load(text) as Record<string, unknown>;
@@ -110,20 +110,12 @@ export default class PermanentLinkService {
     if (!user) throw new Error('NOT FOUND');
     const { default: container } = await import('../config/container');
     const permissions = container.resolve('permissionService');
-    let role = await permissions.resolveOrgRole(user.id, organizationId);
-    if (authType === 'api-key') {
-      const organization = await container.resolve('organizationRepository').findById(organizationId);
-      const scope = user.apiKey?.scopes?.find((entry: any) => String(entry.organizationId) === organizationId ||
-        (entry.scope === 'ALL' && organization?.ancestors?.some((id: any) => String(id) === String(entry.organizationId))));
-      if (!scope) throw new Error('NOT FOUND');
-      if (scope.scope === 'VIEW') role = 'MEMBER';
-      else if (scope.scope === 'MANAGEMENT' && role === 'OWNER') role = 'ADMIN';
-    }
-    const ctx = await permissions.buildBatchContext(user.id, organizationId, role, user.role === 'ADMIN');
-    const result = new PermissionEngine().evaluate({ userId: user.id, organizationId,
-      entityType, entitySlug: slug, action: 'GET', isPrivate: true, userOrgRole: role,
-      isGlobalAdmin: user.role === 'ADMIN' && authType !== 'api-key', collectionSlug,
-      collectionPermissions: collectionSlug ? ctx.entityPermissions.get(`collection:${collectionSlug}`) : undefined, entityPermissions: ctx.entityPermissions.get(`${entityType}:${slug}`) });
-    if (!result.allowed) throw new Error('NOT FOUND');
+    // The same rule every other read of private versions and collections uses.
+    const reader = await privateReader({
+      resolveOrgRole: (userId, id) => permissions.resolveOrgRole(userId, id),
+      buildBatchContext: (userId, id, role, isGlobalAdmin) => permissions.buildBatchContext(userId, id, role, isGlobalAdmin),
+      findOrganization: id => container.resolve('organizationRepository').findById(id),
+    }, user, organizationId, authType);
+    if (!reader(entityType, slug, collectionSlug)) throw new Error('NOT FOUND');
   }
 }

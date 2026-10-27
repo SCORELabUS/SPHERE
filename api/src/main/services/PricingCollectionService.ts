@@ -140,27 +140,10 @@ class PricingCollectionService {
       if (!reqUser) {
         throw new Error('PERMISSION ERROR: You are not a member of this organization');
       }
-      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      const batchCtx = await this.permissionService.buildBatchContext(
-        reqUser.id,
-        organizationId,
-        orgRole,
-        reqUser.role === 'ADMIN'
-      );
-      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
-      const evalResult = this.permissionEngine.evaluate({
-        userId: reqUser.id,
-        organizationId,
-        entityType: 'collection',
-        entitySlug: collection.slug,
-        action: 'GET',
-        isPrivate: true,
-        userOrgRole: orgRole,
-        isGlobalAdmin: reqUser.role === 'ADMIN',
-        entityPermissions: entityPerms,
-      });
-      if (!evalResult.allowed) {
-        throw new Error(`PERMISSION ERROR: ${evalResult.reason}`);
+      // The rule of every read of private entities, API key scopes included.
+      const reader = await this.permissionService.privateReader(reqUser, organizationId);
+      if (!reader('collection', collection.slug)) {
+        throw new Error('PERMISSION ERROR: Private entity requires explicit GET permission');
       }
     }
 

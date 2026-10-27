@@ -56,7 +56,8 @@ class PricingService {
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
-    const isAdmin = reqUser && reqUser.role === 'ADMIN';
+    // The global ADMIN bypass is a token's only, never an API key's.
+    const isAdmin = reqUser && reqUser.role === 'ADMIN' && !(reqUser as any).apiKey;
 
     const pricings = await this.pricingRepository.findAll(queryParams, {
       orgRole: null,
@@ -73,12 +74,12 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: PricingIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
-      reqUser?.id ?? '',
-      organizationId
-    );
+    // An API key acts within its scopes (a VIEW key as a plain member), as
+    // when reading one pricing.
+    const access = await this.permissionService.actingAccess(reqUser, organizationId);
+    const orgRole: OrgRole | null = access.role;
 
-    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
+    if (!reqUser || !access.reachable || (!access.isGlobalAdmin && !orgRole)) {
       const pricings = await this.pricingRepository.findByOrganizationId(
         organizationId,
         { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
@@ -88,7 +89,7 @@ class PricingService {
     }
 
     const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
+      access.isGlobalAdmin ? reqUser : { ...reqUser, role: 'USER' },
       orgRole,
       organizationId
     );
@@ -103,7 +104,8 @@ class PricingService {
   }
 
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
-    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+    const viaKey = Boolean((reqUser as any).apiKey);
+    if (username !== reqUser.username && (reqUser.role !== 'ADMIN' || viaKey)) {
       throw new Error(
         'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
       );
@@ -120,7 +122,11 @@ class PricingService {
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
-    const permissions = await this.permissionService.buildUserPermissionsContext(user);
+    // With an API key, only what the key reaches and as it acts there.
+    const permissions = await this.permissionService.narrowListingToCaller(
+      reqUser,
+      await this.permissionService.buildUserPermissionsContext(user)
+    );
     const enhancedQueryParams = {
       ...queryParams,
       limit: queryParams?.limit ?? 10,
@@ -179,22 +185,12 @@ class PricingService {
     pricingSlug: string,
     collectionSlug?: string
   ): Promise<boolean> {
-    if (!reqUser) return false;
-    if (reqUser.role === 'ADMIN') return true;
-
-    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-    if (!orgRole) return false;
-
-    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
-      orgRole,
-      organizationId
-    );
-    return (
-      permissions.adminOrgIds.includes(organizationId) ||
-      permissions.pricings.includes(pricingSlug) ||
-      (!!collectionSlug && permissions.collections.includes(collectionSlug))
-    );
+    // One rule for every read of private versions, API key scopes included.
+    return this.permissionService.canReadPrivateVersions(reqUser, {
+      organizationId,
+      slug: pricingSlug,
+      collectionSlug,
+    });
   }
 
   async getConfigurationSpace(

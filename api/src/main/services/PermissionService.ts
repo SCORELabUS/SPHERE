@@ -17,6 +17,7 @@ import { PricingIndexQueryParams } from '../types/services/PricingService';
 import { CollectionIndexQueryParams } from '../types/services/PricingCollection';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { BatchEvaluationContext, OrgUserPermissionsContext } from '../types/policies';
+import { ActingAccess, actingAccess, PrivateReader, privateReader, PrivateReadSources } from '../policies/privateReadRule';
 
 const FULL_PERMISSIONS: EntityPermissions = { GET: true, PUT: true, DELETE: true, CREATE: true };
 const NO_PERMISSIONS: EntityPermissions = { GET: false, PUT: false, DELETE: false, CREATE: false };
@@ -54,6 +55,79 @@ class PermissionService {
     isGlobalAdmin?: boolean
   ): Promise<Map<string, BatchEvaluationContext>> {
     return this.permissionQueries.buildAllOrgsBatchContext(userId, isGlobalAdmin);
+  }
+
+  /** Roles, permissions and the organization tree, as the private read rule needs them. */
+  private get readSources(): PrivateReadSources {
+    return {
+      resolveOrgRole: (userId, organizationId) => this.resolveOrgRole(userId, organizationId),
+      buildBatchContext: (userId, organizationId, role, isGlobalAdmin) =>
+        this.buildBatchContext(userId, organizationId, role, isGlobalAdmin),
+      findOrganization: organizationId => container.resolve('organizationRepository').findById(organizationId),
+    };
+  }
+
+  /**
+   * How a caller acts in an organization once the API key it came with, if
+   * any, is applied (see `policies/privateReadRule.ts`): VIEW as a plain
+   * MEMBER, MANAGEMENT at most as an ADMIN, no access without a scope, and no
+   * global ADMIN bypass for keys.
+   */
+  async actingAccess(reqUser: LeanUser | undefined, organizationId: string, authType?: string): Promise<ActingAccess> {
+    return actingAccess(this.readSources, reqUser as any, organizationId, authType);
+  }
+
+  /**
+   * A check of whether the caller may read private entities of one
+   * organization: the private versions of a pricing (GET on it or on its
+   * collection) or a private collection. It is the rule
+   * `PermanentLinkService.authorize` applies (see `policies/privateReadRule.ts`),
+   * built once per organization so listings can ask it for many entities.
+   */
+  async privateReader(reqUser: LeanUser | undefined, organizationId: string, authType?: string): Promise<PrivateReader> {
+    return privateReader(this.readSources, reqUser as any, organizationId, authType);
+  }
+
+  /** Whether the caller may read the private versions of one pricing (see `privateReader`). */
+  async canReadPrivateVersions(
+    reqUser: LeanUser | undefined,
+    pricing: { organizationId: string; slug: string; collectionSlug?: string | null },
+    authType?: string
+  ): Promise<boolean> {
+    return (await this.privateReader(reqUser, pricing.organizationId, authType))('pricing', pricing.slug, pricing.collectionSlug);
+  }
+
+  /**
+   * Narrows a listing context built from the user's own roles and permissions
+   * to how the request acts: with an API key, organizations the key does not
+   * reach give nothing, and OWNER/ADMIN access only remains where the key
+   * keeps it (see `actingAccess`). The global ADMIN bypass is a token's only.
+   */
+  async narrowListingToCaller(reqUser: LeanUser, context: OrgUserPermissionsContext): Promise<OrgUserPermissionsContext> {
+    if (!(reqUser as any).apiKey) return context;
+    const organizationIds = new Set<string>([
+      ...context.adminOrgIds,
+      ...[...(context.pricingKeys ?? []), ...(context.collectionKeys ?? [])].map(key => key.split(':')[0]),
+    ]);
+    const reachable = new Set<string>();
+    const adminOrgIds: string[] = [];
+    for (const organizationId of organizationIds) {
+      const access = await this.actingAccess(reqUser, organizationId);
+      if (!access.reachable || !access.role) continue;
+      reachable.add(organizationId);
+      if (access.role === 'OWNER' || access.role === 'ADMIN') adminOrgIds.push(organizationId);
+    }
+    const inReach = (keys?: string[]) => (keys ?? []).filter(key => reachable.has(key.split(':')[0]));
+    return {
+      ...context,
+      orgRole: context.orgRole === 'OWNER' || context.orgRole === 'ADMIN' ? null : context.orgRole,
+      isGlobalAdmin: false,
+      adminOrgIds,
+      pricings: [],
+      collections: [],
+      pricingKeys: inReach(context.pricingKeys),
+      collectionKeys: inReach(context.collectionKeys),
+    };
   }
 
   async buildOrgUserPermissionsContext(
