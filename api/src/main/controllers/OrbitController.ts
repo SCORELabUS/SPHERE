@@ -195,13 +195,13 @@ class OrbitController {
 
   /** The MCP endpoint, for assistants that use ORBIT's tools with one of the user's API keys. */
   async mcp(req: any, res: any) {
-    if (req.authType !== 'api-key' || !req.user?.apiKey) {
+    if (!['api-key', 'oauth'].includes(req.authType) || !(req.mcpCredential || req.user?.apiKey)) {
       res.status(401).json(mcpError('UNAUTHORIZED: The MCP endpoint takes one of your API keys, in the x-api-key header'));
       return;
     }
     try {
       const mcpService: OrbitMcpService = container.resolve('orbitMcpService');
-      await mcpService.handle(actorOf(req), req.user.apiKey, req, res, req.body);
+      await mcpService.handle(actorOf(req), req.mcpCredential || req.user.apiKey, req, res, req.body);
     } catch (err: any) {
       if (!res.headersSent) res.status(500).json(mcpError(String(err?.message ?? err)));
     }

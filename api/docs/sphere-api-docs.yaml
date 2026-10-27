@@ -130,6 +130,177 @@ tags:
       Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
 
 paths:
+  /oauth/authorize:
+    get:
+      tags: [Authentication]
+      summary: Begin MCP OAuth authorization with mandatory S256 PKCE and resource indicator
+      security: []
+      parameters:
+        - {name: client_id, in: query, required: true, schema: {type: string}}
+        - {name: redirect_uri, in: query, required: true, schema: {type: string, format: uri}}
+        - {name: response_type, in: query, required: true, schema: {type: string, enum: [code]}}
+        - {name: code_challenge, in: query, required: true, schema: {type: string}}
+        - {name: code_challenge_method, in: query, required: true, schema: {type: string, enum: [S256]}}
+        - {name: resource, in: query, required: true, schema: {type: string, format: uri}}
+        - {name: state, in: query, schema: {type: string}}
+      responses:
+        '302': {description: Redirect to SPHERE consent or validated client callback}
+        '400': {description: Invalid OAuth request}
+  /oauth/register:
+    post:
+      tags: [Authentication]
+      summary: Dynamically register an OAuth client (RFC 7591)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                client_name: {type: string, maxLength: 200}
+                redirect_uris: {type: array, maxItems: 10, items: {type: string, format: uri}}
+                token_endpoint_auth_method: {type: string, enum: [none, client_secret_post]}
+      responses:
+        '201': {description: Registered OAuth client metadata}
+        '400': {description: Invalid client metadata}
+        '429': {description: Registration limit exceeded}
+  /oauth/token:
+    post:
+      tags: [Authentication]
+      summary: Exchange authorization code or rotate refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id, resource]
+              properties:
+                grant_type: {type: string, enum: [authorization_code, refresh_token]}
+                client_id: {type: string}
+                client_secret: {type: string}
+                code: {type: string}
+                code_verifier: {type: string}
+                redirect_uri: {type: string, format: uri}
+                refresh_token: {type: string}
+                resource: {type: string, format: uri}
+      responses:
+        '200':
+          description: Bearer access token (3600 seconds) and rotating refresh token (30 days)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, refresh_token, scope]
+                properties:
+                  access_token: {type: string, description: Opaque sph_oat_ token restricted to the MCP resource}
+                  token_type: {type: string, enum: [Bearer]}
+                  expires_in: {type: integer, example: 3600}
+                  refresh_token: {type: string, description: Rotating opaque sph_ort_ token; reuse revokes the connection}
+                  scope: {type: string, enum: [orbit]}
+        '400': {description: Invalid grant, PKCE, redirect URI or resource}
+        '429': {description: Token limit exceeded}
+  /oauth/revoke:
+    post:
+      tags: [Authentication]
+      summary: Revoke the grant associated with a token (RFC 7009)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token, client_id]
+              properties:
+                token: {type: string}
+                client_id: {type: string}
+                client_secret: {type: string}
+      responses:
+        '200': {description: Token revoked or already invalid}
+  /oauth/requests/{requestId}:
+    parameters:
+      - {name: requestId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Authentication]
+      summary: Read and bind pending consent to the signed-in user (web session only)
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Client name and callback domain}
+        '401': {description: Web session required}
+        '404': {description: Expired or unavailable request}
+    post:
+      tags: [Authentication]
+      summary: Approve or deny pending consent (web session only)
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: {type: boolean}
+                scopes:
+                  type: array
+                  items:
+                    type: object
+                    required: [organizationId, scope]
+                    properties:
+                      organizationId: {type: string}
+                      scope: {type: string, enum: [VIEW, MANAGEMENT, ALL]}
+      responses:
+        '200': {description: Validated callback URL with code or access_denied and original state}
+        '400': {description: Invalid scopes or decision}
+        '401': {description: Web session required}
+        '404': {description: Expired, consumed or unavailable request}
+  /oauth/grants:
+    get:
+      tags: [Authentication]
+      summary: List the current user's connected applications (web session only)
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Connections with scopes and last use; no token material}
+        '401': {description: Web session required}
+  /oauth/grants/{grantId}:
+    delete:
+      tags: [Authentication]
+      summary: Immediately revoke one of the current user's connections (web session only)
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: grantId, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Connection revoked}
+        '401': {description: Web session required}
+        '404': {description: Connection not found}
+  /.well-known/oauth-authorization-server:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: RFC 8414 OAuth authorization server metadata
+      responses:
+        '200': {description: Issuer, endpoints, grant types, S256 and client authentication methods}
+  /.well-known/oauth-protected-resource:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: RFC 9728 MCP protected resource metadata
+      responses:
+        '200': {description: Exact MCP resource URL and authorization server issuer}
+  /.well-known/oauth-protected-resource/api/v1/orbit/mcp:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: Path-specific RFC 9728 MCP protected resource metadata
+      responses:
+        '200': {description: Exact MCP resource URL and authorization server issuer}
   /healthcheck:
     get:
       summary: Service health check
@@ -5643,11 +5814,16 @@ paths:
 
         Limited to 120 tool calls a minute per user.
 
-        **Authentication**: User API key in `x-api-key`. A user token is refused.
+        **Authentication**: User API key in `x-api-key`, or MCP OAuth access token in
+        `Authorization: Bearer sph_oat_...`. Web session JWTs are refused. Missing or invalid
+        credentials return 401 with `WWW-Authenticate: Bearer resource_metadata="<issuer>/.well-known/oauth-protected-resource/api/v1/orbit/mcp"`.
+        OAuth uses mandatory S256 PKCE and resource indicators. Session and plan confirmation
+        ownership are bound to the proposing credential (API key or OAuth grant).
       tags:
         - ORBIT
       security:
         - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       requestBody:
         required: true
         content:
@@ -5681,17 +5857,22 @@ paths:
         '202':
           description: A notification, accepted with no body
         '401':
-          description: No API key, or a user token instead of one
+          description: Missing or invalid MCP credential; session JWTs are refused
+          headers:
+            WWW-Authenticate:
+              description: OAuth discovery challenge with resource_metadata URL; invalid OAuth tokens also include invalid_token
+              schema: {type: string}
     get:
       summary: Open the stream of an ORBIT MCP session
       description: |
         Opens the server-sent event stream of the session named in `Mcp-Session-Id`. Without a session, answers 405.
 
-        **Authentication**: User API key in `x-api-key`, the one that started the session.
+        **Authentication**: User API key in `x-api-key` or OAuth Bearer token for the grant that started the session.
       tags:
         - ORBIT
       security:
         - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       responses:
         '200':
           description: The session's event stream
@@ -5704,11 +5885,12 @@ paths:
       description: |
         Ends the session named in `Mcp-Session-Id`. Without a session, answers 405.
 
-        **Authentication**: User API key in `x-api-key`, the one that started the session.
+        **Authentication**: User API key in `x-api-key` or OAuth Bearer token for the grant that started the session.
       tags:
         - ORBIT
       security:
         - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       responses:
         '200':
           description: Session ended
@@ -8420,6 +8602,21 @@ components:
         example: "a1b2c3d4e5"
 
   securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: SPHERE web session token, required to consent and manage connected applications
+    OAuthMcpAuth:
+      type: oauth2
+      description: MCP only; mandatory S256 PKCE and resource parameter identifying the exact MCP URL
+      flows:
+        authorizationCode:
+          authorizationUrl: https://sphere.score.us.es/api/v1/oauth/authorize
+          tokenUrl: https://sphere.score.us.es/api/v1/oauth/token
+          refreshUrl: https://sphere.score.us.es/api/v1/oauth/token
+          scopes:
+            orbit: Use ORBIT within the organization scopes selected at consent
     ApiKeyAuth:
       type: apiKey
       in: header

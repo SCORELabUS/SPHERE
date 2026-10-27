@@ -524,6 +524,7 @@ export interface OrbitToolContext {
   planSource?: 'chat' | 'mcp';
   /** The API key of the assistant, which alone may confirm the plan through MCP. */
   apiKeyId?: string;
+  credentialId?: string;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -770,6 +771,7 @@ class OrbitToolRunner {
         const result = await this.planService.propose(actor, context.conversation.id, args, {
           source: context.planSource ?? 'chat',
           apiKeyId: context.apiKeyId ?? null,
+          credentialId: context.credentialId ?? null,
           attachments: context.conversation.attachments,
         });
         if (!result.ok) return { ok: false, errors: result.errors, warnings: result.warnings };

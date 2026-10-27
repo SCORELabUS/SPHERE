@@ -21,6 +21,14 @@ import { RoutePermission } from "../types/permissions";
  * If no rule matches, access is denied by default.
  */
 export const ROUTE_PERMISSIONS: RoutePermission[] = [
+  { path: '/.well-known/**', methods: ['GET'], isPublic: true },
+  { path: '/oauth/authorize', methods: ['GET', 'POST'], isPublic: true },
+  { path: '/oauth/token', methods: ['POST'], isPublic: true },
+  { path: '/oauth/register', methods: ['POST'], isPublic: true },
+  { path: '/oauth/revoke', methods: ['POST'], isPublic: true },
+  { path: '/oauth/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oauth/grants', methods: ['GET'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oauth/grants/*', methods: ['DELETE'], allowedUserRoles: ['USER', 'ADMIN'] },
   // ============================================
   // User Management Routes
   // ============================================

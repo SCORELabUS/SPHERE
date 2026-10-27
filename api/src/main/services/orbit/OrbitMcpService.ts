@@ -48,7 +48,7 @@ const ORGANIZATION_KEYS = new Set(['organizationId', 'sourceOrganizationId', 'ta
 // Plan parts that take being the OWNER, which an API key only grants with the ALL scope.
 const OWNER_ONLY_PARTS = new Set(['ownershipTransfer', 'moves', 'organizationDeletions']);
 
-const INSTRUCTIONS = `SPHERE ORBIT acts on SPHERE (organizations, members, permissions, pricings, collections, and the user's own notifications and public profile) as the user who owns the API key, with that user's permissions and the scopes of the key.
+const INSTRUCTIONS = `SPHERE ORBIT acts on SPHERE (organizations, members, permissions, pricings, collections, and the user's own notifications and public profile) as the user who authorized the connected application or owns the API key, with that user's permissions and the credential's organization scopes.
 
 - Read tools answer at once. Look ids up with them (list_my_organizations, search_pricings...) and never guess them.
 - Changes go through propose_plan, which validates them and leaves them as a plan waiting in SPHERE. Tell the user briefly what it will do and ask whether to apply it. A new plan replaces the one still waiting.
@@ -82,7 +82,7 @@ const MCP_TOOLS: Tool[] = [
   {
     name: 'confirm_plan',
     description:
-      'Applies a plan proposed with this API key, once the user agrees, and returns the outcome of each step. When your client supports it, SPHERE asks the user in its own confirmation dialog (typing the phrase for deletions and handovers) and ignores confirmation. Otherwise call it only after the user said yes in the conversation; for a plan with a confirmation phrase, pass exactly what the user typed.',
+      'Applies a plan proposed with this connected application or API key, once the user agrees, and returns the outcome of each step. When your client supports it, SPHERE asks the user in its own confirmation dialog (typing the phrase for deletions and handovers) and ignores confirmation. Otherwise call it only after the user said yes in the conversation; for a plan with a confirmation phrase, pass exactly what the user typed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -280,7 +280,7 @@ class OrbitMcpService {
   private async call(actor: OrbitActor, scopes: KeyScopes, name: string, args: Record<string, unknown>, askUser: AskUser): Promise<unknown> {
     if (CHAT_ONLY_TOOLS.has(name)) return { ok: false, error: `Unknown tool "${name}".` };
     if (WRITE_TOOLS.has(name) && !scopes.canWrite()) {
-      return { ok: false, error: 'This API key only has VIEW scopes, so it can read but not propose changes. Use a key with MANAGEMENT or ALL scope.' };
+      return { ok: false, error: `This ${scopes.credentialNoun} only has VIEW scopes, so it can read but not propose changes. ${scopes.widenHint}` };
     }
     const refused = await scopes.check(args, name === 'propose_plan');
     if (refused) return { ok: false, error: refused };
@@ -292,7 +292,7 @@ class OrbitMcpService {
         const conversation = await this.conversation(actor, attachment.size);
         await this.conversations.addAttachment(conversation.id, attachment);
         await this.conversations.appendMessages(conversation.id, [
-          note(`An assistant attached "${attachment.filename}" through MCP, with the API key "${scopes.keyName}".`, { attachmentId: attachment.id }),
+          note(`An assistant attached "${attachment.filename}" through MCP, with ${scopes.credentialLabel} "${scopes.keyName}".`, { attachmentId: attachment.id }),
         ]);
         return { ok: true, attachmentId: attachment.id, filename: attachment.filename, size: attachment.size };
       }
@@ -313,7 +313,8 @@ class OrbitMcpService {
           actor,
           conversation,
           planSource: 'mcp',
-          apiKeyId: scopes.keyId,
+          apiKeyId: scopes.isOAuth ? undefined : scopes.keyId,
+          credentialId: scopes.credentialId,
           onPlan: plan => {
             proposed = plan;
           },
@@ -323,7 +324,7 @@ class OrbitMcpService {
         // The plan card hangs from a message, so the user finds it in the chat.
         await this.conversations.appendMessages(conversation.id, [
           note(
-            `An assistant proposed this plan through MCP, with the API key "${scopes.keyName}". It can be confirmed from the assistant, or here: review it and confirm it if it is what you want.`,
+            `An assistant proposed this plan through MCP, with ${scopes.credentialLabel} "${scopes.keyName}". It can be confirmed from the assistant, or here: review it and confirm it if it is what you want.`,
             { planId: plan.id }
           ),
         ]);
@@ -354,10 +355,11 @@ class OrbitMcpService {
    */
   private async confirm(actor: OrbitActor, scopes: KeyScopes, planId: string, confirmation: unknown, askUser: AskUser) {
     const plan = await this.orbitService.getPlan(actor, planId);
-    if (!plan.apiKeyId || plan.apiKeyId !== scopes.keyId) {
+    const proposedWith = plan.credentialId ?? (plan.apiKeyId ? 'api-key:' + plan.apiKeyId : null);
+    if (!proposedWith || proposedWith !== scopes.credentialId) {
       return {
         ok: false,
-        error: 'This plan was not proposed with this API key, so it cannot be confirmed with it. The user can confirm it in SPHERE, at its confirmUrl.',
+        error: `This plan was not proposed with this ${scopes.credentialNoun}, so it cannot be confirmed with it. The user can confirm it in SPHERE, at its confirmUrl.`,
         confirmUrl: confirmUrlOf(plan.conversationId),
       };
     }
@@ -389,8 +391,8 @@ class OrbitMcpService {
       .appendMessages(plan.conversationId, [
         note(
           confirmedIn === 'dialog'
-            ? `Confirmed in SPHERE's dialog inside the assistant, with the API key "${scopes.keyName}".`
-            : `Confirmed by the assistant at the user's request, with the API key "${scopes.keyName}".`,
+            ? `Confirmed in SPHERE's dialog inside the assistant, with ${scopes.credentialLabel} "${scopes.keyName}".`
+            : `Confirmed by the assistant at the user's request, with ${scopes.credentialLabel} "${scopes.keyName}".`,
           {}
         ),
       ])
@@ -463,8 +465,9 @@ function presentPlan(plan: LeanOrbitPlan) {
 }
 
 /**
- * The organizations an API key reaches, worked out as the route guard does: a
- * scope covers its own organization, and an ALL scope also everything below it.
+ * The organizations an API key or a connected application (OAuth) reaches,
+ * worked out as the route guard does: a scope covers its own organization, and
+ * an ALL scope also everything below it.
  */
 class KeyScopes {
   private resolved = new Map<string, Scope | null>();
@@ -475,8 +478,33 @@ class KeyScopes {
     return this.apiKey.name ?? 'unnamed';
   }
 
+  /** OAuth connections arrive with an id of the form `oauth:<grantId>`. */
+  get isOAuth(): boolean {
+    return this.keyId.startsWith('oauth:');
+  }
+
+  get credentialNoun(): string {
+    return this.isOAuth ? 'connected application' : 'API key';
+  }
+
+  get credentialLabel(): string {
+    return `the ${this.credentialNoun}`;
+  }
+
+  /** How the user widens what the credential reaches. */
+  get widenHint(): string {
+    return this.isOAuth
+      ? 'Connect the assistant again and choose Management or All for the organizations it needs.'
+      : 'Use a key with MANAGEMENT or ALL scope.';
+  }
+
   get keyId(): string {
     return String(this.apiKey._id);
+  }
+
+  /** What a plan stores to know which credential proposed it. */
+  get credentialId(): string {
+    return this.isOAuth ? this.keyId : `api-key:${this.keyId}`;
   }
 
   canWrite(): boolean {
@@ -504,10 +532,10 @@ class KeyScopes {
     collectOrganizations(args, false, named);
     for (const { id, ownerOnly } of named) {
       const scope = await this.scopeOf(id);
-      if (!scope) return `This API key has no access to organization ${id}.`;
-      if (proposing && scope === 'VIEW') return `This API key can only view organization ${id}, not change it.`;
+      if (!scope) return `This ${this.credentialNoun} has no access to organization ${id}.`;
+      if (proposing && scope === 'VIEW') return `This ${this.credentialNoun} can only view organization ${id}, not change it.`;
       if (proposing && ownerOnly && scope !== 'ALL') {
-        return `Handing over, moving or deleting organization ${id} takes an API key with the ALL scope on it.`;
+        return `Handing over, moving or deleting organization ${id} takes ${this.isOAuth ? 'a connection' : 'an API key'} with the ALL scope on it.`;
       }
     }
     return null;
