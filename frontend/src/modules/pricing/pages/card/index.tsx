@@ -78,6 +78,7 @@ export default function CardPage() {
   const [dateTo, setDateTo] = useState('');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [linkDescription, setLinkDescription] = useState<string>();
   const [canDelete, setCanDelete] = useState(false);
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
   const [showVisibilityModal, setShowVisibilityModal] = useState(false);
@@ -320,8 +321,18 @@ export default function CardPage() {
   };
 
   const handleCopyLink = (v: VersionData) => {
-    const yamlUrl = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    setLinkUrl(yamlUrl);
+    // The YAML file of a private version is only served to callers who may
+    // read it, so a direct link would not work for anyone else. Offer the
+    // pricing's permanent link instead.
+    if (v.private && pricingId) {
+      setLinkUrl(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`);
+      setLinkDescription(
+        'This version is private, so its YAML file is only available to signed-in users who can see it. This is the permanent link to the pricing instead: people with access see every version, everyone else only the public ones.'
+      );
+    } else {
+      setLinkUrl(v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`);
+      setLinkDescription(undefined);
+    }
     setShowLinkModal(true);
   };
 
@@ -1129,6 +1140,7 @@ export default function CardPage() {
       {showLinkModal && (
         <PricingLinkModal
           linkUrl={linkUrl}
+          description={linkDescription}
           onClose={() => {
             setShowLinkModal(false);
           }}
