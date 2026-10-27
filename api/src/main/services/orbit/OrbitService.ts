@@ -62,6 +62,11 @@ const STALE_RUN_MS = 2 * 60 * 1000;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_MESSAGES_PER_WINDOW = 30;
 const MAX_EXECUTIONS_PER_WINDOW = 10;
+/** Messages a user may send to ORBIT in a rolling hour: `maxOrbitMessages` in SPHERE's pricing. */
+export const ORBIT_MESSAGES_PER_HOUR = 10;
+const HOUR_MS = 60 * 60 * 1000;
+/** The plugin and extension that connect a user's own Claude to ORBIT's MCP server. */
+const DEFAULT_SKILL_URL = 'https://github.com/SCORELabUS/sphere-orbit-plugin';
 // Messages per minute from all users together; see globalMessageLimiter.
 const DEFAULT_GLOBAL_MESSAGES_PER_MINUTE = 20;
 function globalMessagesPerMinute(): number {
@@ -80,6 +85,7 @@ class OrbitService {
   private orbitPlanRepository: OrbitPlanRepository;
   private toolRunner = new OrbitToolRunner();
   private messageLimiter = new SlidingWindowLimiter(MAX_MESSAGES_PER_WINDOW, RATE_WINDOW_MS);
+  private hourlyMessageLimiter = new SlidingWindowLimiter(ORBIT_MESSAGES_PER_HOUR, HOUR_MS);
   // ORBIT shares HARVEY's OpenAI key, and so its allowance of requests and
   // tokens per minute: all users together are capped so HARVEY keeps room.
   private globalMessageLimiter = new SlidingWindowLimiter(globalMessagesPerMinute, 60 * 1000);
@@ -194,11 +200,18 @@ class OrbitService {
       throw new Error('ORBIT UNAVAILABLE: ORBIT is not configured on this server');
     }
     await this.assertRoomFor(conversation.id, content, attachment);
-    this.messageLimiter.consume(actor.id, 'messages');
+    this.hourlyMessageLimiter.consume(actor.id, 'messages', hourlyLimitRefusal);
+    try {
+      this.messageLimiter.consume(actor.id, 'messages');
+    } catch (err) {
+      this.hourlyMessageLimiter.refund(actor.id);
+      throw err;
+    }
     try {
       this.globalMessageLimiter.consume('all', 'messages', 'ORBIT is very busy right now. Try again in a minute');
     } catch (err) {
       this.messageLimiter.refund(actor.id);
+      this.hourlyMessageLimiter.refund(actor.id);
       throw err;
     }
 
@@ -243,6 +256,7 @@ class OrbitService {
           .removeTurn(conversation.id, newMessages.map(message => message.id), attachment?.id ?? null)
           .catch(() => undefined);
         this.messageLimiter.refund(actor.id);
+        this.hourlyMessageLimiter.refund(actor.id);
         this.globalMessageLimiter.refund('all');
         throw err;
       }
@@ -581,6 +595,20 @@ function titleFrom(content: string, attachment: OrbitAttachment | null): string 
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
+/**
+ * Sends the user to their own assistant once the hour's messages are used up:
+ * the MCP server calls no language model, so it has no such limit.
+ */
+function hourlyLimitRefusal(retryInMs: number): string {
+  const minutes = Math.max(1, Math.ceil(retryInMs / 60000));
+  // ORBIT_SKILL_URL overrides the default; set empty, the refusal points to the MCP server instead.
+  const skillUrl = (process.env.ORBIT_SKILL_URL ?? DEFAULT_SKILL_URL).trim();
+  const elsewhere = skillUrl
+    ? `using the SPHERE skill: ${skillUrl}`
+    : "through SPHERE's MCP server (`/api/v1/orbit/mcp`) and one of your API keys.";
+  return `You have reached the limit of ${ORBIT_MESSAGES_PER_HOUR} messages per hour with ORBIT; you can write again in ${minutes} minute${minutes === 1 ? '' : 's'}. Meanwhile, you can keep working from your own Claude or ChatGPT ${elsewhere}`;
+}
+
 function formatMegabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -599,13 +627,15 @@ export class SlidingWindowLimiter {
   /** `max` may be a function, for a limit read from the environment when it is used. */
   constructor(private max: number | (() => number), private windowMs: number) {}
 
-  consume(key: string, what: string, refusal?: string) {
+  /** `refusal` may be a function, given how long until the oldest use leaves the window. */
+  consume(key: string, what: string, refusal?: string | ((retryInMs: number) => string)) {
     const now = Date.now();
     const max = typeof this.max === 'function' ? this.max() : this.max;
     const recent = (this.hits.get(key) ?? []).filter(time => now - time < this.windowMs);
     if (recent.length >= max) {
+      const message = typeof refusal === 'function' ? refusal(recent[0] + this.windowMs - now) : refusal;
       throw new Error(
-        `TOO MANY REQUESTS: ${refusal ?? `ORBIT allows ${max} ${what} every ${this.windowMs / 60000} minutes. Try again in a while`}`
+        `TOO MANY REQUESTS: ${message ?? `ORBIT allows ${max} ${what} every ${this.windowMs / 60000} minutes. Try again in a while`}`
       );
     }
     recent.push(now);

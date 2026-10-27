@@ -39,6 +39,7 @@ import NotificationMongoose from '../main/repositories/mongoose/models/Notificat
 import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
 import mongoose from 'mongoose';
 import { ORBIT_PLAN_LIMITS } from '../main/services/orbit/OrbitPlanService';
+import { ORBIT_MESSAGES_PER_HOUR } from '../main/services/orbit/OrbitService';
 
 dotenv.config();
 
@@ -1622,6 +1623,36 @@ describe('ORBIT assistant API integration', () => {
       const names = listed.body.result.tools.map((tool: any) => tool.name);
       expect(names).toEqual(expect.arrayContaining(['list_my_organizations', 'search_pricings', 'propose_plan', 'attach_file', 'get_plan', 'cancel_plan']));
       expect(names).not.toContain('import_attachment');
+    });
+
+    it('limits the chat to a number of messages an hour and points to the skill, while MCP keeps working', async () => {
+      const { user } = await newUser();
+      const organization = await createTestOrganization(user.token, { displayName: `Hourly ${randomSuffix()}` });
+      const conversationId = await startConversation(user.token);
+      installFakeLlm(Array.from({ length: ORBIT_MESSAGES_PER_HOUR }, () => answer('Hola')));
+      try {
+        for (let index = 0; index < ORBIT_MESSAGES_PER_HOUR; index++) {
+          expect((await sendMessage(user.token, conversationId, { content: `Hola ${index}` })).status).toBe(201);
+        }
+        const refused = await sendMessage(user.token, conversationId, { content: 'Una más' });
+        expect(refused.status).toBe(429);
+        expect(refused.body.error).toContain(`limit of ${ORBIT_MESSAGES_PER_HOUR} messages per hour`);
+        expect(refused.body.error).toMatch(/write again in (59|60) minutes/);
+        expect(refused.body.error).toContain('your own Claude or ChatGPT using the SPHERE skill: https://github.com/SCORELabUS/sphere-orbit-plugin');
+
+        process.env.ORBIT_SKILL_URL = 'https://example.com/sphere-skill';
+        expect((await sendMessage(user.token, conversationId, { content: 'Otra' })).body.error).toContain('SPHERE skill: https://example.com/sphere-skill');
+
+        process.env.ORBIT_SKILL_URL = '';
+        expect((await sendMessage(user.token, conversationId, { content: 'Otra más' })).body.error).toContain("SPHERE's MCP server");
+      } finally {
+        delete process.env.ORBIT_SKILL_URL;
+      }
+
+      const key = await createApiKey(user, [{ organizationId: organization.id, scope: 'VIEW' }]);
+      const { data, isError } = await callTool(key, 'list_my_organizations');
+      expect(isError).toBe(false);
+      expect(JSON.stringify(data)).toContain(organization.id);
     });
 
     it('reads within the scopes of the key and leaves its changes as plans the user confirms in SPHERE', async () => {

@@ -32,6 +32,8 @@ const TRANSIENT_STEP = /^(Sending|Thinking it through|The AI provider is busy)/;
 const RUNNING_PLAN_POLL_MS = 2500;
 // The server's answer when a conversation has no room left for more messages.
 export const CONVERSATION_FULL = /Start a new conversation to keep going/;
+// The server's answer once the user has used up the hour's messages; it says when to write again.
+const HOURLY_LIMIT_REACHED = /reached the limit of \d+ messages per hour/;
 const STATUS_RETRY_BASE_MS = 3000;
 const STATUS_RETRY_MAX_MS = 30000;
 
@@ -163,7 +165,7 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
       {
         id,
         role: 'assistant',
-        content: `Sorry, something went wrong: ${text}`,
+        content: HOURLY_LIMIT_REACHED.test(text) ? text : `Sorry, something went wrong: ${text}`,
         planId: null,
         attachment: null,
         createdAt: new Date().toISOString(),
@@ -297,7 +299,8 @@ export function useOrbitChat({ conversationId, onConversationChange, enabled = t
     setMessages(prev => (prev.some(message => outcome.replaces.includes(message.id)) ? prev : [...prev, outcome.userMessage]));
     const errorId = appendLocalError(outcome.error);
     // A full conversation would refuse the retry too; the thread offers a new one instead.
-    if (!CONVERSATION_FULL.test(outcome.error)) {
+    // Past the hourly limit, a retry would be refused as well until the time it gives.
+    if (!CONVERSATION_FULL.test(outcome.error) && !HOURLY_LIMIT_REACHED.test(outcome.error)) {
       setFailedSend({ ...outcome.retry, messageIds: [...outcome.replaces, outcome.userMessage.id, errorId] });
     }
   }, [appendLocalError, outcome, refreshConversations]);
