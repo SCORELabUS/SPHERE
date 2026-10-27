@@ -699,10 +699,25 @@ class PricingService {
       const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         includePrivate: true,
       });
+      const notFound =
+        "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive).";
       if (!pricing) {
-        throw new Error(
-          "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive)."
-        );
+        throw new Error(notFound);
+      }
+
+      // Whoever may read a collection inherits GET on the pricings in it, so
+      // a pricing with private versions only goes in by the hand of someone
+      // who may already read them. One whose versions the caller cannot see
+      // at all answers as a missing one.
+      if (
+        reqUser &&
+        pricing.versions.some((version: { private?: boolean }) => version.private === true) &&
+        !(await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, pricing.collection?.slug))
+      ) {
+        if (pricing.versions.every((version: { private?: boolean }) => version.private === true)) {
+          throw new Error(notFound);
+        }
+        throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
       }
 
       await this.pricingRepository.addPricingToCollection(
