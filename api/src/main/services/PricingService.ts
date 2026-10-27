@@ -327,16 +327,22 @@ class PricingService {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
     }
 
-    // A pricing is forkable by whoever can already view it: same visibility rule as show().
-    const sourceOrgRole = await this.permissionService.resolveOrgRole(reqUser.id, sourceOrganizationId);
-    const includeSourcePrivate = reqUser.role === 'ADMIN' || sourceOrgRole !== null;
-
     const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
       version: sourceVersion,
-      includePrivate: includeSourcePrivate,
+      includePrivate: true,
     });
 
     if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
+    // A version is forkable by whoever can already read it, by the same rule as
+    // show(): a public one by anyone, a private one only by who may read the
+    // private versions of its pricing. Anyone else is told it does not exist.
+    if (
+      sourcePricing.versions[0].private === true &&
+      !(await this._canSeePrivateVersions(reqUser, sourceOrganizationId, sourceSlug, (sourcePricing as any).collection?.slug))
+    ) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
