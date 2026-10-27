@@ -14,6 +14,16 @@ import monaco from 'monaco-editor';
 import { useEditorValue } from '../../hooks/useEditorValue';
 import { parseEncodedYamlToStringYaml } from '../../services/export.service';
 import { takePricingFragment, type PricingFragment } from '../../services/pricing-fragment';
+import {
+  EDITOR_WAIT_MS,
+  LOADING_INDICATOR_DELAY_MS,
+  PRICING_LOAD_STARTED,
+  afterNextPaint,
+  markParsed,
+  markShown,
+  pricingLoadStatus,
+  type PricingLoad,
+} from '../../services/pricing-loading';
 import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 import { PRICING2YAML_SNIPPETS } from './templates/snippets';
@@ -87,6 +97,11 @@ export default function EditorPage() {
   // is read once per mount: React's strict mode runs the loading effect twice,
   // and its second run would no longer find it.
   const pricingFragmentRef = useRef<PricingFragment | null>(null);
+  // The pricing being opened, from the start: the editor always opens one.
+  const [pricingLoad, setPricingLoad] = useState<PricingLoad | null>(PRICING_LOAD_STARTED);
+  // The YAML the loading code has just parsed for the preview, so the debounced
+  // parse that follows every change does not parse it a second time.
+  const loadedYamlRef = useRef<string | null>(null);
 
   const { mode } = useMode();
   const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft, setSourcePricing } = useEditorValue();
@@ -132,6 +147,13 @@ export default function EditorPage() {
       }
       const currentRequestId = ++requestIdRef.current;
       timeoutRef.current = setTimeout(async () => {
+        const alreadyParsed = value === loadedYamlRef.current;
+        loadedYamlRef.current = null;
+
+        if (alreadyParsed) {
+          return;
+        }
+
         try {
           setEditorValue(value);
 
@@ -216,10 +238,17 @@ export default function EditorPage() {
 
     // Shows a pricing's YAML, then the pricing parsed from it.
     const showPricing = async (templatePricing: string) => {
+      // The loading indicator is painted before the long tasks below start.
+      await afterNextPaint();
+
       // Shown as soon as it's known, even if parsing below fails: otherwise a
       // pricing that fails validation (e.g. an invalid currency code) leaves
       // the editor blank instead of showing the YAML the user needs to fix.
       setEditorValue(templatePricing);
+      setPricingLoad(markShown);
+
+      // Monaco gets the text (and paints it) before parsing blocks the page.
+      await afterNextPaint();
 
       const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
       const syntaxVersion = templatePricing.match(regex)?.[1];
@@ -242,8 +271,10 @@ export default function EditorPage() {
         parsedPricing = retrievePricingFromYaml(templatePricing);
       }
 
+      loadedYamlRef.current = templatePricing;
       setPricing(parsedPricing);
       setErrors([]);
+      setPricingLoad(markParsed);
     };
 
     const fetchPricing = async () => {
@@ -256,6 +287,7 @@ export default function EditorPage() {
         // No template in its place: the user would take it for their pricing.
         setLoadError(fragment.error);
         setErrors([fragment.error]);
+        setPricingLoad(null);
         return;
       }
 
@@ -309,6 +341,7 @@ export default function EditorPage() {
         await showPricing(templatePricing);
       } catch (err) {
         setErrors([(err as Error).message]);
+        setPricingLoad(markParsed);
       }
     };
 
@@ -331,7 +364,11 @@ export default function EditorPage() {
       // and it is no longer a version of the pricing it was opened from.
       setSourcePricing(null);
       setLoadError(null);
-      showPricing(next.yaml).catch(err => setErrors([(err as Error).message]));
+      setPricingLoad(PRICING_LOAD_STARTED);
+      showPricing(next.yaml).catch(err => {
+        setErrors([(err as Error).message]);
+        setPricingLoad(markParsed);
+      });
     };
 
     fetchPricing();
@@ -343,6 +380,43 @@ export default function EditorPage() {
   useEffect(() => {
     handleEditorChange(editorValue)
   }, [editorValue]);
+
+  // Ends the loading state once the pricing is in Monaco, previewed and linted.
+  useEffect(() => {
+    if (pricingLoad === null) {
+      return;
+    }
+
+    const status = () =>
+      pricingLoadStatus(pricingLoad, {
+        editorValue,
+        lintedValue: lint.lintedValue,
+        codeEditorValue: codeEditor?.getModel()?.getValue() ?? null,
+        visual: editorMode === 'visual',
+      });
+
+    const current = status();
+
+    if (current === 'done') {
+      setPricingLoad(null);
+      return;
+    }
+
+    if (current === 'loading') {
+      return;
+    }
+
+    // Only Monaco is missing: it is still being fetched, or has not taken the
+    // text yet (it does so in an effect of its own, with no render to tell).
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      if (status() === 'done' || Date.now() - startedAt > EDITOR_WAIT_MS) {
+        setPricingLoad(null);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [pricingLoad, editorValue, lint.lintedValue, codeEditor, editorMode]);
 
   // Publishes the linter output as editor markers, which is what draws the
   // squiggles and the hover tooltips over the offending YAML.
@@ -544,6 +618,27 @@ export default function EditorPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {pricingLoad !== null ? (
+        // Fades in after LOADING_INDICATOR_DELAY_MS, so a quick load does not
+        // flicker. Opacity and rotation run on the compositor, so the overlay
+        // keeps appearing and spinning while the main thread is busy.
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="pricing-loading"
+          className="absolute inset-0 z-40 flex items-center justify-center bg-tp-ink/40"
+          style={{ animation: `fade-in 200ms ease-out ${LOADING_INDICATOR_DELAY_MS}ms both` }}
+        >
+          <div className="flex items-center gap-3 rounded-lg border border-tp-hairline bg-tp-canvas px-4 py-3 text-sm font-medium text-tp-ink shadow-elevation-4">
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-tp-primary border-t-transparent"
+            />
+            Loading pricing…
+          </div>
+        </div>
+      ) : null}
 
       <Alerts messages={errors} />
     </>
