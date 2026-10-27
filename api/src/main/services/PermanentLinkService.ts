@@ -81,6 +81,13 @@ export default class PermanentLinkService {
     })));
   }
 
+  private async canSeeCollection(user: any, collection: { _organizationId?: unknown; slug: string; private?: boolean }) {
+    const { default: container } = await import('../config/container');
+    return container.resolve('permissionService').canViewCollection(user ?? undefined, {
+      organizationId: String(collection._organizationId), slug: collection.slug, private: collection.private,
+    });
+  }
+
   private archiveName(value: string) {
     const safe = value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
     return safe || 'pricing';
@@ -95,7 +102,9 @@ export default class PermanentLinkService {
       if (!await Pricing.exists({ pricingId: id, private: false })) {
         await this.authorize(user, String(identity._organizationId), 'pricing', identity.slug, collection?.slug, authType);
       }
-      return { location: `/pricings/${identity._organizationId}/${encodeURIComponent(identity.slug)}${collection ? `?collection=${encodeURIComponent(collection.slug)}` : ''}` };
+      // The link names the collection only to those who may see it.
+      const named = collection && await this.canSeeCollection(user, collection);
+      return { location: `/pricings/${identity._organizationId}/${encodeURIComponent(identity.slug)}${named ? `?collection=${encodeURIComponent(collection.slug)}` : ''}` };
     }
     if (kind === 'collection') {
       const collection = await Collection.findById(id).lean();

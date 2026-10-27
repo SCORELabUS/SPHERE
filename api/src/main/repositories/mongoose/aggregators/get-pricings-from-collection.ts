@@ -19,7 +19,8 @@ export function getAllPricingsFromCollection(permissions?: OrgUserPermissionsCon
               },
             },
           },
-          ...getPricingsAggregator(undefined, permissions ? pricingPermissions : undefined, []),
+          // The collection itself is the subject here, and its own visibility is checked by the caller.
+          ...getPricingsAggregator(undefined, permissions ? pricingPermissions : undefined, [], [], 'all'),
         ] as any,
         as: 'pricings',
       },

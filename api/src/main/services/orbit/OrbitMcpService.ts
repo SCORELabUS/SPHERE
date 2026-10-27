@@ -295,7 +295,12 @@ class KeyScopes {
     if (name === 'search_pricings' && Array.isArray(result?.pricings)) {
       const pricings = [];
       for (const pricing of result.pricings) {
-        if (!pricing.private || (pricing.organization?.id && (await this.scopeOf(String(pricing.organization.id))))) pricings.push(pricing);
+        const reachable = !!pricing.organization?.id && !!(await this.scopeOf(String(pricing.organization.id)));
+        if (!pricing.private || reachable) {
+          // Outside the key's organizations only what anyone sees is kept, and
+          // which collection a pricing is in may be private: it is left out.
+          pricings.push(reachable ? pricing : { ...pricing, collection: null });
+        }
       }
       return { ...result, pricings };
     }
