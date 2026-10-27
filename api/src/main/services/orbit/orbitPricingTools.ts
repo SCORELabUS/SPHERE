@@ -11,6 +11,7 @@ import { LlmTool } from './OrbitLlmClient';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
 import { matchResource } from './OrbitPlanService';
 import { diffPricings } from './orbitPricingDiff';
+import { resolvePricingFile } from '../../utils/pricing-files';
 
 const MAX_PRICINGS_LISTED = 20;
 const MAX_CONFIGURATIONS_LISTED = 20;
@@ -252,8 +253,8 @@ async function readVersion(organizationId: string, slug: string, visible: any, l
   const stored: any = await repository.findOne(slug, organizationId, { version: wanted, includePrivate: true });
   const file = stored?.versions?.[0]?.yaml;
   if (!file) throw new Error(`NOT FOUND: "${visible.name}" has no version "${label}"`);
-  const absolute = path.resolve(process.env.SERVER_STATICS_FOLDER || 'public/', file);
-  if (!fs.existsSync(absolute)) throw new Error(`NOT FOUND: The file of version "${label}" is missing`);
+  const absolute = resolvePricingFile(file);
+  if (!absolute || !fs.existsSync(absolute)) throw new Error(`NOT FOUND: The file of version "${label}" is missing`);
   return retrievePricingFromText(fs.readFileSync(absolute, 'utf8'));
 }
 

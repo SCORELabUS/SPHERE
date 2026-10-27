@@ -4,6 +4,7 @@ import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
+import { requirePricingFile, resolvePricingFile } from '../utils/pricing-files';
 import { stampCreatedAt } from '../utils/created-at';
 import {
   PricingService as PricingAnalytics,
@@ -25,6 +26,15 @@ import PermissionService from './PermissionService';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import mongoose from 'mongoose';
+
+/**
+ * What a client may change with `PUT /pricings/{organizationId}/{slug}`. The
+ * rest of a version is the server's: its file (`yaml`), organization,
+ * collection (moved through the collection endpoints, which check the
+ * collection's permissions), identity, label, dates and analytics.
+ */
+export const CLIENT_PRICING_FIELDS = ['name', 'private', 'url'] as const;
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -237,9 +247,7 @@ class PricingService {
       configurationSpace = cachedConfigurationSpace;
     } else {
       // Configuariton space calculation
-      const pricingInfo: Pricing = retrievePricingFromPath(
-        process.env.SERVER_STATICS_FOLDER + retrievedPricing.versions[0].yaml
-      );
+      const pricingInfo: Pricing = retrievePricingFromPath(requirePricingFile(retrievedPricing.versions[0].yaml));
       const pricingAnalytics = new PricingAnalytics(pricingInfo);
       configurationSpace = await pricingAnalytics.getConfigurationSpace();
       await this.cacheService.set(key, configurationSpace, 60 * 60 * 24);
@@ -336,9 +344,8 @@ class PricingService {
 
     const sourceVersionDoc = sourcePricing.versions[0];
 
-    const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-    const sourceAbsolutePath = path.resolve(staticFolder, sourceVersionDoc.yaml);
-    if (!fs.existsSync(sourceAbsolutePath)) {
+    const sourceAbsolutePath = resolvePricingFile(sourceVersionDoc.yaml);
+    if (!sourceAbsolutePath || !fs.existsSync(sourceAbsolutePath)) {
       throw new Error('NOT FOUND: Pricing file not found');
     }
 
@@ -521,6 +528,13 @@ class PricingService {
         );
       }
 
+      // A new pricing placed in a collection edits that collection: it must be
+      // one of this organization that the caller may edit, as when adding a
+      // pricing to it. A new version stays in its pricing's collection.
+      if (collectionId && !isAddingVersion) {
+        await this._checkCollectionTarget(reqUser, organizationId, String(collectionId));
+      }
+
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
       }
@@ -597,8 +611,7 @@ class PricingService {
       }
 
       if (pricingName !== uploadedPricing.saasName) {
-        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-        const finalYamlPath = path.resolve(staticFolder, yamlPath);
+        const finalYamlPath = requirePricingFile(yamlPath);
         const yamlContent = fs.readFileSync(filePath, 'utf8');
         const yamlData = yaml.load(yamlContent) as Record<string, any>;
         if (yamlData && typeof yamlData === 'object') {
@@ -714,6 +727,7 @@ class PricingService {
     data: any,
     queryParams: { collectionSlug?: string; organizationId?: string } = {}
   ) {
+    data = this._clientPricingChanges(data);
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
@@ -763,7 +777,6 @@ class PricingService {
     }
 
     if (data.name) {
-      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
       const processedPaths = new Set<string>();
 
       for (const pricingVersion of pricing.versions) {
@@ -771,9 +784,10 @@ class PricingService {
         if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
 
         processedPaths.add(yamlRelativePath);
-        const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+        // Never a file outside the pricing folders, whatever the row says.
+        const absolutePath = resolvePricingFile(yamlRelativePath);
 
-        if (!fs.existsSync(absolutePath)) continue;
+        if (!absolutePath || !fs.existsSync(absolutePath)) continue;
 
         const yamlContent = fs.readFileSync(absolutePath, 'utf8');
         const yamlData = yaml.load(yamlContent) as Record<string, any>;
@@ -791,6 +805,54 @@ class PricingService {
     });
 
     return updatedPricing;
+  }
+
+  /**
+   * The changes a client sent to `update`, refused with INVALID DATA when they
+   * touch a field the server manages (see `CLIENT_PRICING_FIELDS`). The slug
+   * always follows the name.
+   */
+  private _clientPricingChanges(data: unknown): { name?: string; private?: boolean; url?: string; slug?: string } {
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+    const refused = Object.keys(body).filter(key => !(CLIENT_PRICING_FIELDS as readonly string[]).includes(key));
+    if (refused.length > 0) {
+      throw new Error(
+        `INVALID DATA: ${refused.join(', ')} cannot be changed: only ${CLIENT_PRICING_FIELDS.join(', ')} can. ` +
+          'Move a pricing between collections with POST /collections/{organizationId}/{collectionSlug} and ' +
+          'DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}.'
+      );
+    }
+    const changes: { name?: string; private?: boolean; url?: string } = {};
+    if (body.name !== undefined) changes.name = String(body.name);
+    if (body.private !== undefined) changes.private = body.private === true || body.private === 'true';
+    if (body.url !== undefined) changes.url = String(body.url);
+    return changes;
+  }
+
+  /**
+   * A collection a new pricing is placed in: one of the same organization
+   * that the caller may edit, by the check `addPricingToCollection` makes.
+   * One the caller may not see answers as one that does not exist.
+   */
+  private async _checkCollectionTarget(reqUser: LeanUser, organizationId: string, collectionId: string) {
+    const collection: any = mongoose.isValidObjectId(collectionId)
+      ? await container.resolve('pricingCollectionRepository').findById(collectionId)
+      : null;
+    if (!collection || String(collection.organization?.id ?? '') !== String(organizationId)) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(reqUser.id, organizationId, orgRole, reqUser.role === 'ADMIN');
+    const entityPermissions = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
+    const evaluation = { userId: reqUser.id, organizationId, entityType: 'collection' as const, entitySlug: collection.slug,
+      isPrivate: collection.private === true, userOrgRole: orgRole, isGlobalAdmin: reqUser.role === 'ADMIN', entityPermissions };
+    if (!this.permissionEngine.evaluate({ ...evaluation, action: 'GET' }).allowed) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const result = this.permissionEngine.evaluate({ ...evaluation, action: 'PUT' });
+    if (!result.allowed) {
+      throw new Error(`PERMISSION ERROR: ${result.reason}`);
+    }
   }
 
   /**
