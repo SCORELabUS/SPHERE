@@ -20,6 +20,8 @@ interface ChartEntry {
 
 interface PricingAnalyticsTabProps {
   chartData: ChartEntry[];
+  // Shown instead of the default message when there is no data at all.
+  emptyMessage?: string;
   dateFrom: string;
   dateTo: string;
   onDateFromChange: (v: string) => void;
@@ -28,6 +30,7 @@ interface PricingAnalyticsTabProps {
 
 export default function PricingAnalyticsTab({
   chartData,
+  emptyMessage,
   dateFrom,
   dateTo,
   onDateFromChange,
@@ -36,7 +39,7 @@ export default function PricingAnalyticsTab({
   if (chartData.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-tp-hairline bg-tp-canvas py-16 text-center">
-        <p className="text-sm text-tp-steel">No data available for the selected date range.</p>
+        <p className="text-sm text-tp-steel">{emptyMessage ?? 'No data available for the selected date range.'}</p>
       </div>
     );
   }

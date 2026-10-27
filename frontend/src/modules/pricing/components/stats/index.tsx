@@ -33,7 +33,7 @@ export default function Stats({ currentPricing, pricing } : StatsProps) {
                   </div>
                   <div className="flex flex-col items-center justify-center text-center">
                       <p>
-                          {currentPricing?.analytics.configurationSpaceSize}
+                          {currentPricing?.analytics?.configurationSpaceSize}
                       </p>
                       <p className="text-sm text-slate-500">
                           possible subscriptions
@@ -41,7 +41,7 @@ export default function Stats({ currentPricing, pricing } : StatsProps) {
                   </div>
                   <div className="flex flex-col items-center justify-center text-center">
                       <p>
-                          Min {currentPricing?.analytics.minSubscriptionPrice}{pricing?getCurrency(pricing.currency):''} - Max {currentPricing?.analytics.maxSubscriptionPrice}{pricing?getCurrency(pricing.currency):''}
+                          Min {currentPricing?.analytics?.minSubscriptionPrice}{pricing?getCurrency(pricing.currency):''} - Max {currentPricing?.analytics?.maxSubscriptionPrice}{pricing?getCurrency(pricing.currency):''}
                       </p>
                       <p className="text-sm text-slate-500">
                           monthly cost

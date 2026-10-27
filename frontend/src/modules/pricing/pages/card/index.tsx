@@ -35,6 +35,7 @@ import GetPricingMenu from '../../components/get-pricing-menu';
 import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
+import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 
 export default function CardPage() {
@@ -252,15 +253,14 @@ export default function CardPage() {
     return list;
   }, [versions, dateFrom, dateTo]);
 
+  // Versions without analytics are left out of the charts instead of plotted as zeros.
   const chartData = useMemo(() => {
-    const entries = filteredVersions.slice().reverse();
+    const entries = filteredVersions.slice().reverse().filter(v => hasAnalytics(v.analytics));
     const data = entries.map(v => ({
       date: new Date(v.createdAt).toLocaleDateString(),
       minPrice: v.analytics?.minSubscriptionPrice ?? 0,
       maxPrice: v.analytics?.maxSubscriptionPrice ?? 0,
-      avgPrice: v.analytics
-        ? (v.analytics.minSubscriptionPrice + v.analytics.maxSubscriptionPrice) / 2
-        : 0,
+      avgPrice: ((v.analytics?.minSubscriptionPrice ?? 0) + (v.analytics?.maxSubscriptionPrice ?? 0)) / 2,
       configs: v.analytics?.configurationSpaceSize ?? 0,
       plans: v.analytics?.numberOfPlans ?? 0,
       features: v.analytics?.numberOfFeatures ?? 0,
@@ -286,7 +286,7 @@ export default function CardPage() {
     return data;
   }, [filteredVersions]);
 
-  const a = currentVersion?.analytics ?? null;
+  const a = currentVersion && hasAnalytics(currentVersion.analytics) ? currentVersion.analytics : null;
   const aSafe = a
     ? (Object.fromEntries(
         Object.entries(a).map(([k, v]) => [k, typeof v === 'number' ? v : 0])
@@ -913,7 +913,11 @@ export default function CardPage() {
                           className="overflow-hidden"
                         >
                           <div className="w-[360px] space-y-4">
-                            {aSafe && <PricingTree analytics={aSafe} />}
+                            {aSafe ? (
+                              <PricingTree analytics={aSafe} />
+                            ) : (
+                              currentVersion && <NoAnalyticsNotice />
+                            )}
                             {yamlText && <YamlSourcePanel yamlText={yamlText} />}
                           </div>
                         </motion.div>
@@ -983,7 +987,11 @@ export default function CardPage() {
                             </button>
                           </div>
                           <div className="space-y-4">
-                            {aSafe && <PricingTree analytics={aSafe} />}
+                            {aSafe ? (
+                              <PricingTree analytics={aSafe} />
+                            ) : (
+                              currentVersion && <NoAnalyticsNotice />
+                            )}
                             {yamlText && <YamlSourcePanel yamlText={yamlText} />}
                           </div>
                         </motion.div>
@@ -1009,6 +1017,11 @@ export default function CardPage() {
               ) : (
                 <PricingAnalyticsTab
                   chartData={chartData}
+                  emptyMessage={
+                    versions.some(v => hasAnalytics(v.analytics))
+                      ? undefined
+                      : 'The analytics of this pricing are not available. You can still view, edit and publish its versions.'
+                  }
                   dateFrom={dateFrom}
                   dateTo={dateTo}
                   onDateFromChange={setDateFrom}
@@ -1175,5 +1188,13 @@ export default function CardPage() {
         suggestedQuestions={pricingSuggestions}
       />
     </>
+  );
+}
+
+function NoAnalyticsNotice() {
+  return (
+    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 text-xs text-tp-steel">
+      The analytics of this version are not available.
+    </div>
   );
 }
