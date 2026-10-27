@@ -581,17 +581,44 @@ describe('ORBIT assistant API integration', () => {
       expect(result.errors.join(' ')).toMatch(/"missing"/);
     });
 
-    it('rejects plans that give an organization too many children or go too deep', async () => {
+    it('rejects plans that create more organizations than allowed', async () => {
       const { user } = await newUser();
       const conversationId = await startConversation(user.token);
-      const tooManyChildren = [
-        { ref: 'root', displayName: `Root ${randomSuffix()}` },
-        ...Array.from({ length: ORBIT_PLAN_LIMITS.childrenPerOrganization + 1 }, (_, index) => ({
-          ref: `c${index}`,
-          displayName: `Child ${index}`,
-          parentRef: 'root',
-        })),
-      ];
+      const flat = (count: number) => Array.from({ length: count }, (_, index) => ({
+        ref: `o${index}`,
+        displayName: `Org ${index} ${randomSuffix()}`,
+      }));
+
+      const llm = installFakeLlm([
+        toolCall('propose_plan', { summary: 'Demasiadas', organizations: flat(ORBIT_PLAN_LIMITS.organizations + 1) }),
+        answer('Demasiadas organizaciones.'),
+        toolCall('propose_plan', { summary: 'Justas', organizations: flat(ORBIT_PLAN_LIMITS.organizations) }),
+        answer('Plan listo.'),
+      ]);
+
+      const tooMany = await sendMessage(user.token, conversationId, { content: 'Crea muchas' });
+      expect(tooMany.body.plan).toBeNull();
+      expect(toolResultsIn(llm.calls[1])[0].errors.join(' ')).toContain(`at most ${ORBIT_PLAN_LIMITS.organizations} organizations`);
+      expect(llm.calls[0].messages[0].content).toContain(`At most ${ORBIT_PLAN_LIMITS.organizations} new organizations`);
+
+      const enough = await sendMessage(user.token, conversationId, { content: 'Crea las justas' });
+      expect(enough.body.plan.status).toBe('PENDING');
+    });
+
+    it('rejects plans that give an organization too many children or go too deep', async () => {
+      const { user } = await newUser();
+      // Existing sub-organizations count, so the plan stays within its own size limit.
+      const parent = await createTestOrganization(user.token, { displayName: `Parent ${randomSuffix()}` });
+      const existingChildren = 5;
+      for (let index = 0; index < existingChildren; index++) {
+        await createTestOrganization(user.token, { displayName: `Existing ${index}`, _parentId: parent.id });
+      }
+      const conversationId = await startConversation(user.token);
+      const tooManyChildren = Array.from({ length: ORBIT_PLAN_LIMITS.childrenPerOrganization + 1 - existingChildren }, (_, index) => ({
+        ref: `c${index}`,
+        displayName: `Child ${index}`,
+        parentId: parent.id,
+      }));
       const tooDeep = Array.from({ length: ORBIT_PLAN_LIMITS.depth + 1 }, (_, index) => ({
         ref: `l${index}`,
         displayName: `Level ${index}`,
@@ -607,7 +634,9 @@ describe('ORBIT assistant API integration', () => {
 
       const wide = await sendMessage(user.token, conversationId, { content: 'Crea muchos hijos' });
       expect(wide.body.plan).toBeNull();
-      expect(toolResultsIn(llm.calls[1])[0].errors.join(' ')).toMatch(/at most 50/);
+      expect(toolResultsIn(llm.calls[1])[0].errors.join(' ')).toContain(
+        `${ORBIT_PLAN_LIMITS.childrenPerOrganization + 1} sub-organizations (${existingChildren} already exist)`
+      );
 
       const deep = await sendMessage(user.token, conversationId, { content: 'Crea muchos niveles' });
       expect(deep.body.plan).toBeNull();

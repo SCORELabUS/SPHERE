@@ -48,6 +48,24 @@ class CacheService {
       EX: expirationInSeconds ?? 300,
     });
   }
+
+  /**
+   * Adds one to a counter that disappears after `ttlSeconds`, and returns the
+   * new count. The expiry is only set by the first increment, so the counter
+   * covers a fixed window instead of being pushed back by every hit.
+   */
+  async incrementWindow(key: string, ttlSeconds: number): Promise<number> {
+    if (!this.redisClient) {
+      throw new Error('ERROR: Redis client not initialized');
+    }
+
+    const count = await this.redisClient.incr(this.key(key));
+    if (count === 1) {
+      await this.redisClient.expire(this.key(key), ttlSeconds);
+    }
+
+    return count;
+  }
 }
 
 export default CacheService;

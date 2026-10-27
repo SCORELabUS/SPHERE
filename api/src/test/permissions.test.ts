@@ -12,6 +12,8 @@ import { LeanUser } from '../main/types/models/User';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
 import { randomSuffix, createGlobalAdminUser } from './utils/helpers';
+import { Types } from 'mongoose';
+import { MAX_PERMISSIONS_PER_BULK } from '../main/controllers/validation/PermissionValidation';
 
 dotenv.config();
 
@@ -462,6 +464,53 @@ describe('Entity Permissions API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.created).toBe(1);
       expect(response.body.permissions[0].permissions.CREATE).toBe(true);
+    });
+
+    it(`should accept permissions for up to ${MAX_PERMISSIONS_PER_BULK} users per request and reject more`, async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const permissionsFor = (count: number) => Array.from({ length: count }, () => ({
+        userId: new Types.ObjectId().toString(),
+        entityType: 'collection',
+        entitySlug: null,
+        permissions: { GET: true },
+      }));
+
+      const tooMany = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ permissions: permissionsFor(MAX_PERMISSIONS_PER_BULK + 1) });
+
+      expect(tooMany.status).toBe(422);
+      expect(JSON.stringify(tooMany.body)).toContain(`at most ${MAX_PERMISSIONS_PER_BULK} items`);
+      expect(await EntityPermissionMongoose.countDocuments({})).toBe(0);
+
+      const atLimit = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ permissions: permissionsFor(MAX_PERMISSIONS_PER_BULK) });
+
+      expect(atLimit.status).toBe(200);
+      expect(atLimit.body.created).toBe(MAX_PERMISSIONS_PER_BULK);
+    });
+
+    it(`should count removals towards the ${MAX_PERMISSIONS_PER_BULK} changes of a request`, async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+
+      const response = await request(app)
+        .put(`${BASE_PATH}/orgs/${organizationId}/permissions`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({
+          permissions: Array.from({ length: MAX_PERMISSIONS_PER_BULK }, () => ({
+            userId: new Types.ObjectId().toString(),
+            entityType: 'pricing',
+            entitySlug: null,
+            permissions: { GET: true },
+          })),
+          removePermissionIds: [new Types.ObjectId().toString()],
+        });
+
+      expect(response.status).toBe(422);
+      expect(JSON.stringify(response.body)).toContain(`between 1 and ${MAX_PERMISSIONS_PER_BULK} total changes`);
     });
   });
 
