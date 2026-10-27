@@ -5710,6 +5710,140 @@ paths:
         '405':
           description: Method not allowed
 
+  /permalinks/{resourceType}/{resourceId}:
+    get:
+      operationId: resolvePermanentLink
+      summary: Resolve a permanent link
+      description: |
+        Resolves the current frontend location of a pricing family (`/p/{pricingId}`, or
+        `/p/{pricingId}?version={version}` for one of its versions) or of a collection
+        (`/c/{collectionId}`). The destination is recomputed on every request, so renaming or
+        moving a pricing never breaks its permanent link.
+
+        **Authentication**: Public. A user token or an API key is only needed to resolve
+        private resources.
+
+        **Permission**:
+        - A pricing family is resolved for anyone while at least one of its versions is
+          public. When every version is private, the caller must be allowed to read the
+          pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or
+          GET permission on the pricing or on its collection). API keys are limited by
+          their scope: a `VIEW` key reads as MEMBER and a key scoped to another
+          organization grants nothing.
+        - A private collection requires the same kind of permission on the collection.
+        - Anything the caller may not see is answered with 404, exactly like an unknown ID.
+
+        **Version links** (`resourceType=pricing` only): with `version`, the location also
+        carries `version={versionId}` when that version belongs to the family and the
+        caller may see it; a private version takes the same permission as above. A version
+        that is unknown, malformed, of another family or private and not readable by the
+        caller is ignored: the answer is exactly the one for the link without `version`
+        (the family's default location, or 404 when the caller may see none of it), so it
+        never reveals whether a hidden version exists.
+
+        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag`; send it back in
+        `If-None-Match` to get `304 Not Modified`. Visibility is checked before any 304.
+      tags:
+        - Pricings
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: resourceType
+          in: path
+          required: true
+          description: Kind of permanent link.
+          schema:
+            type: string
+            enum: [pricing, collection]
+        - name: resourceId
+          in: path
+          required: true
+          description: |
+            `pricingId` of the pricing family (`resourceType=pricing`) or MongoDB ID of the
+            collection (`resourceType=collection`).
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{24}$'
+            example: 68050bd09890322c57842f6f
+        - name: version
+          in: query
+          required: false
+          description: |
+            Version of the pricing family to open: its `versionId` (the ID of the version,
+            as listed by `GET /public/pricings/{pricingId}`) or its exact name (`version`,
+            case sensitive). A value that is both an ID and a name of the family is taken as
+            the ID. Ignored for collections, and ignored as described above when the caller
+            may not see that version.
+          schema:
+            type: string
+            maxLength: 256
+          examples:
+            versionId:
+              summary: Version ID
+              value: 68050bd09890322c57842f80
+            versionName:
+              summary: Version name
+              value: '2024'
+        - name: If-None-Match
+          in: header
+          required: false
+          description: An `ETag` from a previous answer.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current location of the resource in the SPHERE frontend
+          headers:
+            ETag:
+              description: Strong validator of the answer.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `private, no-cache`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [location]
+                properties:
+                  location:
+                    type: string
+                    description: |
+                      Frontend path of the resource, starting with `/pricings/` or
+                      `/collections/`. For a pricing it may carry `collection={slug}` and,
+                      for a visible requested version, `version={versionId}`.
+              examples:
+                pricing:
+                  summary: Pricing family inside a collection
+                  value:
+                    location: /pricings/68050bd09890322c57842f6f/zoom?collection=ieee-tsc-2025
+                pricingVersion:
+                  summary: One version of a pricing family (`?version=2024` or its ID)
+                  value:
+                    location: /pricings/68050bd09890322c57842f6f/zoom?collection=ieee-tsc-2025&version=68050bd09890322c57842f80
+                collection:
+                  summary: Collection
+                  value:
+                    location: /collections/68050bd09890322c57842f6f/ieee-tsc-2025
+        '304':
+          description: Not modified; the `ETag` sent in `If-None-Match` is still current
+        '404':
+          description: Unknown resource, or one the caller may not see
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The resource could not be resolved right now
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     OrbitConversationSummary:

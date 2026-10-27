@@ -27,6 +27,44 @@ export default class PermanentLinkService {
     return { identity, versions };
   }
 
+  /**
+   * Whether the caller may read the private versions of a pricing family. False
+   * for anonymous callers and for anyone the permission rules (API key scopes
+   * included) do not allow; never throws for a denied caller.
+   */
+  async canReadPrivateVersions(identity: any, user?: any, authType?: string) {
+    if (!user) return false;
+    const collection = identity._collectionId ? await Collection.findById(identity._collectionId).lean() : null;
+    try {
+      await this.authorize(user, String(identity._organizationId), 'pricing', identity.slug, collection?.slug, authType);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The id of the version a pricing permanent link asks for (`?version=`), when
+   * the caller may see it. `requested` is a version id (what the public
+   * synchronization API calls `versionId`) or the exact name of a version of the
+   * family; an id wins when a value could be both. Anything else (a missing,
+   * repeated or malformed value, a version of another family, or a private
+   * version the caller may not read) gives `undefined`, exactly as if the link
+   * named no version, so the answer never tells whether a hidden version exists.
+   */
+  private async requestedVersionId(identity: any, requested: unknown, user?: any, authType?: string) {
+    if (typeof requested !== 'string' || !requested || requested.length > 256) return undefined;
+    // Decided before looking the version up, and only versions the caller may
+    // see are looked up: a hidden version can never shadow a visible one, and
+    // a hidden version and a missing one take the same queries.
+    const visible = await this.canReadPrivateVersions(identity, user, authType) ? {} : { private: false };
+    const family = { pricingId: identity._id, ...visible };
+    const version = (mongoose.isObjectIdOrHexString(requested)
+      ? await Pricing.findOne({ ...family, _id: requested }).select('_id').lean()
+      : null) ?? await Pricing.findOne({ ...family, version: requested }).select('_id').lean();
+    return version ? String(version._id) : undefined;
+  }
+
   async readYaml(relative: string) {
     const root = await fs.realpath(path.resolve(process.env.SERVER_STATICS_FOLDER || 'public'));
     const file = await fs.realpath(path.resolve(root, relative));
@@ -86,7 +124,7 @@ export default class PermanentLinkService {
     return safe || 'pricing';
   }
 
-  async resolve(kind: string, id: string, user?: any, authType?: string) {
+  async resolve(kind: string, id: string, user?: any, authType?: string, requestedVersion?: unknown) {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     if (kind === 'pricing') {
       const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
@@ -95,7 +133,12 @@ export default class PermanentLinkService {
       if (!await Pricing.exists({ pricingId: id, private: false })) {
         await this.authorize(user, String(identity._organizationId), 'pricing', identity.slug, collection?.slug, authType);
       }
-      return { location: `/pricings/${identity._organizationId}/${encodeURIComponent(identity.slug)}${collection ? `?collection=${encodeURIComponent(collection.slug)}` : ''}` };
+      const versionId = await this.requestedVersionId(identity, requestedVersion, user, authType);
+      const query = [
+        ...(collection ? [`collection=${encodeURIComponent(collection.slug)}`] : []),
+        ...(versionId ? [`version=${versionId}`] : []),
+      ];
+      return { location: `/pricings/${identity._organizationId}/${encodeURIComponent(identity.slug)}${query.length ? `?${query.join('&')}` : ''}` };
     }
     if (kind === 'collection') {
       const collection = await Collection.findById(id).lean();
