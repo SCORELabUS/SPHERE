@@ -139,6 +139,10 @@ tags:
   - name: ORBIT
     description: |
       Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
+  - name: Public Synchronization
+    description: |
+      Permanent links and the read-only API that external tools (e.g. SPACE) use to
+      follow a pricing family by its immutable `pricingId`. See `docs/permanent-links.md`.
 
 paths:
   /healthcheck:
@@ -5710,6 +5714,247 @@ paths:
         '405':
           description: Method not allowed
 
+  /permalinks/{resourceType}/{resourceId}:
+    get:
+      operationId: resolvePermanentLink
+      summary: Resolve a permanent link
+      description: |
+        Resolves the current frontend location of a pricing family (`/p/{pricingId}`) or of a
+        collection (`/c/{collectionId}`). The destination is recomputed on every request, so
+        renaming or moving a pricing never breaks its permanent link.
+
+        **Authentication**: Public. A user token or an API key is only needed to resolve
+        private resources.
+
+        **Permission**:
+        - A pricing family is resolved for anyone while at least one of its versions is
+          public. When every version is private, the caller must be allowed to read the
+          pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or
+          GET permission on the pricing or on its collection). API keys are limited by
+          their scope: a `VIEW` key reads as MEMBER and a key scoped to another
+          organization grants nothing.
+        - A private collection requires the same kind of permission on the collection.
+        - Anything the caller may not see is answered with 404, exactly like an unknown ID.
+
+        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag`; send it back in
+        `If-None-Match` to get `304 Not Modified`. Visibility is checked before any 304.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: resourceType
+          in: path
+          required: true
+          description: Kind of permanent link.
+          schema:
+            type: string
+            enum: [pricing, collection]
+        - name: resourceId
+          in: path
+          required: true
+          description: |
+            `pricingId` of the pricing family (`resourceType=pricing`) or MongoDB ID of the
+            collection (`resourceType=collection`).
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Current location of the resource in the SPHERE frontend
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentLinkLocation'
+              examples:
+                pricing:
+                  summary: Pricing family inside a collection
+                  value:
+                    location: /pricings/68050bd09890322c57842f6f/zoom?collection=ieee-tsc-2025
+                collection:
+                  summary: Collection
+                  value:
+                    location: /collections/68050bd09890322c57842f6f/ieee-tsc-2025
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}:
+    get:
+      operationId: getPublicPricingManifest
+      summary: Get the manifest of a pricing family
+      description: |
+        Returns the name, permanent URL and version summaries of a pricing family, identified
+        by its immutable `pricingId`. This is the entry point for synchronization clients:
+        poll it (with `If-None-Match`) and download the versions whose `contentHash` changed.
+
+        **Authentication**: Public. Credentials, when sent, are validated like on the rest of
+        the API (an invalid or expired token or API key is rejected with 401) but do not
+        change the response: the manifest only lists public versions, for every caller.
+
+        **Versions**: sorted newest first by the pricing `createdAt` (from the YAML), with
+        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them.
+        A family whose versions are all private, or a deleted family, is answered with 404.
+
+        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag` computed from the
+        body; `If-None-Match` yields `304 Not Modified` only while the listed versions are
+        still public.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Manifest of the pricing family
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPricingManifest'
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/versions/{versionId}/yaml:
+    get:
+      operationId: getPublicPricingVersionYaml
+      summary: Download the Pricing2Yaml of a version
+      description: |
+        Returns the Pricing2Yaml file of one version of a pricing family, as stored by SPHERE.
+        Visibility is checked before and again after reading the file, so a version made
+        private meanwhile is never released.
+
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid)
+        but only public versions are served.
+
+        **Limits**: files larger than 5 MiB are not served through this endpoint (503).
+
+        **Caching**: `Cache-Control: private, no-cache` and a strong `ETag` (SHA-256 of the
+        file); `If-None-Match` yields `304 Not Modified` while the version stays public.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - name: versionId
+          in: path
+          required: true
+          description: '`versionId` of the version, as listed in the manifest.'
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Pricing2Yaml file of the version
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+          content:
+            application/yaml:
+              schema:
+                type: string
+                description: Pricing2Yaml document
+              example: |
+                saasName: Zoom
+                syntaxVersion: "3.0"
+                version: "2024"
+                createdAt: "2024-01-01"
+                currency: USD
+                features: {}
+                plans: {}
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/download:
+    get:
+      operationId: downloadPublicPricingVersions
+      summary: Download every version of a pricing family as a ZIP archive
+      description: |
+        Returns a ZIP archive with one `<pricing-slug>/<version>.yaml` entry per version of
+        the family.
+
+        **Authentication**: Public. Anonymous callers get the public versions only.
+
+        **Permission**: when the family has private versions and the request is
+        authenticated (user token or API key), the caller must be allowed to read the
+        pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or GET
+        permission on the pricing; API keys limited by their scope); the archive then
+        includes the private versions. An authenticated caller who is not allowed gets 404.
+
+        The archive is streamed: it carries no `ETag` and is not revalidated.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+      responses:
+        '200':
+          description: ZIP archive with the versions visible to the caller
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="<pricingId>-versions.zip"`'
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '500':
+          description: The archive could not be generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Unable to generate archive
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
 components:
   schemas:
     OrbitConversationSummary:
@@ -5969,6 +6214,79 @@ components:
           type: string
       required:
         - error
+
+    PermanentLinkLocation:
+      type: object
+      description: Current destination of a permanent link in the SPHERE frontend.
+      properties:
+        location:
+          type: string
+          description: |
+            Frontend path (relative to `SPHERE_PUBLIC_URL`): `/pricings/{organizationId}/{slug}`,
+            optionally with `?collection={collectionSlug}`, or
+            `/collections/{organizationId}/{collectionSlug}`.
+          example: /pricings/68050bd09890322c57842f6f/zoom
+      required:
+        - location
+
+    PublicPricingVersionSummary:
+      type: object
+      properties:
+        versionId:
+          type: string
+          description: Immutable ID of the version; use it to download its YAML.
+          example: 68050bd09890322c57842f80
+        version:
+          type: string
+          description: Version label as published (need not be a semantic version).
+          example: "2024"
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        contentHash:
+          type: string
+          description: |
+            SHA-256 (hex) of the canonicalised YAML: mapping keys sorted, `saasName`
+            excluded, so a rename alone does not change it.
+          pattern: '^[a-f0-9]{64}$'
+          example: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+      required:
+        - versionId
+        - version
+        - createdAt
+        - contentHash
+
+    PublicPricingManifest:
+      type: object
+      properties:
+        pricingId:
+          type: string
+          description: Immutable ID of the pricing family.
+          example: 68050bd09890322c57842f7a
+        name:
+          type: string
+          description: Current name of the pricing.
+          example: Zoom
+        permanentUrl:
+          type: string
+          format: uri
+          description: Permanent frontend link of the family (`{SPHERE_PUBLIC_URL}/p/{pricingId}`).
+          example: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+        latestVersionId:
+          type: string
+          description: '`versionId` of the newest listed version.'
+          example: 68050bd09890322c57842f80
+        versions:
+          type: array
+          description: Versions, newest first.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PublicPricingVersionSummary'
+      required:
+        - pricingId
+        - name
+        - permanentUrl
+        - latestVersionId
+        - versions
     
     Name:
       type: string
@@ -7978,6 +8296,35 @@ components:
                   pattern: '^[a-f0-9]{24}$'
 
   responses:
+    PublicSyncNotModified:
+      description: The `If-None-Match` validator still matches and the resource is still visible.
+    PublicSyncInvalidCredentials:
+      description: A user token or API key was sent but is invalid, revoked or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'UNAUTHORIZED: Invalid or expired token'
+    PublicSyncUnavailable:
+      description: |
+        Unknown, deleted or not visible to the caller. Private resources are not
+        distinguished from missing ones.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+    PublicSyncTemporarilyUnavailable:
+      description: The pricing files could not be read (or exceed the 5 MiB synchronization limit).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+
     PricingList:
       description: A list of pricings matching the provided filter
       content:
@@ -8136,6 +8483,25 @@ components:
                 example: "Cache set successfully"
 
   parameters:
+    PricingId:
+      name: pricingId
+      in: path
+      required: true
+      description: |
+        Immutable ID of a pricing family (the `{id}` of its `/p/{id}` permanent link). It
+        survives renames and moves between collections.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: '`ETag` of a previous response; answered with 304 when it still matches.'
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+
     OrgId:
       name: orgId
       in: path
@@ -8412,6 +8778,18 @@ components:
         type: string
         example: "a1b2c3d4e5"
 
+  headers:
+    PublicSyncETag:
+      description: Strong validator, the SHA-256 (hex, quoted) of the response body.
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+    PublicSyncCacheControl:
+      description: Responses may be stored by the client only, and must be revalidated.
+      schema:
+        type: string
+        example: private, no-cache
+
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -8425,3 +8803,10 @@ components:
           Provides access scoped to the organization's resources.
 
         Include the token directly in the `Authorization` header **without** a `Bearer` prefix.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        User token obtained from `POST /users/login`, sent as `Authorization: Bearer <token>`.
+        When both a token and an API key are sent, the token is used.
