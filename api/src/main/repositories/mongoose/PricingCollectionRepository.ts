@@ -60,6 +60,13 @@ class PricingCollectionRepository extends RepositoryBase {
     }
   }
 
+  /** The slug of the collection with this id, for permission checks; undefined when there is none. */
+  async findSlugById(id: unknown): Promise<string | undefined> {
+    if (!id || !mongoose.isValidObjectId(String(id))) return undefined;
+    const row: any = await PricingCollectionMongoose.findById(String(id)).select('slug').lean();
+    return row?.slug ?? undefined;
+  }
+
   async findByOrganizationId(
     organizationId: string,
     permissions?: OrgUserPermissionsContext,

@@ -193,6 +193,16 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject<LeanPricing>();
   }
 
+  /** Whether a pricing of an organization has at least one public version. */
+  async hasPublicVersion(slug: string, organizationId: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(organizationId)) return false;
+    return Boolean(await PricingMongoose.exists({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      private: { $ne: true },
+    }));
+  }
+
   async create(data: any[]) {
     data.forEach(item => {
       if (item._collectionId) {

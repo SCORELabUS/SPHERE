@@ -752,7 +752,8 @@ class PricingService {
       entityType: 'pricing',
       entitySlug: pricingSlug,
       action: 'PUT',
-      isPrivate: pricing.private,
+      // Every version changes, so a private one among them takes reading it.
+      isPrivate: pricing.versions.some((version: { private?: boolean }) => version.private === true),
       userOrgRole: orgRole,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       entityPermissions: entityPerms,
@@ -800,7 +801,16 @@ class PricingService {
       includePrivate: true,
     });
 
-    return updatedPricing;
+    return this._withReadableVersions(updatedPricing, effectiveOrgId, reqUser);
+  }
+
+  /** A pricing as returned after a change: its private versions only for who may read them. */
+  private async _withReadableVersions(pricing: any, organizationId: string, reqUser?: LeanUser) {
+    if (!pricing?.versions) return pricing;
+    if (!(await this._canSeePrivateVersions(reqUser, organizationId, pricing.slug, pricing.collection?.slug))) {
+      pricing.versions = pricing.versions.filter((version: { private?: boolean }) => version.private !== true);
+    }
+    return pricing;
   }
 
   /**
@@ -901,7 +911,11 @@ class PricingService {
 
     await this.pricingRepository.update(target.id, { private: isPrivate });
 
-    return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
+    return this._withReadableVersions(
+      await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true }),
+      organizationId,
+      reqUser
+    );
   }
 
   async updateVersion(pricingString: string) {

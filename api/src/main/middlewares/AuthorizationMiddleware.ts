@@ -327,7 +327,10 @@ async function checkEntityPermissions(
     const pricingRepo = container.resolve('pricingRepository');
     const pricing = await pricingRepo.findBySlugAndOrganization(entitySlug, organizationId);
     if (pricing) {
-      isPrivate = pricing.private === true;
+      // Visibility is per version, and the row above is any one of them: the
+      // pricing counts as private here only when no version is public. The
+      // service decides for the versions a change touches.
+      isPrivate = !(await pricingRepo.hasPublicVersion(entitySlug, organizationId));
     }
   } else {
     const collectionRepo = container.resolve('pricingCollectionRepository');

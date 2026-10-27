@@ -90,7 +90,10 @@ class PricingCollectionController {
         req.user
       );
       const pricings = await this.pricingService.indexByCollection(collection.id);
-      const pricingsToDownload = pricings;
+      // Private versions only for who may read them (GET on the collection
+      // reaches the pricings in it); anyone else gets the public ones.
+      const reader = await container.resolve('permissionService').privateReader(req.user, organizationId, req.authType);
+      const pricingsToDownload = pricings.filter(pricing => pricing.private !== true || reader('pricing', String(pricing.slug), collection.slug));
 
       if (pricingsToDownload.length === 0) {
         res.status(400).send({ error: 'No pricings to download.' });

@@ -392,13 +392,20 @@ class PermissionService {
     organizationId: string,
     entityType?: EntityType,
     userId?: string,
-    isGlobalAdmin?: boolean
+    isGlobalAdmin?: boolean,
+    actingRole?: OrgRole | null
   ): Promise<LeanEntityPermission[]> {
     const permissions = await this.entityPermissionRepository.findByOrganization(organizationId, entityType);
 
     if (!userId) return permissions;
 
-    const orgRole = await this.resolveOrgRole(userId, organizationId);
+    const orgRole = actingRole !== undefined ? actingRole : await this.resolveOrgRole(userId, organizationId);
+
+    // The records name the private pricings and collections and who may see
+    // them: a plain member gets their own only.
+    if (!isGlobalAdmin && orgRole !== 'OWNER' && orgRole !== 'ADMIN') {
+      return permissions.filter(permission => String(permission._userId) === String(userId));
+    }
 
     if (isGlobalAdmin || orgRole === 'OWNER' || orgRole === 'ADMIN') {
       const types: EntityType[] = entityType ? [entityType] : ['pricing', 'collection'];
@@ -595,10 +602,18 @@ class PermissionService {
     userId: string,
     organizationId: string,
     pricingSlug: string,
-    userOrgRole?: OrgRole | null
+    userOrgRole?: OrgRole | null,
+    reqUser?: LeanUser
   ): Promise<EntityPermissions> {
     const pricing = await this.pricingRepository.findBySlugAndOrganization(pricingSlug, organizationId);
-    if (!pricing) {
+    // A pricing whose versions are all private, to someone who may not read
+    // them, answers like one that does not exist.
+    if (!pricing || (reqUser && !(await this.pricingRepository.hasPublicVersion(pricingSlug, organizationId)) &&
+      !(await this.canReadPrivateVersions(reqUser, {
+        organizationId,
+        slug: pricingSlug,
+        collectionSlug: await this.pricingCollectionRepository.findSlugById(pricing._collectionId),
+      })))) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
