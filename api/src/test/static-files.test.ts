@@ -9,6 +9,8 @@
 
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
+import http, { IncomingHttpHeaders, Server } from 'http';
+import { AddressInfo } from 'net';
 import path from 'path';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -63,11 +65,35 @@ describe('Static files', { timeout: 20000 }, () => {
   };
 
   /**
+   * Sends `rawPath` to the server byte for byte. supertest/superagent resolve
+   * `.` and `..` segments and encoded dots before sending, so they cannot
+   * exercise how the server handles non-canonical paths.
+   */
+  const rawRequest = (
+    rawPath: string,
+    options: { method?: string; headers?: Record<string, string> } = {}
+  ) =>
+    new Promise<{ status: number; headers: IncomingHttpHeaders; text: string }>((resolve, reject) => {
+      const { port } = (app as unknown as Server).address() as AddressInfo;
+      const req = http.request(
+        { host: '127.0.0.1', port, path: rawPath, method: options.method ?? 'GET', headers: options.headers },
+        res => {
+          let text = '';
+          res.setEncoding('utf8');
+          res.on('data', chunk => (text += chunk));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, text }));
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+  /**
    * A file the caller may not read must be indistinguishable from a file that
    * does not exist: same status, and never the YAML content.
    */
-  const expectHidden = async (response: request.Response, label?: string) => {
-    const missing = await request(app).get('/static/pricings/uploaded/does-not-exist.yml');
+  const expectHidden = async (response: { status: number; text?: string }, label?: string) => {
+    const missing = await rawRequest('/static/pricings/uploaded/does-not-exist.yml');
     expect(missing.status, 'status of a missing file').not.toBe(200);
     expect(response.status, label).toBe(missing.status);
     expect(response.text ?? '', label).not.toContain('saasName');
@@ -97,35 +123,86 @@ describe('Static files', { timeout: 20000 }, () => {
       await expectHidden(await request(app).get(url));
     });
 
-    it('Hide the YAML of a private version requested with an encoded or non-canonical path.', async () => {
+    it('Hide the YAML of a private version requested with a non-canonical raw path.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { url } = await createVersion(organizationId, true);
       const segments = url.split('/');
       const last = segments.pop()!;
       const variants = [
-        url.replace('/static/', '/static/./'),
+        // `..` segments that stay inside the static root (send resolves them).
         url.replace('/static/pricings/', '/static/pricings/../pricings/'),
+        url.replace('/static/', '/static/x/../'),
+        url.replace('/static/', '/static/../static/'),
+        [...segments, '..', segments[segments.length - 1], last].join('/'),
+        // The same with encoded dots and slashes.
+        url.replace('/static/', '/static/x/%2e%2e/'),
+        url.replace('/static/', '/static/x/%2E%2E/'),
+        url.replace('/static/pricings/', '/static/pricings%2f..%2fpricings/'),
+        url.replace('/static/pricings/uploaded/', '/static/pricings%2Fuploaded/'),
+        // `.` segments, empty segments and encoded letters or dots.
+        url.replace('/static/', '/static/./'),
+        url.replace('/static/', '/static/%2e/'),
         url.replace('/static/', '/static//'),
-        [...segments, last.replace('.', '%2E')].join('/'),
         url.replace('/static/pricings/', '/static/%70ricings/'),
+        [...segments, last.replace('.', '%2E')].join('/'),
+        // Escaping the root, NUL bytes, backslashes and query strings.
+        '/..' + url,
+        url + '%00',
+        url.replace('/static/pricings/', '/static/pricings/..%5cpricings/'),
         url + '?download=1',
       ];
 
+      const missing = await rawRequest('/static/pricings/uploaded/does-not-exist.yml');
+      const leaked = [];
       for (const variant of variants) {
-        const response = await request(app).get(variant);
-        expect(response.status, variant).not.toBe(200);
-        expect(response.text ?? '', variant).not.toContain('saasName');
+        const response = await rawRequest(variant);
+        if (response.status !== missing.status || response.text.includes('saasName')) {
+          leaked.push(`${response.status} ${variant}`);
+        }
       }
+      // Every variant must be answered exactly like a missing file.
+      expect(leaked).toEqual([]);
+    });
+
+    it('Serve a public file requested with a non-canonical raw path, as before.', async () => {
+      const { organizationId } = await createTestUser('USER');
+      const { url, serviceName } = await createVersion(organizationId, false);
+
+      for (const variant of [
+        url.replace('/static/pricings/', '/static/pricings/../pricings/'),
+        url.replace('/static/', '/static/x/%2e%2e/'),
+        '/static/pricings/templates/../templates/petclinic.yml',
+      ]) {
+        const response = await rawRequest(variant);
+        expect(response.status, variant).toBe(200);
+        expect(response.text, variant).toContain('saasName');
+      }
+      expect((await rawRequest(url.replace('/static/', '/static/./'))).text).toContain(`saasName: ${serviceName}`);
+    });
+
+    it('Serve a private version requested with a non-canonical raw path only to an authorized caller.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { url, serviceName } = await createVersion(organizationId, true);
+      const variant = url.replace('/static/pricings/', '/static/pricings/../pricings/');
+
+      await expectHidden(await rawRequest(variant), variant);
+
+      const response = await rawRequest(variant, { headers: { Authorization: `Bearer ${owner.token}` } });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain(`saasName: ${serviceName}`);
+      expect(response.headers['cache-control']).toBe('private, no-store');
     });
 
     it('Hide the YAML of a private version requested with HEAD.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { url } = await createVersion(organizationId, true);
+      const missing = await rawRequest('/static/pricings/uploaded/does-not-exist.yml', { method: 'HEAD' });
 
-      const response = await request(app).head(url);
-      const missing = await request(app).head('/static/pricings/uploaded/does-not-exist.yml');
-
-      expect(response.status).toBe(missing.status);
+      for (const variant of [url, url.replace('/static/pricings/', '/static/pricings/../pricings/')]) {
+        const response = await rawRequest(variant, { method: 'HEAD' });
+        expect(response.status, variant).toBe(missing.status);
+        expect(response.headers['content-type'], variant).toBe(missing.headers['content-type']);
+      }
     });
 
     it('Hide the YAML of a private version from a user outside its organization.', async () => {
