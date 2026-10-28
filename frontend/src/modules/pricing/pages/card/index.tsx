@@ -37,6 +37,7 @@ import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { pricingVersionNameMatches } from './pricing-version-validation';
+import { pickRequestedVersion } from './requested-version';
 
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
@@ -44,6 +45,8 @@ export default function CardPage() {
   const collectionParam = searchParams.get('collection');
   const collectionSlug =
     collectionParam && !['undefined', 'null'].includes(collectionParam) ? collectionParam : null;
+  // Set by version permanent links (`/p/{pricingId}?version=…`): the version id, or its name.
+  const requestedVersion = searchParams.get('version');
   const router = useRouter();
   const {
     getPricingBySlug,
@@ -108,8 +111,9 @@ export default function CardPage() {
         setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
-        if (vers.length > 0) {
-          setCurrentVersion(vers[0]);
+        const initialVersion = pickRequestedVersion(vers, requestedVersion);
+        if (initialVersion) {
+          setCurrentVersion(initialVersion);
         }
         try {
           const members = await getOrgMembers(organizationId);
@@ -138,7 +142,7 @@ export default function CardPage() {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [slug, organizationId, collectionSlug]);
+  }, [slug, organizationId, collectionSlug, requestedVersion]);
 
   useEffect(() => {
     setIsFollowing(null);

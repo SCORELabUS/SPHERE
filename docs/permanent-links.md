@@ -17,6 +17,14 @@ Version summaries include `versionId`, the original `version` label, `createdAt`
 
 Set `SPHERE_PUBLIC_URL` to the externally visible frontend base URL (default `https://sphere.score.us.es`). Existing API base path configuration still applies. SPACE accepts only `/p/` links in v1; collection permanent links are for navigation.
 
+## Version links
+
+`/p/{pricingId}?version={versionId}` opens one version of a pricing family. `versionId` is the ID of that version (the MongoDB `_id` of its pricing document, 24 hexadecimal characters), the same `versionId` listed by `GET /api/v1/public/pricings/{pricingId}` and stored by SPACE in `pricing.sphere.versionId`. The exact version name (`?version=2024`, case sensitive) is accepted too, since names are unique within a family; a value that is both an ID and a name is taken as the ID. `/p/{pricingId}` without `version` keeps working as before.
+
+`GET /api/v1/permalinks/pricing/{pricingId}?version=...` answers with `version={versionId}` in the location when the version belongs to the family and the caller may see it. A private version takes the same permission as a fully private pricing (OWNER/ADMIN of the organization, global ADMIN through a user token, or GET permission on the pricing or its collection; API keys limited by their scope). A version that is unknown, malformed, of another family, or private and not readable by the caller is ignored: the answer is exactly the one for the link without `version` (the family's location, or 404 when the caller may see none of it). It never says whether a hidden version exists.
+
+The permalink page forwards `?version=` to the API and keeps the query and fragment of the location it gets. The pricing page opens the version named by `?version=` when it lists it (it only lists versions the viewer may see) and the newest one otherwise.
+
 ## Migration and rollout
 
 1. Back up MongoDB and pricing YAML files. Pause pricing writes.

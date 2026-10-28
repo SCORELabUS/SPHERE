@@ -21,7 +21,7 @@ export default function loadRoutes(app: express.Application) {
       return res.status((error as Error).message === 'NOT FOUND' ? 404 : 503).json({ error: 'Resource unavailable' });
     }
   };
-  app.get(base + '/permalinks/:resourceType/:resourceId', respond(req => service.resolve(req.params.resourceType, req.params.resourceId, req.user, req.authType)));
+  app.get(base + '/permalinks/:resourceType/:resourceId', respond(req => service.resolve(req.params.resourceType, req.params.resourceId, req.user, req.authType, req.query.version)));
   app.get(base + '/public/pricings/:pricingId', respond(req => service.manifest(req.params.pricingId, req.user, req.authType)));
   app.get(base + '/public/pricings/:pricingId/versions/:versionId/yaml', respond(req => service.download(req.params.pricingId, req.params.versionId, req.user, req.authType), true));
   app.get(base + '/public/pricings/:pricingId/download', async (req: any, res: any) => {
