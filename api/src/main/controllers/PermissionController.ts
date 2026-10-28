@@ -19,11 +19,14 @@ class PermissionController {
   async getOrgPermissions(req: any, res: any) {
     try {
       const entityType = req.query.entityType as EntityType | undefined;
+      // The role the request acts with (an API key's scope applied), set by the route guard.
+      const viaKey = req.authType === 'api-key';
       const permissions = await this.permissionService.getOrganizationPermissions(
         req.params.orgId,
         entityType,
         req.user.id,
-        req.user.role === 'ADMIN'
+        req.user.role === 'ADMIN' && !viaKey,
+        viaKey ? req.user.orgRole ?? null : undefined
       );
       res.json(permissions);
     } catch (err: any) {
@@ -91,7 +94,8 @@ class PermissionController {
         req.user.id,
         req.params.organizationId,
         req.params.pricingSlug,
-        req.user.orgRole
+        req.user.orgRole,
+        req.user
       );
       res.json(result);
     } catch (err: any) {
@@ -106,7 +110,8 @@ class PermissionController {
         req.user.id,
         req.params.organizationId,
         req.params.collectionSlug,
-        req.user.orgRole
+        req.user.orgRole,
+        req.user
       );
       res.json(result);
     } catch (err: any) {

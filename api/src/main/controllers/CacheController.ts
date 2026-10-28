@@ -1,6 +1,7 @@
 import container from '../config/container';
-import CacheService from '../services/CacheService';
+import CacheService, { isServerCacheKey } from '../services/CacheService';
 import { handleError } from '../utils/users/helpers';
+import { OAUTH_CACHE_PREFIX } from '../services/OAuthService';
 
 class CacheController {
   private cacheService: CacheService;
@@ -10,6 +11,20 @@ class CacheController {
     this.cacheService = container.resolve('cacheService');
     this.get = this.get.bind(this);
     this.set = this.set.bind(this);
+    this.refuseServerKey = this.refuseServerKey.bind(this);
+  }
+
+  /**
+   * Internal results, SSO/OAuth state and rate-limit counters share this cache.
+   * Never expose or accept writes to those entries through the public endpoint.
+   * OAuth consent requests and codes must remain protected from forgery.
+   */
+  private refuseServerKey(key: unknown, res: any): boolean {
+    if (typeof key === 'string' && (isServerCacheKey(key) || key.trim().toLowerCase().startsWith(OAUTH_CACHE_PREFIX))) {
+      res.status(403).send({ error: 'PERMISSION ERROR: This cache key is reserved for the server' });
+      return true;
+    }
+    return false;
   }
 
   async get(req: any, res: any) {
@@ -33,6 +48,7 @@ class CacheController {
       }
 
       const { key } = req.query;
+      if (this.refuseServerKey(key, res)) return;
       const data = await this.cacheService.get(key);
 
       res.status(200).json(data);
@@ -64,6 +80,7 @@ class CacheController {
       }
 
       const { key, value, expirationInSeconds } = req.body;
+      if (this.refuseServerKey(key, res)) return;
 
       if (!expirationInSeconds) {
         await this.cacheService.set(key, value);

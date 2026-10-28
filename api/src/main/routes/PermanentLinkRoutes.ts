@@ -6,12 +6,15 @@ import PermanentLinkService from '../services/PermanentLinkService';
 export default function loadRoutes(app: express.Application) {
   const service = new PermanentLinkService();
   const base = (process.env.BASE_URL_PATH ?? '') + '/api/v1';
+  // A response computed for an authenticated caller may hold private versions:
+  // shared caches must never store it, and the browser cache neither.
+  const cacheControl = (req: any) => (req.user ? 'private, no-store' : 'private, no-cache');
   const respond = (operation: (req: any) => Promise<any>, isYaml = false) => async (req: any, res: any) => {
     try {
       const result = await operation(req);
       const body = typeof result === 'string' ? result : JSON.stringify(result);
       const etag = `"${createHash('sha256').update(body).digest('hex')}"`;
-      res.set('Cache-Control', 'private, no-cache').set('ETag', etag);
+      res.set('Cache-Control', cacheControl(req)).set('ETag', etag).vary('Authorization').vary('x-api-key');
       if (req.headers['if-none-match'] === etag) return res.status(304).end();
       return isYaml ? res.type('application/yaml').send(body) : res.json(result);
     } catch (error) {
@@ -19,13 +22,15 @@ export default function loadRoutes(app: express.Application) {
     }
   };
   app.get(base + '/permalinks/:resourceType/:resourceId', respond(req => service.resolve(req.params.resourceType, req.params.resourceId, req.user, req.authType, req.query.version)));
-  app.get(base + '/public/pricings/:pricingId', respond(req => service.manifest(req.params.pricingId)));
-  app.get(base + '/public/pricings/:pricingId/versions/:versionId/yaml', respond(req => service.download(req.params.pricingId, req.params.versionId), true));
+  app.get(base + '/public/pricings/:pricingId', respond(req => service.manifest(req.params.pricingId, req.user, req.authType)));
+  app.get(base + '/public/pricings/:pricingId/versions/:versionId/yaml', respond(req => service.download(req.params.pricingId, req.params.versionId, req.user, req.authType), true));
   app.get(base + '/public/pricings/:pricingId/download', async (req: any, res: any) => {
     try {
       const entries = await service.archiveEntries(req.params.pricingId, req.user, req.authType);
       res.setHeader('Content-Disposition', `attachment; filename="${req.params.pricingId}-versions.zip"`);
       res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Cache-Control', cacheControl(req));
+      res.vary('Authorization').vary('x-api-key');
       const archive = archiver('zip', { zlib: { level: 9 } });
       archive.on('error', error => {
         if (!res.headersSent) res.status(500).json({ error: 'Unable to generate archive' });
