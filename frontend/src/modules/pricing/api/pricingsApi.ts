@@ -94,15 +94,18 @@ export function usePricingsApi() {
   }, []);
 
   const getPricingBySlug = useCallback(async (slug: string, organizationId: string, collectionSlug: string | null) => {
-    return fetch(
-      `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
-        collectionSlug && collectionSlug !== 'undefined' ? `?collection=${collectionSlug}` : ''
-      }`,
-      {
-        method: 'GET',
-        headers: basicHeaders,
-      }
-    )
+    const withCollection = !!collectionSlug && collectionSlug !== 'undefined';
+    const url = `${PRICINGS_BASE_PATH}/${organizationId}/${slug}`;
+    return fetch(withCollection ? `${url}?collection=${collectionSlug}` : url, {
+      method: 'GET',
+      headers: basicHeaders,
+    })
+      // A link may name a private collection the visitor cannot see: the API
+      // then answers 404 for it, while the pricing's public versions are still
+      // there without the collection.
+      .then(response =>
+        withCollection && response.status === 404 ? fetch(url, { method: 'GET', headers: basicHeaders }) : response
+      )
       .then(response => {
         if (!response.ok) {
           return Promise.reject(response);

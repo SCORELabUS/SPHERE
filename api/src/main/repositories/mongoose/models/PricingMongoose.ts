@@ -117,6 +117,17 @@ pricingSchema.index({ slug: 1, _organizationId: 1, version: 1, _collectionId: 1 
 
 pricingSchema.index({ pricingId: 1, version: 1 }, { unique: true, partialFilterExpression: { pricingId: { $type: 'objectId' } } });
 
+/**
+ * Collation of the `yaml` lookups done for every pricing file requested under
+ * /static (StaticFilesMiddleware): case-insensitive, so a case-insensitive file
+ * system cannot be used to reach a private file under another spelling. The
+ * index below uses the same collation so those lookups do not scan the
+ * collection.
+ */
+export const YAML_PATH_COLLATION = { locale: 'en', strength: 2 } as const;
+
+pricingSchema.index({ yaml: 1 }, { name: 'yaml_1_ci', collation: YAML_PATH_COLLATION });
+
 async function refreshIdentities(ids: any[], pricingModel: any) {
   const identityIds = ids.filter(Boolean);
   if (!identityIds.length) return;

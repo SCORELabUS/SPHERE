@@ -139,6 +139,10 @@ tags:
   - name: ORBIT
     description: |
       Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
+  - name: Public Synchronization
+    description: |
+      Permanent links and the read-only API that external tools (e.g. SPACE) use to
+      follow a pricing family by its immutable `pricingId`. See `docs/permanent-links.md`.
 
 paths:
   /oauth/authorize:
@@ -1876,7 +1880,7 @@ paths:
         - name: collection
           in: query
           required: false
-          description: Filter pricings by collection slug (URL-friendly identifier)
+          description: Filter pricings by collection slug (URL-friendly identifier). A private collection the caller may not see never matches.
           schema:
             type: string
             example: "ieee-tsc-2025"
@@ -3573,7 +3577,7 @@ paths:
         - name: collection
           in: query
           required: false
-          description: Filter pricings by collection slug (URL-friendly identifier)
+          description: Filter pricings by collection slug (URL-friendly identifier). A private collection the caller may not see never matches.
           schema:
             type: string
             example: "ieee-tsc-2025"
@@ -3793,7 +3797,10 @@ paths:
                   description: Whether the pricing should be private
                 collectionId:
                   type: string
-                  description: Optional collection ID to add the pricing to upon creation
+                  description: |
+                    Optional collection ID to add a new pricing to upon creation. It must be a collection of
+                    the same organization that the caller may edit (PUT on it); one the caller may not see
+                    answers `404`. A new version of an existing pricing stays in that pricing's collection.
                 name:
                   type: string
                   maxLength: 255
@@ -3815,9 +3822,9 @@ paths:
         '401':
           description: Authentication required
         '403':
-          description: Insufficient permissions (user is not a member of the organization, or lacks CREATE permission)
+          description: Insufficient permissions (user is not a member of the organization, lacks CREATE permission, or may not edit the collection given in `collectionId`)
         '404':
-          description: Organization not found
+          description: Organization not found, or the collection given in `collectionId` is not one the caller may see in this organization
         '409':
           description: A pricing with the same name and version already exists in the organization
           content:
@@ -3842,6 +3849,14 @@ paths:
         Retrieves a pricing by slug for a given user. Visibility is set per version: a pricing
         with some public and some private versions is returned with only its public versions to
         anyone who cannot see private ones. It is `404` only when none of its versions is visible.
+
+        A pricing in a private collection the caller may not see is returned as if it were in no
+        collection: `collection` is `{ id: null }`, `_collectionId` and `collectionName` are `null`,
+        the `yaml` of each public version links the permanent route
+        `/public/pricings/{pricingId}/versions/{versionId}/yaml` (the stored file path may contain the
+        collection's folder; this also applies to any public version whose file lies in the folder of
+        such a collection), a fork does not name a source collection the caller may not see, and the
+        `collection`/`collectionId` query filters never match it.
 
         **Authentication**: Public
 
@@ -3915,7 +3930,10 @@ paths:
         $ref: '#/components/requestBodies/PricingUpdate'
       responses:
         '200':
-          description: Operation Completed
+          description: |
+            Operation Completed. The pricing as it is after the change, with its private versions
+            only for a caller who may read them (the rule of `GET`); a caller who has just made
+            every version private without that permission gets no versions back.
           headers:
             ETag:
               description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
@@ -3926,13 +3944,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/PricingDetails'
         '403':
-          description: Insufficient permissions
+          description: |
+            Insufficient permissions. A change applies to every version, so on a pricing with
+            private versions it takes being allowed to read them (GET) as well as PUT.
         '404':
           description: User or pricing not found
         '412':
           $ref: '#/components/responses/PricingPreconditionFailed'
         '428':
           $ref: '#/components/responses/PricingPreconditionRequired'
+        '422':
+          description: The body names a field that cannot be changed (only `name`, `private` and `url` can)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           description: Unexpected error
           content:
@@ -4260,9 +4286,11 @@ paths:
         **Authentication**: Required
 
         **Permission**:
-        - The source pricing must be visible to the caller: PUBLIC pricings can be forked by
-          any authenticated user, PRIVATE ones only by members of the source organization
-          (or a global ADMIN).
+        - The source version must be visible to the caller: a PUBLIC version can be forked by
+          any authenticated user, a PRIVATE one only by who may read the private versions of
+          its pricing (OWNER/ADMIN of the source organization, a member granted GET on the
+          pricing or on its collection, a global ADMIN with a token; API keys within their
+          scopes). Anyone else gets the same `404` as for a version that does not exist.
         - The caller needs `CREATE` permission for pricings in the target organization.
       tags:
         - Pricings
@@ -4361,9 +4389,12 @@ paths:
 
         **Authentication**: Required
 
-        **Permission**: the pricing must be visible to the caller. PUBLIC pricings are visible
-        to any authenticated user; PRIVATE ones only to members of its organization (or a
-        global ADMIN). A pricing the caller cannot see answers 404.
+        **Permission**: the pricing must be visible to the caller. A pricing with a public
+        version can be followed by any authenticated user; one whose versions are all private
+        only by who may read them (OWNER/ADMIN of its organization, a member granted GET on the
+        pricing or on its collection, a global ADMIN with a token). A pricing the caller cannot
+        see answers 404, as one that does not exist. A new private version is only notified to
+        followers who may read it.
       tags:
         - Pricings
       security:
@@ -4605,14 +4636,14 @@ paths:
     get:
       summary: Get collection details.
       description: |
-        Retrieves a collection by slug for a given user. If the user requesting is the owner of the collection, they can then access private collections. Otherwise, only public ones.
+        Retrieves a collection of an organization by slug. Public collections are visible to anyone.
 
         **Authentication**: Public
 
-        **Permission**: 
-        - UNAUTHENTICATED: can only access PUBLIC collections.
-        - USER: can access their own collections (PUBLIC, PRIVATE) and PUBLIC collections of other users.
-        - ADMIN: can access any user's collections.
+        **Permission** (private collections):
+        - OWNER or ADMIN of the organization, users granted GET on the collection, and global ADMINs can access it.
+        - An API key acts within its scopes: a VIEW scope acts as a plain MEMBER, and a key without a scope on the organization (or ALL on an organization above it) is treated as anonymous.
+        - Anyone else gets `404`, exactly as for a collection that does not exist, so its existence is not revealed.
 
       tags:
         - Collections
@@ -4861,6 +4892,10 @@ paths:
 
         **Authentication**: (only if client is sphere frontend, otherwise requires ADMIN role)
 
+        Keys under the server's own prefixes (`internal:`, `sso:`, `ratelimit:`, case-insensitive)
+        are never served here, whoever asks (`403`): they hold computed configuration spaces,
+        single sign-on state and rate-limit counters.
+
       tags:
         - Cache
       security:
@@ -4888,6 +4923,12 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: "Cache key is required"
+        '403':
+          description: The origin is not allowed, or the key is reserved for the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Redis client not initialized or internal server error
           content:
@@ -4909,6 +4950,9 @@ paths:
         will fail with a CONFLICT error. Use a different key to store a new value.
 
         **Authentication**: Public (only if client is sphere frontend, otherwise requires ADMIN role)
+
+        Keys under the server's own prefixes (`internal:`, `sso:`, `ratelimit:`, case-insensitive)
+        cannot be written here, whoever asks (`403`).
 
       tags:
         - Cache
@@ -4935,6 +4979,12 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: "Cache key and value are required"
+        '403':
+          description: The origin is not allowed, or the key is reserved for the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: Conflict - value already exists for this key with a different value
           content:
@@ -4969,7 +5019,9 @@ paths:
         record exists. This ensures the frontend can correctly determine that these
         roles have full access without needing separate role checks.
 
-        For MEMBER users, only explicitly configured permission records are returned.
+        For MEMBER users, only their own explicitly configured permission records are
+        returned: the records name private pricings and collections and who may see them.
+        With an API key, the role is the one the key acts with (a VIEW key as a MEMBER).
       tags:
         - Permissions
       security:
@@ -5143,7 +5195,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EntityPermission'
         '404':
-          description: Pricing not found
+          description: Pricing not found, or all its versions are private and the caller may not read them
           content:
             application/json:
               schema:
@@ -5911,9 +5963,14 @@ paths:
         the API key that started them and end after 30 idle minutes. A request without a session stands alone and
         answers in JSON.
 
-        The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
-        (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
-        changes, and handing over, moving or deleting an organization takes the ALL scope on it.
+        The API key's scopes bound what the assistant reaches, exactly as on the REST API: it only sees and names the
+        organizations the key covers (an ALL scope also covers everything below its organization), a key with only
+        VIEW scopes cannot propose changes, and handing over, moving or deleting an organization takes the ALL scope
+        on it. Within an organization a VIEW scope acts as a plain MEMBER and MANAGEMENT at most as an ADMIN, and the
+        global ADMIN bypass does not apply to keys: private versions and private collections are only read where the
+        key's user may read them as such (OWNER/ADMIN, or GET granted on the pricing or its collection). An assistant
+        that needs private reads without write power should use a VIEW key of a dedicated member account granted GET
+        on the specific pricings or collections (or a MANAGEMENT key, if write power is acceptable).
 
         Limited to 120 tool calls a minute per user.
 
@@ -6001,6 +6058,307 @@ paths:
           description: No such session for this user and API key
         '405':
           description: No session was named
+
+  /permalinks/{resourceType}/{resourceId}:
+    get:
+      operationId: resolvePermanentLink
+      summary: Resolve a permanent link
+      description: |
+        Resolves the current frontend location of a pricing family (`/p/{pricingId}`) or of a
+        collection (`/c/{collectionId}`). The destination is recomputed on every request, so
+        renaming or moving a pricing never breaks its permanent link.
+
+        **Authentication**: Public. A user token or an API key is only needed to resolve
+        private resources.
+
+        **Permission**:
+        - A pricing family is resolved for anyone while at least one of its versions is
+          public. When every version is private, the caller must be allowed to read the
+          pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or
+          GET permission on the pricing or on its collection). API keys are limited by
+          their scope: a `VIEW` key reads as MEMBER and a key scoped to another
+          organization grants nothing.
+        - A private collection requires the same kind of permission on the collection.
+        - Anything the caller may not see is answered with 404, exactly like an unknown ID.
+
+        **Caching**: a strong `ETag`; send it back in `If-None-Match` to get `304 Not
+        Modified`. Visibility is checked before any 304. `Cache-Control: private, no-cache`
+        for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: resourceType
+          in: path
+          required: true
+          description: Kind of permanent link.
+          schema:
+            type: string
+            enum: [pricing, collection]
+        - name: resourceId
+          in: path
+          required: true
+          description: |
+            `pricingId` of the pricing family (`resourceType=pricing`) or MongoDB ID of the
+            collection (`resourceType=collection`).
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Current location of the resource in the SPHERE frontend
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentLinkLocation'
+              examples:
+                pricing:
+                  summary: Pricing family inside a collection
+                  value:
+                    location: /pricings/68050bd09890322c57842f6f/zoom?collection=ieee-tsc-2025
+                collection:
+                  summary: Collection
+                  value:
+                    location: /collections/68050bd09890322c57842f6f/ieee-tsc-2025
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}:
+    get:
+      operationId: getPublicPricingManifest
+      summary: Get the manifest of a pricing family
+      description: |
+        Returns the name, permanent URL and version summaries of a pricing family, identified
+        by its immutable `pricingId`. This is the entry point for synchronization clients:
+        poll it (with `If-None-Match`) and download the versions whose `contentHash` changed.
+
+        **Authentication**: Public. Credentials, when sent, are validated like on the rest of
+        the API (an invalid or expired token or API key is rejected with 401). Anonymous
+        callers, and authenticated callers who may not read the pricing, get the public
+        versions only.
+
+        **Private versions**: a caller authenticated with a user token or an API key who may
+        read the pricing (OWNER/ADMIN of its organization, global ADMIN through a user token,
+        or GET permission on the pricing or its collection) also gets its private versions,
+        each flagged `private: true`. API keys are limited by their scope: `ALL` and
+        `MANAGEMENT` keys act with the user's role, a `VIEW` key acts as a plain MEMBER (so it
+        only sees private versions where the user holds GET on the pricing or its collection),
+        and a key scoped to another organization grants nothing.
+
+        **Versions**: sorted newest first by the pricing `createdAt` (from the YAML), with
+        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them,
+        so for an authorized caller it can be a private version. A deleted family is answered
+        with 404; so is a family whose versions are all private, unless the caller may read
+        them.
+
+        **Caching**: a strong `ETag` computed from the body (so the anonymous and the
+        authorized view of a family have different ETags); `If-None-Match` yields `304 Not
+        Modified` only while the versions listed for that caller are still visible to it.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Manifest of the pricing family
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPricingManifest'
+              examples:
+                anonymous:
+                  summary: Anonymous caller (public versions only)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f80
+                    versions:
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+                authorized:
+                  summary: Caller who may read the pricing (private versions flagged)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f91
+                    versions:
+                      - versionId: 68050bd09890322c57842f91
+                        version: "2025"
+                        createdAt: '2025-01-01T00:00:00Z'
+                        contentHash: 9a8f7e6d5c4b3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b
+                        private: true
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/versions/{versionId}/yaml:
+    get:
+      operationId: getPublicPricingVersionYaml
+      summary: Download the Pricing2Yaml of a version
+      description: |
+        Returns the Pricing2Yaml file of one version of a pricing family, as stored by SPHERE.
+        Visibility is checked before and again after reading the file, so a version made
+        private meanwhile is never released to a caller who may not read it.
+
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Public versions are served to everyone; private versions only to a caller who may
+        read the pricing, under the same rules (and API key scopes) as the manifest. For
+        anyone else a private version is answered with 404.
+
+        **Limits**: files larger than 5 MiB are not served through this endpoint (503).
+
+        **Caching**: a strong `ETag` (SHA-256 of the file); `If-None-Match` yields `304 Not
+        Modified` while the version stays visible to the caller. `Cache-Control: private,
+        no-cache` for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - name: versionId
+          in: path
+          required: true
+          description: '`versionId` of the version, as listed in the manifest.'
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Pricing2Yaml file of the version
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/yaml:
+              schema:
+                type: string
+                description: Pricing2Yaml document
+              example: |
+                saasName: Zoom
+                syntaxVersion: "3.0"
+                version: "2024"
+                createdAt: "2024-01-01"
+                currency: USD
+                features: {}
+                plans: {}
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/download:
+    get:
+      operationId: downloadPublicPricingVersions
+      summary: Download every version of a pricing family as a ZIP archive
+      description: |
+        Returns a ZIP archive with one `<pricing-slug>/<version>.yaml` entry per version of
+        the family.
+
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Anonymous callers, and authenticated callers who may not read the pricing, get the
+        public versions only (404 when the family has none).
+
+        **Private versions**: a caller who may read the pricing, under the same rules (and
+        API key scopes) as the manifest, also gets the private versions in the archive.
+
+        The archive is streamed: it carries no `ETag` and is not revalidated.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key`.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+      responses:
+        '200':
+          description: ZIP archive with the versions visible to the caller
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="<pricingId>-versions.zip"`'
+              schema:
+                type: string
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '500':
+          description: The archive could not be generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Unable to generate archive
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
 
 components:
   schemas:
@@ -6261,6 +6619,90 @@ components:
           type: string
       required:
         - error
+
+    PermanentLinkLocation:
+      type: object
+      description: Current destination of a permanent link in the SPHERE frontend.
+      properties:
+        location:
+          type: string
+          description: |
+            Frontend path (relative to `SPHERE_PUBLIC_URL`): `/pricings/{organizationId}/{slug}`,
+            optionally with `?collection={collectionSlug}`, or
+            `/collections/{organizationId}/{collectionSlug}`.
+          example: /pricings/68050bd09890322c57842f6f/zoom
+      required:
+        - location
+
+    PublicPricingVersionSummary:
+      type: object
+      properties:
+        versionId:
+          type: string
+          description: Immutable ID of the version; use it to download its YAML.
+          example: 68050bd09890322c57842f80
+        version:
+          type: string
+          description: Version label as published (need not be a semantic version).
+          example: "2024"
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        contentHash:
+          type: string
+          description: |
+            SHA-256 (hex) of the canonicalised YAML: mapping keys sorted, `saasName`
+            excluded, so a rename alone does not change it.
+          pattern: '^[a-f0-9]{64}$'
+          example: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+        private:
+          type: boolean
+          enum: [true]
+          description: |
+            Present (and `true`) only on private versions, which are listed only to callers
+            who may read them. Omitted on public versions, so anonymous manifests never carry
+            it. Clients that must not handle unpublished versions should skip these entries.
+          example: true
+      required:
+        - versionId
+        - version
+        - createdAt
+        - contentHash
+
+    PublicPricingManifest:
+      type: object
+      properties:
+        pricingId:
+          type: string
+          description: Immutable ID of the pricing family.
+          example: 68050bd09890322c57842f7a
+        name:
+          type: string
+          description: Current name of the pricing.
+          example: Zoom
+        permanentUrl:
+          type: string
+          format: uri
+          description: Permanent frontend link of the family (`{SPHERE_PUBLIC_URL}/p/{pricingId}`).
+          example: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+        latestVersionId:
+          type: string
+          description: |
+            `versionId` of the newest listed version. For a caller who may read private
+            versions it can be a private one; such callers can find the newest public
+            version as the first entry without `private: true`.
+          example: 68050bd09890322c57842f80
+        versions:
+          type: array
+          description: Versions visible to the caller, newest first.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PublicPricingVersionSummary'
+      required:
+        - pricingId
+        - name
+        - permanentUrl
+        - latestVersionId
+        - versions
     
     Name:
       type: string
@@ -7760,107 +8202,30 @@ components:
                 format: date-time
     
     PricingUpdate:
-      description: Pricing metadata update object. (All fields are optional, but at least one must be provided)
+      description: |
+        Pricing metadata update object. All fields are optional, but at least one must be provided.
+        Only these fields can be changed: the rest of a version (its stored file, organization,
+        collection, identity, version label, dates and analytics) is managed by the server, and a
+        request naming any other field is refused with `422`. Pricings are moved between
+        collections with `POST /collections/{organizationId}/{collectionSlug}` and
+        `DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}`.
       required: true
       content:
         application/json:
           schema:
             type: object
+            additionalProperties: false
             properties:
               name:
                 type: string
                 minLength: 1
                 maxLength: 255
-              owner:
-                type: string
-                minLength: 1
-                maxLength: 255
               private:
                 type: boolean
-              _collectionId:
-                type: string
-                description: MongoDB ObjectId reference
-              createdAt:
-                type: string
-                format: date-time
+                description: Visibility of every version of the pricing.
               url:
                 type: string
                 format: uri
-              yaml:
-                type: string
-                description: Serialized pricing definition in YAML format
-              analytics:
-                type: object
-                properties:
-                  numberOfFeatures:
-                    type: number
-                  numberOfInformationFeatures:
-                    type: number
-                  numberOfIntegrationFeatures:
-                    type: number
-                  numberOfIntegrationApiFeatures:
-                    type: number
-                  numberOfIntegrationExtensionFeatures:
-                    type: number
-                  numberOfIntegrationIdentityProviderFeatures:
-                    type: number
-                  numberOfIntegrationWebSaaSFeatures:
-                    type: number
-                  numberOfIntegrationMarketplaceFeatures:
-                    type: number
-                  numberOfIntegrationExternalDeviceFeatures:
-                    type: number
-                  numberOfDomainFeatures:
-                    type: number
-                  numberOfAutomationFeatures:
-                    type: number
-                  numberOfBotAutomationFeatures:
-                    type: number
-                  numberOfFilteringAutomationFeatures:
-                    type: number
-                  numberOfTrackingAutomationFeatures:
-                    type: number
-                  numberOfTaskAutomationFeatures:
-                    type: number
-                  numberOfManagementFeatures:
-                    type: number
-                  numberOfGuaranteeFeatures:
-                    type: number
-                  numberOfSupportFeatures:
-                    type: number
-                  numberOfPaymentFeatures:
-                    type: number
-                  numberOfUsageLimits:
-                    type: number
-                  numberOfRenewableUsageLimits:
-                    type: number
-                  numberOfNonRenewableUsageLimits:
-                    type: number
-                  numberOfResponseDrivenUsageLimits:
-                    type: number
-                  numberOfTimeDrivenUsageLimits:
-                    type: number
-                  numberOfPlans:
-                    type: number
-                  numberOfFreePlans:
-                    type: number
-                  numberOfPaidPlans:
-                    type: number
-                  numberOfAddOns:
-                    type: number
-                  numberOfReplacementAddons:
-                    type: number
-                  numberOfExtensionAddons:
-                    type: number
-                  configurationSpaceSize:
-                    type: number
-                  minSubscriptionPrice:
-                    type: number
-                  maxSubscriptionPrice:
-                    type: number
-            example:
-              name: "Zoom"
-
     CollectionCreate:
       description: Collection creation object
       required: true
@@ -8270,6 +8635,35 @@ components:
                   pattern: '^[a-f0-9]{24}$'
 
   responses:
+    PublicSyncNotModified:
+      description: The `If-None-Match` validator still matches and the resource is still visible.
+    PublicSyncInvalidCredentials:
+      description: A user token or API key was sent but is invalid, revoked or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'UNAUTHORIZED: Invalid or expired token'
+    PublicSyncUnavailable:
+      description: |
+        Unknown, deleted or not visible to the caller. Private resources are not
+        distinguished from missing ones.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+    PublicSyncTemporarilyUnavailable:
+      description: The pricing files could not be read (or exceed the 5 MiB synchronization limit).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+
     PricingList:
       description: A list of pricings matching the provided filter
       content:
@@ -8453,6 +8847,25 @@ components:
                 example: "Cache set successfully"
 
   parameters:
+    PricingId:
+      name: pricingId
+      in: path
+      required: true
+      description: |
+        Immutable ID of a pricing family (the `{id}` of its `/p/{id}` permanent link). It
+        survives renames and moves between collections.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: '`ETag` of a previous response; answered with 304 when it still matches.'
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+
     OrgId:
       name: orgId
       in: path
@@ -8674,7 +9087,7 @@ components:
 
     ExcludePricingsInCollection:
       name: excludePricingsInCollection
-      description: If set to "true", only pricings that are NOT in any collection will be returned. Cannot be used together with the `collection` parameter.
+      description: If set to "true", only pricings that are NOT in any collection will be returned. A pricing in a private collection the caller may not see counts as being in none. Cannot be used together with the `collection` parameter.
       in: query
       required: false
       schema:
@@ -8754,12 +9167,35 @@ components:
         type: string
         example: "a1b2c3d4e5"
 
+  headers:
+    PublicSyncETag:
+      description: Strong validator, the SHA-256 (hex, quoted) of the response body.
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+    PublicSyncCacheControl:
+      description: |
+        `private, no-cache` for anonymous requests: only the client may store the response,
+        and it must revalidate it. `private, no-store` for requests that carry a user token
+        or an API key, whose responses may hold private content and must not be stored.
+      schema:
+        type: string
+        enum: ['private, no-cache', 'private, no-store']
+        example: private, no-cache
+    PublicSyncVary:
+      description: The response depends on the caller's credentials.
+      schema:
+        type: string
+        example: Authorization, x-api-key
+
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: SPHERE web session token, required to consent and manage connected applications
+      description: |
+        SPHERE web session token obtained from `POST /users/login`, sent as `Authorization: Bearer <token>`.
+        Required to consent and manage connected applications. When both a token and an API key are sent, the token is used.
     OAuthMcpAuth:
       type: oauth2
       description: MCP only; mandatory S256 PKCE and resource parameter identifying the exact MCP URL

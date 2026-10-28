@@ -5,6 +5,7 @@ import bodyParser from 'body-parser';
 import { authenticationMiddleware } from './AuthenticationMiddleware';
 import { authorizationMiddleware } from './AuthorizationMiddleware';
 import { apiRateLimiter, authRateLimiter } from './RateLimitMiddleware';
+import { protectedStatic } from './StaticFilesMiddleware';
 
 const loadGlobalMiddlewares = (app: express.Application) => {
   // Requests arrive through NGINX, so the client address is the one it forwards.
@@ -20,7 +21,8 @@ const loadGlobalMiddlewares = (app: express.Application) => {
       crossOriginResourcePolicy: false,
     })
   );
-  app.use(express.static('public'));
+  // Pricing YAML of private versions is only served to authorized callers.
+  app.use(protectedStatic('public'));
   app.use(bodyParser.json({ limit: '2mb' }));
   app.use(bodyParser.urlencoded({ limit: '2mb', extended: true }));
   app.use(authenticationMiddleware);

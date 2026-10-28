@@ -3003,21 +3003,32 @@ describe('Pricings API integration', () => {
       expect(await pricingUpdates(follower.token)).toHaveLength(0);
     });
 
-    it('Not tell followers outside the organization about a private version.', async () => {
+    it('Tell followers about a private version only if they may read it.', async () => {
       const { user: owner, organizationId } = await createAndLoginUser('USER');
       const { user: outsider } = await createAndLoginUser('USER');
       const { user: member } = await createAndLoginUser('USER');
+      const { user: reader } = await createAndLoginUser('USER');
       await createMembership(member.id, organizationId, 'MEMBER');
+      await createMembership(reader.id, organizationId, 'MEMBER');
       const pricing = await createPricingForOrganization({ organizationId });
       const slug = await slugOf(pricing.id);
-      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${outsider.token}`);
-      await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${member.token}`);
+      await createEntityScopedPermission(reader.id, organizationId, slug, 'pricing', {
+        GET: true,
+        PUT: false,
+        DELETE: false,
+        CREATE: false,
+      });
+      for (const follower of [outsider, member, reader]) {
+        await request(app).put(followPath(organizationId, slug)).set('Authorization', `Bearer ${follower.token}`);
+      }
 
       await publishVersion(owner.token, organizationId, slug, pricing.serviceName, true);
       await settle();
 
+      // Being a member is not enough: the private version needs GET on the pricing (or its collection).
       expect(await pricingUpdates(outsider.token)).toHaveLength(0);
-      expect(await pricingUpdates(member.token)).toHaveLength(1);
+      expect(await pricingUpdates(member.token)).toHaveLength(0);
+      expect(await pricingUpdates(reader.token)).toHaveLength(1);
     });
 
     it('Skip the in-app notification when the follower turned off the Pricing Updated inbox channel.', async () => {

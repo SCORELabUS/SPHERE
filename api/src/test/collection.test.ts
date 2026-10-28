@@ -1558,7 +1558,7 @@ describe('Pricing Collections API integration', () => {
       expect(res.body.error).toBeDefined();
     });
     
-    it('Returns 403 if colleciton is private', async () => {
+    it('Returns 404 if collection is private and the caller may not see it', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 
       const collection = await createTestCollection({ _organizationId: organizationId, private: true });
@@ -1569,7 +1569,8 @@ describe('Pricing Collections API integration', () => {
         )
         .set('Authorization', `Bearer ${testUser.token}`);
 
-      expect(res.status).toBe(403);
+      // Answered like a missing collection, so its existence is not revealed.
+      expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
     });
     

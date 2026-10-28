@@ -1,3 +1,4 @@
+import { formatPricingEtag, PreconditionFailedError, PricingRevisionContext } from '../utils/pricing-etag';
 import { withPricingRevisionLock, withPricingRevisionLocks } from '../utils/pricing-revision-lock';
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
@@ -5,7 +6,9 @@ import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
+import { requirePricingFile, resolvePricingFile } from '../utils/pricing-files';
 import { stampCreatedAt } from '../utils/created-at';
+import { permanentYamlPath } from '../utils/permanent-links';
 import {
   PricingService as PricingAnalytics,
   retrievePricingFromPath,
@@ -14,7 +17,7 @@ import {
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import PricingCollectionService from './PricingCollectionService';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
-import CacheService from './CacheService';
+import CacheService, { INTERNAL_CACHE_PREFIX } from './CacheService';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
@@ -22,17 +25,20 @@ import { OrgRole } from '../types/models/Organization';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
 import UserService from './UserService';
-import {
-  formatPricingEtag,
-  PreconditionFailedError,
-  PricingRevisionContext,
-} from '../utils/pricing-etag';
 import PermissionService from './PermissionService';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import mongoose from 'mongoose';
 
-/** Who is asking about a pricing's revision, for `_mayReadRevision`. */
+/**
+ * What a client may change with `PUT /pricings/{organizationId}/{slug}`. The
+ * rest of a version is the server's: its file (`yaml`), organization,
+ * collection (moved through the collection endpoints, which check the
+ * collection's permissions), identity, label, dates and analytics.
+ */
+export const CLIENT_PRICING_FIELDS = ['name', 'private', 'url'] as const;
+
 interface RevisionReader {
   reqUser: LeanUser;
   organizationId: string;
@@ -60,15 +66,20 @@ class PricingService {
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
-    const isAdmin = reqUser && reqUser.role === 'ADMIN';
+    // The global ADMIN bypass is a token's only, never an API key's.
+    const isAdmin = reqUser && reqUser.role === 'ADMIN' && !(reqUser as any).apiKey;
 
-    const pricings = await this.pricingRepository.findAll(queryParams, {
-      orgRole: null,
-      pricings: [],
-      collections: [],
-      isGlobalAdmin: isAdmin ?? false,
-      adminOrgIds: [],
-    });
+    const pricings = await this.pricingRepository.findAll(
+      queryParams,
+      {
+        orgRole: null,
+        pricings: [],
+        collections: [],
+        isGlobalAdmin: isAdmin ?? false,
+        adminOrgIds: [],
+      },
+      await this.permissionService.visiblePrivateCollections(reqUser)
+    );
     return pricings;
   }
 
@@ -77,22 +88,25 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: PricingIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
-      reqUser?.id ?? '',
-      organizationId
-    );
+    // An API key acts within its scopes (a VIEW key as a plain member), as
+    // when reading one pricing.
+    const access = await this.permissionService.actingAccess(reqUser, organizationId);
+    const orgRole: OrgRole | null = access.role;
 
-    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
+    const collectionVisibility = await this.permissionService.visiblePrivateCollections(reqUser);
+
+    if (!reqUser || !access.reachable || (!access.isGlobalAdmin && !orgRole)) {
       const pricings = await this.pricingRepository.findByOrganizationId(
         organizationId,
         { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
-        queryParams ?? { limit: 10, offset: 0 }
+        queryParams ?? { limit: 10, offset: 0 },
+        collectionVisibility
       );
       return pricings;
     }
 
     const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
+      access.isGlobalAdmin ? reqUser : { ...reqUser, role: 'USER' },
       orgRole,
       organizationId
     );
@@ -100,14 +114,16 @@ class PricingService {
     const pricings = await this.pricingRepository.findByOrganizationId(
       organizationId,
       permissions,
-      queryParams ?? { limit: 10, offset: 0 }
+      queryParams ?? { limit: 10, offset: 0 },
+      collectionVisibility
     );
 
     return pricings;
   }
 
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
-    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+    const viaKey = Boolean((reqUser as any).apiKey);
+    if (username !== reqUser.username && (reqUser.role !== 'ADMIN' || viaKey)) {
       throw new Error(
         'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
       );
@@ -124,14 +140,22 @@ class PricingService {
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
-    const permissions = await this.permissionService.buildUserPermissionsContext(user);
+    // With an API key, only what the key reaches and as it acts there.
+    const permissions = await this.permissionService.narrowListingToCaller(
+      reqUser,
+      await this.permissionService.buildUserPermissionsContext(user)
+    );
     const enhancedQueryParams = {
       ...queryParams,
       limit: queryParams?.limit ?? 10,
       offset: queryParams?.offset ?? 0,
       ...(permissions.isGlobalAdmin ? {} : { selectedOrganizations: userOrganizationsIds }),
     };
-    const pricings = await this.pricingRepository.findAll(enhancedQueryParams, permissions);
+    const pricings = await this.pricingRepository.findAll(
+      enhancedQueryParams,
+      permissions,
+      await this.permissionService.visiblePrivateCollections(reqUser)
+    );
     return pricings;
   }
 
@@ -144,31 +168,139 @@ class PricingService {
     slug: string,
     organizationId: string,
     reqUser?: LeanUser,
-    queryParams: { collectionSlug?: string; includePrivate: boolean } = { includePrivate: false }
+    queryParams: { collection?: string; collectionId?: string; includePrivate?: boolean } = {}
   ) {
+    const { collection: collectionFilter, collectionId: collectionIdFilter, ...lookup } = queryParams;
     const pricing: {
+      pricingId?: string;
       name: string;
       slug: string;
-      collection?: { slug?: string };
-      versions: (PricingModel & { private?: boolean })[];
+      collection?: { id?: string | null; name?: string; slug?: string };
+      versions: (PricingModel & { id?: string; private?: boolean; collectionName?: string | null; forkedFrom?: any })[];
     } | null = await this.pricingRepository.findOne(slug, organizationId, {
-      ...queryParams,
+      ...lookup,
       includePrivate: true,
     });
 
-    if (pricing && !(await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))) {
+    const collectionVisible = pricing ? await this._canSeeCollectionOf(reqUser, organizationId, pricing) : false;
+    if (!pricing || !this._matchesCollectionFilter(pricing, collectionVisible, collectionFilter, collectionIdFilter)) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
+    if (!(await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))) {
       pricing.versions = pricing.versions.filter(version => !version.private);
     }
 
-    if (!pricing || pricing.versions.length === 0) {
+    if (pricing.versions.length === 0) {
       throw new Error('NOT FOUND: Pricing not found');
     }
+
+    if (!collectionVisible) {
+      this._hideCollection(pricing);
+    }
+    await this._hideCollectionFolders(pricing, reqUser);
+    await this._hideForkSourceCollections(pricing.versions, reqUser);
 
     for (const version of pricing.versions) {
       processFileUris(version, ['yaml']);
     }
 
     return pricing;
+  }
+
+  /**
+   * Whether the caller may see the collection a pricing found by
+   * `findOne` belongs to (true when it is in none).
+   */
+  private async _canSeeCollectionOf(
+    reqUser: LeanUser | undefined,
+    organizationId: string,
+    pricing: { collection?: { id?: string | null; slug?: string } }
+  ): Promise<boolean> {
+    if (!pricing.collection?.id) return true;
+    const collection = await this.pricingCollectionService.findRef(pricing.collection.id);
+    if (!collection) return true;
+    return this.permissionService.canViewCollection(reqUser, { ...collection, organizationId });
+  }
+
+  /**
+   * The `collection` (slug) and `collectionId` filters of a pricing request. A
+   * collection the caller may not see never matches, exactly as if the pricing
+   * were in no collection, so the filters cannot be used to find it out.
+   */
+  private _matchesCollectionFilter(
+    pricing: { collection?: { id?: string | null; slug?: string } },
+    collectionVisible: boolean,
+    collectionSlug?: string,
+    collectionId?: string
+  ): boolean {
+    if (!collectionSlug && !collectionId) return true;
+    if (!collectionVisible || !pricing.collection?.id) return false;
+    if (collectionSlug && pricing.collection.slug !== collectionSlug) return false;
+    if (collectionId && pricing.collection.id !== String(collectionId)) return false;
+    return true;
+  }
+
+  /**
+   * Strips a private collection the caller may not see from a pricing: no
+   * name, slug or id, and the YAML of each (public) version is linked through
+   * its permanent route, since the stored file path carries the collection's
+   * folder.
+   */
+  private _hideCollection(pricing: {
+    pricingId?: string;
+    collection?: { id?: string | null; name?: string; slug?: string };
+    versions: Array<{ id?: string; private?: boolean; yaml: string; _collectionId?: unknown; collectionName?: unknown }>;
+  }) {
+    pricing.collection = { id: null };
+    for (const version of pricing.versions) {
+      version._collectionId = null;
+      version.collectionName = null;
+      if (!version.private && pricing.pricingId && version.id) {
+        version.yaml = permanentYamlPath(pricing.pricingId, version.id);
+      }
+    }
+  }
+
+  /**
+   * Files uploaded with a collection (ZIP upload) are stored in its folder,
+   * `static/collections/{organizationId}/{collection name or slug}/...`, so the
+   * path of a public version names the collection even when the pricing is no
+   * longer (or was never) linked to it. Unless the caller may see the
+   * collection that folder belongs to, such a version is linked through its
+   * permanent route instead.
+   */
+  private async _hideCollectionFolders(
+    pricing: { pricingId?: string; versions: Array<{ id?: string; private?: boolean; yaml: string }> },
+    reqUser?: LeanUser
+  ) {
+    const visibleFolders = new Map<string, boolean>();
+    for (const version of pricing.versions) {
+      const folder = /^\/?static\/collections\/([^/]+)\/([^/]+)\//.exec(version.yaml ?? '');
+      if (!folder || version.private || !pricing.pricingId || !version.id) continue;
+      const key = `${folder[1]}/${folder[2]}`;
+      if (!visibleFolders.has(key)) {
+        const collection = await this.pricingCollectionService.findRefByFolder(folder[1], folder[2]);
+        visibleFolders.set(key, !!collection && (await this.permissionService.canViewCollection(reqUser, collection)));
+      }
+      if (!visibleFolders.get(key)) {
+        version.yaml = permanentYamlPath(pricing.pricingId, version.id);
+      }
+    }
+  }
+
+  /** A fork names the collection of its source only to those who may see that collection. */
+  private async _hideForkSourceCollections(versions: Array<{ forkedFrom?: any }>, reqUser?: LeanUser) {
+    for (const version of versions) {
+      const origin = version.forkedFrom;
+      if (!origin?.collectionId) continue;
+      const collection = await this.pricingCollectionService.findRef(String(origin.collectionId));
+      const visible = !collection || (await this.permissionService.canViewCollection(reqUser, collection));
+      if (!visible) {
+        const { collectionId: _id, collectionName: _name, collectionSlug: _slug, ...rest } = origin;
+        version.forkedFrom = rest;
+      }
+    }
   }
 
   /**
@@ -183,22 +315,40 @@ class PricingService {
     pricingSlug: string,
     collectionSlug?: string
   ): Promise<boolean> {
-    if (!reqUser) return false;
-    if (reqUser.role === 'ADMIN') return true;
+    // One rule for every read of private versions, API key scopes included.
+    return this.permissionService.canReadPrivateVersions(reqUser, {
+      organizationId,
+      slug: pricingSlug,
+      collectionSlug,
+    });
+  }
 
-    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-    if (!orgRole) return false;
+  /**
+   * `findOne` (every version) with the `collection`/`collectionId` filters a
+   * request may carry, applied as `_matchesCollectionFilter` does.
+   */
+  private async _findForCaller(
+    slug: string,
+    organizationId: string,
+    reqUser: LeanUser | undefined,
+    queryParams: { collection?: string; collectionId?: string; [key: string]: unknown }
+  ) {
+    const { collection: collectionFilter, collectionId: collectionIdFilter } = queryParams;
+    const pricing = await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true });
+    if (!pricing) return null;
+    const visible = await this._canSeeCollectionOf(reqUser, organizationId, pricing);
+    return this._matchesCollectionFilter(pricing, visible, collectionFilter, collectionIdFilter) ? pricing : null;
+  }
 
-    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
-      orgRole,
-      organizationId
-    );
-    return (
-      permissions.adminOrgIds.includes(organizationId) ||
-      permissions.pricings.includes(pricingSlug) ||
-      (!!collectionSlug && permissions.collections.includes(collectionSlug))
-    );
+  /** A pricing as returned after a change, without a collection the caller may not see. */
+  private async _withoutHiddenCollection(pricing: any, organizationId: string, reqUser?: LeanUser) {
+    if (!pricing) return pricing;
+    if (!(await this._canSeeCollectionOf(reqUser, organizationId, pricing))) {
+      this._hideCollection(pricing);
+    }
+    await this._hideCollectionFolders(pricing, reqUser);
+    await this._hideForkSourceCollections(pricing.versions ?? [], reqUser);
+    return pricing;
   }
 
   async getConfigurationSpace(
@@ -222,11 +372,14 @@ class PricingService {
       offset: queryParams?.offset ? parseInt(queryParams.offset) : undefined,
     };
 
+    const { collection: collectionFilter, collectionId: collectionIdFilter } = (queryParams ?? {}) as {
+      collection?: string;
+      collectionId?: string;
+    };
     const retrievedPricing = await this.pricingRepository.findOne(
       pricingSlug,
       organizationId,
       {
-        ...queryParams,
         version: pricingVersion,
         includePrivate: true,
       }
@@ -234,6 +387,11 @@ class PricingService {
     const canSeeVersion = retrievedPricing && (
       !retrievedPricing.versions[0]?.private ||
       await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, retrievedPricing.collection?.slug)
+    ) && this._matchesCollectionFilter(
+      retrievedPricing,
+      await this._canSeeCollectionOf(reqUser, organizationId, retrievedPricing),
+      collectionFilter,
+      collectionIdFilter
     );
     if (!retrievedPricing || !canSeeVersion) {
       throw new Error('NOT FOUND: Pricing not found');
@@ -244,16 +402,16 @@ class PricingService {
     }
 
     let configurationSpace = null;
-    const key: string = `${organizationId}.${pricingSlug}.${pricingVersion}.configurationSpace`;
+    // Under the server's own prefix: the public /cache endpoint can neither read
+    // it (a private version's configuration space) nor plant a forged one.
+    const key: string = `${INTERNAL_CACHE_PREFIX}configuration-space:${organizationId}.${pricingSlug}.${pricingVersion}`;
     const cachedConfigurationSpace = await this.cacheService.get(key);
 
     if (cachedConfigurationSpace) {
       configurationSpace = cachedConfigurationSpace;
     } else {
       // Configuariton space calculation
-      const pricingInfo: Pricing = retrievePricingFromPath(
-        process.env.SERVER_STATICS_FOLDER + retrievedPricing.versions[0].yaml
-      );
+      const pricingInfo: Pricing = retrievePricingFromPath(requirePricingFile(retrievedPricing.versions[0].yaml));
       const pricingAnalytics = new PricingAnalytics(pricingInfo);
       configurationSpace = await pricingAnalytics.getConfigurationSpace();
       await this.cacheService.set(key, configurationSpace, 60 * 60 * 24);
@@ -342,24 +500,29 @@ class PricingService {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
     }
 
-    // A pricing is forkable by whoever can already view it: same visibility rule as show().
-    const sourceOrgRole = await this.permissionService.resolveOrgRole(reqUser.id, sourceOrganizationId);
-    const includeSourcePrivate = reqUser.role === 'ADMIN' || sourceOrgRole !== null;
-
     const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
       version: sourceVersion,
-      includePrivate: includeSourcePrivate,
+      includePrivate: true,
     });
 
     if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
+    // A version is forkable by whoever can already read it, by the same rule as
+    // show(): a public one by anyone, a private one only by who may read the
+    // private versions of its pricing. Anyone else is told it does not exist.
+    if (
+      sourcePricing.versions[0].private === true &&
+      !(await this._canSeePrivateVersions(reqUser, sourceOrganizationId, sourceSlug, (sourcePricing as any).collection?.slug))
+    ) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
     const sourceVersionDoc = sourcePricing.versions[0];
 
-    const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-    const sourceAbsolutePath = path.resolve(staticFolder, sourceVersionDoc.yaml);
-    if (!fs.existsSync(sourceAbsolutePath)) {
+    const sourceAbsolutePath = resolvePricingFile(sourceVersionDoc.yaml);
+    if (!sourceAbsolutePath || !fs.existsSync(sourceAbsolutePath)) {
       throw new Error('NOT FOUND: Pricing file not found');
     }
 
@@ -405,7 +568,10 @@ class PricingService {
       }
 
       const sourceOrganization = (sourceVersionDoc as any).organization;
-      const sourceCollection = (sourcePricing as any).collection;
+      // The source's collection is recorded only when the one forking may see it.
+      const sourceCollection = (await this._canSeeCollectionOf(reqUser, sourceOrganizationId, sourcePricing))
+        ? (sourcePricing as any).collection
+        : null;
 
       const forkedFrom: ForkedFrom = {
         pricingId: sourcePricing.pricingId,
@@ -543,6 +709,13 @@ class PricingService {
         );
       }
 
+      // A new pricing placed in a collection edits that collection: it must be
+      // one of this organization that the caller may edit, as when adding a
+      // pricing to it. A new version stays in its pricing's collection.
+      if (collectionId && !isAddingVersion) {
+        await this._checkCollectionTarget(reqUser, organizationId, String(collectionId));
+      }
+
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
       }
@@ -602,13 +775,7 @@ class PricingService {
         analytics: {},
       };
 
-      // An If-Match names an existing pricing: with none to add to, it cannot match.
-      const reader = {
-        reqUser,
-        organizationId,
-        slug: pricingSlug,
-        collectionSlug: isAddingVersion ? previousPricing.collection?.slug : undefined,
-      };
+      const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: isAddingVersion ? previousPricing.collection?.slug : undefined };
       const parsedPricing = uploadedPricing;
       return await this._withRevisionClaim(isAddingVersion ? previousPricing.pricingId : undefined, revisionContext, reader, async () => {
         const pricing = await this.pricingRepository.create([pricingData]);
@@ -628,8 +795,7 @@ class PricingService {
         }
 
         if (pricingName !== parsedPricing.saasName) {
-          const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-          const finalYamlPath = path.resolve(staticFolder, yamlPath);
+          const finalYamlPath = requirePricingFile(yamlPath);
           const yamlContent = fs.readFileSync(filePath, 'utf8');
           const yamlData = yaml.load(yamlContent) as Record<string, any>;
           if (yamlData && typeof yamlData === 'object') {
@@ -640,6 +806,15 @@ class PricingService {
         }
 
         processFileUris(pricing[0], ['yaml']);
+
+        // A version added to a pricing that sits in a private collection the
+        // author cannot see does not name that collection back.
+        if (collectionId) {
+          const collection = await this.pricingCollectionService.findRef(String(collectionId));
+          if (collection && !(await this.permissionService.canViewCollection(reqUser, collection))) {
+            delete (pricing[0] as any)._collectionId;
+          }
+        }
 
         const pricingAnalytics = new PricingAnalytics(parsedPricing);
 
@@ -664,10 +839,8 @@ class PricingService {
             .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
         }
 
-        // A new pricing's creator may only have been granted access above.
         if (!isAddingVersion && revisionContext) delete revisionContext.mayRead;
         await this._setEtag(pricing[0].pricingId, revisionContext, reader);
-
         return pricing;
       });
     } catch (err) {
@@ -725,10 +898,31 @@ class PricingService {
       const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         includePrivate: true,
       });
+      const notFound =
+        "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive).";
       if (!pricing) {
-        throw new Error(
-          "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive)."
-        );
+        throw new Error(notFound);
+      }
+
+      // Whoever may read a collection inherits GET on the pricings in it, so
+      // a pricing with private versions only goes in by the hand of someone
+      // who may already read them. One whose versions the caller cannot see
+      // at all answers as a missing one.
+      if (
+        reqUser &&
+        pricing.versions.some((version: { private?: boolean }) => version.private === true) &&
+        !(await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, pricing.collection?.slug))
+      ) {
+        if (pricing.versions.every((version: { private?: boolean }) => version.private === true)) {
+          throw new Error(notFound);
+        }
+        throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
+      }
+
+      // Moving a pricing out of a private collection the caller may not see
+      // would change that collection, and is refused without naming it.
+      if (reqUser && !(await this._canSeeCollectionOf(reqUser, organizationId, pricing))) {
+        throw new Error('PERMISSION ERROR: This pricing cannot be added to the collection');
       }
 
       await this.pricingRepository.addPricingToCollection(
@@ -752,13 +946,11 @@ class PricingService {
     queryParams: { collectionSlug?: string; organizationId?: string } = {},
     revisionContext?: PricingRevisionContext
   ) {
+    data = this._clientPricingChanges(data);
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
-      ...queryParams,
-      includePrivate: true,
-    });
+    const pricing = await this._findForCaller(pricingSlug, effectiveOrgId, reqUser, queryParams);
     if (!pricing) {
       throw new Error(
         'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
@@ -780,13 +972,26 @@ class PricingService {
       entityType: 'pricing',
       entitySlug: pricingSlug,
       action: 'PUT',
-      isPrivate: pricing.private,
+      // Every version changes, so a private one among them takes reading it.
+      isPrivate: pricing.versions.some((version: { private?: boolean }) => version.private === true),
       userOrgRole: orgRole,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       entityPermissions: entityPerms,
     });
     if (!updateResult.allowed) {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
+    }
+
+    // Moving the pricing between collections this way must not reach into a
+    // private collection the caller may not see, as source or as destination.
+    if (Object.prototype.hasOwnProperty.call(data, '_collectionId')) {
+      const target = data._collectionId ? await this.pricingCollectionService.findRef(String(data._collectionId)) : null;
+      const allowed =
+        (await this._canSeeCollectionOf(reqUser, effectiveOrgId, pricing)) &&
+        (!target || (await this.permissionService.canViewCollection(reqUser, target)));
+      if (!allowed) {
+        throw new Error('PERMISSION ERROR: This pricing cannot be moved to that collection');
+      }
     }
 
     if (data.name) {
@@ -803,7 +1008,6 @@ class PricingService {
       }
 
       if (data.name) {
-        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
         const processedPaths = new Set<string>();
 
         for (const pricingVersion of pricing.versions) {
@@ -811,9 +1015,10 @@ class PricingService {
           if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
 
           processedPaths.add(yamlRelativePath);
-          const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+          // Never a file outside the pricing folders, whatever the row says.
+          const absolutePath = resolvePricingFile(yamlRelativePath);
 
-          if (!fs.existsSync(absolutePath)) continue;
+          if (!absolutePath || !fs.existsSync(absolutePath)) continue;
 
           const yamlContent = fs.readFileSync(absolutePath, 'utf8');
           const yamlData = yaml.load(yamlContent) as Record<string, any>;
@@ -824,17 +1029,71 @@ class PricingService {
         }
       }
 
-      // Before the read below, for the same reason as in showWithEtag().
       await this._setEtag(pricing.pricingId, revisionContext, reader);
-
       const effectiveSlug = data.slug || pricingSlug;
       const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
-        ...queryParams,
         includePrivate: true,
       });
 
-      return updatedPricing;
+      return this._withoutHiddenCollection(await this._withReadableVersions(updatedPricing, effectiveOrgId, reqUser), effectiveOrgId, reqUser);
     });
+  }
+
+  /** A pricing as returned after a change: its private versions only for who may read them. */
+  private async _withReadableVersions(pricing: any, organizationId: string, reqUser?: LeanUser) {
+    if (!pricing?.versions) return pricing;
+    if (!(await this._canSeePrivateVersions(reqUser, organizationId, pricing.slug, pricing.collection?.slug))) {
+      pricing.versions = pricing.versions.filter((version: { private?: boolean }) => version.private !== true);
+    }
+    return pricing;
+  }
+
+  /**
+   * The changes a client sent to `update`, refused with INVALID DATA when they
+   * touch a field the server manages (see `CLIENT_PRICING_FIELDS`). The slug
+   * always follows the name.
+   */
+  private _clientPricingChanges(data: unknown): { name?: string; private?: boolean; url?: string; slug?: string } {
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+    const refused = Object.keys(body).filter(key => !(CLIENT_PRICING_FIELDS as readonly string[]).includes(key));
+    if (refused.length > 0) {
+      throw new Error(
+        `INVALID DATA: ${refused.join(', ')} cannot be changed: only ${CLIENT_PRICING_FIELDS.join(', ')} can. ` +
+          'Move a pricing between collections with POST /collections/{organizationId}/{collectionSlug} and ' +
+          'DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}.'
+      );
+    }
+    const changes: { name?: string; private?: boolean; url?: string } = {};
+    if (body.name !== undefined) changes.name = String(body.name);
+    if (body.private !== undefined) changes.private = body.private === true || body.private === 'true';
+    if (body.url !== undefined) changes.url = String(body.url);
+    return changes;
+  }
+
+  /**
+   * A collection a new pricing is placed in: one of the same organization
+   * that the caller may edit, by the check `addPricingToCollection` makes.
+   * One the caller may not see answers as one that does not exist.
+   */
+  private async _checkCollectionTarget(reqUser: LeanUser, organizationId: string, collectionId: string) {
+    const collection: any = mongoose.isValidObjectId(collectionId)
+      ? await container.resolve('pricingCollectionRepository').findById(collectionId)
+      : null;
+    if (!collection || String(collection.organization?.id ?? '') !== String(organizationId)) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(reqUser.id, organizationId, orgRole, reqUser.role === 'ADMIN');
+    const entityPermissions = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
+    const evaluation = { userId: reqUser.id, organizationId, entityType: 'collection' as const, entitySlug: collection.slug,
+      isPrivate: collection.private === true, userOrgRole: orgRole, isGlobalAdmin: reqUser.role === 'ADMIN', entityPermissions };
+    if (!this.permissionEngine.evaluate({ ...evaluation, action: 'GET' }).allowed) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const result = this.permissionEngine.evaluate({ ...evaluation, action: 'PUT' });
+    if (!result.allowed) {
+      throw new Error(`PERMISSION ERROR: ${result.reason}`);
+    }
   }
 
   /**
@@ -889,10 +1148,13 @@ class PricingService {
     const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
     return this._withRevisionClaim(pricing.pricingId, revisionContext, reader, async () => {
       await this.pricingRepository.update(target.id, { private: isPrivate });
-      // Before the read below, for the same reason as in showWithEtag().
       await this._setEtag(pricing.pricingId, revisionContext, reader);
 
-      return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
+      return this._withoutHiddenCollection(await this._withReadableVersions(
+        await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true }),
+        organizationId,
+        reqUser
+      ), organizationId, reqUser);
     });
   }
 
@@ -946,10 +1208,7 @@ class PricingService {
 
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
-    const pricing = await this.pricingRepository.findOne(pricingSlug, effectiveOrgId, {
-      ...queryParams,
-      includePrivate: true,
-    });
+    const pricing = await this._findForCaller(pricingSlug, effectiveOrgId, reqUser, queryParams);
 
     if (!pricing) {
       throw new Error('NOT FOUND: Pricing not found');
@@ -992,12 +1251,7 @@ class PricingService {
       collectionId = collection.id;
     }
 
-    return this._withRevisionClaim(pricing.pricingId, revisionContext, {
-      reqUser,
-      organizationId: effectiveOrgId,
-      slug: pricingSlug,
-      collectionSlug: pricing.collection?.slug,
-    }, async () => {
+    return this._withRevisionClaim(pricing.pricingId, revisionContext, { reqUser, organizationId: effectiveOrgId, slug: pricingSlug, collectionSlug: pricing.collection?.slug }, async () => {
       const result = await this.pricingRepository.destroyBySlugOrganizationAndCollectionId(
         pricingSlug,
         effectiveOrgId,
@@ -1053,14 +1307,7 @@ class PricingService {
       throw new Error(`PERMISSION ERROR: ${deleteResult.reason}`);
     }
 
-    // A missing version is a 404 before any If-Match is applied, so that claiming
-    // the revision is never wasted on a delete that cannot happen.
-    if (
-      revisionContext?.precondition &&
-      !pricing.versions.some((candidate: { version: string }) =>
-        [pricingVersion, pricingVersion.replace('_', '.')].includes(candidate.version)
-      )
-    ) {
+    if (revisionContext?.precondition && !pricing.versions.some((candidate: { version: string }) => [pricingVersion, pricingVersion.replace('_', '.')].includes(candidate.version))) {
       throw new Error('NOT FOUND: Pricing version not found');
     }
     const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
@@ -1087,21 +1334,11 @@ class PricingService {
         );
       }
 
-      // Unset when that was the last version: the pricing is gone.
       await this._setEtag(pricing.pricingId, revisionContext, reader);
-
       return true;
     });
   }
 
-  /**
-   * show(), plus the pricing's ETag. The revision is read before the versions:
-   * a write landing in between then leaves an older ETag, which a later
-   * If-Match refuses, never a newer one that would let a stale edit through.
-   *
-   * The ETag moves on with changes to private versions too, so only a caller
-   * who may read the private versions gets it (see `_mayReadRevision`).
-   */
   async showWithEtag(...args: Parameters<PricingService['show']>) {
     const [slug, organizationId] = args;
     let ids = [...(await this.pricingRepository.findRevisionsBySlug(slug, organizationId)).keys()];
@@ -1131,12 +1368,6 @@ class PricingService {
     return { pricing, etag };
   }
 
-  /**
-   * Whether the caller may know the pricing's revision: it moves on with every
-   * change to any version, private ones included, so only a caller who may
-   * read the private versions (the rule show() applies) gets an ETag. Worked
-   * out once per request, before the write, and kept in the context.
-   */
   private async _mayReadRevision(revisionContext: PricingRevisionContext, reader: RevisionReader) {
     if (revisionContext.mayRead === undefined) {
       revisionContext.mayRead = await this._canSeePrivateVersions(
@@ -1149,7 +1380,6 @@ class PricingService {
     return revisionContext.mayRead;
   }
 
-  /** Holds the per-pricing guard through the claim, all writes and the response snapshot. */
   private async _withRevisionClaim<T>(
     pricingId: string | undefined,
     revisionContext: PricingRevisionContext | undefined,
@@ -1163,13 +1393,6 @@ class PricingService {
     return pricingId ? withPricingRevisionLock(String(pricingId), claimedWrite) : claimedWrite();
   }
 
-  /**
-   * Applies a write's If-Match before the write: claims the pricing's current
-   * revision atomically, or fails with 412 and, for a caller who may read it,
-   * the pricing's current ETag. Without If-Match nothing is checked. A caller
-   * who may not read the revision was never given a tag, so no tag of theirs
-   * matches: If-Match cannot be used to probe for changes to private versions.
-   */
   private async _claimRevision(
     pricingId: string | undefined,
     revisionContext: PricingRevisionContext | undefined,

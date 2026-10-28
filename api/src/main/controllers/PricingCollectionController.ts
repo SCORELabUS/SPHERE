@@ -5,6 +5,7 @@ import { CollectionIndexQueryParams } from '../types/services/PricingCollection.
 import path from 'path';
 import archiver from 'archiver';
 import { handleError } from '../utils/users/helpers';
+import { resolvePricingFile } from '../utils/pricing-files';
 
 class PricingCollectionController {
   private readonly pricingCollectionService: PricingCollectionService;
@@ -89,7 +90,10 @@ class PricingCollectionController {
         req.user
       );
       const pricings = await this.pricingService.indexByCollection(collection.id);
-      const pricingsToDownload = pricings;
+      // Private versions only for who may read them (GET on the collection
+      // reaches the pricings in it); anyone else gets the public ones.
+      const reader = await container.resolve('permissionService').privateReader(req.user, organizationId, req.authType);
+      const pricingsToDownload = pricings.filter(pricing => pricing.private !== true || reader('pricing', String(pricing.slug), collection.slug));
 
       if (pricingsToDownload.length === 0) {
         res.status(400).send({ error: 'No pricings to download.' });
@@ -117,10 +121,10 @@ class PricingCollectionController {
         throw new Error('Collections folder not defined in the environment.');
       }
 
-      const baseDir = 'public';
-
       pricingsToDownload.forEach(pricing => {
-        const relativePath = path.join(baseDir, pricing.yaml);
+        // Only files inside the pricing folders, whatever a stored path says.
+        const relativePath = resolvePricingFile(pricing.yaml);
+        if (!relativePath) return;
         const extension = path.extname(pricing.yaml) || '.yml';
 
         archive.file(relativePath, {

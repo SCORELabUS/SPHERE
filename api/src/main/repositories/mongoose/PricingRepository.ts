@@ -6,7 +6,7 @@ import { PricingIndexQueryParams } from '../../types/services/PricingService';
 import mongoose, { PipelineStage } from 'mongoose';
 import { LeanPricing } from '../../types/models/Pricing';
 import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-slug-organization-and-version';
-import { OrgUserPermissionsContext } from '../../types/policies';
+import { OrgUserPermissionsContext, PrivateCollectionAccess } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
@@ -24,7 +24,11 @@ export function storableAnalytics(analytics: object | null | undefined) {
 }
 
 class PricingRepository extends RepositoryBase {
-  async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
+  async findAll(
+    queryParams: PricingIndexQueryParams,
+    permissions: OrgUserPermissionsContext,
+    collectionVisibility: PrivateCollectionAccess = []
+  ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
     try {
@@ -33,7 +37,8 @@ class PricingRepository extends RepositoryBase {
         undefined,
         permissions,
         filteringPipeline,
-        sortPipeline
+        sortPipeline,
+        collectionVisibility
       );
 
       const paginationPipeline = this._processPricingPagination(queryParams);
@@ -61,7 +66,8 @@ class PricingRepository extends RepositoryBase {
   async findByOrganizationId(
     organizationId: string,
     permissions: OrgUserPermissionsContext,
-    queryParams: PricingIndexQueryParams
+    queryParams: PricingIndexQueryParams,
+    collectionVisibility: PrivateCollectionAccess = []
   ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
@@ -69,7 +75,8 @@ class PricingRepository extends RepositoryBase {
       organizationId,
       permissions,
       filteringPipeline,
-      sortPipeline
+      sortPipeline,
+      collectionVisibility
     );
 
     const paginationPipeline = this._processPricingPagination(queryParams);
@@ -192,6 +199,16 @@ class PricingRepository extends RepositoryBase {
       return null;
     }
     return pricing.toObject<LeanPricing>();
+  }
+
+  /** Whether a pricing of an organization has at least one public version. */
+  async hasPublicVersion(slug: string, organizationId: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(organizationId)) return false;
+    return Boolean(await PricingMongoose.exists({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      private: { $ne: true },
+    }));
   }
 
   async create(data: any[]) {
@@ -408,7 +425,7 @@ class PricingRepository extends RepositoryBase {
    * its latest version: what ORBIT needs to name it and tell who may see it.
    */
   async findSummariesByOrganization(organizationId: string): Promise<
-    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number }>
+    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number; publicVersions: number }>
   > {
     const rows = await PricingMongoose.aggregate([
       { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
@@ -420,6 +437,7 @@ class PricingRepository extends RepositoryBase {
           private: { $first: '$private' },
           collectionId: { $first: '$_collectionId' },
           versions: { $sum: 1 },
+          publicVersions: { $sum: { $cond: [{ $eq: ['$private', true] }, 0, 1] } },
         },
       },
       { $sort: { name: 1 } },
@@ -430,6 +448,7 @@ class PricingRepository extends RepositoryBase {
       private: row.private === true,
       collectionId: row.collectionId ? String(row.collectionId) : null,
       versions: row.versions,
+      publicVersions: row.publicVersions ?? 0,
     }));
   }
 
