@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { consumeConsentReturn } from '../../../oauth/utils/consentReturn';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from '../../../core/hooks/useRouter';
@@ -40,7 +41,7 @@ export default function SsoCallbackPage() {
         // The code is single-use; drop it from the URL/history before navigating.
         window.history.replaceState({}, '', '/sso/callback');
         await login(token);
-        router.push('/');
+        router.push(consumeConsentReturn() || '/');
       })
       .catch((e: Error) => setError(e.message));
   }, [params, login, router]);

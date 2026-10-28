@@ -1304,10 +1304,11 @@ describe('Pricings API integration', () => {
 
       const fixture = await createValidPricingYaml(serviceName);
 
+      // No file attached: the request is refused before its body is read, and the
+      // server closing the socket mid-upload makes supertest fail with EPIPE.
       const response = await request(app)
         .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${fixture.version}`)
-        .field('private', 'false')
-        .attach('yaml', fixture.filePath);
+        .field('private', 'false');
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBeDefined();

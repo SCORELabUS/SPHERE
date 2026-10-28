@@ -181,6 +181,7 @@ class PricingCollectionController {
 
       if (!result) {
         res.status(404).send({ error: 'ERROR: Pricing not found or you are not a member of the organization' });
+        return;
       }
       
       res.json({ message: "Pricing added to collection successfully" });

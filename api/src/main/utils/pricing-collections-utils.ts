@@ -1,6 +1,24 @@
 import { Pricing } from "../types/database/Pricing";
 
-export const calculateAnalyticsForPricings = (pricings: any) => {
+/**
+ * The pricing versions whose analytics were stored. A version can lack them when
+ * computing or saving its analytics failed, and it must not break its collection.
+ */
+export const withAnalytics = <T extends { analytics?: unknown }>(pricings: T[]): T[] =>
+  pricings.filter(pricing => pricing.analytics && typeof pricing.analytics === 'object');
+
+export const calculateAnalyticsForPricings = (allPricings: any) => {
+  const pricings: any[] = withAnalytics(allPricings ?? []);
+  if (pricings.length === 0) {
+    const empty = () => ({ dates: [], values: [] });
+    return {
+      evolutionOfPlans: empty(),
+      evolutionOfAddOns: empty(),
+      evolutionOfFeatures: empty(),
+      evolutionOfConfigurationSpaceSize: empty(),
+    };
+  }
+
   const extractionDates = _simulateCollectionEvolution(pricings);
 
   const analyticsByMonth = _getAnalyticsEvolution(extractionDates);
@@ -59,6 +77,12 @@ function _simulateCollectionEvolution(pricings: Pricing[]) {
   return pricingsByDate;
 }
 
+// A metric missing from a version's analytics counts as 0 instead of turning the average into NaN.
+export function analyticsMetric(pricing: any, key: string): number {
+  const value = pricing.analytics?.[key];
+  return Number.isFinite(value) ? value : 0;
+}
+
 function _getAnalyticsEvolution(extractionDates: Record<string, any>) {
   const analyticsEvolution: Record<
     string,
@@ -70,19 +94,19 @@ function _getAnalyticsEvolution(extractionDates: Record<string, any>) {
     
     analyticsEvolution[date] = {
       avgPlans:
-        pricings.reduce((acc: number, pricing: any) => acc + pricing.analytics.numberOfPlans, 0) /
+        pricings.reduce((acc: number, pricing: any) => acc + analyticsMetric(pricing, 'numberOfPlans'), 0) /
         pricings.length,
       avgAddOns:
-        pricings.reduce((acc: number, pricing: any) => acc + pricing.analytics.numberOfAddOns, 0) /
+        pricings.reduce((acc: number, pricing: any) => acc + analyticsMetric(pricing, 'numberOfAddOns'), 0) /
         pricings.length,
       avgFeatures:
         pricings.reduce(
-          (acc: number, pricing: any) => acc + pricing.analytics.numberOfFeatures,
+          (acc: number, pricing: any) => acc + analyticsMetric(pricing, 'numberOfFeatures'),
           0
         ) / pricings.length,
       avgConfigurationSpaceSize:
         pricings.reduce(
-          (acc: number, pricing: any) => acc + pricing.analytics.configurationSpaceSize,
+          (acc: number, pricing: any) => acc + analyticsMetric(pricing, 'configurationSpaceSize'),
           0
         ) / pricings.length,
     };
