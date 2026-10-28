@@ -109,3 +109,19 @@ jobs:
 
       - name: Run frontend tests when provided
         run: pnpm --dir frontend run --if-present test
+
+      - name: Install browser for OAuth settings E2E
+        run: pnpm --dir api exec playwright install --with-deps chromium
+
+      - name: Run connected applications browser E2E
+        run: pnpm --dir api run test:e2e
+        env:
+          SERVER_PORT: '0'
+
+      - name: Upload connected applications screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-applications-screenshots
+          path: api/test-results/connected-applications
+          if-no-files-found: ignore

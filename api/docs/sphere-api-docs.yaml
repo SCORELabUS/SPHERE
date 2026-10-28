@@ -282,6 +282,40 @@ paths:
         '200': {description: Connections with scopes and last use; no token material}
         '401': {description: Web session required}
   /oauth/grants/{grantId}:
+    put:
+      tags: [Authentication]
+      summary: Update organizations and access levels for an active connection (web session only)
+      description: |
+        Replaces the scopes of the current user's connection. The user must still belong to every
+        selected organization. Existing access tokens and MCP sessions use the updated scopes on
+        their next request, without reconnecting. Does not extend expiry or reactivate revoked grants.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: grantId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scopes]
+              properties:
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [organizationId, scope]
+                    properties:
+                      organizationId: {type: string, pattern: '^[a-fA-F0-9]{24}$'}
+                      scope: {type: string, enum: [VIEW, MANAGEMENT, ALL]}
+      responses:
+        '204': {description: Connection scopes updated; no token material returned}
+        '401': {description: SPHERE web session required; API keys and OAuth credentials are refused}
+        '403': {description: Not a member of a selected organization}
+        '404': {description: Connection missing, expired, revoked or owned by another user}
+        '422': {description: Empty, excessive, duplicate or invalid scopes}
     delete:
       tags: [Authentication]
       summary: Immediately revoke one of the current user's connections (web session only)
