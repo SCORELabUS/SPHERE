@@ -83,4 +83,19 @@ describe('OpenAPI specification of the public synchronization API', () => {
       expect(spec.paths[route].get.responses['404'], route).toBeDefined();
     }
   });
+
+  it('documents the private versions served to authorized callers and how they are cached', () => {
+    const summary = spec.components.schemas.PublicPricingVersionSummary;
+    expect(summary.properties.private?.type).toBe('boolean');
+    expect(summary.required).not.toContain('private');
+
+    const cacheControl = resolveRef('#/components/headers/PublicSyncCacheControl');
+    expect(cacheControl.schema.enum).toEqual(['private, no-cache', 'private, no-store']);
+
+    for (const route of routes) {
+      const headers = spec.paths[route].get.responses['200'].headers ?? {};
+      expect(headers['Cache-Control']?.$ref, route).toBe('#/components/headers/PublicSyncCacheControl');
+      expect(headers.Vary?.$ref, route).toBe('#/components/headers/PublicSyncVary');
+    }
+  });
 });
