@@ -495,7 +495,7 @@ class KeyScopes {
   /** How the user widens what the credential reaches. */
   get widenHint(): string {
     return this.isOAuth
-      ? 'Connect the assistant again and choose Management or All for the organizations it needs.'
+      ? 'Edit this connection in SPHERE Settings → Connected applications and choose Management or All for the organizations it needs.'
       : 'Use a key with MANAGEMENT or ALL scope.';
   }
 
