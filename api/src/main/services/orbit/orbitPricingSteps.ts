@@ -3,6 +3,7 @@ import container from '../../config/container';
 import PricingRepository from '../../repositories/mongoose/PricingRepository';
 import PricingCollectionRepository from '../../repositories/mongoose/PricingCollectionRepository';
 import PermissionService from '../PermissionService';
+import { PrivateReader } from '../../policies/privateReadRule';
 import PricingService from '../PricingService';
 import { PermissionEngine } from '../../policies/PermissionEngine';
 import { generateSlug } from '../../utils/slug-manager';
@@ -22,7 +23,7 @@ export const ORBIT_PRICING_LIMITS = {
   collectionNameLength: 255,
 };
 
-export type PricingSummary = { slug: string; name: string; private: boolean; collectionId: string | null; versions: number };
+export type PricingSummary = { slug: string; name: string; private: boolean; collectionId: string | null; versions: number; publicVersions?: number };
 export type CollectionSummary = { id: string; slug: string; name: string; private: boolean };
 type Ref = { slug: string; label: string };
 
@@ -39,6 +40,7 @@ export class PricingStepBuilder {
   private collections = new Map<string, CollectionSummary[]>();
   private visibleCollections = new Map<string, CollectionSummary[]>();
   private batches = new Map<string, any>();
+  private readers = new Map<string, PrivateReader>();
   private engine = new PermissionEngine();
 
   constructor(
@@ -124,6 +126,14 @@ export class PricingStepBuilder {
             : `You cannot create pricings in "${organization.label}".`
         );
         continue;
+      }
+      // A new pricing placed in a collection edits it, as the API checks.
+      if (collection && !addsVersion) {
+        const target = (await this.collectionsOf(organization.id)).find(candidate => candidate.id === collection!.id);
+        if (!target || !(await this.allowed(organization.id, 'collection', 'PUT', target.slug, target.private))) {
+          errors.push(`You cannot add pricings to the collection "${collection.label}".`);
+          continue;
+        }
       }
 
       const isPrivate = item?.private === true;
@@ -278,6 +288,7 @@ export class PricingStepBuilder {
       planned.add(`${organization.id}:${slug}`);
 
       const pricings = await this.pricingRefs(organization, item?.pricings ?? [], warnings, async pricing => {
+        if (!(await this.mayJoinCollection(organization, pricing, errors, warnings))) return false;
         const current = pricing.collectionId ? (await this.collectionsOf(organization.id)).find(collection => collection.id === pricing.collectionId) : null;
         if (current) warnings.push(`"${pricing.name}" moves out of the collection "${current.name}" into "${name}".`);
         return true;
@@ -316,6 +327,7 @@ export class PricingStepBuilder {
           warnings.push(`"${pricing.name}" is already in "${collection.name}"; left out.`);
           return false;
         }
+        if (!(await this.mayJoinCollection(organization, pricing, errors, warnings))) return false;
         const current = pricing.collectionId ? (await this.collectionsOf(organization.id)).find(other => other.id === pricing.collectionId) : null;
         if (current) warnings.push(`"${pricing.name}" moves out of the collection "${current.name}".`);
         return true;
@@ -352,6 +364,36 @@ export class PricingStepBuilder {
       });
     }
     return operations;
+  }
+
+  /**
+   * Whether a pricing may be put in a collection, as the collection endpoints
+   * decide: readers of a collection inherit GET on its pricings, so one with
+   * private versions only goes in by the hand of someone who may read them.
+   * One whose versions the user cannot see at all is left out as unknown.
+   */
+  private async mayJoinCollection(
+    organization: { id: string; label: string },
+    pricing: PricingSummary,
+    errors: string[],
+    warnings: string[]
+  ): Promise<boolean> {
+    const publicVersions = pricing.publicVersions ?? pricing.versions;
+    if (publicVersions >= pricing.versions) return true;
+    if (!this.readers.has(organization.id)) {
+      const permissionService: PermissionService = container.resolve('permissionService');
+      this.readers.set(organization.id, await permissionService.privateReader(requesterOf(this.context.actor), organization.id));
+    }
+    const current = pricing.collectionId
+      ? (await this.collectionRepository.findSummariesByOrganization(organization.id)).find(collection => collection.id === pricing.collectionId)
+      : null;
+    if (this.readers.get(organization.id)!('pricing', pricing.slug, current?.slug)) return true;
+    if (publicVersions === 0) {
+      warnings.push(`"${organization.label}" has no pricing called "${pricing.name}"; left out.`);
+      return false;
+    }
+    errors.push(`You cannot put "${pricing.name}" in a collection.`);
+    return false;
   }
 
   /** An existing organization the user belongs to; what they may do in it is checked per change. */

@@ -17,6 +17,7 @@ import { PricingIndexQueryParams } from '../types/services/PricingService';
 import { CollectionIndexQueryParams } from '../types/services/PricingCollection';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
 import { BatchEvaluationContext, OrgUserPermissionsContext, PrivateCollectionAccess } from '../types/policies';
+import { ActingAccess, actingAccess, PrivateReader, privateReader, PrivateReadSources } from '../policies/privateReadRule';
 import { PermissionEngine } from '../policies/PermissionEngine';
 
 /** A collection as the visibility checks need it. A missing `private` is the legacy public value. */
@@ -63,6 +64,79 @@ class PermissionService {
     return this.permissionQueries.buildAllOrgsBatchContext(userId, isGlobalAdmin);
   }
 
+  /** Roles, permissions and the organization tree, as the private read rule needs them. */
+  private get readSources(): PrivateReadSources {
+    return {
+      resolveOrgRole: (userId, organizationId) => this.resolveOrgRole(userId, organizationId),
+      buildBatchContext: (userId, organizationId, role, isGlobalAdmin) =>
+        this.buildBatchContext(userId, organizationId, role, isGlobalAdmin),
+      findOrganization: organizationId => container.resolve('organizationRepository').findById(organizationId),
+    };
+  }
+
+  /**
+   * How a caller acts in an organization once the API key it came with, if
+   * any, is applied (see `policies/privateReadRule.ts`): VIEW as a plain
+   * MEMBER, MANAGEMENT at most as an ADMIN, no access without a scope, and no
+   * global ADMIN bypass for keys.
+   */
+  async actingAccess(reqUser: LeanUser | undefined, organizationId: string, authType?: string): Promise<ActingAccess> {
+    return actingAccess(this.readSources, reqUser as any, organizationId, authType);
+  }
+
+  /**
+   * A check of whether the caller may read private entities of one
+   * organization: the private versions of a pricing (GET on it or on its
+   * collection) or a private collection. It is the rule
+   * `PermanentLinkService.authorize` applies (see `policies/privateReadRule.ts`),
+   * built once per organization so listings can ask it for many entities.
+   */
+  async privateReader(reqUser: LeanUser | undefined, organizationId: string, authType?: string): Promise<PrivateReader> {
+    return privateReader(this.readSources, reqUser as any, organizationId, authType);
+  }
+
+  /** Whether the caller may read the private versions of one pricing (see `privateReader`). */
+  async canReadPrivateVersions(
+    reqUser: LeanUser | undefined,
+    pricing: { organizationId: string; slug: string; collectionSlug?: string | null },
+    authType?: string
+  ): Promise<boolean> {
+    return (await this.privateReader(reqUser, pricing.organizationId, authType))('pricing', pricing.slug, pricing.collectionSlug);
+  }
+
+  /**
+   * Narrows a listing context built from the user's own roles and permissions
+   * to how the request acts: with an API key, organizations the key does not
+   * reach give nothing, and OWNER/ADMIN access only remains where the key
+   * keeps it (see `actingAccess`). The global ADMIN bypass is a token's only.
+   */
+  async narrowListingToCaller(reqUser: LeanUser, context: OrgUserPermissionsContext): Promise<OrgUserPermissionsContext> {
+    if (!(reqUser as any).apiKey) return context;
+    const organizationIds = new Set<string>([
+      ...context.adminOrgIds,
+      ...[...(context.pricingKeys ?? []), ...(context.collectionKeys ?? [])].map(key => key.split(':')[0]),
+    ]);
+    const reachable = new Set<string>();
+    const adminOrgIds: string[] = [];
+    for (const organizationId of organizationIds) {
+      const access = await this.actingAccess(reqUser, organizationId);
+      if (!access.reachable || !access.role) continue;
+      reachable.add(organizationId);
+      if (access.role === 'OWNER' || access.role === 'ADMIN') adminOrgIds.push(organizationId);
+    }
+    const inReach = (keys?: string[]) => (keys ?? []).filter(key => reachable.has(key.split(':')[0]));
+    return {
+      ...context,
+      orgRole: context.orgRole === 'OWNER' || context.orgRole === 'ADMIN' ? null : context.orgRole,
+      isGlobalAdmin: false,
+      adminOrgIds,
+      pricings: [],
+      collections: [],
+      pricingKeys: inReach(context.pricingKeys),
+      collectionKeys: inReach(context.collectionKeys),
+    };
+  }
+
   async buildOrgUserPermissionsContext(
     reqUser: LeanUser,
     orgRole: OrgRole | null,
@@ -89,6 +163,7 @@ class PermissionService {
     return {
       orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
       pricings: pricingsWithGetPermissions,
+      pricingKeys: pricingsWithGetPermissions.map(slug => `${organizationId}:${slug}`),
       collections: collectionsWithGetPermissions,
       collectionKeys: collectionsWithGetPermissions.map(slug => `${organizationId}:${slug}`),
       isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
@@ -105,6 +180,7 @@ class PermissionService {
     );
 
     const pricingsWithGetPermissions: string[] = [];
+    const pricingKeys: string[] = [];
     const collectionsWithGetPermissions: string[] = [];
     const collectionsWithPutPermissions: string[] = [];
     const collectionKeys: string[] = [];
@@ -128,6 +204,13 @@ class PermissionService {
         ...entriesWithGetPermissions
           .filter(key => key.startsWith('pricing:'))
           .map(key => key.split(':')[1])
+      );
+
+      // Qualified by organization too, as slugs repeat across organizations.
+      pricingKeys.push(
+        ...entriesWithGetPermissions
+          .filter(key => key.startsWith('pricing:'))
+          .map(key => `${orgId}:${key.split(':')[1]}`)
       );
 
       collectionsWithGetPermissions.push(
@@ -154,6 +237,7 @@ class PermissionService {
     return {
       orgRole: null,
       pricings: pricingsWithGetPermissions,
+      pricingKeys,
       collections: collectionsWithGetPermissions,
       collectionsWritable: collectionsWithPutPermissions,
       collectionKeys,
@@ -449,13 +533,20 @@ class PermissionService {
     organizationId: string,
     entityType?: EntityType,
     userId?: string,
-    isGlobalAdmin?: boolean
+    isGlobalAdmin?: boolean,
+    actingRole?: OrgRole | null
   ): Promise<LeanEntityPermission[]> {
     const permissions = await this.entityPermissionRepository.findByOrganization(organizationId, entityType);
 
     if (!userId) return permissions;
 
-    const orgRole = await this.resolveOrgRole(userId, organizationId);
+    const orgRole = actingRole !== undefined ? actingRole : await this.resolveOrgRole(userId, organizationId);
+
+    // The records name the private pricings and collections and who may see
+    // them: a plain member gets their own only.
+    if (!isGlobalAdmin && orgRole !== 'OWNER' && orgRole !== 'ADMIN') {
+      return permissions.filter(permission => String(permission._userId) === String(userId));
+    }
 
     if (isGlobalAdmin || orgRole === 'OWNER' || orgRole === 'ADMIN') {
       const types: EntityType[] = entityType ? [entityType] : ['pricing', 'collection'];
@@ -652,10 +743,18 @@ class PermissionService {
     userId: string,
     organizationId: string,
     pricingSlug: string,
-    userOrgRole?: OrgRole | null
+    userOrgRole?: OrgRole | null,
+    reqUser?: LeanUser
   ): Promise<EntityPermissions> {
     const pricing = await this.pricingRepository.findBySlugAndOrganization(pricingSlug, organizationId);
-    if (!pricing) {
+    // A pricing whose versions are all private, to someone who may not read
+    // them, answers like one that does not exist.
+    if (!pricing || (reqUser && !(await this.pricingRepository.hasPublicVersion(pricingSlug, organizationId)) &&
+      !(await this.canReadPrivateVersions(reqUser, {
+        organizationId,
+        slug: pricingSlug,
+        collectionSlug: await this.pricingCollectionRepository.findSlugById(pricing._collectionId),
+      })))) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 

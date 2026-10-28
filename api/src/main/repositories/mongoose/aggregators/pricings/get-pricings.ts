@@ -4,7 +4,7 @@ import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorR
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
 import { filterByOrganizationAggregator } from "./filter-by-organization";
-import { considerUserPermissionsAggregator } from "./filter-by-user-permissions";
+import { considerUserPermissionsAggregator, grantedByKey } from "./filter-by-user-permissions";
 import { filtersDataGenerator } from "./filters-data-generator";
 import { refactorOutputAggregator } from "./refactor-output";
 
@@ -58,8 +58,8 @@ function canSeePrivateVersions(permissions?: OrgUserPermissionsContext): unknown
   return {
     $or: [
       { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] },
-      { $in: [{ $ifNull: ['$collection.slug', null] }, permissions.collections] },
-      { $in: ['$slug', permissions.pricings] },
+      grantedByKey('$collection.slug', permissions.collectionKeys, permissions.collections),
+      grantedByKey('$slug', permissions.pricingKeys, permissions.pricings),
     ],
   };
 }

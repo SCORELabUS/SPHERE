@@ -4,6 +4,7 @@ import { ForkedFrom } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
+import { requirePricingFile, resolvePricingFile } from '../utils/pricing-files';
 import { stampCreatedAt } from '../utils/created-at';
 import { permanentYamlPath } from '../utils/permanent-links';
 import {
@@ -14,7 +15,7 @@ import {
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import PricingCollectionService from './PricingCollectionService';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
-import CacheService from './CacheService';
+import CacheService, { INTERNAL_CACHE_PREFIX } from './CacheService';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
@@ -26,6 +27,15 @@ import PermissionService from './PermissionService';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import mongoose from 'mongoose';
+
+/**
+ * What a client may change with `PUT /pricings/{organizationId}/{slug}`. The
+ * rest of a version is the server's: its file (`yaml`), organization,
+ * collection (moved through the collection endpoints, which check the
+ * collection's permissions), identity, label, dates and analytics.
+ */
+export const CLIENT_PRICING_FIELDS = ['name', 'private', 'url'] as const;
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -47,7 +57,8 @@ class PricingService {
   }
 
   async index(queryParams: PricingIndexQueryParams, reqUser?: LeanUser) {
-    const isAdmin = reqUser && reqUser.role === 'ADMIN';
+    // The global ADMIN bypass is a token's only, never an API key's.
+    const isAdmin = reqUser && reqUser.role === 'ADMIN' && !(reqUser as any).apiKey;
 
     const pricings = await this.pricingRepository.findAll(
       queryParams,
@@ -68,14 +79,14 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: PricingIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
-      reqUser?.id ?? '',
-      organizationId
-    );
+    // An API key acts within its scopes (a VIEW key as a plain member), as
+    // when reading one pricing.
+    const access = await this.permissionService.actingAccess(reqUser, organizationId);
+    const orgRole: OrgRole | null = access.role;
 
     const collectionVisibility = await this.permissionService.visiblePrivateCollections(reqUser);
 
-    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
+    if (!reqUser || !access.reachable || (!access.isGlobalAdmin && !orgRole)) {
       const pricings = await this.pricingRepository.findByOrganizationId(
         organizationId,
         { orgRole: null, pricings: [], collections: [], isGlobalAdmin: false, adminOrgIds: [] },
@@ -86,7 +97,7 @@ class PricingService {
     }
 
     const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
+      access.isGlobalAdmin ? reqUser : { ...reqUser, role: 'USER' },
       orgRole,
       organizationId
     );
@@ -102,7 +113,8 @@ class PricingService {
   }
 
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
-    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+    const viaKey = Boolean((reqUser as any).apiKey);
+    if (username !== reqUser.username && (reqUser.role !== 'ADMIN' || viaKey)) {
       throw new Error(
         'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
       );
@@ -119,7 +131,11 @@ class PricingService {
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
-    const permissions = await this.permissionService.buildUserPermissionsContext(user);
+    // With an API key, only what the key reaches and as it acts there.
+    const permissions = await this.permissionService.narrowListingToCaller(
+      reqUser,
+      await this.permissionService.buildUserPermissionsContext(user)
+    );
     const enhancedQueryParams = {
       ...queryParams,
       limit: queryParams?.limit ?? 10,
@@ -290,22 +306,12 @@ class PricingService {
     pricingSlug: string,
     collectionSlug?: string
   ): Promise<boolean> {
-    if (!reqUser) return false;
-    if (reqUser.role === 'ADMIN') return true;
-
-    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-    if (!orgRole) return false;
-
-    const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
-      orgRole,
-      organizationId
-    );
-    return (
-      permissions.adminOrgIds.includes(organizationId) ||
-      permissions.pricings.includes(pricingSlug) ||
-      (!!collectionSlug && permissions.collections.includes(collectionSlug))
-    );
+    // One rule for every read of private versions, API key scopes included.
+    return this.permissionService.canReadPrivateVersions(reqUser, {
+      organizationId,
+      slug: pricingSlug,
+      collectionSlug,
+    });
   }
 
   /**
@@ -387,16 +393,16 @@ class PricingService {
     }
 
     let configurationSpace = null;
-    const key: string = `${organizationId}.${pricingSlug}.${pricingVersion}.configurationSpace`;
+    // Under the server's own prefix: the public /cache endpoint can neither read
+    // it (a private version's configuration space) nor plant a forged one.
+    const key: string = `${INTERNAL_CACHE_PREFIX}configuration-space:${organizationId}.${pricingSlug}.${pricingVersion}`;
     const cachedConfigurationSpace = await this.cacheService.get(key);
 
     if (cachedConfigurationSpace) {
       configurationSpace = cachedConfigurationSpace;
     } else {
       // Configuariton space calculation
-      const pricingInfo: Pricing = retrievePricingFromPath(
-        process.env.SERVER_STATICS_FOLDER + retrievedPricing.versions[0].yaml
-      );
+      const pricingInfo: Pricing = retrievePricingFromPath(requirePricingFile(retrievedPricing.versions[0].yaml));
       const pricingAnalytics = new PricingAnalytics(pricingInfo);
       configurationSpace = await pricingAnalytics.getConfigurationSpace();
       await this.cacheService.set(key, configurationSpace, 60 * 60 * 24);
@@ -478,24 +484,29 @@ class PricingService {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
     }
 
-    // A pricing is forkable by whoever can already view it: same visibility rule as show().
-    const sourceOrgRole = await this.permissionService.resolveOrgRole(reqUser.id, sourceOrganizationId);
-    const includeSourcePrivate = reqUser.role === 'ADMIN' || sourceOrgRole !== null;
-
     const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
       version: sourceVersion,
-      includePrivate: includeSourcePrivate,
+      includePrivate: true,
     });
 
     if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
       throw new Error('NOT FOUND: Pricing not found');
     }
 
+    // A version is forkable by whoever can already read it, by the same rule as
+    // show(): a public one by anyone, a private one only by who may read the
+    // private versions of its pricing. Anyone else is told it does not exist.
+    if (
+      sourcePricing.versions[0].private === true &&
+      !(await this._canSeePrivateVersions(reqUser, sourceOrganizationId, sourceSlug, (sourcePricing as any).collection?.slug))
+    ) {
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+
     const sourceVersionDoc = sourcePricing.versions[0];
 
-    const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-    const sourceAbsolutePath = path.resolve(staticFolder, sourceVersionDoc.yaml);
-    if (!fs.existsSync(sourceAbsolutePath)) {
+    const sourceAbsolutePath = resolvePricingFile(sourceVersionDoc.yaml);
+    if (!sourceAbsolutePath || !fs.existsSync(sourceAbsolutePath)) {
       throw new Error('NOT FOUND: Pricing file not found');
     }
 
@@ -681,6 +692,13 @@ class PricingService {
         );
       }
 
+      // A new pricing placed in a collection edits that collection: it must be
+      // one of this organization that the caller may edit, as when adding a
+      // pricing to it. A new version stays in its pricing's collection.
+      if (collectionId && !isAddingVersion) {
+        await this._checkCollectionTarget(reqUser, organizationId, String(collectionId));
+      }
+
       if (!collectionId && previousPricing && previousPricing.versions[0]._collectionId) {
         collectionId = previousPricing.versions[0]._collectionId.toString();
       }
@@ -757,8 +775,7 @@ class PricingService {
       }
 
       if (pricingName !== uploadedPricing.saasName) {
-        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-        const finalYamlPath = path.resolve(staticFolder, yamlPath);
+        const finalYamlPath = requirePricingFile(yamlPath);
         const yamlContent = fs.readFileSync(filePath, 'utf8');
         const yamlData = yaml.load(yamlContent) as Record<string, any>;
         if (yamlData && typeof yamlData === 'object') {
@@ -857,10 +874,25 @@ class PricingService {
       const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         includePrivate: true,
       });
+      const notFound =
+        "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive).";
       if (!pricing) {
-        throw new Error(
-          "NOT FOUND: Pricing not found. Please check that: 1) the pricing is created, 2) that you're a member of the organization, and 3) that the collectionName you've specified is correct (the collectionName is case-sensitive)."
-        );
+        throw new Error(notFound);
+      }
+
+      // Whoever may read a collection inherits GET on the pricings in it, so
+      // a pricing with private versions only goes in by the hand of someone
+      // who may already read them. One whose versions the caller cannot see
+      // at all answers as a missing one.
+      if (
+        reqUser &&
+        pricing.versions.some((version: { private?: boolean }) => version.private === true) &&
+        !(await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, pricing.collection?.slug))
+      ) {
+        if (pricing.versions.every((version: { private?: boolean }) => version.private === true)) {
+          throw new Error(notFound);
+        }
+        throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
       }
 
       // Moving a pricing out of a private collection the caller may not see
@@ -889,6 +921,7 @@ class PricingService {
     data: any,
     queryParams: { collectionSlug?: string; organizationId?: string } = {}
   ) {
+    data = this._clientPricingChanges(data);
     const effectiveOrgId = queryParams.organizationId || organizationId;
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
@@ -914,7 +947,8 @@ class PricingService {
       entityType: 'pricing',
       entitySlug: pricingSlug,
       action: 'PUT',
-      isPrivate: pricing.private,
+      // Every version changes, so a private one among them takes reading it.
+      isPrivate: pricing.versions.some((version: { private?: boolean }) => version.private === true),
       userOrgRole: orgRole,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       entityPermissions: entityPerms,
@@ -947,7 +981,6 @@ class PricingService {
     }
 
     if (data.name) {
-      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
       const processedPaths = new Set<string>();
 
       for (const pricingVersion of pricing.versions) {
@@ -955,9 +988,10 @@ class PricingService {
         if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
 
         processedPaths.add(yamlRelativePath);
-        const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+        // Never a file outside the pricing folders, whatever the row says.
+        const absolutePath = resolvePricingFile(yamlRelativePath);
 
-        if (!fs.existsSync(absolutePath)) continue;
+        if (!absolutePath || !fs.existsSync(absolutePath)) continue;
 
         const yamlContent = fs.readFileSync(absolutePath, 'utf8');
         const yamlData = yaml.load(yamlContent) as Record<string, any>;
@@ -973,7 +1007,64 @@ class PricingService {
       includePrivate: true,
     });
 
-    return this._withoutHiddenCollection(updatedPricing, effectiveOrgId, reqUser);
+    return this._withoutHiddenCollection(await this._withReadableVersions(updatedPricing, effectiveOrgId, reqUser), effectiveOrgId, reqUser);
+  }
+
+  /** A pricing as returned after a change: its private versions only for who may read them. */
+  private async _withReadableVersions(pricing: any, organizationId: string, reqUser?: LeanUser) {
+    if (!pricing?.versions) return pricing;
+    if (!(await this._canSeePrivateVersions(reqUser, organizationId, pricing.slug, pricing.collection?.slug))) {
+      pricing.versions = pricing.versions.filter((version: { private?: boolean }) => version.private !== true);
+    }
+    return pricing;
+  }
+
+  /**
+   * The changes a client sent to `update`, refused with INVALID DATA when they
+   * touch a field the server manages (see `CLIENT_PRICING_FIELDS`). The slug
+   * always follows the name.
+   */
+  private _clientPricingChanges(data: unknown): { name?: string; private?: boolean; url?: string; slug?: string } {
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+    const refused = Object.keys(body).filter(key => !(CLIENT_PRICING_FIELDS as readonly string[]).includes(key));
+    if (refused.length > 0) {
+      throw new Error(
+        `INVALID DATA: ${refused.join(', ')} cannot be changed: only ${CLIENT_PRICING_FIELDS.join(', ')} can. ` +
+          'Move a pricing between collections with POST /collections/{organizationId}/{collectionSlug} and ' +
+          'DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}.'
+      );
+    }
+    const changes: { name?: string; private?: boolean; url?: string } = {};
+    if (body.name !== undefined) changes.name = String(body.name);
+    if (body.private !== undefined) changes.private = body.private === true || body.private === 'true';
+    if (body.url !== undefined) changes.url = String(body.url);
+    return changes;
+  }
+
+  /**
+   * A collection a new pricing is placed in: one of the same organization
+   * that the caller may edit, by the check `addPricingToCollection` makes.
+   * One the caller may not see answers as one that does not exist.
+   */
+  private async _checkCollectionTarget(reqUser: LeanUser, organizationId: string, collectionId: string) {
+    const collection: any = mongoose.isValidObjectId(collectionId)
+      ? await container.resolve('pricingCollectionRepository').findById(collectionId)
+      : null;
+    if (!collection || String(collection.organization?.id ?? '') !== String(organizationId)) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
+    const batchCtx = await this.permissionService.buildBatchContext(reqUser.id, organizationId, orgRole, reqUser.role === 'ADMIN');
+    const entityPermissions = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
+    const evaluation = { userId: reqUser.id, organizationId, entityType: 'collection' as const, entitySlug: collection.slug,
+      isPrivate: collection.private === true, userOrgRole: orgRole, isGlobalAdmin: reqUser.role === 'ADMIN', entityPermissions };
+    if (!this.permissionEngine.evaluate({ ...evaluation, action: 'GET' }).allowed) {
+      throw new Error('NOT FOUND: Collection not found');
+    }
+    const result = this.permissionEngine.evaluate({ ...evaluation, action: 'PUT' });
+    if (!result.allowed) {
+      throw new Error(`PERMISSION ERROR: ${result.reason}`);
+    }
   }
 
   /**
@@ -1026,11 +1117,11 @@ class PricingService {
 
     await this.pricingRepository.update(target.id, { private: isPrivate });
 
-    return this._withoutHiddenCollection(
+    return this._withoutHiddenCollection(await this._withReadableVersions(
       await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true }),
       organizationId,
       reqUser
-    );
+    ), organizationId, reqUser);
   }
 
   async updateVersion(pricingString: string) {

@@ -21,19 +21,28 @@ class PricingFollowService {
     this.notificationService = container.resolve('notificationService');
   }
 
-  // Same visibility rule as PricingService.show(): private versions are only visible to
-  // members of the pricing's organization and to global admins.
-  private async canSeePrivate(userId: string, role: string | undefined, organizationId: string) {
-    if (role === 'ADMIN') return true;
-    return (await this.permissionService.resolveOrgRole(userId, organizationId)) !== null;
+  /**
+   * The pricing a caller may follow: one with a public version, or one whose
+   * private versions the caller may read (the rule of PricingService.show(),
+   * see `PermissionService.canReadPrivateVersions`). Anyone else is told it
+   * does not exist, so following reveals nothing about private versions.
+   */
+  private async findFollowable(organizationId: string, pricingSlug: string, reqUser: LeanUser) {
+    const pricing: any = await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
+    if (!pricing || !pricing.versions?.length || !pricing.pricingId) return { pricing, visible: false };
+    const visible =
+      pricing.versions.some((version: { private?: boolean }) => version.private !== true) ||
+      (await this.permissionService.canReadPrivateVersions(reqUser, {
+        organizationId,
+        slug: pricingSlug,
+        collectionSlug: pricing.collection?.slug,
+      }));
+    return { pricing, visible };
   }
 
   private async resolvePricingId(organizationId: string, pricingSlug: string, reqUser: LeanUser) {
-    const includePrivate = await this.canSeePrivate(reqUser.id, reqUser.role, organizationId);
-    const pricing: any = await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate });
-    if (!pricing || !pricing.versions?.length || !pricing.pricingId) {
-      throw new Error('NOT FOUND: Pricing not found');
-    }
+    const { pricing, visible } = await this.findFollowable(organizationId, pricingSlug, reqUser);
+    if (!visible) throw new Error('NOT FOUND: Pricing not found');
     return String(pricing.pricingId);
   }
 
@@ -44,8 +53,14 @@ class PricingFollowService {
   }
 
   async unfollow(organizationId: string, pricingSlug: string, reqUser: LeanUser) {
-    const pricingId = await this.resolvePricingId(organizationId, pricingSlug, reqUser);
-    await this.pricingFollowRepository.unfollow(reqUser.id, pricingId);
+    const { pricing, visible } = await this.findFollowable(organizationId, pricingSlug, reqUser);
+    if (!visible) {
+      // A follower who can no longer see the pricing still stops following it,
+      // and is answered as if it did not exist.
+      if (pricing?.pricingId) await this.pricingFollowRepository.unfollow(reqUser.id, String(pricing.pricingId));
+      throw new Error('NOT FOUND: Pricing not found');
+    }
+    await this.pricingFollowRepository.unfollow(reqUser.id, String(pricing.pricingId));
     return { following: false };
   }
 
@@ -60,19 +75,42 @@ class PricingFollowService {
    * reaches followers who can see it.
    */
   async notifyNewVersion(
-    version: { pricingId?: unknown; name: string; slug: string; version: string; private?: boolean; _organizationId: unknown },
+    version: {
+      pricingId?: unknown;
+      name: string;
+      slug: string;
+      version: string;
+      private?: boolean;
+      _organizationId: unknown;
+      _collectionId?: unknown;
+    },
     author: LeanUser
   ) {
     if (!version.pricingId) return;
     const organizationId = String(version._organizationId);
     const followerIds = await this.pricingFollowRepository.findFollowerIds(String(version.pricingId));
+    // A private version (its label in the title, message and email included)
+    // only reaches followers who may read the private versions of the pricing.
+    const collectionSlug = version.private
+      ? ((await container.resolve('pricingCollectionRepository').findSlugById(version._collectionId)) ??
+        ((await this.pricingRepository.findOne(version.slug, organizationId, { includePrivate: true })) as any)?.collection?.slug)
+      : undefined;
 
     for (const followerId of followerIds) {
       if (followerId === author.id) continue;
       try {
         if (version.private) {
           const follower = await this.userRepository.findById(followerId);
-          if (!follower || !(await this.canSeePrivate(followerId, follower.role, organizationId))) continue;
+          if (
+            !follower ||
+            !(await this.permissionService.canReadPrivateVersions(
+              { ...(follower as any), id: followerId },
+              { organizationId, slug: version.slug, collectionSlug },
+              'token'
+            ))
+          ) {
+            continue;
+          }
         }
         await this.notificationService.createNotification({
           userId: followerId,

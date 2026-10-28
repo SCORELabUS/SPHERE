@@ -155,7 +155,8 @@ class OrbitMcpService {
    */
   async handle(actor: OrbitActor, apiKey: ApiKey, req: IncomingMessage, res: ServerResponse, body: unknown): Promise<void> {
     this.closeIdleSessions();
-    const context: McpContext = { actor, scopes: new KeyScopes(apiKey) };
+    // Keep read scopes on the actor in both stateless requests and refreshed sessions.
+    const context: McpContext = { actor: { ...actor, apiKey }, scopes: new KeyScopes(apiKey) };
     const sessionId = req.headers['mcp-session-id'];
 
     if (typeof sessionId === 'string' && sessionId) {

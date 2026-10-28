@@ -86,6 +86,8 @@ export interface BatchEvaluationOptions {
 export interface OrgUserPermissionsContext {
   orgRole: OrgRole | null;
   pricings: string[];
+  /** The pricings with GET, as `organizationId:slug` (slugs repeat across organizations). */
+  pricingKeys?: string[];
   collections: string[];
   /** `<organizationId>:<collectionSlug>` of the collections the user may edit (GET and PUT) */
   collectionsWritable?: string[];

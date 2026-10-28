@@ -3789,7 +3789,10 @@ paths:
                   description: Whether the pricing should be private
                 collectionId:
                   type: string
-                  description: Optional collection ID to add the pricing to upon creation
+                  description: |
+                    Optional collection ID to add a new pricing to upon creation. It must be a collection of
+                    the same organization that the caller may edit (PUT on it); one the caller may not see
+                    answers `404`. A new version of an existing pricing stays in that pricing's collection.
                 name:
                   type: string
                   maxLength: 255
@@ -3806,9 +3809,9 @@ paths:
         '401':
           description: Authentication required
         '403':
-          description: Insufficient permissions (user is not a member of the organization, or lacks CREATE permission)
+          description: Insufficient permissions (user is not a member of the organization, lacks CREATE permission, or may not edit the collection given in `collectionId`)
         '404':
-          description: Organization not found
+          description: Organization not found, or the collection given in `collectionId` is not one the caller may see in this organization
         '409':
           description: A pricing with the same name and version already exists in the organization
           content:
@@ -3897,15 +3900,26 @@ paths:
         $ref: '#/components/requestBodies/PricingUpdate'
       responses:
         '200':
-          description: Operation Completed
+          description: |
+            Operation Completed. The pricing as it is after the change, with its private versions
+            only for a caller who may read them (the rule of `GET`); a caller who has just made
+            every version private without that permission gets no versions back.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PricingDetails'
         '403':
-          description: Insufficient permissions
+          description: |
+            Insufficient permissions. A change applies to every version, so on a pricing with
+            private versions it takes being allowed to read them (GET) as well as PUT.
         '404':
           description: User or pricing not found
+        '422':
+          description: The body names a field that cannot be changed (only `name`, `private` and `url` can)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           description: Unexpected error
           content:
@@ -4187,9 +4201,11 @@ paths:
         **Authentication**: Required
 
         **Permission**:
-        - The source pricing must be visible to the caller: PUBLIC pricings can be forked by
-          any authenticated user, PRIVATE ones only by members of the source organization
-          (or a global ADMIN).
+        - The source version must be visible to the caller: a PUBLIC version can be forked by
+          any authenticated user, a PRIVATE one only by who may read the private versions of
+          its pricing (OWNER/ADMIN of the source organization, a member granted GET on the
+          pricing or on its collection, a global ADMIN with a token; API keys within their
+          scopes). Anyone else gets the same `404` as for a version that does not exist.
         - The caller needs `CREATE` permission for pricings in the target organization.
       tags:
         - Pricings
@@ -4288,9 +4304,12 @@ paths:
 
         **Authentication**: Required
 
-        **Permission**: the pricing must be visible to the caller. PUBLIC pricings are visible
-        to any authenticated user; PRIVATE ones only to members of its organization (or a
-        global ADMIN). A pricing the caller cannot see answers 404.
+        **Permission**: the pricing must be visible to the caller. A pricing with a public
+        version can be followed by any authenticated user; one whose versions are all private
+        only by who may read them (OWNER/ADMIN of its organization, a member granted GET on the
+        pricing or on its collection, a global ADMIN with a token). A pricing the caller cannot
+        see answers 404, as one that does not exist. A new private version is only notified to
+        followers who may read it.
       tags:
         - Pricings
       security:
@@ -4788,6 +4807,10 @@ paths:
 
         **Authentication**: (only if client is sphere frontend, otherwise requires ADMIN role)
 
+        Keys under the server's own prefixes (`internal:`, `sso:`, `ratelimit:`, case-insensitive)
+        are never served here, whoever asks (`403`): they hold computed configuration spaces,
+        single sign-on state and rate-limit counters.
+
       tags:
         - Cache
       security:
@@ -4815,6 +4838,12 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: "Cache key is required"
+        '403':
+          description: The origin is not allowed, or the key is reserved for the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Redis client not initialized or internal server error
           content:
@@ -4836,6 +4865,9 @@ paths:
         will fail with a CONFLICT error. Use a different key to store a new value.
 
         **Authentication**: Public (only if client is sphere frontend, otherwise requires ADMIN role)
+
+        Keys under the server's own prefixes (`internal:`, `sso:`, `ratelimit:`, case-insensitive)
+        cannot be written here, whoever asks (`403`).
 
       tags:
         - Cache
@@ -4862,6 +4894,12 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: "Cache key and value are required"
+        '403':
+          description: The origin is not allowed, or the key is reserved for the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: Conflict - value already exists for this key with a different value
           content:
@@ -4896,7 +4934,9 @@ paths:
         record exists. This ensures the frontend can correctly determine that these
         roles have full access without needing separate role checks.
 
-        For MEMBER users, only explicitly configured permission records are returned.
+        For MEMBER users, only their own explicitly configured permission records are
+        returned: the records name private pricings and collections and who may see them.
+        With an API key, the role is the one the key acts with (a VIEW key as a MEMBER).
       tags:
         - Permissions
       security:
@@ -5070,7 +5110,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EntityPermission'
         '404':
-          description: Pricing not found
+          description: Pricing not found, or all its versions are private and the caller may not read them
           content:
             application/json:
               schema:
@@ -5838,9 +5878,14 @@ paths:
         the API key that started them and end after 30 idle minutes. A request without a session stands alone and
         answers in JSON.
 
-        The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
-        (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
-        changes, and handing over, moving or deleting an organization takes the ALL scope on it.
+        The API key's scopes bound what the assistant reaches, exactly as on the REST API: it only sees and names the
+        organizations the key covers (an ALL scope also covers everything below its organization), a key with only
+        VIEW scopes cannot propose changes, and handing over, moving or deleting an organization takes the ALL scope
+        on it. Within an organization a VIEW scope acts as a plain MEMBER and MANAGEMENT at most as an ADMIN, and the
+        global ADMIN bypass does not apply to keys: private versions and private collections are only read where the
+        key's user may read them as such (OWNER/ADMIN, or GET granted on the pricing or its collection). An assistant
+        that needs private reads without write power should use a VIEW key of a dedicated member account granted GET
+        on the specific pricings or collections (or a MANAGEMENT key, if write power is acceptable).
 
         Limited to 120 tool calls a minute per user.
 
@@ -8072,107 +8117,30 @@ components:
                 format: date-time
     
     PricingUpdate:
-      description: Pricing metadata update object. (All fields are optional, but at least one must be provided)
+      description: |
+        Pricing metadata update object. All fields are optional, but at least one must be provided.
+        Only these fields can be changed: the rest of a version (its stored file, organization,
+        collection, identity, version label, dates and analytics) is managed by the server, and a
+        request naming any other field is refused with `422`. Pricings are moved between
+        collections with `POST /collections/{organizationId}/{collectionSlug}` and
+        `DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}`.
       required: true
       content:
         application/json:
           schema:
             type: object
+            additionalProperties: false
             properties:
               name:
                 type: string
                 minLength: 1
                 maxLength: 255
-              owner:
-                type: string
-                minLength: 1
-                maxLength: 255
               private:
                 type: boolean
-              _collectionId:
-                type: string
-                description: MongoDB ObjectId reference
-              createdAt:
-                type: string
-                format: date-time
+                description: Visibility of every version of the pricing.
               url:
                 type: string
                 format: uri
-              yaml:
-                type: string
-                description: Serialized pricing definition in YAML format
-              analytics:
-                type: object
-                properties:
-                  numberOfFeatures:
-                    type: number
-                  numberOfInformationFeatures:
-                    type: number
-                  numberOfIntegrationFeatures:
-                    type: number
-                  numberOfIntegrationApiFeatures:
-                    type: number
-                  numberOfIntegrationExtensionFeatures:
-                    type: number
-                  numberOfIntegrationIdentityProviderFeatures:
-                    type: number
-                  numberOfIntegrationWebSaaSFeatures:
-                    type: number
-                  numberOfIntegrationMarketplaceFeatures:
-                    type: number
-                  numberOfIntegrationExternalDeviceFeatures:
-                    type: number
-                  numberOfDomainFeatures:
-                    type: number
-                  numberOfAutomationFeatures:
-                    type: number
-                  numberOfBotAutomationFeatures:
-                    type: number
-                  numberOfFilteringAutomationFeatures:
-                    type: number
-                  numberOfTrackingAutomationFeatures:
-                    type: number
-                  numberOfTaskAutomationFeatures:
-                    type: number
-                  numberOfManagementFeatures:
-                    type: number
-                  numberOfGuaranteeFeatures:
-                    type: number
-                  numberOfSupportFeatures:
-                    type: number
-                  numberOfPaymentFeatures:
-                    type: number
-                  numberOfUsageLimits:
-                    type: number
-                  numberOfRenewableUsageLimits:
-                    type: number
-                  numberOfNonRenewableUsageLimits:
-                    type: number
-                  numberOfResponseDrivenUsageLimits:
-                    type: number
-                  numberOfTimeDrivenUsageLimits:
-                    type: number
-                  numberOfPlans:
-                    type: number
-                  numberOfFreePlans:
-                    type: number
-                  numberOfPaidPlans:
-                    type: number
-                  numberOfAddOns:
-                    type: number
-                  numberOfReplacementAddons:
-                    type: number
-                  numberOfExtensionAddons:
-                    type: number
-                  configurationSpaceSize:
-                    type: number
-                  minSubscriptionPrice:
-                    type: number
-                  maxSubscriptionPrice:
-                    type: number
-            example:
-              name: "Zoom"
-
     CollectionCreate:
       description: Collection creation object
       required: true

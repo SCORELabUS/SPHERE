@@ -184,6 +184,7 @@ class PricingCollectionService {
       throw new Error(`PERMISSION ERROR: ${createResult.reason}`);
     }
 
+    await this._checkPricingsCanJoin(newCollection.pricings, organizationId, reqUser);
     // Pricings are moved into the new collection: none may come out of a
     // private collection the caller may not see.
     for (const pricingSlug of Array.isArray(newCollection.pricings) ? newCollection.pricings : []) {
@@ -258,6 +259,27 @@ class PricingCollectionService {
         newCollection,
         organizationId
       );
+    }
+  }
+
+  /**
+   * The pricings a new collection is created with: each must exist, and one
+   * with private versions only joins by the hand of someone who may already
+   * read them, since readers of the collection inherit GET on its pricings.
+   * One whose versions the caller cannot see at all answers as missing.
+   */
+  private async _checkPricingsCanJoin(pricingSlugs: unknown, organizationId: string, reqUser: LeanUser) {
+    if (!Array.isArray(pricingSlugs) || pricingSlugs.length === 0) return;
+    const reader = await this.permissionService.privateReader(reqUser, organizationId);
+    for (const raw of pricingSlugs) {
+      const slug = String(raw);
+      const pricing: any = await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true });
+      const versions: Array<{ private?: boolean }> = pricing?.versions ?? [];
+      if (!versions.length) throw new Error(`NOT FOUND: Pricing ${slug} not found`);
+      if (versions.some(version => version.private === true) && !reader('pricing', slug, pricing.collection?.slug)) {
+        if (versions.every(version => version.private === true)) throw new Error(`NOT FOUND: Pricing ${slug} not found`);
+        throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
+      }
     }
   }
 
