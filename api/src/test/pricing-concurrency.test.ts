@@ -144,6 +144,14 @@ describe('Pricing ETag and If-Match', () => {
   }
 
   describe('Who gets the ETag', () => {
+    it('exposes pricing, OAuth and MCP headers together to browser clients', async () => {
+      const target = await ownedPricing();
+      const response = await request(app).get(target.pricingUrl).set('Authorization', `Bearer ${target.token}`);
+      expect(response.status).toBe(200);
+      expect(response.headers['access-control-expose-headers'].split(',').map((header: string) => header.trim()))
+        .toEqual(expect.arrayContaining(['ETag', 'WWW-Authenticate', 'Mcp-Session-Id']));
+    });
+
     it('Gives no revision ETag to callers who may not read the private versions, and gives it to those who may.', async () => {
       const target = await pricingWithPrivateVersion();
       const { user: outsider } = await createAndLoginUser('USER');

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { up as initializeOAuth } from '../../../migrations/mongo/20261024120000-create-oauth-collections';
 import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092005000-pricing-identities';
 import { Seeder } from 'mongo-seeding';
 import path from 'path';
@@ -26,6 +27,8 @@ export const seedDatabase = async () => {
       await mongoose.connection.db.dropDatabase();
     }
     await seeder.import(collections);
+    // OAuth credentials are never seeded: only create their empty indexed collections.
+    await initializeOAuth(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     console.log('==== Mongo seeding successfull ====');
   } catch (err) {
