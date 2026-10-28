@@ -1,4 +1,4 @@
-import { ApiKeyScope } from '../api/apiKeysApi';
+import { ApiKeyScope } from '../../api-keys/api/apiKeysApi';
 import Iconify from '../../core/components/iconify';
 
 interface Organization {
@@ -66,6 +66,7 @@ export default function ScopeSelector({
                 <button
                   key={option.value}
                   type="button"
+                  aria-pressed={currentScope === option.value}
                   onClick={() => updateScope(org.id, option.value)}
                   className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
                     currentScope === option.value
