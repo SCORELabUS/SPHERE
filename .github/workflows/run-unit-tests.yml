@@ -3,20 +3,41 @@ on:
   pull_request:
     branches:
       - '**'
+
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Test
     runs-on: ubuntu-latest
-    environment: testing
+    timeout-minutes: 30
+    # Fork PRs cannot rely on the base repository's configuration variables.
+    # These credentials belong only to this job's disposable MongoDB service.
+    env:
+      ENVIRONMENT: development
+      DATABASE_TECHNOLOGY: mongoDB
+      MONGO_PROTOCOL: mongodb
+      MONGO_HOST: 127.0.0.1
+      MONGO_PORT: '27018'
+      DATABASE_NAME: sphere_scratch
+      DATABASE_USERNAME: sphere_ci
+      DATABASE_PASSWORD: sphere-ci-test-only
+      SERVER_PORT: '3000'
+      SERVER_STATICS_FOLDER: public/
+      AVATARS_FOLDER: static/avatars/users
+      ORG_AVATARS_FOLDER: static/avatars/orgs
+      COLLECTIONS_FOLDER: static/collections
+      REDIS_URL: redis://127.0.0.1:6378
     services:
       mongodb:
         image: mongo:7.0.16
         ports:
-          - 27017:27017
+          - 27018:27017
         env:
           MONGO_INITDB_ROOT_USERNAME: root
-          MONGO_INITDB_ROOT_PASSWORD: 4dm1n
-          MONGO_INITDB_DATABASE: ${{ vars.CI_MONGO_INITDB_DATABASE }}
+          MONGO_INITDB_ROOT_PASSWORD: sphere-ci-root-test-only
+          MONGO_INITDB_DATABASE: sphere_scratch
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
           --health-interval 10s
@@ -25,88 +46,65 @@ jobs:
       redis:
         image: redis:7.4.2
         ports:
-          - 6379:6379
+          - 6378:6379
         options: >-
-          --health-cmd "redis-cli --raw incr ping"
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Use Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-
-      - name: Make envfile
-        uses: SpicyPizza/create-envfile@v2.0
-        with:
-          envkey_ENVIRONMENT: "development"
-          envkey_DATABASE_TECHNOLOGY: mongoDB
-          envkey_MONGO_PROTOCOL: mongodb
-          envkey_MONGO_HOST: ${{vars.CI_MONGO_HOST}}
-          envkey_MONGO_PORT: 27017
-          envkey_MONGO_INITDB_DATABASE: ${{vars.CI_MONGO_INITDB_DATABASE}}
-          envkey_MONGO_INITDB_ROOT_USERNAME: root
-          envkey_MONGO_INITDB_ROOT_PASSWORD: 4dm1n
-          envkey_DATABASE_NAME: ${{vars.CI_MONGO_INITDB_DATABASE}}
-          envkey_DATABASE_USERNAME: ${{vars.CI_DATABASE_USERNAME}}
-          envkey_DATABASE_PASSWORD: ${{vars.CI_DATABASE_PASSWORD}}
-          envkey_SERVER_PORT: ${{vars.CI_SERVER_PORT}}
-          envkey_AVATARS_FOLDER: ${{vars.CI_AVATARS_FOLDER}}
-          envkey_ORG_AVATARS_FOLDER: ${{vars.CI_ORG_AVATARS_FOLDER}}
-          envkey_COLLECTIONS_FOLDER: ${{vars.CI_COLLECTIONS_FOLDER}}
-          envkey_SERVER_STATICS_FOLDER: public/
-          envkey_REDIS_URL: ${{vars.CI_REDIS_URL}}
-          directory: ./api
-          file_name: .env
-          fail_on_empty: false
-          sort_keys: false
-
-      - name: Install mongosh
-        run: |
-          sudo apt-get install gnupg curl
-          curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
-          sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg \
-          --dearmor
-          echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
-          sudo apt-get update
-          sudo apt-get install -y mongodb-mongosh
-          sudo apt-get install -y minizinc
-          sudo apt-get clean
+          node-version: '22.x'
 
       - name: Initialize MongoDB user
+        shell: bash
         run: |
-          mongosh "mongodb://root:4dm1n@localhost:27017/admin" --eval '
-            db = db.getSiblingDB("${{ vars.CI_MONGO_INITDB_DATABASE }}");
-            db.createUser({
-              user: "${{ vars.CI_DATABASE_USERNAME }}",
-              pwd: "${{ vars.CI_DATABASE_PASSWORD }}",
-              roles: [
-                { role: "readWrite", db: "${{ vars.CI_MONGO_INITDB_DATABASE }}" },
-                { role: "dbAdmin", db: "${{ vars.CI_MONGO_INITDB_DATABASE }}" }
-              ]
-            });
-          '
+          set -Eeuo pipefail
+          docker exec \
+            -e DATABASE_NAME -e DATABASE_USERNAME -e DATABASE_PASSWORD \
+            "${{ job.services.mongodb.id }}" \
+            mongosh 'mongodb://root:sphere-ci-root-test-only@127.0.0.1:27017/admin' --quiet --eval '
+              const database = db.getSiblingDB(process.env.DATABASE_NAME);
+              database.createUser({
+                user: process.env.DATABASE_USERNAME,
+                pwd: process.env.DATABASE_PASSWORD,
+                roles: [
+                  { role: "readWrite", db: process.env.DATABASE_NAME },
+                  { role: "dbAdmin", db: process.env.DATABASE_NAME }
+                ]
+              });
+            '
 
-      - name: Install MiniZinc (Official Bundle)
+      - name: Install MiniZinc
+        shell: bash
         run: |
+          set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y snapd
-          sudo snap install minizinc --classic
-          
-      - name: Verify MiniZinc and Solvers
+          sudo apt-get install -y minizinc
+
+      - name: Verify MiniZinc and Gecode
+        shell: bash
         run: |
+          set -Eeuo pipefail
           minizinc --version
-          minizinc --solvers # Esto es clave: si no sale 'gecode', por eso te da el 500
+          minizinc --solvers | tee /tmp/sphere-ci-solvers.txt
+          grep -qi gecode /tmp/sphere-ci-solvers.txt
 
       - name: Install pnpm
         run: npm install -g pnpm@9
-      
+
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Run tests
         run: pnpm run test
+
+      - name: Run frontend tests when provided
+        run: pnpm --dir frontend run --if-present test
