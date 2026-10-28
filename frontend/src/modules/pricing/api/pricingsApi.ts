@@ -3,6 +3,33 @@ import { useAuth } from '../../auth/hooks/useAuth';
 
 export const PRICINGS_BASE_PATH = import.meta.env.VITE_API_URL + '/pricings';
 
+/**
+ * A change sent with the ETag of the pricing as loaded (If-Match) is refused
+ * with 412 when someone else changed the pricing in between.
+ */
+export const PRICING_CHANGED_MESSAGE =
+  'Someone else changed this pricing since you opened it. Reload the page to see the latest version, then try again.';
+
+export function isPricingChangedError(error: unknown): boolean {
+  return (error as { status?: number } | null)?.status === 412;
+}
+
+function ifMatchHeader(etag?: string | null): Record<string, string> {
+  return etag ? { 'If-Match': etag } : {};
+}
+
+/** The body of a successful change, with the pricing's new ETag; the error of a failed one. */
+async function readPricingChange(response: Response) {
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return Promise.reject({
+      status: response.status,
+      message: response.status === 412 ? PRICING_CHANGED_MESSAGE : body.error,
+    });
+  }
+  return { ...body, etag: response.headers.get('ETag') ?? undefined };
+}
+
 export function usePricingsApi() {
   const { fetchWithInterceptor, authUser } = useAuth();
   const token = authUser?.token;
@@ -83,7 +110,8 @@ export function usePricingsApi() {
         if (!response.ok) {
           return Promise.reject(response);
         } else {
-          return response.json();
+          // The ETag goes back in If-Match when this pricing is changed.
+          return response.json().then(body => ({ ...body, etag: response.headers.get('ETag') ?? undefined }));
         }
       })
       .catch(async error => {
@@ -217,42 +245,20 @@ export function usePricingsApi() {
   }, [fetchWithInterceptor, basicHeaders, authUser]);
 
    
-  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any) => {
+  const updatePricing = useCallback((organizationId: string, pricingSlug: string, collectionSlug: string, pricingData: any, etag?: string | null) => {
     return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}?collection=${collectionSlug}`, {
       method: 'PUT',
-      headers: basicHeaders,
+      headers: { ...basicHeaders, ...ifMatchHeader(etag) },
       body: JSON.stringify(pricingData),
-    })
-      .then(response => {
-        if (!response.ok) {
-          return Promise.reject(response);
-        } else {
-          return response.json();
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
+    }).then(readPricingChange);
   }, [fetchWithInterceptor, basicHeaders, username]);
 
-  const updatePricingVersionVisibility = useCallback((organizationId: string, pricingSlug: string, pricingVersion: string, isPrivate: boolean) => {
+  const updatePricingVersionVisibility = useCallback((organizationId: string, pricingSlug: string, pricingVersion: string, isPrivate: boolean, etag?: string | null) => {
     return fetchWithInterceptor(`${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`, {
       method: 'PUT',
-      headers: basicHeaders,
+      headers: { ...basicHeaders, ...ifMatchHeader(etag) },
       body: JSON.stringify({ private: isPrivate }),
-    })
-      .then(response => {
-        if (!response.ok) {
-          return Promise.reject(response);
-        } else {
-          return response.json();
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
+    }).then(readPricingChange);
   }, [fetchWithInterceptor, basicHeaders]);
 
   const updateClientPricingVersion = useCallback(async (pricingString: string) => {
@@ -274,25 +280,14 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
-  const removePricingVersion = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string) => {
+  const removePricingVersion = useCallback(async (organizationId: string, pricingSlug: string, pricingVersion: string, etag?: string | null) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}`,
       {
         method: 'DELETE',
-        headers: basicHeaders,
+        headers: { ...basicHeaders, ...ifMatchHeader(etag) },
       }
-    )
-      .then(response => {
-        if (!response.ok) {
-          return Promise.reject(response);
-        } else {
-          return response.json();
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
+    ).then(readPricingChange);
   }, [fetchWithInterceptor, basicHeaders, username]);
 
   const removePricingFromCollection = useCallback(async (pricingName: string, organizationId: string, collectionSlug: string) => {
@@ -376,28 +371,16 @@ export function usePricingsApi() {
     [followRequest]
   );
 
-  const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string) => {
+  const removePricingBySlug = useCallback(async (organizationId: string, slug: string, collectionSlug?: string, etag?: string | null) => {
     return fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${slug}${
         collectionSlug ? `?collection=${collectionSlug}` : ''
       }`,
       {
         method: 'DELETE',
-        headers: basicHeaders,
+        headers: { ...basicHeaders, ...ifMatchHeader(etag) },
       }
-    )
-      .then(async response => response.json())
-      .then(data => {
-        if (data.error) {
-          return Promise.reject(data.error);
-        } else {
-          return data;
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
+    ).then(readPricingChange);
   }, [fetchWithInterceptor, basicHeaders, username]);
 
   return useMemo(

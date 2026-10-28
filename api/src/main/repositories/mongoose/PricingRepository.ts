@@ -11,6 +11,7 @@ import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
 import { escapeRegex } from '../../utils/regex';
+import { PricingPrecondition } from '../../utils/pricing-etag';
 
 /**
  * Mongoose refuses NaN for a Number, which fails the whole write: a value that
@@ -238,7 +239,66 @@ class PricingRepository extends RepositoryBase {
       }
     }
 
-    return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
+    const created = (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
+    // insertMany runs no document middleware, so the revision is moved on here.
+    await this.bumpRevisions(data.map(item => item.pricingId));
+    return created;
+  }
+
+  /** Moves on the revision of these pricings (their PricingIdentity ids), so their ETags change. */
+  async bumpRevisions(pricingIds: unknown[]) {
+    const ids = [...new Set(pricingIds.filter(Boolean).map(String))];
+    if (ids.length === 0) return;
+    await PricingIdentity.updateMany({ _id: { $in: ids } }, { $inc: { revision: 1 } });
+  }
+
+  /** The revision of a pricing, or null when it does not exist (any more). */
+  async findRevision(pricingId: string): Promise<number | null> {
+    if (!mongoose.isValidObjectId(pricingId)) return null;
+    const identity = await PricingIdentity.findOne({ _id: pricingId, deleted: false })
+      .select('revision')
+      .lean();
+    return identity ? (identity.revision ?? 0) : null;
+  }
+
+  /** The revisions of the pricings of an organization that have this slug, by pricing id. */
+  async findRevisionsBySlug(slug: string, organizationId: string): Promise<Map<string, number>> {
+    if (!mongoose.isValidObjectId(organizationId)) return new Map();
+    const identities = await PricingIdentity.find({ slug, _organizationId: organizationId, deleted: false })
+      .select('revision')
+      .lean();
+    return new Map(identities.map(identity => [String(identity._id), identity.revision ?? 0]));
+  }
+
+  /**
+   * Checks an If-Match and claims the pricing for a write in one atomic update:
+   * the revision moves on only if it is still one the client named, so of two
+   * writers holding the same ETag exactly one gets through. Returns whether it
+   * matched. The write that follows moves the revision on again when it lands
+   * (refreshIdentities), so a tag read while it was in flight no longer matches.
+   */
+  async claimRevision(pricingId: string, precondition: PricingPrecondition): Promise<boolean> {
+    if (!mongoose.isValidObjectId(pricingId)) return false;
+    if (precondition.kind === 'any') {
+      return (await PricingIdentity.exists({ _id: pricingId, deleted: false })) !== null;
+    }
+    const revisions = precondition.tags
+      .filter(tag => tag.pricingId === pricingId)
+      .map(tag => tag.revision);
+    if (revisions.length === 0) return false;
+    const result = await PricingIdentity.updateOne(
+      {
+        _id: pricingId,
+        deleted: false,
+        $or: [
+          { revision: { $in: revisions } },
+          // Identities created before revisions existed count as revision 0.
+          ...(revisions.includes(0) ? [{ revision: { $exists: false } }] : []),
+        ],
+      },
+      { $inc: { revision: 1 } }
+    );
+    return result.modifiedCount === 1;
   }
 
   async updateAnalytics(pricingId: string, analytics: PricingAnalytics) {
@@ -262,6 +322,7 @@ class PricingRepository extends RepositoryBase {
     }));
 
     const result = await PricingMongoose.bulkWrite(bulkOps);
+    await this.bumpRevisions(pricingsToUpdate.map((pricing: any) => pricing.pricingId));
 
     return result.modifiedCount === pricingsToUpdate.length;
   }

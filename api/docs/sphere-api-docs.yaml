@@ -3765,6 +3765,13 @@ paths:
         - MEMBER: requires the `CREATE` permission on the `pricing` entity type for the organization.
         - Global ADMIN: can create pricings for any organization.
 
+        When a pricing with the uploaded name already exists, the file is added to it as a new
+        version, as with `POST /pricings/{organizationId}/{pricingSlug}/{pricingVersion}`.
+
+        **Concurrency**: optional `If-Match` with that pricing's `ETag`. A stale tag is refused with
+        `412` and nothing is added; any tag is refused when no pricing of that name exists yet,
+        since a tag names an existing pricing. It is never required.
+
       tags:
         - Pricings
       security:
@@ -3772,6 +3779,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PricingIfMatch'
       requestBody:
         required: true
         content:
@@ -3802,6 +3810,11 @@ paths:
       responses:
         '200':
           description: Pricing Created
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -3818,6 +3831,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -3852,6 +3867,12 @@ paths:
         - Any other USER: only the PUBLIC versions.
         - Global ADMIN: every version.
 
+        For callers who may read the pricing's private versions (the rule above), the `ETag` header
+        names the pricing's current revision. Send it back in `If-Match` when changing the pricing,
+        so as not to overwrite someone else's change. Other callers get no revision `ETag`: the
+        revision also moves when only a private version changes. The response is
+        `Cache-Control: no-store`.
+
       tags:
         - Pricings
       security:
@@ -3863,6 +3884,11 @@ paths:
       responses:
         '200':
           description: Operation Completed
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -3888,6 +3914,9 @@ paths:
         **Permission**: 
         - USER: can update their own pricings.
         - ADMIN: can update any pricing.
+
+        **Concurrency**: optional `If-Match` with the `ETag` of the pricing as read; a stale tag
+        is refused with `412` and nothing changes.
       tags:
         - Pricings
       security:
@@ -3896,6 +3925,7 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/CollectionQuery'
+        - $ref: '#/components/parameters/PricingIfMatch'
       requestBody:
         $ref: '#/components/requestBodies/PricingUpdate'
       responses:
@@ -3904,6 +3934,11 @@ paths:
             Operation Completed. The pricing as it is after the change, with its private versions
             only for a caller who may read them (the rule of `GET`); a caller who has just made
             every version private without that permission gets no versions back.
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -3914,6 +3949,10 @@ paths:
             private versions it takes being allowed to read them (GET) as well as PUT.
         '404':
           description: User or pricing not found
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PricingPreconditionRequired'
         '422':
           description: The body names a field that cannot be changed (only `name`, `private` and `url` can)
           content:
@@ -3938,6 +3977,9 @@ paths:
         - USER: can delete their own pricings.
         - ADMIN: can delete any pricing.
 
+        **Concurrency**: optional `If-Match`, as for `PUT`. It is refused with `412` when the
+        pricing changed after it was read, for instance when a version was added.
+
       tags:
         - Pricings
       security:
@@ -3946,6 +3988,7 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/CollectionQuery'
+        - $ref: '#/components/parameters/PricingIfMatch'
       responses:
         '200':
           description: Operation Completed
@@ -3961,6 +4004,10 @@ paths:
           description: Insufficient permissions
         '404':
           description: User or pricing not found
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PricingPreconditionRequired'
         default:
           description: Unexpected error
           content:
@@ -4022,6 +4069,10 @@ paths:
           AND entity-level `CREATE` permission on the specific pricing.
         - Global ADMIN: can add versions to any pricing.
 
+        **Concurrency**: optional `If-Match` with the pricing's `ETag`; a stale tag is refused
+        with `412` and no version is added. Adding a version overwrites nothing, so it is never
+        required, even with `PRICING_REQUIRE_IF_MATCH`.
+
       tags:
         - Pricings
       security:
@@ -4031,6 +4082,7 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
+        - $ref: '#/components/parameters/PricingIfMatch'
       requestBody:
         required: true
         content:
@@ -4061,6 +4113,11 @@ paths:
       responses:
         '200':
           description: Pricing version created successfully
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -4077,6 +4134,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -4099,6 +4158,9 @@ paths:
         - MEMBER with `PUT` permission on the pricing (and `GET` if the version is private).
         - Global ADMIN.
 
+        **Concurrency**: optional `If-Match` with the `ETag` of the pricing (the tag covers every
+        version); a stale tag is refused with `412` and nothing changes.
+
       tags:
         - Pricings
       security:
@@ -4108,6 +4170,7 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
+        - $ref: '#/components/parameters/PricingIfMatch'
       requestBody:
         required: true
         content:
@@ -4123,6 +4186,11 @@ paths:
       responses:
         '200':
           description: Visibility updated. Returns the pricing with all its versions.
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -4133,6 +4201,10 @@ paths:
           description: Insufficient permissions
         '404':
           description: Pricing or pricing version not found
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PricingPreconditionRequired'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         default:
@@ -4152,6 +4224,9 @@ paths:
         - USER: can delete versions of their own pricings.
         - ADMIN: can delete versions of any pricing.
 
+        **Concurrency**: optional `If-Match`, as for `PUT`. The response carries the new `ETag`
+        unless the deleted version was the last one.
+
       tags:
         - Pricings
       security:
@@ -4160,9 +4235,15 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
+        - $ref: '#/components/parameters/PricingIfMatch'
       responses:
         '200':
           description: Operation Completed
+          headers:
+            ETag:
+              description: The pricing's entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions; send it in `If-Match`.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -4175,6 +4256,10 @@ paths:
           description: Insufficient permissions
         '404':
           description: User, pricing or pricing version not found
+        '412':
+          $ref: '#/components/responses/PricingPreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PricingPreconditionRequired'
         default:
           description: Unexpected error
           content:
@@ -8699,6 +8784,31 @@ components:
                 items:
                   $ref: '#/components/schemas/PublicPricingCollection'
 
+    PricingPreconditionFailed:
+      description: |
+        `If-Match` did not name the pricing's current revision: someone changed it since it was
+        read. Nothing was changed. The `ETag` header gives the current revision (absent when the
+        pricing no longer exists or the caller may not read its private versions); read the pricing
+        again before retrying.
+      headers:
+        ETag:
+          description: The pricing's current entity tag, `"<pricingId>.<revision>"`, for callers who may read its private versions.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'PRECONDITION FAILED: The pricing has changed since you read it. Reload it and try again.'
+    PricingPreconditionRequired:
+      description: |
+        Only when the server runs with `PRICING_REQUIRE_IF_MATCH=true` (off by default): the
+        request changes or deletes a pricing and carries no `If-Match`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     UnprocessableEntity:
       description: Request sent could not be processed properly
       content:
@@ -8799,6 +8909,31 @@ components:
       required: true
       schema:
         type: string
+
+    PricingIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        One or more `ETag` values of the pricing as read (`GET /pricings/{organizationId}/{pricingSlug}`
+        or the response of a previous change), or `*`. The change only happens if one of them is
+        still the pricing's current revision, checked atomically with the write, so of two clients
+        sending the same tag exactly one succeeds; the other gets `412`. A `W/` prefix added by a
+        proxy is accepted. Without the header the request behaves as before.
+
+        The tag is `"<pricingId>.<revision>"`. The revision moves on with every change to any
+        version of the pricing (metadata, visibility, versions added or deleted, moves between
+        collections), whoever makes it. It names the pricing, not the response body, which also
+        depends on the caller's permissions.
+
+        Because the revision also moves when only a private version changes, the `ETag` is sent
+        only to callers who may read the pricing's private versions (OWNER or ADMIN of the
+        organization, global ADMIN, or `GET` permission on the pricing or its collection). For any
+        other caller no tag matches (`412`), so `If-Match` cannot reveal such changes; they can
+        still send `*`.
+      schema:
+        type: string
+        example: '"68050bd09890322c57842f70.7"'
 
     PermissionId:
       name: permissionId
