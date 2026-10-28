@@ -8,7 +8,7 @@ import { createAndLoginUser } from './utils/users/userTestUtils';
 import { cleanupOrganization } from './utils/organizations/organizationTestUtils';
 import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
 import { OAuthClient, OAuthGrant, OAuthToken } from '../main/repositories/mongoose/models/OAuthMongoose';
-import { oauthIssuer, oauthResource } from '../main/services/OAuthService';
+import { hashOAuthToken, oauthIssuer, oauthResource } from '../main/services/OAuthService';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Server } from 'node:http';
@@ -228,6 +228,25 @@ describe('ORBIT MCP OAuth', () => {
     expect(rotated.some(result => result.status === 400)).toBe(true);
     const grant = await OAuthGrant.findOne({ clientId: client.client_id }).lean();
     expect(grant!.revoked).toBe(true);
+  });
+
+  it('keeps OAuth entries out of the public cache endpoint', async () => {
+    const client = await register();
+    const verifier = randomBytes(32).toString('base64url');
+    const forged = randomBytes(32).toString('base64url');
+    const approval = { clientId: client.client_id, clientName: 'Forged', redirectUri: redirect,
+      codeChallenge: createHash('sha256').update(verifier).digest('base64url'), resource: oauthResource(),
+      userId: otherUser.id, scopes: [{ organizationId: otherOrganizationId, scope: 'ALL' }] };
+    const key = ' OAuth:code:' + hashOAuthToken(forged);
+    const written = await request(app).post(BASE_PATH + '/cache').set('X-Origin', 'http://localhost')
+      .send({ key, value: approval, expirationInSeconds: 300 });
+    expect(written.status).toBe(403);
+    const read = await request(app).get(BASE_PATH + '/cache').set('X-Origin', 'http://localhost').query({ key });
+    expect(read.status).toBe(403);
+    const exchanged = await request(app).post(base + '/token').type('form').send({ grant_type: 'authorization_code',
+      code: forged, code_verifier: verifier, redirect_uri: redirect, client_id: client.client_id, resource: oauthResource() });
+    expect(exchanged.status).toBe(400);
+    expect(await OAuthGrant.countDocuments({ clientId: client.client_id })).toBe(0);
   });
 
   it('revokes through RFC 7009 only for the owning client and rejects expired tokens', async () => {

@@ -8,6 +8,8 @@ import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 import CacheService from './CacheService';
 import type { ApiKey } from '../types/models/User';
 
+/** Prefix of OAuthService's cache entries; the public /cache endpoint refuses it (CacheController). */
+export const OAUTH_CACHE_PREFIX = 'oauth:';
 export const hashOAuthToken = (value: string) => createHash('sha256').update(value).digest('hex');
 const secret = (prefix: string) => prefix + randomBytes(32).toString('hex');
 export const oauthIssuer = () => {
@@ -78,15 +80,15 @@ export default class OAuthService implements OAuthServerProvider {
     const id = secret('');
     const pending: Pending = { clientId: client.client_id, clientName: client.client_name || 'MCP application',
       redirectUri: params.redirectUri, codeChallenge: params.codeChallenge, resource, state: params.state };
-    await this.cache.set('oauth:request:' + id, pending, 600);
+    await this.cache.set(OAUTH_CACHE_PREFIX + 'request:' + id, pending, 600);
     res.redirect(oauthIssuer() + '/oauth/consent?request=' + id);
   }
 
   private async pending(id: string, userId: string): Promise<Pending> {
-    const pending = await this.cache.get('oauth:request:' + id);
+    const pending = await this.cache.get(OAUTH_CACHE_PREFIX + 'request:' + id);
     if (!pending) throw new Error('NOT FOUND: Consent request expired');
-    await this.cache.setIfAbsent('oauth:owner:' + id, userId, 600);
-    if (await this.cache.get('oauth:owner:' + id) !== userId) throw new Error('NOT FOUND: Consent request unavailable');
+    await this.cache.setIfAbsent(OAUTH_CACHE_PREFIX + 'owner:' + id, userId, 600);
+    if (await this.cache.get(OAUTH_CACHE_PREFIX + 'owner:' + id) !== userId) throw new Error('NOT FOUND: Consent request unavailable');
     return pending;
   }
 
@@ -111,19 +113,19 @@ export default class OAuthService implements OAuthServerProvider {
       }
     }
     // Consume only after validation, atomically, before issuing any grant/code.
-    if (!await this.cache.take('oauth:request:' + id)) throw new Error('NOT FOUND: Consent request already consumed');
+    if (!await this.cache.take(OAUTH_CACHE_PREFIX + 'request:' + id)) throw new Error('NOT FOUND: Consent request already consumed');
     const callback = new URL(pending.redirectUri);
     if (pending.state !== undefined) callback.searchParams.set('state', pending.state);
     if (!approve) { callback.searchParams.set('error', 'access_denied'); return { redirectUrl: callback.href }; }
     const code = secret('');
     const approved: Code = { ...pending, userId, scopes };
-    await this.cache.set('oauth:code:' + hashOAuthToken(code), approved, 300);
+    await this.cache.set(OAUTH_CACHE_PREFIX + 'code:' + hashOAuthToken(code), approved, 300);
     callback.searchParams.set('code', code);
     return { redirectUrl: callback.href };
   }
 
   private async code(client: OAuthClientInformationFull, value: string): Promise<Code> {
-    const code = await this.cache.get('oauth:code:' + hashOAuthToken(value));
+    const code = await this.cache.get(OAUTH_CACHE_PREFIX + 'code:' + hashOAuthToken(value));
     if (!code || code.clientId !== client.client_id) throw new InvalidGrantError('Invalid authorization code');
     return code;
   }
@@ -135,7 +137,7 @@ export default class OAuthService implements OAuthServerProvider {
   async exchangeAuthorizationCode(client: OAuthClientInformationFull, value: string, _verifier?: string, redirectUri?: string, resource?: URL) {
     const code = await this.code(client, value);
     if (code.resource !== this.resource(resource) || redirectUri !== code.redirectUri) throw new InvalidGrantError('redirect_uri or resource mismatch');
-    if (!await this.cache.take('oauth:code:' + hashOAuthToken(value))) throw new InvalidGrantError('Authorization code already used');
+    if (!await this.cache.take(OAUTH_CACHE_PREFIX + 'code:' + hashOAuthToken(value))) throw new InvalidGrantError('Authorization code already used');
     // Created only now, so an approval whose code is never exchanged leaves no connection behind.
     const grant = await this.repo.createGrant({ userId: code.userId, clientId: code.clientId, clientName: code.clientName,
       resource: code.resource, scopes: code.scopes, refreshHash: secret('pending_'), expiresAt: new Date(Date.now() + 30 * 86400000) });
