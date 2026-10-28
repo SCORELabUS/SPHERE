@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ApiKeyScope, CreateApiKeyData } from '../api/apiKeysApi';
-import OrganizationSearchInput, { OrgSearchResult } from './OrganizationSearchInput';
-import ScopeSelector from './ScopeSelector';
+import OrganizationSearchInput, { OrgSearchResult } from '../../core/components/organization-search-input';
+import ScopeSelector from '../../core/components/scope-selector';
 import BlockAlert from '../../core/components/block-alert';
 
 interface CreateApiKeyDialogProps {

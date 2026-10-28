@@ -16,6 +16,8 @@ class OrbitPlanRepository extends RepositoryBase {
     conversationId: string;
     summary: string;
     source: OrbitPlanSource;
+    apiKeyId?: string | null;
+    credentialId?: string | null;
     steps: OrbitPlanStep[];
     warnings: string[];
     ignoredRows: OrbitIgnoredRow[];
@@ -26,6 +28,8 @@ class OrbitPlanRepository extends RepositoryBase {
       _conversationId: new mongoose.Types.ObjectId(data.conversationId),
       summary: data.summary,
       source: data.source,
+      apiKeyId: data.apiKeyId ?? null,
+      credentialId: data.credentialId ?? null,
       steps: data.steps,
       warnings: data.warnings,
       ignoredRows: data.ignoredRows,
