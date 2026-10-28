@@ -38,6 +38,11 @@ import PricingCollectionMongoose from '../main/repositories/mongoose/models/Pric
 import NotificationMongoose from '../main/repositories/mongoose/models/NotificationMongoose';
 import UserMongoose from '../main/repositories/mongoose/models/UserMongoose';
 import mongoose from 'mongoose';
+import type { AddressInfo } from 'net';
+import type { Server as HttpServer } from 'http';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ElicitRequestSchema, type ElicitRequestFormParams, type ElicitResult } from '@modelcontextprotocol/sdk/types.js';
 import { ORBIT_PLAN_LIMITS } from '../main/services/orbit/OrbitPlanService';
 import { ORBIT_MESSAGES_PER_HOUR } from '../main/services/orbit/OrbitService';
 
@@ -1582,12 +1587,16 @@ describe('ORBIT assistant API integration', () => {
     };
 
     let nextId = 1;
-    const mcp = (key: string, method: string, params: Record<string, unknown> = {}) =>
-      request(app)
+    const mcp = async (key: string, method: string, params: Record<string, unknown> = {}) => {
+      const response = await request(app)
         .post(`${BASE_PATH}/orbit/mcp`)
         .set('x-api-key', key)
         .set('Accept', 'application/json, text/event-stream')
         .send({ jsonrpc: '2.0', id: nextId++, method, params });
+      // An initialize starts a session, whose answers come as server-sent events.
+      if (String(response.headers['content-type']).includes('text/event-stream')) response.body = parseSse(response.text).at(-1)?.data;
+      return response;
+    };
 
     /** Calls a tool and returns its result as data, with whether the server flagged it as an error. */
     const callTool = async (key: string, name: string, args: Record<string, unknown> = {}) => {
@@ -1708,6 +1717,153 @@ describe('ORBIT assistant API integration', () => {
       expect(refused.isError).toBe(true);
       expect(refused.data.error).toContain('VIEW');
       expect(await OrbitPlanMongoose.countDocuments({ _userId: user.id })).toBe(0);
+      expect((await callTool(key, 'confirm_plan', { planId: new mongoose.Types.ObjectId().toString() })).data.error).toContain('VIEW');
+    });
+
+    it('confirms through the assistant when the client cannot show a dialog, only the plans of the same key', async () => {
+      const { user } = await newUser();
+      const managed = await createTestOrganization(user.token, { displayName: `Confirmed ${randomSuffix()}` });
+      const key = await createApiKey(user, [{ organizationId: managed.id, scope: 'MANAGEMENT' }]);
+      const otherKey = await createApiKey(user, [{ organizationId: managed.id, scope: 'MANAGEMENT' }]);
+
+      const proposed = await callTool(key, 'propose_plan', { summary: 'Describir', updates: [{ organizationId: managed.id, description: 'Desde el asistente' }] });
+      expect(proposed.data.next).toContain('confirm_plan');
+      const planId = proposed.data.planId;
+
+      const foreign = await callTool(otherKey, 'confirm_plan', { planId });
+      expect(foreign.isError).toBe(true);
+      expect(foreign.data.error).toContain('not proposed with this API key');
+
+      const confirmed = await callTool(key, 'confirm_plan', { planId });
+      expect(confirmed.isError).toBe(false);
+      expect(confirmed.data).toMatchObject({ confirmedIn: 'assistant', plan: { status: 'COMPLETED', steps: [{ status: 'DONE' }] } });
+      expect(((await OrganizationMongoose.findById(managed.id).lean()) as any).description).toBe('Desde el asistente');
+      const plan: any = await OrbitPlanMongoose.findById(planId).lean();
+      const conversation: any = await OrbitConversationMongoose.findById(plan._conversationId).lean();
+      expect(conversation.messages.at(-1).content).toContain("at the user's request");
+
+      expect((await callTool(key, 'confirm_plan', { planId })).data.error).toContain('nothing to confirm');
+    });
+
+    it('asks the assistant for the phrase the user typed before deleting through it', async () => {
+      const { user } = await newUser();
+      const doomed = await createTestOrganization(user.token, { displayName: `Doomed ${randomSuffix()}` });
+      const key = await createApiKey(user, [{ organizationId: doomed.id, scope: 'ALL' }]);
+
+      const proposed = await callTool(key, 'propose_plan', { summary: 'Borrar', organizationDeletions: [{ organizationId: doomed.id }] });
+      const planId = proposed.data.planId;
+      const phrase = ((await OrbitPlanMongoose.findById(planId).lean()) as any).confirmationPhrase;
+      expect(proposed.data.next).toContain(phrase);
+
+      expect((await callTool(key, 'confirm_plan', { planId })).data.error).toContain(`typing "${phrase}"`);
+      expect((await callTool(key, 'confirm_plan', { planId, confirmation: 'otra cosa' })).isError).toBe(true);
+      expect(await OrganizationMongoose.exists({ _id: doomed.id })).not.toBeNull();
+
+      const confirmed = await callTool(key, 'confirm_plan', { planId, confirmation: phrase });
+      expect(confirmed.data.plan.status).toBe('COMPLETED');
+      expect(await OrganizationMongoose.exists({ _id: doomed.id })).toBeNull();
+    });
+
+    describe('with a client that shows SPHERE\'s confirmation dialog', () => {
+      const mcpUrl = () => new URL(`http://127.0.0.1:${((app as HttpServer).address() as AddressInfo).port}${BASE_PATH}/orbit/mcp`);
+
+      /** An MCP client that supports elicitation and answers SPHERE's dialog as the user would. */
+      const connect = async (key: string, answer: (params: ElicitRequestFormParams) => ElicitResult) => {
+        const asked: ElicitRequestFormParams[] = [];
+        const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: { elicitation: {} } });
+        client.setRequestHandler(ElicitRequestSchema, async request => {
+          const params = request.params as ElicitRequestFormParams;
+          asked.push(params);
+          return answer(params);
+        });
+        const transport = new StreamableHTTPClientTransport(mcpUrl(), { requestInit: { headers: { 'x-api-key': key } } });
+        await client.connect(transport);
+        const call = async (name: string, args: Record<string, unknown>) => {
+          const result: any = await client.callTool({ name, arguments: args });
+          return { isError: result.isError === true, data: JSON.parse(result.content[0].text) };
+        };
+        return { client, transport, asked, call };
+      };
+
+      it('applies a plan only when the user accepts the dialog, whatever the assistant passes', async () => {
+        const { user } = await newUser();
+        const managed = await createTestOrganization(user.token, { displayName: `Dialog ${randomSuffix()}` });
+        const key = await createApiKey(user, [{ organizationId: managed.id, scope: 'MANAGEMENT' }]);
+        let accept = false;
+        const { client, asked, call } = await connect(key, () =>
+          accept ? { action: 'accept', content: { confirm: true } } : { action: 'decline' }
+        );
+        try {
+          const proposed = await call('propose_plan', { summary: 'Describir', updates: [{ organizationId: managed.id, description: 'Desde el diálogo' }] });
+          const planId = proposed.data.planId;
+
+          const declined = await call('confirm_plan', { planId, confirmation: 'yes' });
+          expect(declined.isError).toBe(true);
+          expect(declined.data.error).toContain('did not confirm');
+          expect(asked[0].message).toContain('Describir');
+          expect(asked[0].requestedSchema.properties).toHaveProperty('confirm');
+          expect(((await OrbitPlanMongoose.findById(planId).lean()) as any).status).toBe('PENDING');
+
+          accept = true;
+          const confirmed = await call('confirm_plan', { planId });
+          expect(confirmed.data).toMatchObject({ confirmedIn: 'dialog', plan: { status: 'COMPLETED' } });
+          expect(((await OrganizationMongoose.findById(managed.id).lean()) as any).description).toBe('Desde el diálogo');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('takes the phrase from the dialog for a deletion, never from the assistant', async () => {
+        const { user } = await newUser();
+        const doomed = await createTestOrganization(user.token, { displayName: `Dialog doomed ${randomSuffix()}` });
+        const key = await createApiKey(user, [{ organizationId: doomed.id, scope: 'ALL' }]);
+        let typed = 'mal';
+        const { client, asked, call } = await connect(key, () => ({ action: 'accept', content: { confirmation: typed } }));
+        try {
+          const proposed = await call('propose_plan', { summary: 'Borrar', organizationDeletions: [{ organizationId: doomed.id }] });
+          const planId = proposed.data.planId;
+          const phrase = ((await OrbitPlanMongoose.findById(planId).lean()) as any).confirmationPhrase;
+
+          const wrong = await call('confirm_plan', { planId, confirmation: phrase });
+          expect(wrong.isError).toBe(true);
+          expect(asked[0].requestedSchema.properties.confirmation.title).toContain(phrase);
+          expect(await OrganizationMongoose.exists({ _id: doomed.id })).not.toBeNull();
+
+          typed = phrase;
+          expect((await call('confirm_plan', { planId })).data.plan.status).toBe('COMPLETED');
+          expect(await OrganizationMongoose.exists({ _id: doomed.id })).toBeNull();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('keeps each session to the key that opened it, and ends it on request', async () => {
+        const { user } = await newUser();
+        const organization = await createTestOrganization(user.token, { displayName: `Session ${randomSuffix()}` });
+        const key = await createApiKey(user, [{ organizationId: organization.id, scope: 'VIEW' }]);
+        const otherKey = await createApiKey(user, [{ organizationId: organization.id, scope: 'VIEW' }]);
+        const { client, transport } = await connect(key, () => ({ action: 'decline' }));
+        const sessionId = transport.sessionId!;
+        expect(sessionId).toBeTruthy();
+
+        const borrowed = await request(app)
+          .post(`${BASE_PATH}/orbit/mcp`)
+          .set('x-api-key', otherKey)
+          .set('mcp-session-id', sessionId)
+          .set('Accept', 'application/json, text/event-stream')
+          .send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+        expect(borrowed.status).toBe(404);
+
+        await transport.terminateSession();
+        await client.close();
+        const ended = await request(app)
+          .post(`${BASE_PATH}/orbit/mcp`)
+          .set('x-api-key', key)
+          .set('mcp-session-id', sessionId)
+          .set('Accept', 'application/json, text/event-stream')
+          .send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+        expect(ended.status).toBe(404);
+      });
     });
   });
 

@@ -211,6 +211,7 @@ export default function OrganizationSearchInput({
             {org.displayName}
             <button
               type="button"
+              aria-label={`Remove ${org.displayName}`}
               onClick={() => handleRemove(org.id)}
               className="cursor-pointer text-tp-steel hover:text-tp-ink"
             >
@@ -222,6 +223,7 @@ export default function OrganizationSearchInput({
         <input
           ref={inputRef}
           type="text"
+          aria-label="Search organizations"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
