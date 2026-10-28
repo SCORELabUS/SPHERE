@@ -6,11 +6,12 @@ import { PricingIndexQueryParams } from '../../types/services/PricingService';
 import mongoose, { PipelineStage } from 'mongoose';
 import { LeanPricing } from '../../types/models/Pricing';
 import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-slug-organization-and-version';
-import { OrgUserPermissionsContext } from '../../types/policies';
+import { OrgUserPermissionsContext, PrivateCollectionAccess } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
 import { escapeRegex } from '../../utils/regex';
+import { PricingPrecondition } from '../../utils/pricing-etag';
 
 /**
  * Mongoose refuses NaN for a Number, which fails the whole write: a value that
@@ -23,7 +24,11 @@ export function storableAnalytics(analytics: object | null | undefined) {
 }
 
 class PricingRepository extends RepositoryBase {
-  async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
+  async findAll(
+    queryParams: PricingIndexQueryParams,
+    permissions: OrgUserPermissionsContext,
+    collectionVisibility: PrivateCollectionAccess = []
+  ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
     try {
@@ -32,7 +37,8 @@ class PricingRepository extends RepositoryBase {
         undefined,
         permissions,
         filteringPipeline,
-        sortPipeline
+        sortPipeline,
+        collectionVisibility
       );
 
       const paginationPipeline = this._processPricingPagination(queryParams);
@@ -60,7 +66,8 @@ class PricingRepository extends RepositoryBase {
   async findByOrganizationId(
     organizationId: string,
     permissions: OrgUserPermissionsContext,
-    queryParams: PricingIndexQueryParams
+    queryParams: PricingIndexQueryParams,
+    collectionVisibility: PrivateCollectionAccess = []
   ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
@@ -68,7 +75,8 @@ class PricingRepository extends RepositoryBase {
       organizationId,
       permissions,
       filteringPipeline,
-      sortPipeline
+      sortPipeline,
+      collectionVisibility
     );
 
     const paginationPipeline = this._processPricingPagination(queryParams);
@@ -193,6 +201,16 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject<LeanPricing>();
   }
 
+  /** Whether a pricing of an organization has at least one public version. */
+  async hasPublicVersion(slug: string, organizationId: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(organizationId)) return false;
+    return Boolean(await PricingMongoose.exists({
+      slug,
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      private: { $ne: true },
+    }));
+  }
+
   async create(data: any[]) {
     data.forEach(item => {
       if (item._collectionId) {
@@ -221,7 +239,66 @@ class PricingRepository extends RepositoryBase {
       }
     }
 
-    return (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
+    const created = (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
+    // insertMany runs no document middleware, so the revision is moved on here.
+    await this.bumpRevisions(data.map(item => item.pricingId));
+    return created;
+  }
+
+  /** Moves on the revision of these pricings (their PricingIdentity ids), so their ETags change. */
+  async bumpRevisions(pricingIds: unknown[]) {
+    const ids = [...new Set(pricingIds.filter(Boolean).map(String))];
+    if (ids.length === 0) return;
+    await PricingIdentity.updateMany({ _id: { $in: ids } }, { $inc: { revision: 1 } });
+  }
+
+  /** The revision of a pricing, or null when it does not exist (any more). */
+  async findRevision(pricingId: string): Promise<number | null> {
+    if (!mongoose.isValidObjectId(pricingId)) return null;
+    const identity = await PricingIdentity.findOne({ _id: pricingId, deleted: false })
+      .select('revision')
+      .lean();
+    return identity ? (identity.revision ?? 0) : null;
+  }
+
+  /** The revisions of the pricings of an organization that have this slug, by pricing id. */
+  async findRevisionsBySlug(slug: string, organizationId: string): Promise<Map<string, number>> {
+    if (!mongoose.isValidObjectId(organizationId)) return new Map();
+    const identities = await PricingIdentity.find({ slug, _organizationId: organizationId, deleted: false })
+      .select('revision')
+      .lean();
+    return new Map(identities.map(identity => [String(identity._id), identity.revision ?? 0]));
+  }
+
+  /**
+   * Checks an If-Match and claims the pricing for a write in one atomic update:
+   * the revision moves on only if it is still one the client named, so of two
+   * writers holding the same ETag exactly one gets through. Returns whether it
+   * matched. The write that follows moves the revision on again when it lands
+   * (refreshIdentities), so a tag read while it was in flight no longer matches.
+   */
+  async claimRevision(pricingId: string, precondition: PricingPrecondition): Promise<boolean> {
+    if (!mongoose.isValidObjectId(pricingId)) return false;
+    if (precondition.kind === 'any') {
+      return (await PricingIdentity.exists({ _id: pricingId, deleted: false })) !== null;
+    }
+    const revisions = precondition.tags
+      .filter(tag => tag.pricingId === pricingId)
+      .map(tag => tag.revision);
+    if (revisions.length === 0) return false;
+    const result = await PricingIdentity.updateOne(
+      {
+        _id: pricingId,
+        deleted: false,
+        $or: [
+          { revision: { $in: revisions } },
+          // Identities created before revisions existed count as revision 0.
+          ...(revisions.includes(0) ? [{ revision: { $exists: false } }] : []),
+        ],
+      },
+      { $inc: { revision: 1 } }
+    );
+    return result.modifiedCount === 1;
   }
 
   async updateAnalytics(pricingId: string, analytics: PricingAnalytics) {
@@ -245,6 +322,7 @@ class PricingRepository extends RepositoryBase {
     }));
 
     const result = await PricingMongoose.bulkWrite(bulkOps);
+    await this.bumpRevisions(pricingsToUpdate.map((pricing: any) => pricing.pricingId));
 
     return result.modifiedCount === pricingsToUpdate.length;
   }
@@ -347,7 +425,7 @@ class PricingRepository extends RepositoryBase {
    * its latest version: what ORBIT needs to name it and tell who may see it.
    */
   async findSummariesByOrganization(organizationId: string): Promise<
-    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number }>
+    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number; publicVersions: number }>
   > {
     const rows = await PricingMongoose.aggregate([
       { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
@@ -359,6 +437,7 @@ class PricingRepository extends RepositoryBase {
           private: { $first: '$private' },
           collectionId: { $first: '$_collectionId' },
           versions: { $sum: 1 },
+          publicVersions: { $sum: { $cond: [{ $eq: ['$private', true] }, 0, 1] } },
         },
       },
       { $sort: { name: 1 } },
@@ -369,6 +448,7 @@ class PricingRepository extends RepositoryBase {
       private: row.private === true,
       collectionId: row.collectionId ? String(row.collectionId) : null,
       versions: row.versions,
+      publicVersions: row.publicVersions ?? 0,
     }));
   }
 

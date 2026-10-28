@@ -34,6 +34,8 @@ import ErrorBoundary from '../../../core/components/error-boundary';
 import { VisualEditorUnavailable } from '../../components/visual-editor/components/VisualEditorUnavailable';
 import TemplatesMenu from '../../components/templates-menu';
 import { usePricingsApi } from '../../../pricing/api/pricingsApi';
+import { useAuth } from '../../../auth/hooks/useAuth';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { usePricing2YamlLinter } from '../../hooks/usePricing2YamlLinter';
 import { usePricing2YamlSnippets } from '../../hooks/usePricing2YamlSnippets';
 import { templatesShortcutLabel } from '../../services/pricing2yaml/snippets';
@@ -107,6 +109,7 @@ export default function EditorPage() {
   const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft, setSourcePricing } = useEditorValue();
   const {getFromCache} = useCacheApi();
   const { getPricingBySlug } = usePricingsApi();
+  const { authUser } = useAuth();
 
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
   const [codeEditor, setCodeEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -311,7 +314,7 @@ export default function EditorPage() {
           const sourceVersion = versions.find(v => v.version === requestedVersion) ?? versions[0];
           if (!sourceVersion) throw new Error('The pricing to edit has no versions.');
           const yamlUrl = sourceVersion.yaml.startsWith('http') ? sourceVersion.yaml : `${import.meta.env.VITE_API_URL}${sourceVersion.yaml}`;
-          templatePricing = await (await fetch(yamlUrl)).text();
+          templatePricing = await (await fetch(yamlUrl, pricingYamlRequestInit(yamlUrl, authUser?.token))).text();
           setSourcePricing({
             organizationId,
             slug,

@@ -51,12 +51,11 @@ class PricingCollectionService {
     reqUser?: LeanUser,
     queryParams?: CollectionIndexQueryParams
   ) {
-    const orgRole: OrgRole | null = await this.permissionService.resolveOrgRole(
-      reqUser?.id ?? '',
-      organizationId
-    );
+    // An API key acts within its scopes, as on GET /collections/{organizationId}/{slug}.
+    const access = await this.permissionService.callerAccess(reqUser, organizationId);
+    const orgRole: OrgRole | null = access.role;
 
-    if (!reqUser || (reqUser.role !== 'ADMIN' && !orgRole)) {
+    if (!reqUser || !access.reachable || (!access.isGlobalAdmin && !orgRole)) {
       const collections = await this.pricingCollectionRepository.findByOrganizationId(
         organizationId,
         undefined,
@@ -66,7 +65,7 @@ class PricingCollectionService {
     }
 
     const permissions = await this.permissionService.buildOrgUserPermissionsContext(
-      reqUser,
+      access.isGlobalAdmin ? reqUser : { ...reqUser, role: 'USER' },
       orgRole,
       organizationId
     );
@@ -100,7 +99,10 @@ class PricingCollectionService {
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
     const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
-    const permissions = await this.permissionService.buildUserPermissionsContext(user);
+    const permissions = await this.permissionService.scopeToApiKey(
+      reqUser,
+      await this.permissionService.buildUserPermissionsContext(user)
+    );
 
     if (queryParams?.writableOnly) {
       permissions.writableOnly = true;
@@ -136,37 +138,29 @@ class PricingCollectionService {
       throw new Error('NOT FOUND: Pricing collection not found');
     }
 
-    if (collection.private) {
-      if (!reqUser) {
-        throw new Error('PERMISSION ERROR: You are not a member of this organization');
-      }
-      const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-      const batchCtx = await this.permissionService.buildBatchContext(
-        reqUser.id,
-        organizationId,
-        orgRole,
-        reqUser.role === 'ADMIN'
-      );
-      const entityPerms = batchCtx.entityPermissions.get(`collection:${collection.slug}`);
-      const evalResult = this.permissionEngine.evaluate({
-        userId: reqUser.id,
-        organizationId,
-        entityType: 'collection',
-        entitySlug: collection.slug,
-        action: 'GET',
-        isPrivate: true,
-        userOrgRole: orgRole,
-        isGlobalAdmin: reqUser.role === 'ADMIN',
-        entityPermissions: entityPerms,
-      });
-      if (!evalResult.allowed) {
-        throw new Error(`PERMISSION ERROR: ${evalResult.reason}`);
-      }
+    // A private collection the caller may not see answers exactly like a
+    // missing one, so its existence is not revealed either.
+    if (!(await this.permissionService.canViewCollection(reqUser, { organizationId, slug: collection.slug, private: collection.private }))) {
+      throw new Error('NOT FOUND: Pricing collection not found');
     }
 
     collection.analytics = this._normalizeCollectionAnalytics(collection.analytics);
 
     return collection;
+  }
+
+  /**
+   * The collection whose upload folder this is (`_getExtractPath`: the folder
+   * is named after the collection's name when uploaded, and after its slug once
+   * renamed), or null when none matches.
+   */
+  async findRefByFolder(organizationId: string, folder: string) {
+    return this.pricingCollectionRepository.findRefByFolder(organizationId, folder);
+  }
+
+  /** Organization, slug and visibility of a collection, for visibility checks; null when it does not exist. */
+  async findRef(collectionId: string) {
+    return this.pricingCollectionRepository.findRefById(collectionId);
   }
 
   async create(newCollection: any, organizationId: string, reqUser: LeanUser) {
@@ -188,6 +182,17 @@ class PricingCollectionService {
     });
     if (!createResult.allowed) {
       throw new Error(`PERMISSION ERROR: ${createResult.reason}`);
+    }
+
+    await this._checkPricingsCanJoin(newCollection.pricings, organizationId, reqUser);
+    // Pricings are moved into the new collection: none may come out of a
+    // private collection the caller may not see.
+    for (const pricingSlug of Array.isArray(newCollection.pricings) ? newCollection.pricings : []) {
+      const pricing = await this.pricingRepository.findOne(String(pricingSlug), organizationId, { includePrivate: true });
+      const current = pricing?.collection?.id ? await this.findRef(pricing.collection.id) : null;
+      if (current && !(await this.permissionService.canViewCollection(reqUser, current))) {
+        throw new Error('PERMISSION ERROR: This pricing cannot be added to the collection');
+      }
     }
 
     let collection: any;
@@ -254,6 +259,27 @@ class PricingCollectionService {
         newCollection,
         organizationId
       );
+    }
+  }
+
+  /**
+   * The pricings a new collection is created with: each must exist, and one
+   * with private versions only joins by the hand of someone who may already
+   * read them, since readers of the collection inherit GET on its pricings.
+   * One whose versions the caller cannot see at all answers as missing.
+   */
+  private async _checkPricingsCanJoin(pricingSlugs: unknown, organizationId: string, reqUser: LeanUser) {
+    if (!Array.isArray(pricingSlugs) || pricingSlugs.length === 0) return;
+    const reader = await this.permissionService.privateReader(reqUser, organizationId);
+    for (const raw of pricingSlugs) {
+      const slug = String(raw);
+      const pricing: any = await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true });
+      const versions: Array<{ private?: boolean }> = pricing?.versions ?? [];
+      if (!versions.length) throw new Error(`NOT FOUND: Pricing ${slug} not found`);
+      if (versions.some(version => version.private === true) && !reader('pricing', slug, pricing.collection?.slug)) {
+        if (versions.every(version => version.private === true)) throw new Error(`NOT FOUND: Pricing ${slug} not found`);
+        throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
+      }
     }
   }
 
@@ -331,7 +357,8 @@ class PricingCollectionService {
               uploadedPricing.saasName.split(' ')[0].charAt(0).toUpperCase() +
               uploadedPricing.saasName.split(' ')[0].slice(1).toLowerCase(),
             version: uploadedPricing.version,
-            _collectionId: collection._id,
+            // The stored collection comes without `_id` (toObject transform).
+            _collectionId: collection.id ?? collection._id,
             _organizationId: organizationId,
             currency: uploadedPricing.currency,
             createdAt: new Date(uploadedPricing.createdAt),

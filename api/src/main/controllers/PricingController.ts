@@ -4,6 +4,12 @@ import PricingService from '../services/PricingService';
 import path from 'path';
 import { PricingIndexQueryParams, SortByType } from '../types/services/PricingService.js';
 import { handleError } from '../utils/users/helpers';
+import {
+  isIfMatchRequired,
+  parseIfMatch,
+  PreconditionFailedError,
+  PricingRevisionContext,
+} from '../utils/pricing-etag';
 
 class PricingController {
   private pricingService: PricingService;
@@ -65,12 +71,16 @@ class PricingController {
   async show(req: any, res: any) {
     try {
       const queryParams = req.query;
-      const pricing = await this.pricingService.show(
+      const { pricing, etag } = await this.pricingService.showWithEtag(
         req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         queryParams
       );
+      // The ETag names the pricing's revision, not this body (which also depends on
+      // the caller and on the organization), so it must not validate a cached copy.
+      res.set('Cache-Control', 'no-store');
+      if (etag) res.set('ETag', etag);
       res.json(pricing);
     } catch (err: any) {
       const {status, message} = handleError(err);
@@ -97,19 +107,20 @@ class PricingController {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
       const name = req.body.name;
+      const revision = this.revisionContext(req);
       const pricing = await this.pricingService.create(
         req.file,
         req.params.organizationId,
         isPrivate,
         req.user,
         collectionId,
-        name
+        name,
+        revision
       );
-      res.json(pricing[0]);
+      this.sendWithEtag(res, revision, pricing[0]);
     } catch (err: any) {
       this.cleanupUploadedFile(req.file);
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
   }
 
@@ -118,6 +129,8 @@ class PricingController {
       const isPrivate = req.body.private === 'true' || req.body.private === true;
       const collectionId = req.body.collectionId;
       const createdAt = this.parseCreatedAt(req.body.createdAt);
+      // Adding a version overwrites nothing, so If-Match is honoured here but never required.
+      const revision = this.revisionContext(req);
       const pricing = await this.pricingService.createVersion(
         req.file,
         req.params.organizationId,
@@ -125,13 +138,13 @@ class PricingController {
         isPrivate,
         req.user,
         collectionId,
-        createdAt
+        createdAt,
+        revision
       );
-      res.json(pricing[0]);
+      this.sendWithEtag(res, revision, pricing[0]);
     } catch (err: any) {
       this.cleanupUploadedFile(req.file);
-      const { status, message } = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
   }
 
@@ -186,34 +199,36 @@ class PricingController {
   async update(req: any, res: any) {
     try {
       const queryParams = req.query; 
+      const revision = this.revisionContext(req, true);
 
       const pricing = await this.pricingService.update(
         req.params.pricingSlug,
         req.params.organizationId,
         req.user,
         req.body,
-        queryParams
+        queryParams,
+        revision
       );
-      res.json(pricing);
+      this.sendWithEtag(res, revision, pricing);
     } catch (err: any) {
-      const {status, message} = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
   }
 
   async updateVersionVisibility(req: any, res: any) {
     try {
+      const revision = this.revisionContext(req, true);
       const pricing = await this.pricingService.updateVersionVisibility(
         req.params.pricingSlug,
         req.params.pricingVersion,
         req.params.organizationId,
         req.user,
-        req.body.private === true || req.body.private === 'true'
+        req.body.private === true || req.body.private === 'true',
+        revision
       );
-      res.json(pricing);
+      this.sendWithEtag(res, revision, pricing);
     } catch (err: any) {
-      const {status, message} = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
   }
 
@@ -230,11 +245,13 @@ class PricingController {
   async destroyByNameAndOrganization(req: any, res: any) {
     try {
       const queryParams = req.query;
+      const revision = this.revisionContext(req, true);
       const result = await this.pricingService.destroy(
         req.params.pricingSlug,
         req.params.organizationId,
         req.user,
-        queryParams
+        queryParams,
+        revision
       );
       if (!result) {
         res.status(404).send({ error: 'NOT FOUND: Pricing not found' });
@@ -242,28 +259,56 @@ class PricingController {
         res.status(200).send({ message: 'Pricing deleted successfully' });
       }
     } catch (err: any) {
-      const {status, message} = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
   }
 
   async destroyVersionByNameAndOrganization(req: any, res: any) {
     try {
+      const revision = this.revisionContext(req, true);
       const result = await this.pricingService.destroyVersion(
         req.params.pricingSlug,
         req.params.pricingVersion,
         req.params.organizationId,
-        req.user
+        req.user,
+        revision
       );
       if (!result) {
         res.status(404).send({ error: 'NOT FOUND: Pricing version not found' });
       } else {
-        res.status(200).send({ message: 'Pricing version deleted successfully' });
+        this.sendWithEtag(res, revision, { message: 'Pricing version deleted successfully' });
       }
     } catch (err: any) {
-      const {status, message} = handleError(err);
-      res.status(status).send({ error: message });
+      this.sendError(res, err);
     }
+  }
+
+  /**
+   * The request's If-Match, for the service to check atomically with the write.
+   * Without one the write goes ahead as before, unless PRICING_REQUIRE_IF_MATCH
+   * is on and the write changes or deletes an existing pricing (428).
+   */
+  private revisionContext(req: any, changesExisting = false): PricingRevisionContext {
+    const precondition = parseIfMatch(req.headers['if-match']);
+    if (!precondition && changesExisting && isIfMatchRequired()) {
+      throw new Error(
+        'PRECONDITION REQUIRED: Send the ETag of the pricing you read in an If-Match header.'
+      );
+    }
+    return { precondition };
+  }
+
+  private sendWithEtag(res: any, revision: PricingRevisionContext, body: unknown) {
+    if (revision.etag) res.set('ETag', revision.etag);
+    res.json(body);
+  }
+
+  private sendError(res: any, err: unknown) {
+    if (err instanceof PreconditionFailedError && err.currentEtag) {
+      res.set('ETag', err.currentEtag);
+    }
+    const { status, message } = handleError(err);
+    res.status(status).send({ error: message });
   }
 
   _transformIndexQueryParams(

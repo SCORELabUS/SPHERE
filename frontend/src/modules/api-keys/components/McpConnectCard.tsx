@@ -51,7 +51,8 @@ export default function McpConnectCard() {
       <p className="mb-4 text-sm text-tp-steel">
         Assistants such as Claude or your IDE can use ORBIT&apos;s tools with one of your API keys. They see only what the
         key&apos;s scopes allow, and every change they propose waits for you as a plan in ORBIT, where you confirm it.
-        A key with only VIEW scopes can read but not propose changes.
+        A key with only VIEW scopes cannot propose changes and reads as a plain member of its organizations: private
+        pricings and collections only where your account was granted access to them.
       </p>
       <div className="space-y-3">
         <CopyLine label="Server URL" value={url} />

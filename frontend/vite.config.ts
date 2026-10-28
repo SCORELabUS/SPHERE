@@ -25,6 +25,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
+      '/.well-known/oauth-': { target: API_PROXY_TARGET, changeOrigin: true },
       '/api': {
         target: API_PROXY_TARGET,
         changeOrigin: true,

@@ -37,6 +37,8 @@ import OrbitImportService from '../services/orbit/OrbitImportService';
 import OrbitExecutorService from '../services/orbit/OrbitExecutorService';
 import OrbitService from '../services/orbit/OrbitService';
 import OrbitMcpService from '../services/orbit/OrbitMcpService';
+import OAuthService from '../services/OAuthService';
+import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 
 dotenv.config();
 
@@ -63,6 +65,8 @@ function initContainer(databaseType: string): AwilixContainer {
       throw new Error(`Unsupported database type: ${databaseType}`);
   }
   container.register({
+    oauthRepository: asValue(new OAuthRepository()),
+    oauthService: asClass(OAuthService).singleton(),
     userRepository: asValue(userRepository),
     pricingRepository: asValue(pricingRepository),
     pricingCollectionRepository: asValue(pricingCollectionRepository),

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
-import { usePricingsApi } from '../../api/pricingsApi';
+import { isPricingChangedError, PRICING_CHANGED_MESSAGE, usePricingsApi } from '../../api/pricingsApi';
 import {
   useOrganizationsApi,
   getPublicOrganization,
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
@@ -36,6 +37,7 @@ import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { pricingVersionNameMatches } from './pricing-version-validation';
+import { pickRequestedVersion } from './requested-version';
 
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
@@ -43,6 +45,8 @@ export default function CardPage() {
   const collectionParam = searchParams.get('collection');
   const collectionSlug =
     collectionParam && !['undefined', 'null'].includes(collectionParam) ? collectionParam : null;
+  // Set by version permanent links (`/p/{pricingId}?version=…`): the version id, or its name.
+  const requestedVersion = searchParams.get('version');
   const router = useRouter();
   const {
     getPricingBySlug,
@@ -67,6 +71,8 @@ export default function CardPage() {
   const [currentVersion, setCurrentVersion] = useState<VersionData | null>(null);
   const [pricing, setPricing] = useState<(Pricing & { name?: string }) | null>(null);
   const [pricingId, setPricingId] = useState<string>();
+  // The pricing's ETag as loaded, sent back in If-Match with every change made here.
+  const [etag, setEtag] = useState<string>();
   const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -77,6 +83,7 @@ export default function CardPage() {
   const [dateTo, setDateTo] = useState('');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [linkDescription, setLinkDescription] = useState<string>();
   const [canDelete, setCanDelete] = useState(false);
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
   const [showVisibilityModal, setShowVisibilityModal] = useState(false);
@@ -99,12 +106,14 @@ export default function CardPage() {
     getPricingBySlug(slug, organizationId, collectionSlug)
       .then(async data => {
         setPricingId(data.pricingId);
+        setEtag(data.etag);
         setPricingName(data.name ?? slug);
         setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
-        if (vers.length > 0) {
-          setCurrentVersion(vers[0]);
+        const initialVersion = pickRequestedVersion(vers, requestedVersion);
+        if (initialVersion) {
+          setCurrentVersion(initialVersion);
         }
         try {
           const members = await getOrgMembers(organizationId);
@@ -133,7 +142,7 @@ export default function CardPage() {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [slug, organizationId, collectionSlug]);
+  }, [slug, organizationId, collectionSlug, requestedVersion]);
 
   useEffect(() => {
     setIsFollowing(null);
@@ -181,7 +190,7 @@ export default function CardPage() {
     const url = currentVersion.yaml.startsWith('http')
       ? currentVersion.yaml
       : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(async text => {
         setYamlText(text);
@@ -208,7 +217,7 @@ export default function CardPage() {
         setPricing(null);
       })
       .finally(() => setIsLoadingYaml(false));
-  }, [currentVersion]);
+  }, [currentVersion, authUser?.token]);
 
   const handleApplyVariables = async (variables: Record<string, unknown>) => {
     if (!yamlText) return;
@@ -295,7 +304,7 @@ export default function CardPage() {
 
   const handleDownload = (v: VersionData) => {
     const url = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(text => downloadYaml(text))
       .catch(() => {});
@@ -319,8 +328,18 @@ export default function CardPage() {
   };
 
   const handleCopyLink = (v: VersionData) => {
-    const yamlUrl = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    setLinkUrl(yamlUrl);
+    // The YAML file of a private version is only served to callers who may
+    // read it, so a direct link would not work for anyone else. Offer the
+    // pricing's permanent link instead.
+    if (v.private && pricingId) {
+      setLinkUrl(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`);
+      setLinkDescription(
+        'This version is private, so its YAML file is only available to signed-in users who can see it. This is the permanent link to the pricing instead: people with access see every version, everyone else only the public ones.'
+      );
+    } else {
+      setLinkUrl(v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`);
+      setLinkDescription(undefined);
+    }
     setShowLinkModal(true);
   };
 
@@ -346,6 +365,16 @@ export default function CardPage() {
     }
   };
 
+  // A change refused because the pricing changed after it was loaded (412):
+  // offers to reload instead of showing a generic error. Returns whether it was one.
+  const offerReloadIfChanged = (error: unknown) => {
+    if (!isPricingChangedError(error)) return false;
+    customConfirm(PRICING_CHANGED_MESSAGE, { confirmLabel: 'Reload', cancelLabel: 'Not now' })
+      .then(() => window.location.reload())
+      .catch(() => {});
+    return true;
+  };
+
   // Shared by the trash icon in the versions list and the button in Settings.
   const handleDeleteVersion = (target: VersionData) => {
     if (!slug) return;
@@ -354,8 +383,9 @@ export default function CardPage() {
       { danger: true }
     )
       .then(() => {
-        removePricingVersion(organizationId || '', slug, target.version)
-          .then(() => {
+        removePricingVersion(organizationId || '', slug, target.version, etag)
+          .then(result => {
+            setEtag(result.etag);
             const remaining = versions.filter(x => x.id !== target.id);
             setVersions(remaining);
             // The version on screen only changes when it was the one deleted.
@@ -364,7 +394,8 @@ export default function CardPage() {
             );
             customAlert(`Version ${target.version} deleted successfully`, 'success');
           })
-          .catch(() => {
+          .catch(error => {
+            if (offerReloadIfChanged(error)) return;
             customAlert(
               'An error has occurred while deleting the version. Please, try again later.',
               'error'
@@ -392,9 +423,11 @@ export default function CardPage() {
     if (!slug || !organizationId) return;
     const isPrivate = !v.private;
     try {
-      await updatePricingVersionVisibility(organizationId, slug, v.version, isPrivate);
+      const result = await updatePricingVersionVisibility(organizationId, slug, v.version, isPrivate, etag);
+      setEtag(result.etag);
       setVersionsPrivacy(isPrivate, candidate => candidate.id === v.id);
     } catch (error) {
+      if (offerReloadIfChanged(error)) return;
       customAlert(`Error: ${(error as Error).message}`, 'error');
     }
   };
@@ -410,13 +443,15 @@ export default function CardPage() {
     customConfirm(`Make ${scope} ${target.toLowerCase()}?`, { danger: true })
       .then(async () => {
         try {
-          await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate });
+          const result = await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate }, etag);
+          setEtag(result.etag);
           setVersionsPrivacy(isPrivate, () => true);
           customAlert(
             `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`,
             'success'
           );
         } catch (error) {
+          if (offerReloadIfChanged(error)) return;
           customAlert(`Error: ${(error as Error).message}`, 'error');
         }
       })
@@ -430,12 +465,13 @@ export default function CardPage() {
       { danger: false }
     )
       .then(() => {
-        updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName })
+        updatePricing(organizationId!, slug, collectionSlug ?? '', { name: newName }, etag)
           .then((data: any) => {
             if (data?.error) {
               customAlert(`Error: ${data.error}`, 'error');
               return;
             }
+            setEtag(data?.etag);
             const newSlug = data?.slug ?? slug;
             setPricingName(newName);
             customAlert('Pricing renamed successfully', 'success');
@@ -446,6 +482,7 @@ export default function CardPage() {
             }
           })
           .catch((error: Error) => {
+            if (offerReloadIfChanged(error)) return;
             customAlert(`Error: ${error.message}`, 'error');
           });
       })
@@ -466,7 +503,7 @@ export default function CardPage() {
           customAlert('Organization ID is missing. Cannot delete pricing.', 'error');
           return;
         }
-        removePricingBySlug(organizationId, slug, collectionSlug ?? undefined)
+        removePricingBySlug(organizationId, slug, collectionSlug ?? undefined, etag)
           .then(() => {
             customConfirm('Pricing deleted successfully. Do you want to return to the main page?', {
               danger: false,
@@ -474,7 +511,8 @@ export default function CardPage() {
               .then(() => router.push('/'))
               .catch(() => router.push('/pricings'));
           })
-          .catch(() => {
+          .catch(error => {
+            if (offerReloadIfChanged(error)) return;
             customAlert(
               'An error has occurred while removing the pricing. Please, try again later.',
               'error'
@@ -540,6 +578,7 @@ export default function CardPage() {
       setShowImportModal(false);
 
       getPricingBySlug(slug, organizationId, collectionSlug).then(async data => {
+        setEtag(data.etag);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
@@ -1128,6 +1167,7 @@ export default function CardPage() {
       {showLinkModal && (
         <PricingLinkModal
           linkUrl={linkUrl}
+          description={linkDescription}
           onClose={() => {
             setShowLinkModal(false);
           }}
