@@ -140,7 +140,12 @@ export default class PermanentLinkService {
     throw new Error('NOT FOUND');
   }
 
-  private async authorize(user: any, organizationId: string, entityType: 'pricing' | 'collection', slug: string, collectionSlug?: string, authType?: string) {
+  /**
+   * Throws NOT FOUND unless `user` may read the private entity. Shared by the
+   * permanent links, the public synchronization API and the static file guard
+   * so they all apply the same rules (API key scopes included).
+   */
+  async authorize(user: any, organizationId: string, entityType: 'pricing' | 'collection', slug: string, collectionSlug?: string, authType?: string) {
     if (!user) throw new Error('NOT FOUND');
     const { default: container } = await import('../config/container');
     const permissions = container.resolve('permissionService');
