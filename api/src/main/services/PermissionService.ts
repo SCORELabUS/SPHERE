@@ -127,10 +127,11 @@ class PermissionService {
           .map(key => key.split(':')[1])
       );
 
+      // Qualified by organization: a slug is only unique inside its organization.
       collectionsWithPutPermissions.push(
         ...entriesWithPutPermissions
           .filter(key => key.startsWith('collection:'))
-          .map(key => key.split(':')[1])
+          .map(key => `${orgId}:${key.split(':')[1]}`)
       );
     }
 

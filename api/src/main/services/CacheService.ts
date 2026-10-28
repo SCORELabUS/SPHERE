@@ -34,6 +34,18 @@ class CacheService {
     await this.redisClient.del(this.key(key));
   }
 
+  /** Atomically consume short-lived secrets; GET followed by DEL permits replay. */
+  async take(key: string) {
+    if (!this.redisClient) throw new Error('ERROR: Redis client not initialized');
+    const value = await this.redisClient.getDel(this.key(key));
+    return value ? JSON.parse(value) : null;
+  }
+
+  async setIfAbsent(key: string, value: unknown, seconds: number): Promise<boolean> {
+    if (!this.redisClient) throw new Error('ERROR: Redis client not initialized');
+    return (await this.redisClient.set(this.key(key), JSON.stringify(value), { NX: true, EX: seconds })) === 'OK';
+  }
+
   async set(key: string, value: any, expirationInSeconds?: number) {
     if (!this.redisClient) {
       throw new Error('ERROR: Redis client not initialized');

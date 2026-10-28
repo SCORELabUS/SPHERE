@@ -12,6 +12,16 @@ import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
 import { escapeRegex } from '../../utils/regex';
 
+/**
+ * Mongoose refuses NaN for a Number, which fails the whole write: a value that
+ * could not be computed (e.g. a price with no numeric plans) is left out instead.
+ */
+export function storableAnalytics(analytics: object | null | undefined) {
+  return Object.fromEntries(
+    Object.entries(analytics ?? {}).filter(([, value]) => typeof value !== 'number' || Number.isFinite(value))
+  );
+}
+
 class PricingRepository extends RepositoryBase {
   async findAll(queryParams: PricingIndexQueryParams, permissions: OrgUserPermissionsContext) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
@@ -197,19 +207,8 @@ class PricingRepository extends RepositoryBase {
         item.slug = generateSlug(item.name);
       }
 
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.minSubscriptionPrice)
-      ) {
-        item.analytics.minSubscriptionPrice = undefined;
-      }
-      if (
-        item.analytics &&
-        item.analytics.minSubscriptionPrice &&
-        Number.isNaN(item.analytics.maxSubscriptionPrice)
-      ) {
-        item.analytics.maxSubscriptionPrice = undefined;
+      if (item.analytics) {
+        item.analytics = storableAnalytics(item.analytics);
       }
     });
 
@@ -231,7 +230,7 @@ class PricingRepository extends RepositoryBase {
       return null;
     }
 
-    pricing.set({ analytics: analytics });
+    pricing.set({ analytics: storableAnalytics(analytics) });
     await pricing.save();
 
     return pricing.toObject();
