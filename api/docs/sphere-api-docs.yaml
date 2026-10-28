@@ -1880,7 +1880,7 @@ paths:
         - name: collection
           in: query
           required: false
-          description: Filter pricings by collection slug (URL-friendly identifier)
+          description: Filter pricings by collection slug (URL-friendly identifier). A private collection the caller may not see never matches.
           schema:
             type: string
             example: "ieee-tsc-2025"
@@ -3577,7 +3577,7 @@ paths:
         - name: collection
           in: query
           required: false
-          description: Filter pricings by collection slug (URL-friendly identifier)
+          description: Filter pricings by collection slug (URL-friendly identifier). A private collection the caller may not see never matches.
           schema:
             type: string
             example: "ieee-tsc-2025"
@@ -3831,6 +3831,14 @@ paths:
         Retrieves a pricing by slug for a given user. Visibility is set per version: a pricing
         with some public and some private versions is returned with only its public versions to
         anyone who cannot see private ones. It is `404` only when none of its versions is visible.
+
+        A pricing in a private collection the caller may not see is returned as if it were in no
+        collection: `collection` is `{ id: null }`, `_collectionId` and `collectionName` are `null`,
+        the `yaml` of each public version links the permanent route
+        `/public/pricings/{pricingId}/versions/{versionId}/yaml` (the stored file path may contain the
+        collection's folder; this also applies to any public version whose file lies in the folder of
+        such a collection), a fork does not name a source collection the caller may not see, and the
+        `collection`/`collectionId` query filters never match it.
 
         **Authentication**: Public
 
@@ -4524,14 +4532,14 @@ paths:
     get:
       summary: Get collection details.
       description: |
-        Retrieves a collection by slug for a given user. If the user requesting is the owner of the collection, they can then access private collections. Otherwise, only public ones.
+        Retrieves a collection of an organization by slug. Public collections are visible to anyone.
 
         **Authentication**: Public
 
-        **Permission**: 
-        - UNAUTHENTICATED: can only access PUBLIC collections.
-        - USER: can access their own collections (PUBLIC, PRIVATE) and PUBLIC collections of other users.
-        - ADMIN: can access any user's collections.
+        **Permission** (private collections):
+        - OWNER or ADMIN of the organization, users granted GET on the collection, and global ADMINs can access it.
+        - An API key acts within its scopes: a VIEW scope acts as a plain MEMBER, and a key without a scope on the organization (or ALL on an organization above it) is treated as anonymous.
+        - Anyone else gets `404`, exactly as for a collection that does not exist, so its existence is not revealed.
 
       tags:
         - Collections
@@ -8976,7 +8984,7 @@ components:
 
     ExcludePricingsInCollection:
       name: excludePricingsInCollection
-      description: If set to "true", only pricings that are NOT in any collection will be returned. Cannot be used together with the `collection` parameter.
+      description: If set to "true", only pricings that are NOT in any collection will be returned. A pricing in a private collection the caller may not see counts as being in none. Cannot be used together with the `collection` parameter.
       in: query
       required: false
       schema:

@@ -93,7 +93,7 @@ export class DeletionStepBuilder {
           if (current?.isPersonal) errors.push(`"${labelOf(current)}", below "${label}", is a personal organization and cannot be deleted.`);
         }
         pricings += (await this.pricingSteps.pricingsOf(organizationId)).length;
-        collections += (await this.pricingSteps.collectionsOf(organizationId)).length;
+        collections += (await this.pricingSteps.allCollectionsOf(organizationId)).length;
         invitations += (await this.context.invitationsOf(organizationId)).length;
         for (const member of await memberships.findByOrganizationId(organizationId)) {
           if (member._userId !== this.context.actor.id) members.add(member._userId);

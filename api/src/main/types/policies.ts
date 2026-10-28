@@ -91,7 +91,12 @@ export interface OrgUserPermissionsContext {
   collectionsWritable?: string[];
   /** List only the collections the user may edit, leaving out the public ones they can merely see */
   writableOnly?: boolean;
+  /** The collections with GET, as `organizationId:slug` (slugs repeat across organizations). */
+  collectionKeys?: string[];
   isGlobalAdmin: boolean;
   /** Org IDs where user has OWNER or ADMIN role (full access to all entities) */
   adminOrgIds: string[];
 }
+
+/** The private collections a caller may see: every one, or those with these ids. */
+export type PrivateCollectionAccess = 'all' | string[];

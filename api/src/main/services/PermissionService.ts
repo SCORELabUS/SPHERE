@@ -12,11 +12,18 @@ import {
   SetEntityPermissionInput,
 } from '../types/models/EntityPermission';
 import { OrgRole } from '../types/models/Organization';
-import { LeanUser } from '../types/models/User';
+import { ApiKey, LeanUser } from '../types/models/User';
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import { CollectionIndexQueryParams } from '../types/services/PricingCollection';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
-import { BatchEvaluationContext, OrgUserPermissionsContext } from '../types/policies';
+import { BatchEvaluationContext, OrgUserPermissionsContext, PrivateCollectionAccess } from '../types/policies';
+import { PermissionEngine } from '../policies/PermissionEngine';
+
+/** A collection as the visibility checks need it. A missing `private` is the legacy public value. */
+export type CollectionRef = { organizationId: string; slug: string; private?: boolean | null };
+
+/** How a caller acts in one organization once its API key, if any, is applied. */
+export type CallerAccess = { reachable: boolean; role: OrgRole | null; isGlobalAdmin: boolean };
 
 const FULL_PERMISSIONS: EntityPermissions = { GET: true, PUT: true, DELETE: true, CREATE: true };
 const NO_PERMISSIONS: EntityPermissions = { GET: false, PUT: false, DELETE: false, CREATE: false };
@@ -83,6 +90,7 @@ class PermissionService {
       orgRole: orgPermissions.isGlobalAdmin ? 'OWNER' : orgRole,
       pricings: pricingsWithGetPermissions,
       collections: collectionsWithGetPermissions,
+      collectionKeys: collectionsWithGetPermissions.map(slug => `${organizationId}:${slug}`),
       isGlobalAdmin: orgPermissions.isGlobalAdmin ?? false,
       adminOrgIds: (orgRole === 'OWNER' || orgRole === 'ADMIN' || orgPermissions.isGlobalAdmin)
         ? [organizationId]
@@ -99,6 +107,7 @@ class PermissionService {
     const pricingsWithGetPermissions: string[] = [];
     const collectionsWithGetPermissions: string[] = [];
     const collectionsWithPutPermissions: string[] = [];
+    const collectionKeys: string[] = [];
     const adminOrgIds: string[] = [];
 
     for (const [orgId, orgPermissions] of permissions) {
@@ -133,6 +142,13 @@ class PermissionService {
           .filter(key => key.startsWith('collection:'))
           .map(key => `${orgId}:${key.split(':')[1]}`)
       );
+
+      // The same for the collections it may see.
+      collectionKeys.push(
+        ...entriesWithGetPermissions
+          .filter(key => key.startsWith('collection:'))
+          .map(key => `${orgId}:${key.split(':')[1]}`)
+      );
     }
 
     return {
@@ -140,8 +156,143 @@ class PermissionService {
       pricings: pricingsWithGetPermissions,
       collections: collectionsWithGetPermissions,
       collectionsWritable: collectionsWithPutPermissions,
+      collectionKeys,
       isGlobalAdmin: reqUser.role === 'ADMIN',
       adminOrgIds,
+    };
+  }
+
+  /**
+   * How a caller acts in an organization, worked out as
+   * `PermanentLinkService.authorize` does it. With a token it is the user's own
+   * role (inherited roles included) and a global ADMIN is one. With an API key
+   * the key must reach the organization (a scope on it, or ALL on an
+   * organization above it); a VIEW scope acts as a plain MEMBER, MANAGEMENT at
+   * most as an ADMIN, and the global ADMIN bypass does not apply.
+   */
+  async callerAccess(reqUser: LeanUser | undefined, organizationId: string): Promise<CallerAccess> {
+    if (!reqUser) return { reachable: false, role: null, isGlobalAdmin: false };
+    let role = await this.resolveOrgRole(reqUser.id, organizationId);
+    const apiKey: ApiKey | undefined = (reqUser as any).apiKey;
+    if (!apiKey || !Array.isArray(apiKey.scopes)) {
+      return { reachable: true, role, isGlobalAdmin: reqUser.role === 'ADMIN' };
+    }
+    const organization: any = await container.resolve('organizationRepository').findById(organizationId).catch(() => null);
+    const ancestors: string[] = (organization?.ancestors ?? []).map((id: any) => String(id));
+    const scope = apiKey.scopes.find(entry =>
+      String(entry.organizationId) === organizationId ||
+      (entry.scope === 'ALL' && ancestors.includes(String(entry.organizationId)))
+    );
+    if (!scope) return { reachable: false, role: null, isGlobalAdmin: false };
+    if (scope.scope === 'VIEW') role = 'MEMBER';
+    else if (scope.scope === 'MANAGEMENT' && role === 'OWNER') role = 'ADMIN';
+    return { reachable: true, role, isGlobalAdmin: false };
+  }
+
+  /**
+   * Whether the caller may see a collection: a public one always, a private
+   * one by the rule of `GET /collections/{organizationId}/{slug}`
+   * (OWNER/ADMIN of its organization, an explicit GET on it, a global ADMIN,
+   * an API key only within its scope).
+   */
+  async canViewCollection(reqUser: LeanUser | undefined, collection: CollectionRef): Promise<boolean> {
+    if (collection.private !== true) return true;
+    const access = await this.callerAccess(reqUser, collection.organizationId);
+    return this.allowsPrivateCollection(reqUser, collection, access);
+  }
+
+  private async allowsPrivateCollection(
+    reqUser: LeanUser | undefined,
+    collection: CollectionRef,
+    access: CallerAccess,
+    batch?: BatchEvaluationContext
+  ): Promise<boolean> {
+    if (!reqUser || !access.reachable) return false;
+    const context = batch ?? (await this.buildBatchContext(reqUser.id, collection.organizationId, access.role, access.isGlobalAdmin));
+    return new PermissionEngine().evaluate({
+      userId: reqUser.id,
+      organizationId: collection.organizationId,
+      entityType: 'collection',
+      entitySlug: collection.slug,
+      action: 'GET',
+      isPrivate: true,
+      userOrgRole: access.role,
+      isGlobalAdmin: access.isGlobalAdmin,
+      entityPermissions: context.entityPermissions.get(`collection:${collection.slug}`),
+    }).allowed;
+  }
+
+  /**
+   * The private collections the caller may see, for listings that must hide the
+   * rest. Only organizations the caller belongs to (or sits above) or holds a
+   * collection permission in can have any.
+   */
+  async visiblePrivateCollections(reqUser: LeanUser | undefined): Promise<PrivateCollectionAccess> {
+    if (!reqUser) return [];
+    const apiKey = (reqUser as any).apiKey;
+    if (reqUser.role === 'ADMIN' && !apiKey) return 'all';
+
+    const roles = await this.organizationMembershipRepository.findRolesByUserId(reqUser.id);
+    const granted = (await this.entityPermissionRepository.findByUser(reqUser.id))
+      .filter(permission => permission.entityType === 'collection' && permission.permissions?.GET)
+      .map(permission => String(permission._organizationId));
+    const organizationIds = new Set<string>(granted);
+    for (const id of await container.resolve('organizationRepository').findIdsWithin([...roles.keys()])) {
+      organizationIds.add(id);
+    }
+    if (organizationIds.size === 0) return [];
+
+    const candidates = await this.pricingCollectionRepository.findPrivateRefsByOrganizationIds([...organizationIds]);
+    const perOrganization = new Map<string, { access: CallerAccess; batch?: BatchEvaluationContext }>();
+    const visible: string[] = [];
+    for (const candidate of candidates) {
+      let entry = perOrganization.get(candidate.organizationId);
+      if (!entry) {
+        const access = await this.callerAccess(reqUser, candidate.organizationId);
+        const batch = access.reachable
+          ? await this.buildBatchContext(reqUser.id, candidate.organizationId, access.role, access.isGlobalAdmin)
+          : undefined;
+        entry = { access, batch };
+        perOrganization.set(candidate.organizationId, entry);
+      }
+      if (await this.allowsPrivateCollection(reqUser, { ...candidate, private: true }, entry.access, entry.batch)) {
+        visible.push(candidate.id);
+      }
+    }
+    return visible;
+  }
+
+  /**
+   * Narrows a listing context built from the user's own permissions to what
+   * the API key the request came with reaches (see `callerAccess`). A request
+   * with a token is left as it is.
+   */
+  async scopeToApiKey(reqUser: LeanUser, context: OrgUserPermissionsContext): Promise<OrgUserPermissionsContext> {
+    if (!(reqUser as any).apiKey) return context;
+    const adminOrgIds: string[] = [];
+    const reachable = new Set<string>();
+    const organizationIds = new Set<string>([
+      ...context.adminOrgIds,
+      ...[...(context.collectionKeys ?? []), ...(context.collectionsWritable ?? [])].map(key => key.split(':')[0]),
+    ]);
+    for (const organizationId of organizationIds) {
+      const access = await this.callerAccess(reqUser, organizationId);
+      if (!access.reachable) continue;
+      reachable.add(organizationId);
+      if (context.adminOrgIds.includes(organizationId) && (access.role === 'OWNER' || access.role === 'ADMIN')) {
+        adminOrgIds.push(organizationId);
+      }
+    }
+    const inReach = (keys?: string[]) => keys?.filter(key => reachable.has(key.split(':')[0]));
+    return {
+      ...context,
+      isGlobalAdmin: false,
+      adminOrgIds,
+      collectionKeys: inReach(context.collectionKeys),
+      // Already `organizationId:slug` when built for every organization of the user.
+      collectionsWritable: context.collectionsWritable?.every(key => key.includes(':'))
+        ? inReach(context.collectionsWritable)
+        : context.collectionsWritable,
     };
   }
 
@@ -530,13 +681,18 @@ class PermissionService {
     userId: string,
     organizationId: string,
     collectionSlug: string,
-    userOrgRole?: OrgRole | null
+    userOrgRole?: OrgRole | null,
+    reqUser?: LeanUser
   ): Promise<EntityPermissions> {
     const collection = await this.pricingCollectionRepository.findByOrganizationAndSlug(
       organizationId,
       collectionSlug
     );
-    if (!collection) {
+    // A private collection the caller may not see answers like a missing one.
+    if (
+      !collection ||
+      (reqUser && !(await this.canViewCollection(reqUser, { organizationId, slug: collection.slug, private: collection.private })))
+    ) {
       throw new Error('NOT FOUND: Collection not found');
     }
 

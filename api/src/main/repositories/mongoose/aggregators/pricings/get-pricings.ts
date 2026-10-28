@@ -1,5 +1,5 @@
 import { PipelineStage } from "mongoose";
-import { OrgUserPermissionsContext } from "../../../../types/policies";
+import { OrgUserPermissionsContext, PrivateCollectionAccess } from "../../../../types/policies";
 import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorRootAggregator } from "./group-pricing-versions";
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
@@ -13,12 +13,14 @@ export function getPricingsAggregator(
   permissions?: OrgUserPermissionsContext,
   filteringAggregator: PipelineStage[] = [],
   sortAggregator: PipelineStage[] = [],
+  // Private collections the viewer may see; the others are hidden from the result.
+  collectionVisibility: PrivateCollectionAccess = [],
 ){
   const pipeline: PipelineStage[] = [
       { $sort: { createdAt: -1 } },
       latestPricingsByNameAggregator,
       refactorRootAggregator,
-      ...populateCollectionDataAggregator,
+      ...populateCollectionDataAggregator(collectionVisibility),
       ...populateOrganizationDataAggregator,
       ...(organizationId ? filterByOrganizationAggregator(organizationId) : [{ $match: {} }]),
       ...pickVisibleVersionAggregator(canSeePrivateVersions(permissions)),

@@ -745,7 +745,8 @@ class OrbitToolRunner {
             slug: pricing.slug,
             private: pricing.private,
             versions: pricing.versions,
-            collection: collections.find(item => item.id === pricing.collectionId)?.name ?? null,
+            // A private collection the user may not see is not named.
+            collection: visibleCollections.find(item => item.id === pricing.collectionId)?.name ?? null,
           }));
           result.totalPricings = pricings.length;
         }

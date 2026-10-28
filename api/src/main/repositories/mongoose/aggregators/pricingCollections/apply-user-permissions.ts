@@ -36,8 +36,15 @@ export function considerUserCollectionPermissionsAggregator(permissions: OrgUser
           // El usuario es OWNER/ADMIN de la organización de la colección
           ...adminOrgMatch,
 
-          // El slug de la colección está en las colecciones permitidas
-          { 'slug': { $in: permissions.collections } },
+          // The collection is one the user holds GET on. Slugs repeat across
+          // organizations, so the organization is matched too when known.
+          permissions.collectionKeys
+            ? {
+                $expr: {
+                  $in: [{ $concat: [{ $toString: '$_organizationId' }, ':', '$slug'] }, permissions.collectionKeys],
+                },
+              }
+            : { 'slug': { $in: permissions.collections } },
 
           // La colección es pública
           // Missing `private` is the legacy public value for seeded/imported
