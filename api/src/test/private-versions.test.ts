@@ -36,6 +36,7 @@ import { createEntityScopedPermission } from './utils/organizations/organization
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
 import NotificationMongoose from '../main/repositories/mongoose/models/NotificationMongoose';
+import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import PricingFollowMongoose from '../main/repositories/mongoose/models/PricingFollowMongoose';
 import OrbitToolRunner from '../main/services/orbit/OrbitTools';
 
@@ -340,10 +341,13 @@ describe('Private pricing versions are only for callers allowed to read them', {
       const stored: any = await PricingMongoose.findOne({ slug: hidden.name, _organizationId: organization.id }).lean();
       expect(stored._collectionId ?? null).toBeNull();
 
-      // With GET on the pricing, it may be added; pricings with public versions only, as before.
+      // GET alone is insufficient: moving requires the pricing's own PUT too.
       await createEntityScopedPermission(member.id, organization.id, mixed.name, 'pricing', { ...NONE, GET: true });
+      expect((await add(mixed.name)).status).toBe(403);
+      await EntityPermissionMongoose.updateOne({ _userId: member.id, _organizationId: organization.id, entityType: 'pricing', entitySlug: mixed.name }, { $set: { 'permissions.PUT': true } });
       expect((await add(mixed.name)).status).toBe(200);
       const open = await createPricingForOrganization({ organizationId: organization.id, serviceName: `open-${randomSuffix()}` });
+      await createEntityScopedPermission(member.id, organization.id, open.serviceName, 'pricing', { ...NONE, PUT: true });
       expect((await add(open.serviceName)).status).toBe(200);
     });
 

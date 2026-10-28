@@ -127,7 +127,7 @@ export default function CardPage() {
           const baseUrl = import.meta.env.VITE_API_URL;
           const token = authUser?.token;
           const response = await fetch(
-            `${baseUrl}/pricings/${organizationId}/${slug}/permissions`,
+            `${baseUrl}/pricings/${organizationId}/${slug}/permissions${collectionSlug ? `?collection=${encodeURIComponent(collectionSlug)}` : ''}`,
             {
               headers: { Authorization: `Bearer ${token}` },
             }

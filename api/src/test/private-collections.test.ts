@@ -348,7 +348,7 @@ describe('Private collections are not revealed to callers without permission', {
       await expectHiddenButServed();
     });
 
-    it('does not name the collection in the answer to a change made by someone who may not see it', async () => {
+    it('denies individual PUT without revealing the private collection', async () => {
       const { organization, hidden, pricing, member } = await setup();
       await createEntityScopedPermission(member.id, organization.id, pricing.serviceName, 'pricing', FULL);
 
@@ -356,14 +356,14 @@ describe('Private collections are not revealed to callers without permission', {
         .put(`${BASE_PATH}/pricings/${organization.id}/${pricing.serviceName}/${pricing.version}`)
         .set('Authorization', `Bearer ${member.token}`)
         .send({ private: false });
-      expect(visibility.status).toBe(200);
+      expect(visibility.status).toBe(403);
       expect(mentions(visibility.body, hidden)).toBe(false);
 
       const update = await request(app)
         .put(`${BASE_PATH}/pricings/${organization.id}/${pricing.serviceName}`)
         .set('Authorization', `Bearer ${member.token}`)
         .send({});
-      expect(update.status).toBe(200);
+      expect(update.status).toBe(403);
       expect(mentions(update.body, hidden)).toBe(false);
     });
   });

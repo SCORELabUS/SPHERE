@@ -334,7 +334,9 @@ class PricingService {
     queryParams: { collection?: string; collectionId?: string; [key: string]: unknown }
   ) {
     const { collection: collectionFilter, collectionId: collectionIdFilter } = queryParams;
-    const pricing = await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true });
+    const pricing = await this.pricingRepository.findOne(slug, organizationId, {
+      includePrivate: true, collection: collectionFilter, collectionId: collectionIdFilter,
+    });
     if (!pricing) return null;
     const visible = await this._canSeeCollectionOf(reqUser, organizationId, pricing);
     return this._matchesCollectionFilter(pricing, visible, collectionFilter, collectionIdFilter) ? pricing : null;
@@ -925,10 +927,13 @@ class PricingService {
         throw new Error('PERMISSION ERROR: This pricing cannot be added to the collection');
       }
 
+      if (reqUser) await this.permissionService.assertPricingMove(reqUser, organizationId, pricingSlug, collection.slug, pricing);
+
       await this.pricingRepository.addPricingToCollection(
         pricingSlug,
         organizationId,
-        collection.id
+        collection.id,
+        pricing.pricingId
       );
       await this.pricingCollectionService.updateCollectionAnalytics(collection.id);
 
@@ -948,7 +953,6 @@ class PricingService {
   ) {
     data = this._clientPricingChanges(data);
     const effectiveOrgId = queryParams.organizationId || organizationId;
-    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
     const pricing = await this._findForCaller(pricingSlug, effectiveOrgId, reqUser, queryParams);
     if (!pricing) {
@@ -957,27 +961,7 @@ class PricingService {
       );
     }
 
-    const batchCtx = await this.permissionService.buildBatchContext(
-      reqUser.id,
-      effectiveOrgId,
-      orgRole,
-      reqUser.role === 'ADMIN'
-    );
-
-    const entityPerms = batchCtx.entityPermissions.get(`pricing:${pricingSlug}`);
-
-    const updateResult = this.permissionEngine.evaluate({
-      userId: reqUser.id,
-      organizationId: effectiveOrgId,
-      entityType: 'pricing',
-      entitySlug: pricingSlug,
-      action: 'PUT',
-      // Every version changes, so a private one among them takes reading it.
-      isPrivate: pricing.versions.some((version: { private?: boolean }) => version.private === true),
-      userOrgRole: orgRole,
-      isGlobalAdmin: reqUser.role === 'ADMIN',
-      entityPermissions: entityPerms,
-    });
+    const updateResult = await this.permissionService.checkPricingPut(reqUser, effectiveOrgId, pricingSlug, { pricing, isPrivate: pricing.versions.some((version: { private?: boolean }) => version.private === true) });
     if (!updateResult.allowed) {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
     }
@@ -1032,7 +1016,7 @@ class PricingService {
       await this._setEtag(pricing.pricingId, revisionContext, reader);
       const effectiveSlug = data.slug || pricingSlug;
       const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
-        includePrivate: true,
+        includePrivate: true, collectionId: pricing.versions[0]?._collectionId ?? undefined,
       });
 
       return this._withoutHiddenCollection(await this._withReadableVersions(updatedPricing, effectiveOrgId, reqUser), effectiveOrgId, reqUser);
@@ -1106,12 +1090,12 @@ class PricingService {
     organizationId: string,
     reqUser: LeanUser,
     isPrivate: boolean,
-    revisionContext?: PricingRevisionContext
+    revisionContext?: PricingRevisionContext,
+    collectionSlug?: string
   ) {
-    const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
 
     const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
-      includePrivate: true,
+      includePrivate: true, collection: collectionSlug,
     });
     const target = pricing?.versions.find(
       (version: { version: string }) =>
@@ -1123,24 +1107,7 @@ class PricingService {
       throw new Error('NOT FOUND: Pricing version not found');
     }
 
-    const batchCtx = await this.permissionService.buildBatchContext(
-      reqUser.id,
-      organizationId,
-      orgRole,
-      reqUser.role === 'ADMIN'
-    );
-
-    const updateResult = this.permissionEngine.evaluate({
-      userId: reqUser.id,
-      organizationId,
-      entityType: 'pricing',
-      entitySlug: pricingSlug,
-      action: 'PUT',
-      isPrivate: target.private === true,
-      userOrgRole: orgRole,
-      isGlobalAdmin: reqUser.role === 'ADMIN',
-      entityPermissions: batchCtx.entityPermissions.get(`pricing:${pricingSlug}`),
-    });
+    const updateResult = await this.permissionService.checkPricingPut(reqUser, organizationId, pricingSlug, { pricing, isPrivate: target.private === true });
     if (!updateResult.allowed) {
       throw new Error(`PERMISSION ERROR: ${updateResult.reason}`);
     }
@@ -1151,7 +1118,7 @@ class PricingService {
       await this._setEtag(pricing.pricingId, revisionContext, reader);
 
       return this._withoutHiddenCollection(await this._withReadableVersions(
-        await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true }),
+        await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true, collectionId: pricing.versions[0]?._collectionId ?? undefined }),
         organizationId,
         reqUser
       ), organizationId, reqUser);

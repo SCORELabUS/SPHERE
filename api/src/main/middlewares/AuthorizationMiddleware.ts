@@ -222,6 +222,8 @@ async function checkEntityPermissions(
   if (!entitySlug) return null;
 
   if (segments.includes('permissions')) return null;
+  // Removing membership edits the collection; the service checks both PUTs.
+  if (entityType === 'collection' && method === 'DELETE' && segments.length === 5 && segments[3] === 'pricings') return null;
 
   const permissionEngine = new PermissionEngine();
 
@@ -286,6 +288,10 @@ async function checkEntityPermissions(
 
   const permissionType = _mapMethodToPermission(method, method === 'GET');
   if (!permissionType) return null;
+  if (entityType === 'pricing' && permissionType === 'PUT') {
+    const result = await container.resolve('permissionService').checkPricingPut(user, organizationId, entitySlug, { collection: typeof req.query.collection === 'string' ? req.query.collection : undefined });
+    return result.allowed ? null : result.reason || 'PUT permission required';
+  }
 
   if (permissionType === 'GET') {
     const entityRepo = entityType === 'pricing'

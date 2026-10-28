@@ -30,6 +30,8 @@ export interface PermissionContext {
   entityPermissions?: EntityPermissions;
   /** Pre-fetched collection permissions (for pricing inheritance) */
   collectionPermissions?: EntityPermissions;
+  /** Membership changes require the pricing's own PUT, not inherited PUT. */
+  requireDirectPricingPut?: boolean;
 }
 
 /**
