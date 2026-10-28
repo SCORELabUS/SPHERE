@@ -15,6 +15,8 @@ import {
 import type { IconType } from 'react-icons';
 import type { VersionData } from '../../types/card';
 import FileDiffView from './file-diff-view';
+import { useAuth } from '../../../auth/hooks/useAuth';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import {
   diffPricings,
   formatDiffValue,
@@ -372,6 +374,8 @@ function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (mode: Vie
 }
 
 export default function PricingVersionDiff({ versions, initialPair }: PricingVersionDiffProps) {
+  const { authUser } = useAuth();
+  const token = authUser?.token;
   const [fromId, setFromId] = useState(initialPair.from);
   const [toId, setToId] = useState(initialPair.to);
   const [diff, setDiff] = useState<PricingDiff | null>(null);
@@ -397,7 +401,8 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
     const load = async (version: VersionData): Promise<LoadedVersion> => {
       const cached = loadedCache.current.get(version.id);
       if (cached) return cached;
-      const response = await fetch(yamlUrl(version));
+      const url = yamlUrl(version);
+      const response = await fetch(url, pricingYamlRequestInit(url, token));
       if (!response.ok) throw new Error(`Version ${version.version} could not be loaded.`);
       const text = await response.text();
       const loaded = { text, parsed: jsYaml.load(text) };
@@ -425,7 +430,7 @@ export default function PricingVersionDiff({ versions, initialPair }: PricingVer
     return () => {
       active = false;
     };
-  }, [fromVersion, toVersion]);
+  }, [fromVersion, toVersion, token]);
 
   const swap = () => {
     setFromId(toId);
