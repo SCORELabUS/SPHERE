@@ -92,6 +92,41 @@ async function authenticateToken(req: Request, token: string): Promise<void> {
   (req as any).authType = 'token';
 }
 
+/**
+ * Resolves the caller of a request that is not behind authenticationMiddleware
+ * (static files), without failing it: missing or invalid credentials make the
+ * caller anonymous instead of answering 401, so public files keep being
+ * served to clients that send a stale token. Does not modify `req`.
+ */
+export async function resolveRequestUser(
+  req: Request
+): Promise<{ user: any; authType: 'token' | 'api-key' } | null> {
+  if ((req as any).user) {
+    return { user: (req as any).user, authType: (req as any).authType };
+  }
+
+  const authHeader: string = req.headers.authorization || '';
+  const apiKeyHeader: string = Array.isArray(req.headers['x-api-key'])
+    ? req.headers['x-api-key'][0]
+    : req.headers['x-api-key'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : '';
+  const holder: any = {};
+
+  try {
+    if (token && token !== 'null') {
+      await authenticateToken(holder, token);
+    } else if (apiKeyHeader) {
+      await authenticateApiKey(holder, apiKeyHeader);
+    } else {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return { user: holder.user, authType: holder.authType };
+}
+
 export function extractOrganizationIdFromPath(path: string): string | undefined {
   const segments = path
     .replace('/api/v1' + (process.env.BASE_URL_PATH ?? ''), '')

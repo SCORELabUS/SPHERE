@@ -38,6 +38,7 @@ type Ref = { slug: string; label: string };
 export class PricingStepBuilder {
   private pricings = new Map<string, PricingSummary[]>();
   private collections = new Map<string, CollectionSummary[]>();
+  private visibleCollections = new Map<string, CollectionSummary[]>();
   private batches = new Map<string, any>();
   private readers = new Map<string, PrivateReader>();
   private engine = new PermissionEngine();
@@ -275,7 +276,8 @@ export class PricingStepBuilder {
         errors.push(`"${name}" needs letters or digits to name a collection.`);
         continue;
       }
-      if ((await this.collectionsOf(organization.id)).some(collection => collection.slug === slug) || planned.has(`${organization.id}:${slug}`)) {
+      // Names are unique per organization, hidden collections included: the API refuses the same name too.
+      if ((await this.allCollectionsOf(organization.id)).some(collection => collection.slug === slug) || planned.has(`${organization.id}:${slug}`)) {
         errors.push(`"${organization.label}" already has a collection called "${name}".`);
         continue;
       }
@@ -442,11 +444,30 @@ export class PricingStepBuilder {
     return this.pricings.get(organizationId)!;
   }
 
-  async collectionsOf(organizationId: string): Promise<CollectionSummary[]> {
+  /** Every collection of an organization, private ones the user may not see included. */
+  async allCollectionsOf(organizationId: string): Promise<CollectionSummary[]> {
     if (!this.collections.has(organizationId)) {
       this.collections.set(organizationId, await this.collectionRepository.findSummariesByOrganization(organizationId));
     }
     return this.collections.get(organizationId)!;
+  }
+
+  /**
+   * The collections of an organization the user may see, by the rule of
+   * GET /collections/{organizationId}/{slug}. A private one they may not see
+   * is never named, and plans treat it as if it did not exist.
+   */
+  async collectionsOf(organizationId: string): Promise<CollectionSummary[]> {
+    if (!this.visibleCollections.has(organizationId)) {
+      const visible: CollectionSummary[] = [];
+      for (const collection of await this.allCollectionsOf(organizationId)) {
+        if (!collection.private || (await this.allowed(organizationId, 'collection', 'GET', collection.slug, true))) {
+          visible.push(collection);
+        }
+      }
+      this.visibleCollections.set(organizationId, visible);
+    }
+    return this.visibleCollections.get(organizationId)!;
   }
 
   /** Whether the user may do this, by the policies the API applies to the same request. */

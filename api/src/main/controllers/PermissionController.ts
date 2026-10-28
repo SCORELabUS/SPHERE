@@ -110,7 +110,8 @@ class PermissionController {
         req.user.id,
         req.params.organizationId,
         req.params.collectionSlug,
-        req.user.orgRole
+        req.user.orgRole,
+        req.user
       );
       res.json(result);
     } catch (err: any) {

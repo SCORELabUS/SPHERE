@@ -197,7 +197,11 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
     case 'get_collection': {
       const organizationId = requireOrganizationId(args.organizationId);
       const slug = await resolveCollectionSlug(organizationId, args.collection);
-      const collection: any = await collectionService.show(organizationId, slug, user);
+      // A private collection the user may not see answers as one that does not exist.
+      const collection: any = await collectionService.show(organizationId, slug, user).catch((err: Error) => {
+        if (err.message.startsWith('NOT FOUND')) throw new Error(`NOT FOUND: There is no collection called "${String(args.collection ?? '').trim()}" in this organization`);
+        throw err;
+      });
       const pricings = await visiblePricingsIn(organizationId, collection, actor);
       return {
         name: collection.name,

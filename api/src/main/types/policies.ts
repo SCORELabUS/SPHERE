@@ -99,3 +99,6 @@ export interface OrgUserPermissionsContext {
   /** Org IDs where user has OWNER or ADMIN role (full access to all entities) */
   adminOrgIds: string[];
 }
+
+/** The private collections a caller may see: every one, or those with these ids. */
+export type PrivateCollectionAccess = 'all' | string[];

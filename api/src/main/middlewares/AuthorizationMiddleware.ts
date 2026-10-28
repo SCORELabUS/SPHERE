@@ -367,6 +367,11 @@ async function checkEntityPermissions(
   });
 
   if (!result.allowed) {
+    // A private collection the caller cannot see is refused with the reason a
+    // missing one gets, so the answer does not tell that it exists.
+    if (entityType === 'collection' && isPrivate && !entityPermissions?.GET) {
+      return `${permissionType} permission required`;
+    }
     return result.reason || `PERMISSION ERROR: You do not have ${permissionType} permission on this ${entityType}`;
   }
 

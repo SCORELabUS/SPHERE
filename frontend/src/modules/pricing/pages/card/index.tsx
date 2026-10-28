@@ -8,6 +8,7 @@ import {
   getPublicOrganization,
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
@@ -77,6 +78,7 @@ export default function CardPage() {
   const [dateTo, setDateTo] = useState('');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [linkDescription, setLinkDescription] = useState<string>();
   const [canDelete, setCanDelete] = useState(false);
   const [entityPermissions, setEntityPermissions] = useState<EntityPermissions | null>(null);
   const [showVisibilityModal, setShowVisibilityModal] = useState(false);
@@ -181,7 +183,7 @@ export default function CardPage() {
     const url = currentVersion.yaml.startsWith('http')
       ? currentVersion.yaml
       : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(async text => {
         setYamlText(text);
@@ -208,7 +210,7 @@ export default function CardPage() {
         setPricing(null);
       })
       .finally(() => setIsLoadingYaml(false));
-  }, [currentVersion]);
+  }, [currentVersion, authUser?.token]);
 
   const handleApplyVariables = async (variables: Record<string, unknown>) => {
     if (!yamlText) return;
@@ -295,7 +297,7 @@ export default function CardPage() {
 
   const handleDownload = (v: VersionData) => {
     const url = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    fetch(url)
+    fetch(url, pricingYamlRequestInit(url, authUser?.token))
       .then(r => r.text())
       .then(text => downloadYaml(text))
       .catch(() => {});
@@ -319,8 +321,18 @@ export default function CardPage() {
   };
 
   const handleCopyLink = (v: VersionData) => {
-    const yamlUrl = v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`;
-    setLinkUrl(yamlUrl);
+    // The YAML file of a private version is only served to callers who may
+    // read it, so a direct link would not work for anyone else. Offer the
+    // pricing's permanent link instead.
+    if (v.private && pricingId) {
+      setLinkUrl(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`);
+      setLinkDescription(
+        'This version is private, so its YAML file is only available to signed-in users who can see it. This is the permanent link to the pricing instead: people with access see every version, everyone else only the public ones.'
+      );
+    } else {
+      setLinkUrl(v.yaml.startsWith('http') ? v.yaml : `${import.meta.env.VITE_API_URL}${v.yaml}`);
+      setLinkDescription(undefined);
+    }
     setShowLinkModal(true);
   };
 
@@ -1128,6 +1140,7 @@ export default function CardPage() {
       {showLinkModal && (
         <PricingLinkModal
           linkUrl={linkUrl}
+          description={linkDescription}
           onClose={() => {
             setShowLinkModal(false);
           }}
