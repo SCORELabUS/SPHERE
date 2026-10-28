@@ -3,6 +3,8 @@ import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import { handleError, verifyJwtToken } from '../utils/users/helpers';
 import { ROLE_WEIGHT } from '../types/models/Organization';
+import OAuthService, { oauthChallenge } from '../services/OAuthService';
+import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 
 /**
  * Authentication middleware.
@@ -16,11 +18,28 @@ const authenticationMiddleware = async (req: Request, res: Response, next: NextF
     : req.headers['x-api-key'] || ('' as string);
 
   try {
+    const isMcp = req.path === (process.env.BASE_URL_PATH ?? '') + '/api/v1/orbit/mcp';
+    if (isMcp) res.setHeader('WWW-Authenticate', oauthChallenge());
     const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : '';
     const apiKey = apiKeyHeader;
 
     if (token && token !== 'null') {
-      await authenticateToken(req, token);
+      if (token.startsWith('sph_oat_')) {
+        if (!isMcp) return res.status(401).json({ error: 'OAuth access tokens are restricted to MCP' });
+        const service: OAuthService = container.resolve('oauthService');
+        let auth;
+        try { auth = await service.authenticate(token); }
+        catch (error) {
+          if (!(error instanceof InvalidTokenError)) throw error;
+          res.setHeader('WWW-Authenticate', oauthChallenge() + ', error="invalid_token"');
+          return res.status(401).json({ error: 'invalid_token' });
+        }
+        (req as any).user = auth.user;
+        (req as any).mcpCredential = auth.credential;
+        (req as any).authType = 'oauth';
+      } else {
+        await authenticateToken(req, token);
+      }
     } else if (apiKey) {
       await authenticateApiKey(req, apiKey);
     }

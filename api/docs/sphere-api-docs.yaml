@@ -139,8 +139,183 @@ tags:
   - name: ORBIT
     description: |
       Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
+  - name: Public Synchronization
+    description: |
+      Permanent links and the read-only API that external tools (e.g. SPACE) use to
+      follow a pricing family by its immutable `pricingId`. See `docs/permanent-links.md`.
 
 paths:
+  /oauth/authorize:
+    get:
+      tags: [Authentication]
+      summary: Begin MCP OAuth authorization with mandatory S256 PKCE and resource indicator
+      security: []
+      parameters:
+        - {name: client_id, in: query, required: true, schema: {type: string}}
+        - {name: redirect_uri, in: query, required: true, schema: {type: string, format: uri}}
+        - {name: response_type, in: query, required: true, schema: {type: string, enum: [code]}}
+        - {name: code_challenge, in: query, required: true, schema: {type: string}}
+        - {name: code_challenge_method, in: query, required: true, schema: {type: string, enum: [S256]}}
+        - {name: resource, in: query, required: true, schema: {type: string, format: uri}}
+        - {name: state, in: query, schema: {type: string}}
+      responses:
+        '302': {description: Redirect to SPHERE consent or validated client callback}
+        '400': {description: Invalid OAuth request}
+  /oauth/register:
+    post:
+      tags: [Authentication]
+      summary: Dynamically register an OAuth client (RFC 7591)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                client_name: {type: string, maxLength: 200}
+                redirect_uris: {type: array, maxItems: 10, items: {type: string, format: uri}}
+                token_endpoint_auth_method: {type: string, enum: [none, client_secret_post]}
+      responses:
+        '201': {description: Registered OAuth client metadata}
+        '400': {description: Invalid client metadata}
+        '429': {description: Registration limit exceeded}
+  /oauth/token:
+    post:
+      tags: [Authentication]
+      summary: Exchange authorization code or rotate refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id, resource]
+              properties:
+                grant_type: {type: string, enum: [authorization_code, refresh_token]}
+                client_id: {type: string}
+                client_secret: {type: string}
+                code: {type: string}
+                code_verifier: {type: string}
+                redirect_uri: {type: string, format: uri}
+                refresh_token: {type: string}
+                resource: {type: string, format: uri}
+      responses:
+        '200':
+          description: Bearer access token (3600 seconds) and rotating refresh token (30 days)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, refresh_token, scope]
+                properties:
+                  access_token: {type: string, description: Opaque sph_oat_ token restricted to the MCP resource}
+                  token_type: {type: string, enum: [Bearer]}
+                  expires_in: {type: integer, example: 3600}
+                  refresh_token: {type: string, description: Rotating opaque sph_ort_ token; reuse revokes the connection}
+                  scope: {type: string, enum: [orbit]}
+        '400': {description: Invalid grant, PKCE, redirect URI or resource}
+        '429': {description: Token limit exceeded}
+  /oauth/revoke:
+    post:
+      tags: [Authentication]
+      summary: Revoke the grant associated with a token (RFC 7009)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token, client_id]
+              properties:
+                token: {type: string}
+                client_id: {type: string}
+                client_secret: {type: string}
+      responses:
+        '200': {description: Token revoked or already invalid}
+  /oauth/requests/{requestId}:
+    parameters:
+      - {name: requestId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Authentication]
+      summary: Read and bind pending consent to the signed-in user (web session only)
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Client name and callback domain}
+        '401': {description: Web session required}
+        '404': {description: Expired or unavailable request}
+    post:
+      tags: [Authentication]
+      summary: Approve or deny pending consent (web session only)
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: {type: boolean}
+                scopes:
+                  type: array
+                  items:
+                    type: object
+                    required: [organizationId, scope]
+                    properties:
+                      organizationId: {type: string}
+                      scope: {type: string, enum: [VIEW, MANAGEMENT, ALL]}
+      responses:
+        '200': {description: Validated callback URL with code or access_denied and original state}
+        '400': {description: Invalid scopes or decision}
+        '401': {description: Web session required}
+        '404': {description: Expired, consumed or unavailable request}
+  /oauth/grants:
+    get:
+      tags: [Authentication]
+      summary: List the current user's connected applications (web session only)
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Connections with scopes and last use; no token material}
+        '401': {description: Web session required}
+  /oauth/grants/{grantId}:
+    delete:
+      tags: [Authentication]
+      summary: Immediately revoke one of the current user's connections (web session only)
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: grantId, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Connection revoked}
+        '401': {description: Web session required}
+        '404': {description: Connection not found}
+  /.well-known/oauth-authorization-server:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: RFC 8414 OAuth authorization server metadata
+      responses:
+        '200': {description: Issuer, endpoints, grant types, S256 and client authentication methods}
+  /.well-known/oauth-protected-resource:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: RFC 9728 MCP protected resource metadata
+      responses:
+        '200': {description: Exact MCP resource URL and authorization server issuer}
+  /.well-known/oauth-protected-resource/api/v1/orbit/mcp:
+    servers: [{url: 'https://sphere.score.us.es'}]
+    get:
+      tags: [Authentication]
+      security: []
+      summary: Path-specific RFC 9728 MCP protected resource metadata
+      responses:
+        '200': {description: Exact MCP resource URL and authorization server issuer}
   /healthcheck:
     get:
       summary: Service health check
@@ -5644,9 +5819,16 @@ paths:
         message (`initialize`, `tools/list`, `tools/call`...). No language model is called: the assistant reads with
         the same tools as the chat (`list_my_organizations`, `search_pricings`, `get_notifications`...) and its changes
         go through `propose_plan`, which leaves a plan waiting in a conversation of the user called "Plans from
-        assistants (MCP)". The user confirms it in SPHERE, at the `confirmUrl` of the result; there is no way to confirm
-        a plan through MCP. `attach_file` sends a file a plan can use, `get_plan` reports a plan's outcome and
-        `cancel_plan` withdraws one.
+        assistants (MCP)". `confirm_plan` applies it, only with the API key that proposed it: when the client supports
+        MCP elicitation, SPHERE asks the user in a confirmation dialog the model cannot answer (deletions and handovers
+        are confirmed by typing their phrase there); otherwise the assistant's call confirms it, passing the phrase the
+        user typed when one is needed. The user can also confirm it in SPHERE, at the `confirmUrl`. `attach_file`
+        sends a file a plan can use, `get_plan` reports a plan's outcome and `cancel_plan` withdraws one.
+
+        **Sessions**: an `initialize` starts a session; its id comes back in the `Mcp-Session-Id` header and its answers
+        as server-sent events, which is how the confirmation dialog reaches the client. Sessions belong to the user and
+        the API key that started them and end after 30 idle minutes. A request without a session stands alone and
+        answers in JSON.
 
         The API key's scopes bound what the assistant reaches: it only sees and names the organizations the key covers
         (an ALL scope also covers everything below its organization), a key with only VIEW scopes cannot propose
@@ -5654,11 +5836,16 @@ paths:
 
         Limited to 120 tool calls a minute per user.
 
-        **Authentication**: User API key in `x-api-key`. A user token is refused.
+        **Authentication**: User API key in `x-api-key`, or MCP OAuth access token in
+        `Authorization: Bearer sph_oat_...`. Web session JWTs are refused. Missing or invalid
+        credentials return 401 with `WWW-Authenticate: Bearer resource_metadata="<issuer>/.well-known/oauth-protected-resource/api/v1/orbit/mcp"`.
+        OAuth uses mandatory S256 PKCE and resource indicators. Session and plan confirmation
+        ownership are bound to the proposing credential (API key or OAuth grant).
       tags:
         - ORBIT
       security:
         - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       requestBody:
         required: true
         content:
@@ -5692,23 +5879,348 @@ paths:
         '202':
           description: A notification, accepted with no body
         '401':
-          description: No API key, or a user token instead of one
+          description: Missing or invalid MCP credential; session JWTs are refused
+          headers:
+            WWW-Authenticate:
+              description: OAuth discovery challenge with resource_metadata URL; invalid OAuth tokens also include invalid_token
+              schema: {type: string}
     get:
-      summary: Not available on the ORBIT MCP server
-      description: The server keeps no sessions, so there is no stream to open. Answers 405.
+      summary: Open the stream of an ORBIT MCP session
+      description: |
+        Opens the server-sent event stream of the session named in `Mcp-Session-Id`. Without a session, answers 405.
+
+        **Authentication**: User API key in `x-api-key` or OAuth Bearer token for the grant that started the session.
       tags:
         - ORBIT
+      security:
+        - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       responses:
+        '200':
+          description: The session's event stream
+        '404':
+          description: No such session for this user and API key
         '405':
-          description: Method not allowed
+          description: No session was named
     delete:
-      summary: Not available on the ORBIT MCP server
-      description: The server keeps no sessions, so there is none to end. Answers 405.
+      summary: End an ORBIT MCP session
+      description: |
+        Ends the session named in `Mcp-Session-Id`. Without a session, answers 405.
+
+        **Authentication**: User API key in `x-api-key` or OAuth Bearer token for the grant that started the session.
       tags:
         - ORBIT
+      security:
+        - ApiKeyAuth: []
+        - OAuthMcpAuth: [orbit]
       responses:
+        '200':
+          description: Session ended
+        '404':
+          description: No such session for this user and API key
         '405':
-          description: Method not allowed
+          description: No session was named
+
+  /permalinks/{resourceType}/{resourceId}:
+    get:
+      operationId: resolvePermanentLink
+      summary: Resolve a permanent link
+      description: |
+        Resolves the current frontend location of a pricing family (`/p/{pricingId}`) or of a
+        collection (`/c/{collectionId}`). The destination is recomputed on every request, so
+        renaming or moving a pricing never breaks its permanent link.
+
+        **Authentication**: Public. A user token or an API key is only needed to resolve
+        private resources.
+
+        **Permission**:
+        - A pricing family is resolved for anyone while at least one of its versions is
+          public. When every version is private, the caller must be allowed to read the
+          pricing (OWNER/ADMIN of its organization, global ADMIN through a user token, or
+          GET permission on the pricing or on its collection). API keys are limited by
+          their scope: a `VIEW` key reads as MEMBER and a key scoped to another
+          organization grants nothing.
+        - A private collection requires the same kind of permission on the collection.
+        - Anything the caller may not see is answered with 404, exactly like an unknown ID.
+
+        **Caching**: a strong `ETag`; send it back in `If-None-Match` to get `304 Not
+        Modified`. Visibility is checked before any 304. `Cache-Control: private, no-cache`
+        for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: resourceType
+          in: path
+          required: true
+          description: Kind of permanent link.
+          schema:
+            type: string
+            enum: [pricing, collection]
+        - name: resourceId
+          in: path
+          required: true
+          description: |
+            `pricingId` of the pricing family (`resourceType=pricing`) or MongoDB ID of the
+            collection (`resourceType=collection`).
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Current location of the resource in the SPHERE frontend
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentLinkLocation'
+              examples:
+                pricing:
+                  summary: Pricing family inside a collection
+                  value:
+                    location: /pricings/68050bd09890322c57842f6f/zoom?collection=ieee-tsc-2025
+                collection:
+                  summary: Collection
+                  value:
+                    location: /collections/68050bd09890322c57842f6f/ieee-tsc-2025
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}:
+    get:
+      operationId: getPublicPricingManifest
+      summary: Get the manifest of a pricing family
+      description: |
+        Returns the name, permanent URL and version summaries of a pricing family, identified
+        by its immutable `pricingId`. This is the entry point for synchronization clients:
+        poll it (with `If-None-Match`) and download the versions whose `contentHash` changed.
+
+        **Authentication**: Public. Credentials, when sent, are validated like on the rest of
+        the API (an invalid or expired token or API key is rejected with 401). Anonymous
+        callers, and authenticated callers who may not read the pricing, get the public
+        versions only.
+
+        **Private versions**: a caller authenticated with a user token or an API key who may
+        read the pricing (OWNER/ADMIN of its organization, global ADMIN through a user token,
+        or GET permission on the pricing or its collection) also gets its private versions,
+        each flagged `private: true`. API keys are limited by their scope: `ALL` and
+        `MANAGEMENT` keys act with the user's role, a `VIEW` key acts as a plain MEMBER (so it
+        only sees private versions where the user holds GET on the pricing or its collection),
+        and a key scoped to another organization grants nothing.
+
+        **Versions**: sorted newest first by the pricing `createdAt` (from the YAML), with
+        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them,
+        so for an authorized caller it can be a private version. A deleted family is answered
+        with 404; so is a family whose versions are all private, unless the caller may read
+        them.
+
+        **Caching**: a strong `ETag` computed from the body (so the anonymous and the
+        authorized view of a family have different ETags); `If-None-Match` yields `304 Not
+        Modified` only while the versions listed for that caller are still visible to it.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Manifest of the pricing family
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPricingManifest'
+              examples:
+                anonymous:
+                  summary: Anonymous caller (public versions only)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f80
+                    versions:
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+                authorized:
+                  summary: Caller who may read the pricing (private versions flagged)
+                  value:
+                    pricingId: 68050bd09890322c57842f7a
+                    name: Zoom
+                    permanentUrl: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+                    latestVersionId: 68050bd09890322c57842f91
+                    versions:
+                      - versionId: 68050bd09890322c57842f91
+                        version: "2025"
+                        createdAt: '2025-01-01T00:00:00Z'
+                        contentHash: 9a8f7e6d5c4b3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b
+                        private: true
+                      - versionId: 68050bd09890322c57842f80
+                        version: "2024"
+                        createdAt: '2024-01-01T00:00:00Z'
+                        contentHash: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/versions/{versionId}/yaml:
+    get:
+      operationId: getPublicPricingVersionYaml
+      summary: Download the Pricing2Yaml of a version
+      description: |
+        Returns the Pricing2Yaml file of one version of a pricing family, as stored by SPHERE.
+        Visibility is checked before and again after reading the file, so a version made
+        private meanwhile is never released to a caller who may not read it.
+
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Public versions are served to everyone; private versions only to a caller who may
+        read the pricing, under the same rules (and API key scopes) as the manifest. For
+        anyone else a private version is answered with 404.
+
+        **Limits**: files larger than 5 MiB are not served through this endpoint (503).
+
+        **Caching**: a strong `ETag` (SHA-256 of the file); `If-None-Match` yields `304 Not
+        Modified` while the version stays visible to the caller. `Cache-Control: private,
+        no-cache` for anonymous callers and `private, no-store` for authenticated ones;
+        `Vary: Authorization, x-api-key` on every response.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+        - name: versionId
+          in: path
+          required: true
+          description: '`versionId` of the version, as listed in the manifest.'
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Pricing2Yaml file of the version
+          headers:
+            ETag:
+              $ref: '#/components/headers/PublicSyncETag'
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/yaml:
+              schema:
+                type: string
+                description: Pricing2Yaml document
+              example: |
+                saasName: Zoom
+                syntaxVersion: "3.0"
+                version: "2024"
+                createdAt: "2024-01-01"
+                currency: USD
+                features: {}
+                plans: {}
+        '304':
+          $ref: '#/components/responses/PublicSyncNotModified'
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
+
+  /public/pricings/{pricingId}/download:
+    get:
+      operationId: downloadPublicPricingVersions
+      summary: Download every version of a pricing family as a ZIP archive
+      description: |
+        Returns a ZIP archive with one `<pricing-slug>/<version>.yaml` entry per version of
+        the family.
+
+        **Authentication**: Public. Credentials, when sent, are validated (401 when invalid).
+        Anonymous callers, and authenticated callers who may not read the pricing, get the
+        public versions only (404 when the family has none).
+
+        **Private versions**: a caller who may read the pricing, under the same rules (and
+        API key scopes) as the manifest, also gets the private versions in the archive.
+
+        The archive is streamed: it carries no `ETag` and is not revalidated.
+        `Cache-Control: private, no-cache` for anonymous callers and `private, no-store` for
+        authenticated ones; `Vary: Authorization, x-api-key`.
+      tags:
+        - Public Synchronization
+      security:
+        - {}
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PricingId'
+      responses:
+        '200':
+          description: ZIP archive with the versions visible to the caller
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="<pricingId>-versions.zip"`'
+              schema:
+                type: string
+            Cache-Control:
+              $ref: '#/components/headers/PublicSyncCacheControl'
+            Vary:
+              $ref: '#/components/headers/PublicSyncVary'
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/PublicSyncInvalidCredentials'
+        '404':
+          $ref: '#/components/responses/PublicSyncUnavailable'
+        '500':
+          description: The archive could not be generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Unable to generate archive
+        '503':
+          $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
 
 components:
   schemas:
@@ -5969,6 +6481,90 @@ components:
           type: string
       required:
         - error
+
+    PermanentLinkLocation:
+      type: object
+      description: Current destination of a permanent link in the SPHERE frontend.
+      properties:
+        location:
+          type: string
+          description: |
+            Frontend path (relative to `SPHERE_PUBLIC_URL`): `/pricings/{organizationId}/{slug}`,
+            optionally with `?collection={collectionSlug}`, or
+            `/collections/{organizationId}/{collectionSlug}`.
+          example: /pricings/68050bd09890322c57842f6f/zoom
+      required:
+        - location
+
+    PublicPricingVersionSummary:
+      type: object
+      properties:
+        versionId:
+          type: string
+          description: Immutable ID of the version; use it to download its YAML.
+          example: 68050bd09890322c57842f80
+        version:
+          type: string
+          description: Version label as published (need not be a semantic version).
+          example: "2024"
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        contentHash:
+          type: string
+          description: |
+            SHA-256 (hex) of the canonicalised YAML: mapping keys sorted, `saasName`
+            excluded, so a rename alone does not change it.
+          pattern: '^[a-f0-9]{64}$'
+          example: 3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b
+        private:
+          type: boolean
+          enum: [true]
+          description: |
+            Present (and `true`) only on private versions, which are listed only to callers
+            who may read them. Omitted on public versions, so anonymous manifests never carry
+            it. Clients that must not handle unpublished versions should skip these entries.
+          example: true
+      required:
+        - versionId
+        - version
+        - createdAt
+        - contentHash
+
+    PublicPricingManifest:
+      type: object
+      properties:
+        pricingId:
+          type: string
+          description: Immutable ID of the pricing family.
+          example: 68050bd09890322c57842f7a
+        name:
+          type: string
+          description: Current name of the pricing.
+          example: Zoom
+        permanentUrl:
+          type: string
+          format: uri
+          description: Permanent frontend link of the family (`{SPHERE_PUBLIC_URL}/p/{pricingId}`).
+          example: https://sphere.score.us.es/p/68050bd09890322c57842f7a
+        latestVersionId:
+          type: string
+          description: |
+            `versionId` of the newest listed version. For a caller who may read private
+            versions it can be a private one; such callers can find the newest public
+            version as the first entry without `private: true`.
+          example: 68050bd09890322c57842f80
+        versions:
+          type: array
+          description: Versions visible to the caller, newest first.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PublicPricingVersionSummary'
+      required:
+        - pricingId
+        - name
+        - permanentUrl
+        - latestVersionId
+        - versions
     
     Name:
       type: string
@@ -7978,6 +8574,35 @@ components:
                   pattern: '^[a-f0-9]{24}$'
 
   responses:
+    PublicSyncNotModified:
+      description: The `If-None-Match` validator still matches and the resource is still visible.
+    PublicSyncInvalidCredentials:
+      description: A user token or API key was sent but is invalid, revoked or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'UNAUTHORIZED: Invalid or expired token'
+    PublicSyncUnavailable:
+      description: |
+        Unknown, deleted or not visible to the caller. Private resources are not
+        distinguished from missing ones.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+    PublicSyncTemporarilyUnavailable:
+      description: The pricing files could not be read (or exceed the 5 MiB synchronization limit).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource unavailable
+
     PricingList:
       description: A list of pricings matching the provided filter
       content:
@@ -8136,6 +8761,25 @@ components:
                 example: "Cache set successfully"
 
   parameters:
+    PricingId:
+      name: pricingId
+      in: path
+      required: true
+      description: |
+        Immutable ID of a pricing family (the `{id}` of its `/p/{id}` permanent link). It
+        survives renames and moves between collections.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: '`ETag` of a previous response; answered with 304 when it still matches.'
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+
     OrgId:
       name: orgId
       in: path
@@ -8412,7 +9056,45 @@ components:
         type: string
         example: "a1b2c3d4e5"
 
+  headers:
+    PublicSyncETag:
+      description: Strong validator, the SHA-256 (hex, quoted) of the response body.
+      schema:
+        type: string
+        example: '"3f0c8c6a0b5e4e1a8d7f9c2b6e4d1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"'
+    PublicSyncCacheControl:
+      description: |
+        `private, no-cache` for anonymous requests: only the client may store the response,
+        and it must revalidate it. `private, no-store` for requests that carry a user token
+        or an API key, whose responses may hold private content and must not be stored.
+      schema:
+        type: string
+        enum: ['private, no-cache', 'private, no-store']
+        example: private, no-cache
+    PublicSyncVary:
+      description: The response depends on the caller's credentials.
+      schema:
+        type: string
+        example: Authorization, x-api-key
+
   securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        SPHERE web session token obtained from `POST /users/login`, sent as `Authorization: Bearer <token>`.
+        Required to consent and manage connected applications. When both a token and an API key are sent, the token is used.
+    OAuthMcpAuth:
+      type: oauth2
+      description: MCP only; mandatory S256 PKCE and resource parameter identifying the exact MCP URL
+      flows:
+        authorizationCode:
+          authorizationUrl: https://sphere.score.us.es/api/v1/oauth/authorize
+          tokenUrl: https://sphere.score.us.es/api/v1/oauth/token
+          refreshUrl: https://sphere.score.us.es/api/v1/oauth/token
+          scopes:
+            orbit: Use ORBIT within the organization scopes selected at consent
     ApiKeyAuth:
       type: apiKey
       in: header

@@ -12,6 +12,8 @@ vi.mock('../../main/services/FileService', () => ({
 
 import container from '../../main/config/container';
 import PricingCollectionService from '../../main/services/PricingCollectionService';
+import { calculateAnalyticsForPricings } from '../../main/utils/pricing-collections-utils';
+import { storableAnalytics } from '../../main/repositories/mongoose/PricingRepository';
 
 function createMockCollectionRepo() {
   return {
@@ -248,6 +250,43 @@ describe('PricingCollectionService._computeCollectionAnalytics', () => {
     expect(result.evolutionOfConfigurationSpaceSize.value).toBe(60);
   });
 
+  it('should leave out pricing versions without analytics instead of throwing', () => {
+    const collection = makeCollection({
+      pricings: [
+        makePricingDoc({ analytics: { numberOfPlans: 4, numberOfAddOns: 2, numberOfFeatures: 10, configurationSpaceSize: 40 } }),
+        makePricingDoc({ analytics: undefined }),
+        makePricingDoc({ analytics: null }),
+      ],
+    });
+
+    const result = (service as any)._computeCollectionAnalytics(collection);
+
+    expect(result.evolutionOfPlans.value).toBe(4);
+    expect(result.evolutionOfAddOns.value).toBe(2);
+    expect(result.evolutionOfFeatures.value).toBe(10);
+    expect(result.evolutionOfConfigurationSpaceSize.value).toBe(40);
+  });
+
+  it('should return zeros when no pricing version has analytics', () => {
+    const collection = makeCollection({ pricings: [makePricingDoc({ analytics: undefined })] });
+
+    const result = (service as any)._computeCollectionAnalytics(collection);
+
+    expect(result.evolutionOfPlans.value).toBe(0);
+    expect(result.evolutionOfConfigurationSpaceSize.value).toBe(0);
+  });
+
+  it('should count a missing metric as 0 rather than producing NaN', () => {
+    const collection = makeCollection({
+      pricings: [makePricingDoc({ analytics: { numberOfPlans: 2 } })],
+    });
+
+    const result = (service as any)._computeCollectionAnalytics(collection);
+
+    expect(result.evolutionOfPlans.value).toBe(2);
+    expect(result.evolutionOfFeatures.value).toBe(0);
+  });
+
   it('should return valid ISO date strings in each evolution entry', () => {
     const collection = makeCollection({
       pricings: [makePricingDoc()],
@@ -338,5 +377,32 @@ describe('PricingCollectionService.updateCollectionAnalytics', () => {
     await expect(
       (service as any).updateCollectionAnalytics('nonexistent')
     ).rejects.toThrow('NOT FOUND: Pricing collection not found');
+  });
+});
+
+describe('calculateAnalyticsForPricings', () => {
+  it('should ignore pricing versions without analytics', () => {
+    const result = calculateAnalyticsForPricings([
+      makePricingDoc({ analytics: { numberOfPlans: 4, numberOfAddOns: 2, numberOfFeatures: 10, configurationSpaceSize: 40 } }),
+      makePricingDoc({ name: 'NoAnalytics', analytics: undefined }),
+    ]);
+
+    expect(result.evolutionOfPlans.values.length).toBeGreaterThan(0);
+    expect(result.evolutionOfPlans.values.every((value: number) => value === 4)).toBe(true);
+  });
+
+  it('should return empty series when no pricing version has analytics', () => {
+    const result = calculateAnalyticsForPricings([makePricingDoc({ analytics: undefined })]);
+
+    expect(result.evolutionOfPlans).toEqual({ dates: [], values: [] });
+    expect(result.evolutionOfConfigurationSpaceSize).toEqual({ dates: [], values: [] });
+  });
+});
+
+describe('storableAnalytics', () => {
+  it('should drop values Mongoose cannot store as a Number and keep the rest', () => {
+    expect(storableAnalytics({ numberOfPlans: 3, minSubscriptionPrice: NaN, maxSubscriptionPrice: Infinity })).toEqual({
+      numberOfPlans: 3,
+    });
   });
 });

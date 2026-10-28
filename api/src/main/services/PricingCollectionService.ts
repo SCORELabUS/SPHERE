@@ -6,7 +6,7 @@ import { CollectionIndexQueryParams } from '../types/services/PricingCollection'
 import { decompressZip } from '../utils/zip-manager';
 import { PricingService as PricingAnalytics, retrievePricingFromPath } from 'pricing4ts/server';
 import fs from 'fs';
-import { calculateAnalyticsForPricings } from '../utils/pricing-collections-utils';
+import { analyticsMetric, calculateAnalyticsForPricings, withAnalytics } from '../utils/pricing-collections-utils';
 import { LeanUser } from '../types/models/User';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug } from '../repositories/mongoose/models/PricingCollectionMongoose';
@@ -103,7 +103,7 @@ class PricingCollectionService {
     const permissions = await this.permissionService.buildUserPermissionsContext(user);
 
     if (queryParams?.writableOnly) {
-      permissions.collections = permissions.collectionsWritable ?? [];
+      permissions.writableOnly = true;
     }
 
     const enhancedQueryParams = {
@@ -589,7 +589,7 @@ class PricingCollectionService {
   }
 
   _computeCollectionAnalytics(collection: RetrievedCollection) {
-    const collectionPricings = collection.pricings ?? [];
+    const collectionPricings = withAnalytics(collection.pricings ?? []);
     const numberOfPricings = collectionPricings.length;
     if (collectionPricings.length === 0) {
       return {
@@ -603,10 +603,10 @@ class PricingCollectionService {
     // Compute the new average analytics
     const aggregated = collectionPricings.reduce(
       (acc: any, pricing: any) => {
-        acc.numberOfPlans += pricing.analytics.numberOfPlans / numberOfPricings;
-        acc.numberOfAddOns += pricing.analytics.numberOfAddOns / numberOfPricings;
-        acc.configurationSpaceSize += pricing.analytics.configurationSpaceSize / numberOfPricings;
-        acc.numberOfFeatures += pricing.analytics.numberOfFeatures / numberOfPricings;
+        acc.numberOfPlans += analyticsMetric(pricing, 'numberOfPlans') / numberOfPricings;
+        acc.numberOfAddOns += analyticsMetric(pricing, 'numberOfAddOns') / numberOfPricings;
+        acc.configurationSpaceSize += analyticsMetric(pricing, 'configurationSpaceSize') / numberOfPricings;
+        acc.numberOfFeatures += analyticsMetric(pricing, 'numberOfFeatures') / numberOfPricings;
         return acc;
       },
       {
