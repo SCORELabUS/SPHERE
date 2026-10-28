@@ -9,6 +9,10 @@
  * anyone.
  */
 import dotenv from 'dotenv';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import fs from 'fs/promises';
 import path from 'path';
@@ -609,7 +613,7 @@ describe('Private pricing versions are only for callers allowed to read them', {
       expect(Array.isArray(cached.body)).toBe(false);
 
       // Entries the server keeps for itself can neither be read nor written there.
-      for (const key of [`internal:configuration-space:${randomSuffix()}`, `sso:flow:${randomSuffix()}`]) {
+      for (const key of [`internal:configuration-space:${randomSuffix()}`, `sso:flow:${randomSuffix()}`, `ratelimit:${randomSuffix()}`, ` OAUTH:code:${randomSuffix()}`]) {
         const written = await request(app).post(`${BASE_PATH}/cache`).set('Origin', 'http://localhost').send({ key, value: { x: 1 }, expirationInSeconds: 60 });
         expect(written.status).toBe(403);
         const read = await request(app).get(`${BASE_PATH}/cache?key=${encodeURIComponent(key)}`).set('Origin', 'http://localhost');
@@ -679,6 +683,27 @@ describe('Private pricing versions are only for callers allowed to read them', {
       await createEntityScopedPermission(member.id, organization.id, mixed.name, 'pricing', { ...NONE, GET: true });
       const memberKey = await createApiKey(member, [{ organizationId: organization.id, scope: 'VIEW' }]);
       expect(versionsOf((await callTool(memberKey, 'get_pricing', { organizationId: organization.id, pricing: mixed.name })).data)).toContain(mixed.privateVersion);
+    });
+
+    it('keeps VIEW read permissions on a live MCP session and rechecks newly granted GET access', async () => {
+      const { owner, organization, mixed } = await setup();
+      const view = await createApiKey(owner, [{ organizationId: organization.id, scope: 'VIEW' }]);
+      const address = (app as Server).address() as AddressInfo;
+      const sdk = new Client({ name: 'private-session-reads', version: '1' });
+      try {
+        await sdk.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${address.port}${BASE_PATH}/orbit/mcp`),
+          { requestInit: { headers: { 'x-api-key': view } } }));
+        const read = async () => {
+          const result = await sdk.callTool({ name: 'get_pricing', arguments: { organizationId: organization.id, pricing: mixed.name } });
+          expect(result.isError).not.toBe(true);
+          return JSON.parse((result.content as Array<{ text: string }>)[0].text);
+        };
+        expect(versionsOf(await read())).toEqual([mixed.publicVersion]);
+        await createEntityScopedPermission(owner.id, organization.id, mixed.name, 'pricing', { ...NONE, GET: true });
+        expect(versionsOf(await read())).toContain(mixed.privateVersion);
+      } finally {
+        await sdk.close();
+      }
     });
 
     it('reads everything the user may see with MANAGEMENT and ALL keys', async () => {
