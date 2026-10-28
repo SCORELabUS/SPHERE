@@ -358,12 +358,12 @@ class PricingRepository extends RepositoryBase {
       ? { $set: { _collectionId: collectionId } } : { $unset: { _collectionId: 1 } });
   }
 
-  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string) {
-    return this.moveFamilies([await this.familyId(pricingSlug, organizationId)], collectionId);
+  async addPricingToCollection(pricingSlug: string, organizationId: string, collectionId: string, pricingId?: string) {
+    return this.moveFamilies([pricingId ? new mongoose.Types.ObjectId(pricingId) : await this.familyId(pricingSlug, organizationId)], collectionId);
   }
 
-  async addPricingsToCollection(collectionId: string, organizationId: string, pricings: string[]) {
-    const ids = await Promise.all(pricings.map(slug => this.familyId(slug, organizationId)));
+  async addPricingsToCollection(collectionId: string, organizationId: string, pricings: string[], pricingIds?: string[]) {
+    const ids = pricingIds ? pricingIds.map(id => new mongoose.Types.ObjectId(id)) : await Promise.all(pricings.map(slug => this.familyId(slug, organizationId)));
     await this.moveFamilies(ids, collectionId);
     return true;
   }
@@ -380,8 +380,8 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject();
   }
 
-  async removePricingFromCollection(pricingSlug: string, organizationId: string, collectionId?: string) {
-    return this.moveFamilies([await this.familyId(pricingSlug, organizationId, collectionId)], null);
+  async removePricingFromCollection(pricingSlug: string, organizationId: string, collectionId?: string, pricingId?: string) {
+    return this.moveFamilies([pricingId ? new mongoose.Types.ObjectId(pricingId) : await this.familyId(pricingSlug, organizationId, collectionId)], null);
   }
 
   async removePricingsFromCollection(collectionId: string) {

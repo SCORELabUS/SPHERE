@@ -40,7 +40,7 @@ function fixture() {
   };
   const service = Object.assign(Object.create(PricingService.prototype) as PricingService, {
     pricingRepository: repository,
-    permissionService: { resolveOrgRole: async () => 'OWNER', buildBatchContext: async () => ({ entityPermissions: new Map() }) },
+    permissionService: { checkPricingPut: async () => ({ allowed: true }), resolveOrgRole: async () => 'OWNER', buildBatchContext: async () => ({ entityPermissions: new Map() }) },
     permissionEngine: { evaluate: () => ({ allowed: true }) },
     _canSeePrivateVersions: async () => true,
     show: async () => pricing(),

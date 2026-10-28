@@ -3917,6 +3917,8 @@ paths:
 
         **Concurrency**: optional `If-Match` with the `ETag` of the pricing as read; a stale tag
         is refused with `412` and nothing changes.
+
+        For a pricing inside a collection, PUT on that collection governs edits; individual pricing PUT cannot override a collection denial. Read access to private versions remains required.
       tags:
         - Pricings
       security:
@@ -4155,11 +4157,13 @@ paths:
 
         **Permission**:
         - OWNER or ADMIN of the organization.
-        - MEMBER with `PUT` permission on the pricing (and `GET` if the version is private).
+        - MEMBER with effective `PUT`: on the containing collection, or on the pricing when standalone (and readable private versions).
         - Global ADMIN.
 
         **Concurrency**: optional `If-Match` with the `ETag` of the pricing (the tag covers every
         version); a stale tag is refused with `412` and nothing changes.
+
+        Inside a collection, visibility changes use the collection PUT permission, without requiring individual pricing PUT. Read access to private versions remains required.
 
       tags:
         - Pricings
@@ -4170,6 +4174,7 @@ paths:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
         - $ref: '#/components/parameters/PricingVersion'
+        - $ref: '#/components/parameters/CollectionQuery'
         - $ref: '#/components/parameters/PricingIfMatch'
       requestBody:
         required: true
@@ -4552,6 +4557,8 @@ paths:
         - USER: can create collections for their own account.
         - ADMIN: can create collections for any user.
 
+        When existing pricings are supplied, each requires independent pricing PUT and PUT on its current collection, if any.
+
       tags:
         - Collections
       security:
@@ -4680,6 +4687,8 @@ paths:
         **Permission**: 
         - USER: can add pricings to their own collections.
         - ADMIN: can add pricings to any collection.
+
+        Moving an existing pricing requires independent PUT on the pricing plus PUT on the destination collection and on its source collection when present. GET alone does not authorize a move.
 
       tags:
         - Pricings
@@ -4851,6 +4860,8 @@ paths:
         - ADMIN: can remove pricings from any collection.
 
         The `collectionSlug` path parameter must match the collection that contains the pricing, otherwise the endpoint returns 404.
+
+        Removing membership requires independent PUT on the pricing and PUT on this collection. It does not require DELETE on the collection.
 
       tags:
         - Collections
@@ -5180,6 +5191,8 @@ paths:
       description: |
         Returns the current user's effective permissions on a specific pricing. If the user
         is OWNER or ADMIN of the organization, all permissions are returned as true.
+
+        The returned PUT is effective editing authority: for a contained pricing it reflects its actual collection, not the individual pricing grant.
       tags:
         - Permissions
       security:
@@ -5187,6 +5200,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OrganizationId'
         - $ref: '#/components/parameters/PricingSlug'
+        - $ref: '#/components/parameters/CollectionQuery'
       responses:
         '200':
           description: User's permissions on the pricing

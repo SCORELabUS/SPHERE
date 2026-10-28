@@ -95,7 +95,8 @@ class PermissionController {
         req.params.organizationId,
         req.params.pricingSlug,
         req.user.orgRole,
-        req.user
+        req.user,
+        typeof req.query.collection === 'string' ? req.query.collection : undefined
       );
       res.json(result);
     } catch (err: any) {

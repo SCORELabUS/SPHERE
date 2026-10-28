@@ -347,14 +347,11 @@ export class PricingStepBuilder {
 
       // The same checks the collection endpoints make: editing the collection to
       // add, and editing pricings of the organization to take them out.
-      if (add.length && !(await this.allowed(organization.id, 'collection', 'PUT', collection.slug, collection.private))) {
+      if ((add.length || remove.length) && !(await this.allowed(organization.id, 'collection', 'PUT', collection.slug, collection.private))) {
         errors.push(`You cannot edit the collection "${collection.name}".`);
         continue;
       }
-      if (remove.length && !(await this.allowed(organization.id, 'pricing', 'PUT'))) {
-        errors.push(`Only an OWNER or ADMIN of "${organization.label}" can take pricings out of its collections.`);
-        continue;
-      }
+      if (remove.length && !(await Promise.all(remove.map(pricing => this.mayMovePricing(organization.id, pricing.slug, errors)))).every(Boolean)) continue;
       operations.push({
         type: 'update_collection_pricings',
         organization,
@@ -379,7 +376,7 @@ export class PricingStepBuilder {
     warnings: string[]
   ): Promise<boolean> {
     const publicVersions = pricing.publicVersions ?? pricing.versions;
-    if (publicVersions >= pricing.versions) return true;
+    if (publicVersions >= pricing.versions) return this.mayMovePricing(organization.id, pricing.slug, errors);
     if (!this.readers.has(organization.id)) {
       const permissionService: PermissionService = container.resolve('permissionService');
       this.readers.set(organization.id, await permissionService.privateReader(requesterOf(this.context.actor), organization.id));
@@ -387,13 +384,23 @@ export class PricingStepBuilder {
     const current = pricing.collectionId
       ? (await this.collectionRepository.findSummariesByOrganization(organization.id)).find(collection => collection.id === pricing.collectionId)
       : null;
-    if (this.readers.get(organization.id)!('pricing', pricing.slug, current?.slug)) return true;
+    if (this.readers.get(organization.id)!('pricing', pricing.slug, current?.slug)) return this.mayMovePricing(organization.id, pricing.slug, errors);
     if (publicVersions === 0) {
       warnings.push(`"${organization.label}" has no pricing called "${pricing.name}"; left out.`);
       return false;
     }
     errors.push(`You cannot put "${pricing.name}" in a collection.`);
     return false;
+  }
+
+  private async mayMovePricing(organizationId: string, slug: string, errors: string[]): Promise<boolean> {
+    try {
+      await container.resolve('permissionService').assertPricingMove(requesterOf(this.context.actor), organizationId, slug);
+      return true;
+    } catch {
+      errors.push('Moving a pricing requires PUT on the pricing and the affected collections.');
+      return false;
+    }
   }
 
   /** An existing organization the user belongs to; what they may do in it is checked per change. */
@@ -479,6 +486,9 @@ export class PricingStepBuilder {
     isPrivate = false
   ): Promise<boolean> {
     const { actor } = this.context;
+    if (entityType === 'pricing' && action === 'PUT' && entitySlug) {
+      return (await container.resolve('permissionService').checkPricingPut(requesterOf(actor), organizationId, entitySlug, { isPrivate })).allowed;
+    }
     const role = await this.context.roleIn(organizationId);
     if (!this.batches.has(organizationId)) {
       const permissionService: PermissionService = container.resolve('permissionService');

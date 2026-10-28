@@ -69,6 +69,13 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - No clients, grants or tokens are seeded; the seeder initializes the empty indexed OAuth collections. Run migration `20261024120000-create-oauth-collections` for existing databases.
 - `/api/src/test/oauth.test.ts` covers discovery, DCR, PKCE, audience binding, single-use codes, refresh replay, consent ownership, grant revocation and MCP credential isolation. Run integration tests only against `DATABASE_NAME=sphere_scratch`, Mongo 27018 and Redis 6378: the shared test harness drops its selected database.
 
+## Collection PUT authority
+
+- A pricing inside a collection uses that collection's PUT permission for edits, including version visibility; individual PUT cannot override the collection. Existing GET/privacy and DELETE rules remain unchanged.
+- Entering or leaving a collection requires independent PUT on the pricing and PUT on each affected existing collection (both source and destination for moves). Inherited PUT is not enough for membership changes. Creating a collection with existing pricings follows the same rule.
+- `PermissionService.checkPricingPut` and `assertPricingMove` resolve actual stored membership and credential scopes; query parameters never supply authority. REST, the permissions returned to the UI and ORBIT/MCP plan validation use these checks. VIEW credentials remain read-only.
+- `api/src/test/collection-put.test.ts` and `api/src/test/unit-tests/collection-put-permissions.test.ts` cover inheritance, denied overrides, membership moves, permissions reported to the UI and credential scopes.
+
 ## API Documentation
 
 - `/api/docs/sphere-api-docs.yaml` contains the OpenAPI specification for the API. Use it as the primary reference for understanding available endpoints, request and response schemas, authentication requirements, and general API behavior.

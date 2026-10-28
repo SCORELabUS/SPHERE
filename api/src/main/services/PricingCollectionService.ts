@@ -184,7 +184,7 @@ class PricingCollectionService {
       throw new Error(`PERMISSION ERROR: ${createResult.reason}`);
     }
 
-    await this._checkPricingsCanJoin(newCollection.pricings, organizationId, reqUser);
+    const pricingIds = await this._checkPricingsCanJoin(newCollection.pricings, organizationId, reqUser);
     // Pricings are moved into the new collection: none may come out of a
     // private collection the caller may not see.
     for (const pricingSlug of Array.isArray(newCollection.pricings) ? newCollection.pricings : []) {
@@ -240,7 +240,8 @@ class PricingCollectionService {
         await this.pricingRepository.addPricingsToCollection(
           collection.id,
           organizationId,
-          newCollection.pricings
+          newCollection.pricings,
+          pricingIds
         );
 
         await this.updateCollectionAnalytics(collection.id);
@@ -269,7 +270,8 @@ class PricingCollectionService {
    * One whose versions the caller cannot see at all answers as missing.
    */
   private async _checkPricingsCanJoin(pricingSlugs: unknown, organizationId: string, reqUser: LeanUser) {
-    if (!Array.isArray(pricingSlugs) || pricingSlugs.length === 0) return;
+    if (!Array.isArray(pricingSlugs) || pricingSlugs.length === 0) return [];
+    const pricingIds: string[] = [];
     const reader = await this.permissionService.privateReader(reqUser, organizationId);
     for (const raw of pricingSlugs) {
       const slug = String(raw);
@@ -280,7 +282,10 @@ class PricingCollectionService {
         if (versions.every(version => version.private === true)) throw new Error(`NOT FOUND: Pricing ${slug} not found`);
         throw new Error('PERMISSION ERROR: You cannot add this pricing to a collection');
       }
+      await this.permissionService.assertPricingMove(reqUser, organizationId, slug, undefined, pricing);
+      pricingIds.push(String(pricing.pricingId));
     }
+    return pricingIds;
   }
 
   async bulkCreate(file: any, newCollectionData: any, organizationId: string, reqUser: LeanUser) {
@@ -577,23 +582,11 @@ class PricingCollectionService {
     reqUser?: LeanUser
   ) {
     try {
-      if (reqUser) {
-        const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, organizationId);
-        const evalResult = this.permissionEngine.evaluate({
-          userId: reqUser.id,
-          organizationId,
-          entityType: 'pricing',
-          action: 'PUT',
-          userOrgRole: orgRole,
-          isGlobalAdmin: reqUser.role === 'ADMIN',
-        });
-        if (!evalResult.allowed) {
-          throw new Error(`PERMISSION ERROR: ${evalResult.reason}`);
-        }
-      }
+      const collection = await this.show(organizationId, collectionSlug, reqUser);
 
       const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, {
         collection: collectionSlug,
+        includePrivate: true,
       });
 
       if (!pricing) {
@@ -602,7 +595,10 @@ class PricingCollectionService {
         );
       }
 
-      await this.pricingRepository.removePricingFromCollection(pricingSlug, organizationId, pricing.versions[0]._collectionId);
+      if (String(pricing.versions[0]._collectionId) !== String(collection.id)) throw new Error('NOT FOUND: Pricing is not in this collection');
+      if (reqUser) await this.permissionService.assertPricingMove(reqUser, organizationId, pricingSlug, undefined, pricing);
+
+      await this.pricingRepository.removePricingFromCollection(pricingSlug, organizationId, pricing.versions[0]._collectionId, pricing.pricingId);
       if (pricing.versions[0]._collectionId) {
         await this.updateCollectionAnalytics(pricing.versions[0]._collectionId);
       } else {

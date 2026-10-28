@@ -104,6 +104,60 @@ class PermissionService {
     return (await this.privateReader(reqUser, pricing.organizationId, authType))('pricing', pricing.slug, pricing.collectionSlug);
   }
 
+  /** Scoped context for edits; VIEW credentials never become write credentials. */
+  private async putContext(reqUser: LeanUser | undefined, organizationId: string) {
+    const access = await this.actingAccess(reqUser, organizationId);
+    if (!reqUser || !access.reachable || (!access.role && !access.isGlobalAdmin)) return null;
+    const key = (reqUser as any).apiKey as ApiKey | undefined;
+    if (key) {
+      const organization = await this.readSources.findOrganization(organizationId);
+      const ancestors = (organization?.ancestors ?? []).map(String);
+      const scope = key.scopes.find(entry => String(entry.organizationId) === organizationId ||
+        (entry.scope === 'ALL' && ancestors.includes(String(entry.organizationId))));
+      if (!scope || scope.scope === 'VIEW') return null;
+    }
+    const batch = await this.buildBatchContext(reqUser.id, organizationId, access.role, access.isGlobalAdmin);
+    return { userId: reqUser.id, organizationId, userOrgRole: access.role, isGlobalAdmin: access.isGlobalAdmin, batch };
+  }
+
+  /** Uses stored membership, never a collection supplied in a query parameter. */
+  async checkPricingPut(reqUser: LeanUser | undefined, organizationId: string, slug: string,
+    options: { isPrivate?: boolean; direct?: boolean; collection?: string; pricing?: any } = {}) {
+    const pricing = options.pricing ?? await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true, collection: options.collection });
+    const context = await this.putContext(reqUser, organizationId);
+    if (!pricing) throw new Error('NOT FOUND: Pricing not found');
+    if (!context) return { allowed: false, reason: 'PUT permission required' };
+    const { batch, ...actor } = context;
+    const collectionSlug = pricing.collection?.slug || await this.pricingCollectionRepository.findSlugById(pricing.versions?.[0]?._collectionId);
+    return new PermissionEngine().evaluate({ ...actor, entityType: 'pricing', entitySlug: slug, action: 'PUT',
+      isPrivate: options.isPrivate ?? pricing.versions.every((version: { private?: boolean }) => version.private === true),
+      entityPermissions: batch.entityPermissions.get(`pricing:${slug}`), collectionSlug,
+      collectionPermissions: collectionSlug ? batch.entityPermissions.get(`collection:${collectionSlug}`) : undefined,
+      requireDirectPricingPut: options.direct });
+  }
+
+  async checkCollectionPut(reqUser: LeanUser | undefined, organizationId: string, slug: string) {
+    const collection = await this.pricingCollectionRepository.findByOrganizationAndSlug(organizationId, slug);
+    const context = await this.putContext(reqUser, organizationId);
+    if (!collection || !context) return { allowed: false, reason: 'PUT permission required' };
+    const { batch, ...actor } = context;
+    return new PermissionEngine().evaluate({ ...actor, entityType: 'collection', entitySlug: slug, action: 'PUT',
+      isPrivate: collection.private === true, entityPermissions: batch.entityPermissions.get(`collection:${slug}`) });
+  }
+
+  /** Independent pricing PUT plus PUT on every affected existing collection. */
+  async assertPricingMove(reqUser: LeanUser | undefined, organizationId: string, slug: string, targetCollectionSlug?: string, selectedPricing?: any) {
+    const pricing = selectedPricing ?? await this.pricingRepository.findOne(slug, organizationId, { includePrivate: true });
+    const result = await this.checkPricingPut(reqUser, organizationId, slug, { direct: true, pricing });
+    if (!result.allowed) throw new Error('PERMISSION ERROR: Moving a pricing requires PUT on the pricing');
+    const source = pricing?.collection?.slug || await this.pricingCollectionRepository.findSlugById(pricing?.versions?.[0]?._collectionId);
+    for (const collectionSlug of new Set([source, targetCollectionSlug].filter((value): value is string => Boolean(value)))) {
+      if (!(await this.checkCollectionPut(reqUser, organizationId, collectionSlug)).allowed) {
+        throw new Error('PERMISSION ERROR: Moving a pricing requires PUT on the affected collections');
+      }
+    }
+  }
+
   /**
    * Narrows a listing context built from the user's own roles and permissions
    * to how the request acts: with an API key, organizations the key does not
@@ -744,16 +798,17 @@ class PermissionService {
     organizationId: string,
     pricingSlug: string,
     userOrgRole?: OrgRole | null,
-    reqUser?: LeanUser
+    reqUser?: LeanUser,
+    collectionSlug?: string
   ): Promise<EntityPermissions> {
-    const pricing = await this.pricingRepository.findBySlugAndOrganization(pricingSlug, organizationId);
+    const pricing = await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true, collection: collectionSlug });
     // A pricing whose versions are all private, to someone who may not read
     // them, answers like one that does not exist.
-    if (!pricing || (reqUser && !(await this.pricingRepository.hasPublicVersion(pricingSlug, organizationId)) &&
+    if (!pricing || (reqUser && pricing.versions.every((version: { private?: boolean }) => version.private === true) &&
       !(await this.canReadPrivateVersions(reqUser, {
         organizationId,
         slug: pricingSlug,
-        collectionSlug: await this.pricingCollectionRepository.findSlugById(pricing._collectionId),
+        collectionSlug: pricing.collection?.slug,
       })))) {
       throw new Error('NOT FOUND: Pricing not found');
     }
@@ -770,6 +825,7 @@ class PermissionService {
       userOrgRole
     );
 
+    if (reqUser) permissions.PUT = (await this.checkPricingPut(reqUser, organizationId, pricingSlug, { pricing })).allowed;
     return permissions;
   }
 

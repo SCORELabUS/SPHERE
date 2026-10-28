@@ -224,7 +224,8 @@ class PricingController {
         req.params.organizationId,
         req.user,
         req.body.private === true || req.body.private === 'true',
-        revision
+        revision,
+        typeof req.query.collection === 'string' ? req.query.collection : undefined
       );
       this.sendWithEtag(res, revision, pricing);
     } catch (err: any) {
