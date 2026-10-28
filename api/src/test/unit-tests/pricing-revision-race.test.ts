@@ -22,7 +22,7 @@ function fixture() {
     versions: [{ id: 'version', version: '1.0.0', yaml: '' }] });
   const repository = {
     findOne: async () => pricing(),
-    findRevisionsBySlug: async () => new Map([[pricingId, revision]]),
+    findRevisionsBySlug: vi.fn(async () => new Map([[pricingId, revision]])),
     findRevision: async () => revision,
     claimRevision: async (_id: string, precondition: ReturnType<typeof parseIfMatch>) => {
       if (precondition?.kind !== 'tags' || !precondition.tags.some(tag => tag.pricingId === pricingId && tag.revision === revision)) return false;
@@ -44,7 +44,7 @@ function fixture() {
     permissionEngine: { evaluate: () => ({ allowed: true }) },
     _canSeePrivateVersions: async () => true,
     show: async () => pricing(),
-  });
+  }) as unknown as PricingService;
   // Another service instance in the same API process must observe the same guard.
   const reader = Object.assign(Object.create(PricingService.prototype) as PricingService, service);
   const user = { id: 'owner', role: 'USER' } as Parameters<PricingService['update']>[2];
@@ -54,10 +54,15 @@ function fixture() {
 }
 
 describe('Pricing revisions while a write is in flight', () => {
-  it.each([true, false])('does not expose a revision paired with unfinished content (If-Match on first write: %s)', async conditional => {
+  it.each([
+    { conditional: true, initialLookupEmpty: false },
+    { conditional: false, initialLookupEmpty: false },
+    { conditional: true, initialLookupEmpty: true },
+  ])('does not expose unfinished content (conditional: $conditional, identity appears during read: $initialLookupEmpty)', async ({ conditional, initialLookupEmpty }) => {
     const f = fixture();
     const first = f.update('first writer', conditional ? `"${f.pricingId}.0"` : undefined);
     await f.started.promise;
+    if (initialLookupEmpty) f.repository.findRevisionsBySlug.mockResolvedValueOnce(new Map());
     let readFinished = false;
     const reading = f.read().then(result => { readFinished = true; return result; });
     try {
@@ -66,7 +71,7 @@ describe('Pricing revisions while a write is in flight', () => {
       f.resume.resolve();
       await first;
       const snapshot = await reading;
-      expect(snapshot.pricing.url).toBe('first writer');
+      expect(snapshot.pricing).toMatchObject({ url: 'first writer' });
       await f.update('second writer', snapshot.etag);
       expect(f.currentUrl()).toBe('second writer');
     } finally {
@@ -80,7 +85,7 @@ describe('Pricing revisions while a write is in flight', () => {
     f.repository.update.mockRejectedValueOnce(new Error('storage failed'));
     await expect(f.update('failed writer', `"${f.pricingId}.0"`)).rejects.toThrow('storage failed');
     const snapshot = await f.read();
-    expect(snapshot.pricing.url).toBe('original');
+    expect(snapshot.pricing).toMatchObject({ url: 'original' });
     await f.update('recovered writer', snapshot.etag);
     expect(f.currentUrl()).toBe('recovered writer');
   });

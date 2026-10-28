@@ -1,3 +1,4 @@
+import { withPricingRevisionLock, withPricingRevisionLocks } from '../utils/pricing-revision-lock';
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
 import { ForkedFrom } from '../types/models/Pricing';
@@ -608,66 +609,67 @@ class PricingService {
         slug: pricingSlug,
         collectionSlug: isAddingVersion ? previousPricing.collection?.slug : undefined,
       };
-      await this._claimRevision(isAddingVersion ? previousPricing.pricingId : undefined, revisionContext, reader);
+      const parsedPricing = uploadedPricing;
+      return await this._withRevisionClaim(isAddingVersion ? previousPricing.pricingId : undefined, revisionContext, reader, async () => {
+        const pricing = await this.pricingRepository.create([pricingData]);
 
-      const pricing = await this.pricingRepository.create([pricingData]);
-
-      if (!isAddingVersion && orgRole === 'MEMBER') {
-        try {
-          await this.permissionService.grantEntityPermission(
-            reqUser.id,
-            organizationId,
-            'pricing',
-            pricingSlug,
-            { GET: true, PUT: true, DELETE: true, CREATE: true }
-          );
-        } catch {
-          // Permission grant failure should not block pricing creation
+        if (!isAddingVersion && orgRole === 'MEMBER') {
+          try {
+            await this.permissionService.grantEntityPermission(
+              reqUser.id,
+              organizationId,
+              'pricing',
+              pricingSlug,
+              { GET: true, PUT: true, DELETE: true, CREATE: true }
+            );
+          } catch {
+            // Permission grant failure should not block pricing creation
+          }
         }
-      }
 
-      if (pricingName !== uploadedPricing.saasName) {
-        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-        const finalYamlPath = path.resolve(staticFolder, yamlPath);
-        const yamlContent = fs.readFileSync(filePath, 'utf8');
-        const yamlData = yaml.load(yamlContent) as Record<string, any>;
-        if (yamlData && typeof yamlData === 'object') {
-          yamlData['saasName'] = pricingName;
-          fs.mkdirSync(path.dirname(finalYamlPath), { recursive: true });
-          fs.writeFileSync(finalYamlPath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+        if (pricingName !== parsedPricing.saasName) {
+          const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+          const finalYamlPath = path.resolve(staticFolder, yamlPath);
+          const yamlContent = fs.readFileSync(filePath, 'utf8');
+          const yamlData = yaml.load(yamlContent) as Record<string, any>;
+          if (yamlData && typeof yamlData === 'object') {
+            yamlData['saasName'] = pricingName;
+            fs.mkdirSync(path.dirname(finalYamlPath), { recursive: true });
+            fs.writeFileSync(finalYamlPath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+          }
         }
-      }
 
-      processFileUris(pricing[0], ['yaml']);
+        processFileUris(pricing[0], ['yaml']);
 
-      const pricingAnalytics = new PricingAnalytics(uploadedPricing);
+        const pricingAnalytics = new PricingAnalytics(parsedPricing);
 
-      await pricingAnalytics
-        .getAnalytics()
-        // Awaited: a version whose analytics are never stored breaks its collection's analytics.
-        .then((analytics: any) => this.pricingRepository.updateAnalytics(pricing[0]._id.toString(), analytics))
-        .catch(async (err: any) => {
-          await this.pricingRepository.destroy(pricing[0]._id.toString());
-          throw new Error((err as Error).message);
-        });
+        await pricingAnalytics
+          .getAnalytics()
+          // Awaited: a version whose analytics are never stored breaks its collection's analytics.
+          .then((analytics: any) => this.pricingRepository.updateAnalytics(pricing[0]._id.toString(), analytics))
+          .catch(async (err: any) => {
+            await this.pricingRepository.destroy(pricing[0]._id.toString());
+            throw new Error((err as Error).message);
+          });
 
-      if (collectionId) {
-        await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
-      }
+        if (collectionId) {
+          await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
+        }
 
-      if (isAddingVersion && !forkedFrom) {
-        // Not awaited: telling followers must not delay or fail the publish itself.
-        void container
-          .resolve('pricingFollowService')
-          .notifyNewVersion({ ...pricingData, pricingId: previousPricing.pricingId }, reqUser)
-          .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
-      }
+        if (isAddingVersion && !forkedFrom) {
+          // Not awaited: telling followers must not delay or fail the publish itself.
+          void container
+            .resolve('pricingFollowService')
+            .notifyNewVersion({ ...pricingData, pricingId: previousPricing.pricingId }, reqUser)
+            .catch((error: unknown) => console.error('[Pricing follow] Could not notify followers:', error));
+        }
 
-      // A new pricing's creator may only have been granted access above.
-      if (!isAddingVersion && revisionContext) delete revisionContext.mayRead;
-      await this._setEtag(pricing[0].pricingId, revisionContext, reader);
+        // A new pricing's creator may only have been granted access above.
+        if (!isAddingVersion && revisionContext) delete revisionContext.mayRead;
+        await this._setEtag(pricing[0].pricingId, revisionContext, reader);
 
-      return pricing;
+        return pricing;
+      });
     } catch (err) {
       if (err instanceof PreconditionFailedError) throw err;
       const error = err as Error & { code?: number };
@@ -795,44 +797,44 @@ class PricingService {
     }
 
     const reader = { reqUser, organizationId: effectiveOrgId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
-    await this._claimRevision(pricing.pricingId, revisionContext, reader);
-
-    for (const pricingVersion of pricing.versions) {
-      await this.pricingRepository.update(pricingVersion.id, data);
-    }
-
-    if (data.name) {
-      const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
-      const processedPaths = new Set<string>();
-
+    return this._withRevisionClaim(pricing.pricingId, revisionContext, reader, async () => {
       for (const pricingVersion of pricing.versions) {
-        const yamlRelativePath = pricingVersion.yaml;
-        if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
+        await this.pricingRepository.update(pricingVersion.id, data);
+      }
 
-        processedPaths.add(yamlRelativePath);
-        const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+      if (data.name) {
+        const staticFolder = process.env.SERVER_STATICS_FOLDER || 'public/';
+        const processedPaths = new Set<string>();
 
-        if (!fs.existsSync(absolutePath)) continue;
+        for (const pricingVersion of pricing.versions) {
+          const yamlRelativePath = pricingVersion.yaml;
+          if (!yamlRelativePath || processedPaths.has(yamlRelativePath)) continue;
 
-        const yamlContent = fs.readFileSync(absolutePath, 'utf8');
-        const yamlData = yaml.load(yamlContent) as Record<string, any>;
-        if (yamlData && typeof yamlData === 'object') {
-          yamlData['saasName'] = data.name;
-          fs.writeFileSync(absolutePath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+          processedPaths.add(yamlRelativePath);
+          const absolutePath = path.resolve(staticFolder, yamlRelativePath);
+
+          if (!fs.existsSync(absolutePath)) continue;
+
+          const yamlContent = fs.readFileSync(absolutePath, 'utf8');
+          const yamlData = yaml.load(yamlContent) as Record<string, any>;
+          if (yamlData && typeof yamlData === 'object') {
+            yamlData['saasName'] = data.name;
+            fs.writeFileSync(absolutePath, yaml.dump(yamlData, { lineWidth: -1 }), 'utf8');
+          }
         }
       }
-    }
 
-    // Before the read below, for the same reason as in showWithEtag().
-    await this._setEtag(pricing.pricingId, revisionContext, reader);
+      // Before the read below, for the same reason as in showWithEtag().
+      await this._setEtag(pricing.pricingId, revisionContext, reader);
 
-    const effectiveSlug = data.slug || pricingSlug;
-    const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
-      ...queryParams,
-      includePrivate: true,
+      const effectiveSlug = data.slug || pricingSlug;
+      const updatedPricing = await this.pricingRepository.findOne(effectiveSlug, effectiveOrgId, {
+        ...queryParams,
+        includePrivate: true,
+      });
+
+      return updatedPricing;
     });
-
-    return updatedPricing;
   }
 
   /**
@@ -885,13 +887,13 @@ class PricingService {
     }
 
     const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
-    await this._claimRevision(pricing.pricingId, revisionContext, reader);
+    return this._withRevisionClaim(pricing.pricingId, revisionContext, reader, async () => {
+      await this.pricingRepository.update(target.id, { private: isPrivate });
+      // Before the read below, for the same reason as in showWithEtag().
+      await this._setEtag(pricing.pricingId, revisionContext, reader);
 
-    await this.pricingRepository.update(target.id, { private: isPrivate });
-    // Before the read below, for the same reason as in showWithEtag().
-    await this._setEtag(pricing.pricingId, revisionContext, reader);
-
-    return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
+      return this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
+    });
   }
 
   async updateVersion(pricingString: string) {
@@ -940,7 +942,7 @@ class PricingService {
     revisionContext?: PricingRevisionContext
   ) {
     const effectiveOrgId = queryParams.organizationId || organizationId;
-    let collectionId;
+    let collectionId: string | undefined;
 
     const orgRole = await this.permissionService.resolveOrgRole(reqUser.id, effectiveOrgId);
 
@@ -990,24 +992,24 @@ class PricingService {
       collectionId = collection.id;
     }
 
-    await this._claimRevision(pricing.pricingId, revisionContext, {
+    return this._withRevisionClaim(pricing.pricingId, revisionContext, {
       reqUser,
       organizationId: effectiveOrgId,
       slug: pricingSlug,
       collectionSlug: pricing.collection?.slug,
-    });
-
-    const result = await this.pricingRepository.destroyBySlugOrganizationAndCollectionId(
-      pricingSlug,
-      effectiveOrgId,
-      collectionId
-    );
-    if (!result) {
-      throw new Error(
-        'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
+    }, async () => {
+      const result = await this.pricingRepository.destroyBySlugOrganizationAndCollectionId(
+        pricingSlug,
+        effectiveOrgId,
+        collectionId
       );
-    }
-    return true;
+      if (!result) {
+        throw new Error(
+          'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
+        );
+      }
+      return true;
+    });
   }
 
   async destroyVersion(
@@ -1062,34 +1064,34 @@ class PricingService {
       throw new Error('NOT FOUND: Pricing version not found');
     }
     const reader = { reqUser, organizationId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
-    await this._claimRevision(pricing.pricingId, revisionContext, reader);
+    return this._withRevisionClaim(pricing.pricingId, revisionContext, reader, async () => {
+      let result;
 
-    let result;
-
-    result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
-      pricingSlug,
-      pricingVersion,
-      organizationId
-    );
-
-    if (!result) {
       result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
         pricingSlug,
-        pricingVersion.replace('_', '.'),
+        pricingVersion,
         organizationId
       );
-    }
 
-    if (!result) {
-      throw new Error(
-        'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
-      );
-    }
+      if (!result) {
+        result = await this.pricingRepository.destroyVersionBySlugAndOrganization(
+          pricingSlug,
+          pricingVersion.replace('_', '.'),
+          organizationId
+        );
+      }
 
-    // Unset when that was the last version: the pricing is gone.
-    await this._setEtag(pricing.pricingId, revisionContext, reader);
+      if (!result) {
+        throw new Error(
+          'NOT FOUND: Either the pricing does not exist or you are not a member of its organization'
+        );
+      }
 
-    return true;
+      // Unset when that was the last version: the pricing is gone.
+      await this._setEtag(pricing.pricingId, revisionContext, reader);
+
+      return true;
+    });
   }
 
   /**
@@ -1101,6 +1103,19 @@ class PricingService {
    * who may read the private versions gets it (see `_mayReadRevision`).
    */
   async showWithEtag(...args: Parameters<PricingService['show']>) {
+    const [slug, organizationId] = args;
+    let ids = [...(await this.pricingRepository.findRevisionsBySlug(slug, organizationId)).keys()];
+    for (;;) {
+      const result = await withPricingRevisionLocks(ids, () => this._showWithEtag(...args));
+      const pricingId = (result.pricing as { pricingId?: string }).pricingId;
+      if (!pricingId || ids.includes(pricingId)) return result;
+      // A pricing can be created or renamed into this slug during the first
+      // lookup. Discard that snapshot and read again under its stable id.
+      ids = [pricingId];
+    }
+  }
+
+  private async _showWithEtag(...args: Parameters<PricingService['show']>) {
     const [slug, organizationId, reqUser] = args;
     const revisions = await this.pricingRepository.findRevisionsBySlug(slug, organizationId);
     const pricing = await this.show(...args);
@@ -1132,6 +1147,20 @@ class PricingService {
       );
     }
     return revisionContext.mayRead;
+  }
+
+  /** Holds the per-pricing guard through the claim, all writes and the response snapshot. */
+  private async _withRevisionClaim<T>(
+    pricingId: string | undefined,
+    revisionContext: PricingRevisionContext | undefined,
+    reader: RevisionReader,
+    write: () => Promise<T>
+  ): Promise<T> {
+    const claimedWrite = async () => {
+      await this._claimRevision(pricingId, revisionContext, reader);
+      return write();
+    };
+    return pricingId ? withPricingRevisionLock(String(pricingId), claimedWrite) : claimedWrite();
   }
 
   /**
