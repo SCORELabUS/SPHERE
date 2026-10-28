@@ -1,4 +1,5 @@
 import React from 'react';
+import { consumeConsentReturn } from '../../../oauth/utils/consentReturn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { validateLogin } from '../../utils/validators/login-validators';
 import { loginUser } from '../../api/usersApi';
@@ -43,7 +44,7 @@ const LoginForm: React.FC = () => {
     loginUser(formValues)
       .then(async (response: any) => {
         await login(response.token);
-        router.push('/');
+        router.push(consumeConsentReturn() || '/');
       })
       .catch((error: Error) => {
         setErrors([error.message]);

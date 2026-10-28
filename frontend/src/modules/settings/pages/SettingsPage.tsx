@@ -13,6 +13,7 @@ import PaymentsSection from '../components/PaymentsSection';
 import DangerZoneSection from '../components/DangerZoneSection';
 import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 import IntegrationsSection from '../components/IntegrationsSection';
+import ConnectedApplications from '../../oauth/components/ConnectedApplications';
 import { fadeInUp, transitionDefault } from '../../core/utils/motion-variants';
 
 const SECTIONS = [
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: 'profile', label: 'Public Profile', icon: FiGlobe },
   { id: 'social', label: 'Social Links', icon: FiLink2 },
   { id: 'integrations', label: 'Sign-in & Security', icon: FiShield },
+  { id: 'applications', label: 'Connected applications', icon: FiLink2 },
   { id: 'notifications', label: 'Notifications', icon: FiBell },
   { id: 'payments', label: 'Payments', icon: FiCreditCard },
   { id: 'danger', label: 'Danger Zone', icon: FiAlertTriangle },
@@ -248,6 +250,7 @@ export default function SettingsPage() {
                   <SocialLinksSection settings={settings} onUpdate={updateSettings} onDirtyChange={socialDirtyChange} />
                 )}
                 {activeSection === 'integrations' && <IntegrationsSection />}
+                {activeSection === 'applications' && <ConnectedApplications />}
                 {activeSection === 'notifications' && (
                   <NotificationsSection settings={settings} onUpdate={updateSettings} onDirtyChange={notificationsDirtyChange} />
                 )}

@@ -30,8 +30,8 @@ const loadFileRoutes = function (app: express.Application) {
   app
     .route(baseUrl + '/orbit/mcp')
     .post(orbitController.mcp)
-    .get(orbitController.mcpMethodNotAllowed)
-    .delete(orbitController.mcpMethodNotAllowed);
+    .get(orbitController.mcp)
+    .delete(orbitController.mcp);
 };
 
 export default loadFileRoutes;

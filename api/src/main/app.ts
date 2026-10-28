@@ -17,6 +17,9 @@ const bold = "\x1b[1m"; // Negrita
 const initializeApp = async () => {
   dotenv.config();
   const app: Application = express();
+  // nginx reaches the API over the private Docker network. Public peers must
+  // not be trusted to supply their own forwarded IP for OAuth rate limits.
+  app.set('trust proxy', process.env.ENVIRONMENT === 'production' ? 'loopback, uniquelocal' : false);
   loadGlobalMiddlewares(app);
   await routes(app);
   await initializeDatabase();
