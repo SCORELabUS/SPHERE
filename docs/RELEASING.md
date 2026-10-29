@@ -65,12 +65,12 @@ The next step is running a build script to aggregate all generated assets into S
 ### Rebuild and Redeploy the Application
 
 To execute the build script that aggregates the changelogs, store a GitHub fine-grained personal access token
-in the `docker/gh_token.txt` file.
+in the `docker/gh_pat.txt` file.
 
 Create a fine-grained Personal Access Token (PAT) with read-only access to public repositories. See the [GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 for more details.
 
-After placing the token in `docker/gh_token.txt`, rebuild the Docker images:
+After placing the token in `docker/gh_pat.txt`, rebuild the Docker images:
 ```bash
 docker compose -f docker/production/docker-compose.yml build --no-cache
 ```
