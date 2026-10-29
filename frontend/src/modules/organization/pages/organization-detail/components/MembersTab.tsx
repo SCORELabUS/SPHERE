@@ -7,6 +7,7 @@ import customAlert from '../../../../core/utils/custom-alert';
 import customConfirm from '../../../../core/utils/custom-confirm';
 import { OrgMemberWithUser, OrgRole, useOrganizationsApi } from '../../../api/organizationsApi';
 import { ROLE_LABELS, ROLE_COLORS } from '../constants';
+import OrganizationExitButton from './OrganizationExitButton';
 
 interface Props {
   orgId: string;
@@ -18,7 +19,8 @@ interface Props {
   /** Handing the organization over changes the viewer's own role, so more than the member list has to be reloaded. */
   onOwnershipTransferred: () => void | Promise<void>;
   onAddMember: () => void;
-  onLeave: () => void;
+  onLeave: () => void | Promise<void>;
+  isPersonal: boolean;
   isPublicView?: boolean;
 }
 
@@ -32,6 +34,7 @@ export default function MembersTab({
   onOwnershipTransferred,
   onAddMember,
   onLeave,
+  isPersonal,
   isPublicView = false,
 }: Props) {
   const { updateMemberRole, removeMember, transferOwnership } = useOrganizationsApi();
@@ -303,17 +306,15 @@ export default function MembersTab({
                   </button>
                 )}
                 {!isPublicView && member.user.id === currentUserId && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveMember(member)}
+                  <OrganizationExitButton
+                    orgId={orgId}
+                    isPersonal={isPersonal}
+                    members={members}
+                    currentUserId={currentUserId}
+                    onExited={onLeave}
                     disabled={isSavingRoles}
-                    title={
-                      member.user.id === currentUserId ? 'Leave organization' : 'Remove member'
-                    }
-                    className="cursor-pointer text-tp-hairline-strong transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Iconify icon="mdi:logout" width={18} className="text-red-600" />
-                  </button>
+                    compact
+                  />
                 )}
               </div>
             );
