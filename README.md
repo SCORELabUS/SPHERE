@@ -1,156 +1,190 @@
-# 🌐 SPHERE - SaaS Pricing Holistic Evaluation and Regulation Environment
+<div align="center">
 
-SPHERE (SaaS Pricing Holistic Evaluation and Regulation Environment) is a comprehensive platform for intelligent pricing-driven solutions. Grouping a set advanced applications, datasets and tools, SPHERE offers a unified experience to model, analyze, and optimize SaaS pricing with ease.
+# SPHERE
 
-## 🎥 Demo 
+**SaaS Pricing Holistic Evaluation and Regulation Environment**
 
-You can access the demo of the project [here](http://sphere.score.us.es/).
+A collaborative platform to model, version, analyze and govern SaaS pricings.
 
-If you prefer to run your own instance of the project to ensure the privacy of your data, and leverage the latest features, follow the instructions below.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/SCORELabUS/SPHERE?sort=semver)](https://github.com/SCORELabUS/SPHERE/releases)
+[![Tests](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml/badge.svg)](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml)
 
-## 🐳 Running SPHERE with Docker
+[Live instance](https://sphere.score.us.es/) · [API reference](api/docs/sphere-api-docs.yaml) · [Report an issue](https://github.com/SCORELabUS/SPHERE/issues)
 
-SPHERE provides a ready to use docker-compose file to run the project in a containerized environment. To run the project with docker, follow these steps:
+</div>
 
-### 1. Ensure you have docker and docker-compose installed
+---
 
-If you don't have docker and docker-compose installed on your machine, you can follow the instructions in the [official docker documentation](https://docs.docker.com/get-docker/) to install them.
+## Table of contents
 
-### 2. Clone the repository and run SPHERE
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick start with Docker](#quick-start-with-docker)
+- [Published container images](#published-container-images)
+- [Local development](#local-development)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
-To deploy your own instance of SPHERE, you just have to clone the repo, navigate to the `SPHERE/docker` directory, and launch the docker-compose file. To do so, run the following commands:
+## Overview
+
+SPHERE brings together the applications, datasets and tools for pricing-driven development in a single environment. Pricings are described in the Pricing2Yaml format and stored as versioned families that organizations can share, analyze and evolve over time.
+
+A public instance is available at **[sphere.score.us.es](https://sphere.score.us.es/)**. To keep your data on your own infrastructure or to try unreleased features, you can deploy your own instance as described below.
+
+## Features
+
+- **Pricing repository.** Upload, edit and version pricings, compare versions, keep versions private and group pricings in collections.
+- **Analytics.** Configuration-space and optimization analyses of each pricing, computed with [MiniZinc](https://www.minizinc.org/).
+- **Organizations and permissions.** Nested organizations, roles, invitations and fine-grained permissions on pricings and collections.
+- **Permanent links and synchronization.** Stable URLs for pricings and collections that survive renaming and moving, and a public API for synchronization with [SPACE](docs/permanent-links.md).
+- **AI assistants.** HARVEY answers questions about pricings; ORBIT reads the workspace and proposes changes as plans that the user confirms before they are applied.
+- **MCP server.** ORBIT's tools are exposed at `/api/v1/orbit/mcp`, so assistants such as Claude or ChatGPT can work with SPHERE through API keys or OAuth. See the [SPHERE ORBIT plugin](https://github.com/SCORELabUS/sphere-orbit-plugin).
+- **REST API.** Every feature is available through a documented, rate-limited API with API keys.
+
+## Architecture
+
+| Component | Technology | Location |
+| --- | --- | --- |
+| Web client | React, Vite, Tailwind CSS v4 | [`frontend/`](frontend) |
+| API | Node.js, Express, TypeScript | [`api/`](api) |
+| Database | MongoDB 7 | — |
+| Cache, rate limiting, OAuth state | Redis 7 | — |
+| Analytics solver | MiniZinc with Gecode | bundled in the API image |
+| Reverse proxy | nginx | [`nginx/`](nginx) |
+
+The API serves under `/api/v1` and also exposes the pricing files under `/static`. In production, nginx routes both paths to the API and everything else to the web client.
+
+## Quick start with Docker
+
+**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose v2.
 
 ```bash
-git clone https://github.com/Alex-GF/SPHERE.git
-cd SPHERE/docker/testing
+git clone https://github.com/SCORELabUS/SPHERE.git
+cd SPHERE
+```
+
+The web client image generates its changelog from GitHub at build time, so the build needs a GitHub personal access token with read access to public repositories. Save it in `docker/gh_pat.txt` (it is ignored by Git):
+
+```bash
+echo "<your-github-token>" > docker/gh_pat.txt
+```
+
+Then start the stack:
+
+```bash
+cd docker/testing
 docker compose up -d
 ```
 
-🎉 After running these commands, the project should be up and running! You can access the frontend through [http://localhost/](http://localhost/)
+SPHERE is then available at [http://localhost](http://localhost). The stack runs MongoDB, Redis, the API, the web client and nginx, configured with [`api/.env.testing`](api/.env.testing) and [`frontend/.env.testing`](frontend/.env.testing).
 
-### Using the published images
+> [!WARNING]
+> The `testing` configuration ships with default credentials and secrets. Change them before exposing the instance to a network.
 
-Every release of SPHERE publishes two public multi-arch (`amd64`/`arm64`) images to the GitHub Container Registry, tagged with the release version without the leading `v` (release `v2.5.5` → tag `2.5.5`; `latest` always points to the newest stable release):
+## Published container images
+
+Every release publishes two multi-architecture (`amd64`/`arm64`) images to the GitHub Container Registry. Tags match the release version without the leading `v` (release `v2.9.1` → tag `2.9.1`), and `latest` points to the newest stable release.
 
 ```bash
-docker pull ghcr.io/scorelabus/sphere-api:2.5.5      # Express API (includes MiniZinc), port 8080
-docker pull ghcr.io/scorelabus/sphere-client:2.5.5   # Static web client served by nginx, port 80
+docker pull ghcr.io/scorelabus/sphere-api:latest     # Express API with MiniZinc, port 8080
+docker pull ghcr.io/scorelabus/sphere-client:latest  # Static web client served by nginx, port 80
 ```
 
-You still need MongoDB and Redis, and a reverse proxy that routes `/api/v1` and `/static` to the API and everything else to the client. See `docker/testing/docker-compose.yml` and `nginx/` for a reference setup. The API is configured through the same environment variables as in `api/.env.testing`, and the client is built with `VITE_API_URL=/api/v1`.
+These images still need MongoDB, Redis and a reverse proxy that routes `/api/v1` and `/static` to the API and everything else to the client. Use [`docker/testing/docker-compose.yml`](docker/testing/docker-compose.yml) and [`nginx/`](nginx) as a reference. The API reads the same environment variables as [`api/.env.testing`](api/.env.testing); the client is built with `VITE_API_URL=/api/v1`.
 
-Releases must be tagged as `vX.Y.Z`; otherwise the publishing workflow fails.
+## Local development
 
-## 🚀 Installation Guide for Developers
+### Prerequisites
 
-To set up and run this project, follow these steps:
+- [Node.js](https://nodejs.org/) 22 or later
+- [pnpm](https://pnpm.io/installation), the project's package manager
+- [Docker](https://docs.docker.com/get-docker/), to run MongoDB and Redis locally
+- [MiniZinc](https://www.minizinc.org/doc-latest/en/installation.html) with the Gecode solver, used by the pricing analytics. Check that `minizinc --solvers` lists `gecode`.
 
-#### ⚙️ Prerequisites
+### Setup
 
-Ensure you have **NodeJS** and **npm** installed, as the latter is the package manager of the project. If you haven't installed it yet, please refer to the official [Node.js and npm installation guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) before proceeding.
-
-In addition, this project relies on a **mongo** database to store the data. If you don't have one installed on your machine, or deployed in a docker container, you can follow the instructions in the [official mongoDB documentation](https://docs.mongodb.com/manual/installation/).
-
-Finally, one of the dependencies of the project requires the **minizinc** CLI to be installed on your machine in order to solve some optimization problems related to analytics. You can find the installation instructions in the [official minizinc documentation](https://www.minizinc.org/doc-2.5.5/en/installation.html).
-
-#### 📥 Steps to run the project as a developer
-
-1. **Clone the Repository**  
-   Start by cloning the project repository to your local machine:
-   ```bash
-   git clone https://github.com/Alex-GF/SPHERE.git
-   ```
-2. **Navigate to the Project Directory**  
-   Change into the project folder:
+1. **Clone the repository and install dependencies** for both packages:
 
    ```bash
+   git clone https://github.com/SCORELabUS/SPHERE.git
    cd SPHERE
+   pnpm run install
    ```
 
-3. **📝 Configure Environment Variables**  
-   To configure the variables of the project, you need to set up two environment files. One for the frontend, and the other for the backend.
+2. **Configure the environment.** Create `api/.env` from [`api/.env.testing`](api/.env.testing), pointing `MONGO_HOST` to `localhost` and `REDIS_URL` to `redis://localhost:6378`. Create `frontend/.env` from [`frontend/.env.example`](frontend/.env.example).
 
-   First, go to the `/api` directory
+3. **Start MongoDB and Redis and seed the database:**
 
    ```bash
-   cd api
+   pnpm run dev:setup
    ```
 
-   and create an `.env` file using the provided `.env.mongo.example` as a reference. The resulting `.env` file should look like this:
-
-   ```plaintext
-   DATABASE_TECHNOLOGY=mongoDB      # Technology used to store the data
-   MONGO_PROTOCOL=mongodb           # Protocol used to connect to the database
-   MONGO_HOST=localhost             # Host where the database is running
-   MONGO_PORT=27017                 # Port where the database is running
-   MONGO_INITDB_DATABASE=sphere_db  # Name of the database created for the project
-   MONGO_INITDB_ROOT_USERNAME=root  # Root user of the database
-   MONGO_INITDB_ROOT_PASSWORD=4dm1n # Password of the root user
-   DATABASE_NAME=sphere_db          # Name of the database created for the project
-   DATABASE_USERNAME=testUser       # User created to manage sphere_db
-   DATABASE_PASSWORD=testUser       # Password of the user created for sphere_db
-   SERVER_PORT=8080                 # Used for serving the API
-   SERVER_HOST=http://localhost:8080       # Used for serving static files
-   AVATARS_FOLDER=public/avatars    # Folder where the avatars will be stored
-   BASE_URL_PATH=                   # Base path for the API (/api/v1 will be added to this path, so if you want to serve the API in the root path, leave this variable empty)
-   ```
-
-   :::info
-   Currently, the only supported database is `mongoDB`.
-   :::
-
-   After setting this up, return to the root directory of the project and access the `frontend` project:
+4. **Run the API and the web client:**
 
    ```bash
-   cd ../frontend
+   pnpm run dev
    ```
 
-   and create an `.env` file using the provided `.env.example` as a reference. The resulting `.env` file should look like this:
+   The API applies pending migrations on startup and listens on [http://localhost:8080](http://localhost:8080); the web client runs on [http://localhost:5173](http://localhost:5173). Set `VITE_API_PROXY_TARGET` if the API runs on a different port.
 
-   ```plaintext
-   VITE_API_URL=/api
-   VITE_SECRET_KEY=app_secret
-   ```
+### Useful commands
 
-4. **🔧 Install Dependencies and Run the Project**  
-   Once the `.env` files are set up, return to the main folder again, install the dependencies of both project by running the command `npm run install`, and start the project by running the command `npm run dev`:
+| Command | Description |
+| --- | --- |
+| `pnpm run dev` | Run the API and the Vite dev server concurrently |
+| `pnpm run dev:setup` | Start MongoDB and Redis and seed the database |
+| `pnpm run build` | Build the web client and the API |
+| `pnpm run test` | Run the API test suite and reseed the database |
+| `pnpm run test:frontend` | Run the web client tests |
+| `pnpm run lint` | Lint the repository |
+| `pnpm run seed:mongo-local:small` | Reset and reseed the local database |
 
-   ```bash
-   cd ..
-   npm run install
-   npm run dev
-   ```
+## Testing
 
-   🎉 After running these commands, the project should be up and running! This is the expected output:
+The API suite uses [Vitest](https://vitest.dev/) and runs against a real MongoDB and Redis. Tests run sequentially, and the suite reseeds the database when it finishes.
 
-   ```bash
-   > sphere@0.2.0 dev
-   > npm run dev:api & npm run dev:vite
+```bash
+pnpm run test
+```
 
+To run a subset of tests:
 
-   > sphere@0.2.0 dev:vite
-   > cd frontend && npx vite
+```bash
+cd api
+npx vitest --run --test-name-pattern "<pattern>"
+```
 
+> [!CAUTION]
+> The integration and end-to-end harnesses drop the database they use. Run them only against a dedicated test database, never against data you want to keep.
 
-   > sphere@0.2.0 dev:api
-   > cd api && npx tsx --tsconfig tsconfig.json --watch src/backend.ts --seed
+## Documentation
 
-   ⠼The CJS build of Vite\'s Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+| Document | Content |
+| --- | --- |
+| [`api/docs/sphere-api-docs.yaml`](api/docs/sphere-api-docs.yaml) | OpenAPI specification of the REST API |
+| [`docs/permanent-links.md`](docs/permanent-links.md) | Permanent links, public synchronization API and SPACE integration |
+| [`api/docs/database-seeders.md`](api/docs/database-seeders.md) | Database seeders |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Contribution guidelines and commit conventions |
+| [`docs/RELEASING.md`](docs/RELEASING.md) | Release process |
+| [`AGENTS.md`](AGENTS.md) | Detailed notes on the codebase for contributors and coding agents |
 
-   VITE v5.4.11  ready in 182 ms
+## Contributing
 
-   ➜  Local:   http://localhost:5173/
-   ➜  Network: use --host to expose
-   ➜  press h + enter to show help
-   Trying to connect to mongodb://testUser:testUser@localhost:27017/sphere_db?authSource=sphere_db
-   ==== Mongo seeding successfull ====
-   ➜  API:     http://localhost:8080/
-   ```
+Contributions are welcome. Please read the [contribution guidelines](docs/CONTRIBUTING.md) before opening a pull request. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) and are checked by commitlint on every commit.
 
-## Contributions
+Bugs and feature requests can be reported through [GitHub Issues](https://github.com/SCORELabUS/SPHERE/issues).
 
-This project is part of the research activities of the [ISA Group](https://www.isa.us.es/3.0/). It is still under development and should be used with caution. We are not responsible for any damage caused by the use of this software. If you find any bugs or have any suggestions, please let us know by opening an issue in the [GitHub repository](https://github.com/Alex-GF/SPHERE/issues).
+## License
 
-### Permanent links and SPACE
+SPHERE is released under the [MIT License](LICENSE).
 
-Pricing families and collections now have permanent links that survive renaming and moving. Public pricing manifests support SPACE synchronization. See [API, migration and rollout instructions](docs/permanent-links.md).
+The software is provided "as is", without warranty of any kind. SPHERE is a research prototype under active development; evaluate it carefully before relying on it in production.
+
+## Acknowledgements
+
+SPHERE is developed by the [SCORE Lab](https://github.com/SCORELabUS) within the research activities of the [ISA Group](https://www.isa.us.es/3.0/) at the University of Seville.
