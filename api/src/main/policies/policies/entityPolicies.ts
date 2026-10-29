@@ -86,12 +86,15 @@ const ENTITY_PUT: Policy = {
   description: 'PUT requires both GET (can see) and PUT (can edit) permissions',
   evaluate: (ctx) => {
     if (ctx.action === 'PUT') {
-      // For private entities, must have GET first
-      if (ctx.isPrivate && !ctx.entityPermissions?.GET) {
+      const containedPricing = ctx.entityType === 'pricing' && Boolean(ctx.collectionSlug);
+      // Reading a private pricing may already be granted by its collection.
+      const mayRead = ctx.entityPermissions?.GET || (containedPricing && ctx.collectionPermissions?.GET);
+      if (ctx.isPrivate && !mayRead) {
         return { allowed: false, reason: 'PUT requires GET permission on private entity' };
       }
-      if (ctx.entityPermissions?.PUT) {
-        return { allowed: true, reason: 'PUT permission granted' };
+      const permissions = containedPricing && !ctx.requireDirectPricingPut ? ctx.collectionPermissions : ctx.entityPermissions;
+      if (permissions?.PUT) {
+        return { allowed: true, reason: containedPricing && !ctx.requireDirectPricingPut ? 'PUT inherited from collection' : 'PUT permission granted' };
       }
       return { allowed: false, reason: 'PUT permission required' };
     }

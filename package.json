@@ -11,6 +11,7 @@
     "dev:vite": "cd frontend && pnpx vite",
     "test": "pnpm run test:api",
     "test:api": "cd api && npx vitest --run && cd .. && pnpm run seed:mongo-local:small",
+    "test:frontend": "pnpm --dir frontend run test",
     "build": "pnpm run build:frontend && pnpm run build:api",
     "build:api": "cd api && pnpm run build",
     "build:frontend": "pnpm --dir frontend run build",

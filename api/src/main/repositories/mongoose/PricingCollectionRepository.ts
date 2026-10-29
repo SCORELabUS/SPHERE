@@ -60,6 +60,13 @@ class PricingCollectionRepository extends RepositoryBase {
     }
   }
 
+  /** The slug of the collection with this id, for permission checks; undefined when there is none. */
+  async findSlugById(id: unknown): Promise<string | undefined> {
+    if (!id || !mongoose.isValidObjectId(String(id))) return undefined;
+    const row: any = await PricingCollectionMongoose.findById(String(id)).select('slug').lean();
+    return row?.slug ?? undefined;
+  }
+
   async findByOrganizationId(
     organizationId: string,
     permissions?: OrgUserPermissionsContext,
@@ -265,6 +272,54 @@ class PricingCollectionRepository extends RepositoryBase {
       slug: row.slug,
       name: row.name,
       private: row.private === true,
+    }));
+  }
+
+  /** Organization, slug and visibility of a collection, or null when there is none with this id. */
+  async findRefById(id: string): Promise<{ organizationId: string; slug: string; private: boolean } | null> {
+    if (!mongoose.isValidObjectId(id)) return null;
+    const row: any = await PricingCollectionMongoose.findById(id).select('_organizationId slug private').lean();
+    if (!row) return null;
+    return { organizationId: String(row._organizationId), slug: row.slug, private: row.private === true };
+  }
+
+  /** The collection of an organization with this name or slug, as the visibility checks need it. */
+  async findRefByFolder(
+    organizationId: string,
+    folder: string
+  ): Promise<{ organizationId: string; slug: string; private: boolean } | null> {
+    if (!mongoose.isValidObjectId(organizationId)) return null;
+    let name = folder;
+    try {
+      name = decodeURIComponent(folder);
+    } catch {
+      // A malformed escape is taken literally.
+    }
+    const row: any = await PricingCollectionMongoose.findOne({
+      _organizationId: new mongoose.Types.ObjectId(organizationId),
+      $or: [{ slug: name }, { name }],
+    })
+      .select('_organizationId slug private')
+      .lean();
+    if (!row) return null;
+    return { organizationId: String(row._organizationId), slug: row.slug, private: row.private === true };
+  }
+
+  /** The private collections of these organizations, as the visibility checks need them. */
+  async findPrivateRefsByOrganizationIds(
+    organizationIds: string[]
+  ): Promise<Array<{ id: string; organizationId: string; slug: string }>> {
+    if (organizationIds.length === 0) return [];
+    const rows = await PricingCollectionMongoose.find({
+      private: true,
+      _organizationId: { $in: organizationIds.map(id => new mongoose.Types.ObjectId(id)) },
+    })
+      .select('_id _organizationId slug')
+      .lean();
+    return rows.map((row: any) => ({
+      id: row._id.toString(),
+      organizationId: row._organizationId.toString(),
+      slug: row.slug,
     }));
   }
 

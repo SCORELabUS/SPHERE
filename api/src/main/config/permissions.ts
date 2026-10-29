@@ -28,7 +28,7 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   { path: '/oauth/revoke', methods: ['POST'], isPublic: true },
   { path: '/oauth/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
   { path: '/oauth/grants', methods: ['GET'], allowedUserRoles: ['USER', 'ADMIN'] },
-  { path: '/oauth/grants/*', methods: ['DELETE'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oauth/grants/*', methods: ['PUT', 'DELETE'], allowedUserRoles: ['USER', 'ADMIN'] },
   // ============================================
   // User Management Routes
   // ============================================

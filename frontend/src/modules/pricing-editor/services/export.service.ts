@@ -13,8 +13,13 @@ export function parseStringYamlToEncodedYaml(yaml: string): string {
   return compressed;
 }
 
+/**
+ * The share link for an encoded pricing (or a short-link key): the current page
+ * with `?pricing=` as its only parameter. The current fragment is never copied,
+ * so a pricing opened through `#pricing=` cannot leak into a share link.
+ */
 export function createUrlWithEncodedYaml(encoded: string): string {
-  const baseUrl = window.location.href.split('?')[0];
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
   return `${baseUrl}?pricing=${encoded}`;
 }
 

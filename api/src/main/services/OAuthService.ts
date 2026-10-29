@@ -97,21 +97,37 @@ export default class OAuthService implements OAuthServerProvider {
     return { clientName: pending.clientName, redirectDomain: new URL(pending.redirectUri).host };
   }
 
+  /** Consent and later edits enforce the same organization membership boundary. */
+  private async validateScopes(userId: string, value: unknown): Promise<ApiKey['scopes']> {
+    if (!Array.isArray(value) || !value.length || value.length > 100) throw new Error('INVALID DATA: Choose between 1 and 100 organizations and scopes');
+    const seen = new Set<string>();
+    const scopes: ApiKey['scopes'] = [];
+    for (const entry of value) {
+      if (!entry || typeof entry.organizationId !== 'string' || !/^[a-f0-9]{24}$/i.test(entry.organizationId) ||
+          !['VIEW', 'MANAGEMENT', 'ALL'].includes(entry.scope) || seen.has(entry.organizationId.toLowerCase())) {
+        throw new Error('INVALID DATA: Invalid or duplicate organization scope');
+      }
+      const organizationId = entry.organizationId.toLowerCase();
+      seen.add(organizationId);
+      const role = await container.resolve('organizationService').getUserOrgRole(userId, organizationId);
+      if (!role) throw new Error('PERMISSION ERROR: You do not belong to this organization');
+      scopes.push({ organizationId, scope: entry.scope });
+    }
+    return scopes;
+  }
+
+  async updateGrant(userId: string, id: string, value: unknown) {
+    if (!/^[a-f0-9]{24}$/i.test(id) || !await this.repo.findActiveGrantForUser(id, userId)) throw new Error('NOT FOUND: Connection not found');
+    const scopes = await this.validateScopes(userId, value);
+    // Recheck ownership, expiry and revocation in the write; a concurrent revoke wins.
+    if (!await this.repo.updateScopesForUser(id, userId, scopes)) throw new Error('NOT FOUND: Connection not found');
+    // Existing access and refresh tokens read scopes from the grant on every MCP request.
+  }
+
   async decide(id: string, userId: string, approve: unknown, scopes: ApiKey['scopes']) {
     const pending = await this.pending(id, userId);
     if (typeof approve !== 'boolean') throw new Error('INVALID DATA: approve must be a boolean');
-    if (approve) {
-      if (!Array.isArray(scopes) || !scopes.length || scopes.length > 100) throw new Error('INVALID DATA: Choose organizations and scopes');
-      const seen = new Set<string>();
-      for (const scope of scopes) {
-        if (!scope || !/^[a-f0-9]{24}$/i.test(scope.organizationId) || !['VIEW', 'MANAGEMENT', 'ALL'].includes(scope.scope) || seen.has(scope.organizationId)) {
-          throw new Error('INVALID DATA: Invalid or duplicate organization scope');
-        }
-        seen.add(scope.organizationId);
-        const role = await container.resolve('organizationService').getUserOrgRole(userId, scope.organizationId);
-        if (!role) throw new Error('PERMISSION ERROR: You do not belong to this organization');
-      }
-    }
+    if (approve) scopes = await this.validateScopes(userId, scopes);
     // Consume only after validation, atomically, before issuing any grant/code.
     if (!await this.cache.take(OAUTH_CACHE_PREFIX + 'request:' + id)) throw new Error('NOT FOUND: Consent request already consumed');
     const callback = new URL(pending.redirectUri);

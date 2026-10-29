@@ -923,7 +923,7 @@ describe('Pricing Collections API integration', () => {
       expect(response.body.error).toBeDefined();
     });
 
-    it('Return 200 when MEMBER has PUT permission on a private collection.', async () => {
+    it('Return 200 when MEMBER has PUT on the pricing and the private collection.', async () => {
       const { organizationId } = await createTestUser('USER');
       const { user: member } = await createAndLoginUser('USER');
 
@@ -946,6 +946,8 @@ describe('Pricing Collections API integration', () => {
         serviceName: `pricing_${randomSuffix()}`,
         version: '1.0.0',
       });
+
+      await createEntityScopedPermission(member.id, organizationId, serviceName, 'pricing', { GET: true, PUT: true, DELETE: false, CREATE: false });
 
       const response = await request(app)
         .post(`${BASE_PATH}/collections/${organizationId}/${collection.slug}`)
@@ -1162,10 +1164,11 @@ describe('Pricing Collections API integration', () => {
       expect(await collectionPricingSlugs(organizationId, response.body.slug, owner.token)).toEqual([fork.slug]);
     });
 
-    it('Accept the pricing in every collection a MEMBER is offered as writable.', async () => {
+    it('Accept a pricing with independent PUT in every collection a MEMBER is offered as writable.', async () => {
       const { organizationId, fork } = await forkIntoNewOrganization();
       const { user: member } = await createAndLoginUser('USER');
       await createMembership(member.id, organizationId, 'MEMBER');
+      await createEntityScopedPermission(member.id, organizationId, fork.slug, 'pricing', { GET: true, PUT: true, DELETE: false, CREATE: false });
 
       await createTestCollection({ _organizationId: organizationId, private: false });
       const editable = await createTestCollection({ _organizationId: organizationId, private: true });
@@ -1558,7 +1561,7 @@ describe('Pricing Collections API integration', () => {
       expect(res.body.error).toBeDefined();
     });
     
-    it('Returns 403 if colleciton is private', async () => {
+    it('Returns 404 if collection is private and the caller may not see it', async () => {
       const { organizationId } = await createAndLoginUser('USER');
 
       const collection = await createTestCollection({ _organizationId: organizationId, private: true });
@@ -1569,7 +1572,8 @@ describe('Pricing Collections API integration', () => {
         )
         .set('Authorization', `Bearer ${testUser.token}`);
 
-      expect(res.status).toBe(403);
+      // Answered like a missing collection, so its existence is not revealed.
+      expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
     });
     
