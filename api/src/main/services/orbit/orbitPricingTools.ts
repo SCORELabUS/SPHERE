@@ -8,9 +8,10 @@ import PricingService from '../PricingService';
 import PricingCollectionService from '../PricingCollectionService';
 import PricingRepository from '../../repositories/mongoose/PricingRepository';
 import { LlmTool } from './OrbitLlmClient';
-import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
+import { OrbitActor } from './orbitAccess';
 import { matchResource } from './OrbitPlanService';
 import { diffPricings } from './orbitPricingDiff';
+import { resolvePricingFile } from '../../utils/pricing-files';
 
 const MAX_PRICINGS_LISTED = 20;
 const MAX_CONFIGURATIONS_LISTED = 20;
@@ -109,9 +110,9 @@ export const PRICING_TOOL_LABELS: Record<string, string> = {
   get_collection: 'Reading the collection',
 };
 
-/** The user as the pricing services expect the caller. */
+/** The user as the pricing services expect the caller, with the API key it came with, if any. */
 export function requesterOf(actor: OrbitActor): any {
-  return { id: actor.id, username: actor.username, role: actor.role };
+  return { id: actor.id, username: actor.username, role: actor.role, ...(actor.apiKey ? { apiKey: actor.apiKey } : {}) };
 }
 
 /**
@@ -150,7 +151,7 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
     case 'get_pricing': {
       const organizationId = requireOrganizationId(args.organizationId);
       const slug = await resolvePricingSlug(organizationId, args.pricing);
-      const pricing: any = await pricingService.show(slug, organizationId, user);
+      const pricing: any = await showVisible(pricingService, slug, organizationId, user, args.pricing);
       return {
         name: pricing.name,
         slug: pricing.slug,
@@ -171,6 +172,7 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
     case 'get_configuration_space': {
       const organizationId = requireOrganizationId(args.organizationId);
       const slug = await resolvePricingSlug(organizationId, args.pricing);
+      await showVisible(pricingService, slug, organizationId, user, args.pricing);
       const [configurations, size] = await pricingService.getConfigurationSpace(
         organizationId,
         slug,
@@ -185,7 +187,7 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
       const organizationId = requireOrganizationId(args.organizationId);
       const slug = await resolvePricingSlug(organizationId, args.pricing);
       // Seen through show() so both versions are ones the user may see.
-      const pricing: any = await pricingService.show(slug, organizationId, user);
+      const pricing: any = await showVisible(pricingService, slug, organizationId, user, args.pricing);
       const before = await readVersion(organizationId, slug, pricing, args.from);
       const after = await readVersion(organizationId, slug, pricing, args.to);
       // The labels the user sees, rather than the version strings inside the files.
@@ -195,7 +197,11 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
     case 'get_collection': {
       const organizationId = requireOrganizationId(args.organizationId);
       const slug = await resolveCollectionSlug(organizationId, args.collection);
-      const collection: any = await collectionService.show(organizationId, slug, user);
+      // A private collection the user may not see answers as one that does not exist.
+      const collection: any = await collectionService.show(organizationId, slug, user).catch((err: Error) => {
+        if (err.message.startsWith('NOT FOUND')) throw new Error(`NOT FOUND: There is no collection called "${String(args.collection ?? '').trim()}" in this organization`);
+        throw err;
+      });
       const pricings = await visiblePricingsIn(organizationId, collection, actor);
       return {
         name: collection.name,
@@ -212,6 +218,19 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
     default:
       return undefined;
   }
+}
+
+/**
+ * show(), with a pricing the user may not see (all its versions private)
+ * answered exactly like one that does not exist.
+ */
+async function showVisible(pricingService: PricingService, slug: string, organizationId: string, user: any, raw: unknown) {
+  return pricingService.show(slug, organizationId, user).catch((err: Error) => {
+    if (String(err?.message).startsWith('NOT FOUND')) {
+      throw new Error(`NOT FOUND: There is no pricing called "${typeof raw === 'string' ? raw.trim() : ''}" in this organization`);
+    }
+    throw err;
+  });
 }
 
 function requireOrganizationId(value: unknown): string {
@@ -252,29 +271,23 @@ async function readVersion(organizationId: string, slug: string, visible: any, l
   const stored: any = await repository.findOne(slug, organizationId, { version: wanted, includePrivate: true });
   const file = stored?.versions?.[0]?.yaml;
   if (!file) throw new Error(`NOT FOUND: "${visible.name}" has no version "${label}"`);
-  const absolute = path.resolve(process.env.SERVER_STATICS_FOLDER || 'public/', file);
-  if (!fs.existsSync(absolute)) throw new Error(`NOT FOUND: The file of version "${label}" is missing`);
+  const absolute = resolvePricingFile(file);
+  if (!absolute || !fs.existsSync(absolute)) throw new Error(`NOT FOUND: The file of version "${label}" is missing`);
   return retrievePricingFromText(fs.readFileSync(absolute, 'utf8'));
 }
 
 /**
- * The pricings of a collection the user may see: all of them for its owners and
- * admins, otherwise the public ones and those they were given access to.
+ * The pricings of a collection the user may see: those with a public version,
+ * and the rest only for who may read their private versions (see
+ * `PermissionService.privateReader`; GET on the collection reaches them all).
  */
 async function visiblePricingsIn(organizationId: string, collection: { id: string; slug: string }, actor: OrbitActor) {
   const repository: PricingRepository = container.resolve('pricingRepository');
   const inCollection = (await repository.findSummariesByOrganization(organizationId)).filter(
     pricing => pricing.collectionId === collection.id
   );
-  if (canManage(await resolveOrgRole(container.resolve('organizationService'), actor, organizationId))) return inCollection;
-  const own = await container.resolve('entityPermissionRepository').findByUserAndOrganization(actor.id, organizationId);
-  return inCollection.filter(
-    pricing =>
-      !pricing.private ||
-      own.some((record: any) => record.permissions.GET && (
-        (record.entityType === 'pricing' && record.entitySlug === pricing.slug) || (record.entityType === 'collection' && record.entitySlug === collection.slug)
-      ))
-  );
+  const reader = await container.resolve('permissionService').privateReader(requesterOf(actor), organizationId);
+  return inCollection.filter(pricing => pricing.publicVersions > 0 || reader('pricing', pricing.slug, collection.slug));
 }
 
 function summarizeAnalytics(analytics: any) {

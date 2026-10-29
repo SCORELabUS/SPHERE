@@ -302,6 +302,56 @@ describe('ORBIT MCP OAuth', () => {
     await sdk.close();
   });
 
+  it('edits its own scopes in place and applies them to existing MCP sessions and refreshed tokens', async () => {
+    const { client, tokens } = await connection('ALL');
+    const grant = await OAuthGrant.findOne({ clientId: client.client_id }).lean();
+    const endpoint = base + '/grants/' + grant!._id;
+    const put = (scopes: unknown, bearer = user.token) => request(app).put(endpoint).auth(bearer, { type: 'bearer' }).send({ scopes });
+    await put([{ organizationId, scope: 'VIEW' }], otherUser.token).expect(404);
+    await put([{ organizationId, scope: 'VIEW' }], tokens.access_token).expect(401);
+    const apiKey = await request(app).post(`${BASE_PATH}/users/${user.username}/api-keys`).auth(user.token, { type: 'bearer' })
+      .send({ name: 'Not a web session', scopes: [{ organizationId, scope: 'ALL' }] }).expect(201);
+    await request(app).put(endpoint).set('x-api-key', apiKey.body.plainKey).send({ scopes: [{ organizationId, scope: 'VIEW' }] }).expect(401);
+    for (const invalid of [[], [{ organizationId, scope: 'ROOT' }], [{ organizationId: 'bad', scope: 'VIEW' }],
+      [{ organizationId, scope: 'VIEW' }, { organizationId, scope: 'ALL' }], Array(101).fill({ organizationId, scope: 'VIEW' })]) {
+      await put(invalid).expect(422);
+    }
+    await put([{ organizationId: otherOrganizationId, scope: 'VIEW' }]).expect(403);
+    expect((await OAuthGrant.findById(grant!._id).lean())!.scopes[0].scope).toBe('ALL');
+    const address = (app as Server).address() as AddressInfo;
+    const sdk = new Client({ name: 'scope-edit', version: '1' });
+    await sdk.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${address.port}${BASE_PATH}/orbit/mcp`),
+      { requestInit: { headers: { Authorization: 'Bearer ' + tokens.access_token } } }));
+    const plan = { name: 'propose_plan', arguments: { summary: 'No changes', organizations: [] } };
+    const before = await sdk.callTool(plan);
+    expect(JSON.stringify(before)).not.toContain('only has VIEW');
+    await put([{ organizationId, scope: 'VIEW' }]).expect(204);
+    expect(JSON.stringify(await sdk.callTool(plan))).toContain('only has VIEW');
+    const rotated = await refresh(client.client_id, tokens.refresh_token);
+    expect(rotated.status).toBe(200);
+    expect((await container.resolve('oauthService').authenticate(rotated.body.access_token)).credential.scopes).toEqual([{ organizationId, scope: 'VIEW' }]);
+    await put([{ organizationId, scope: 'MANAGEMENT' }]).expect(204);
+    expect(JSON.stringify(await sdk.callTool(plan))).not.toContain('only has VIEW');
+    const updated = await OAuthGrant.findById(grant!._id).lean();
+    expect(updated!.clientId).toBe(grant!.clientId);
+    expect(updated!.scopes).toEqual([{ organizationId, scope: 'MANAGEMENT' }]);
+    await sdk.close();
+    await request(app).delete(endpoint).auth(user.token, { type: 'bearer' }).expect(204);
+    await put([{ organizationId, scope: 'ALL' }]).expect(404);
+    expect((await mcp(tokens.access_token)).status).toBe(401);
+    await request(app).put(base + '/grants/not-an-id').auth(user.token, { type: 'bearer' }).send({ scopes: [] }).expect(404);
+  });
+
+  it('does not edit an expired connection or extend its expiry', async () => {
+    const { client } = await connection();
+    const grant = await OAuthGrant.findOne({ clientId: client.client_id }).lean();
+    const endpoint = base + '/grants/' + grant!._id;
+    await request(app).put(endpoint).auth(user.token, { type: 'bearer' }).send({ scopes: [{ organizationId, scope: 'ALL' }] }).expect(204);
+    expect((await OAuthGrant.findById(grant!._id).lean())!.expiresAt).toEqual(grant!.expiresAt);
+    await OAuthGrant.updateOne({ _id: grant!._id }, { expiresAt: new Date(0) });
+    await request(app).put(endpoint).auth(user.token, { type: 'bearer' }).send({ scopes: [{ organizationId, scope: 'VIEW' }] }).expect(404);
+  });
+
   it('rate limits invalid token requests and DCR attempts', async () => {
     let tokenStatus = 0;
     for (let i = 0; i < 51 && tokenStatus !== 429; i++) {

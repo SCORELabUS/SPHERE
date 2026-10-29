@@ -6,6 +6,7 @@ export interface ConnectedApplication {
   scopes: (ApiKeyScope & { organizationName?: string })[];
   lastUsedAt?: string;
   createdAt: string;
+  expiresAt: string;
 }
 
 export async function oauthApi<T>(path: string, token: string, method = 'GET', body?: unknown): Promise<T> {

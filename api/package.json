@@ -6,7 +6,8 @@
   "main": "src/main/backend.ts",
   "scripts": {
     "build": "tsc && tsc-alias --project tsconfig.json --resolve-full-paths",
-    "dev": "npx migrate up && npx tsx --tsconfig tsconfig.json src/main/backend.ts"
+    "dev": "npx migrate up && npx tsx --tsconfig tsconfig.json src/main/backend.ts",
+    "test:e2e": "vitest --run --config vitest.browser.config.ts"
   },
   "dependencies": {
     "@faker-js/faker": "^9.3.0",
@@ -60,6 +61,7 @@
     "eslint": "^9.11.1",
     "globals": "^15.9.0",
     "js-yaml": "^4.1.1",
+    "playwright": "^1.64.1",
     "ts-migrate-mongoose": "^3.8.9",
     "tsc-alias": "^1.8.17",
     "tsx": "^4.22.2",

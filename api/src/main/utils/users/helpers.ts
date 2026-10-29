@@ -43,6 +43,10 @@ function handleError(err: any): {status: number, message: string} {
   // match one of the phrases below.
   if (normalized.startsWith('orbit unavailable')) {
     return { status: 503, message };
+  } else if (normalized.startsWith('precondition failed')) {
+    return { status: 412, message };
+  } else if (normalized.startsWith('precondition required')) {
+    return { status: 428, message };
   } else if (normalized.includes('unauthorized')) {
     return { status: 401, message };
   } else if (normalized.includes('permission error')) {

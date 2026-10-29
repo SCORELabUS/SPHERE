@@ -9,6 +9,8 @@ const EMPTY_RESULT: LintResult = { diagnostics: [], hasSyntaxError: false };
 export interface Pricing2YamlLintState extends LintResult {
   errors: number;
   warnings: number;
+  /** The text this result belongs to, `null` before the first run. */
+  lintedValue: string | null;
 }
 
 /**
@@ -21,21 +23,27 @@ export function usePricing2YamlLinter(
   value: string,
   delayMs: number = DEFAULT_DELAY_MS
 ): Pricing2YamlLintState {
-  const [result, setResult] = useState<LintResult>(EMPTY_RESULT);
+  const [state, setState] = useState<{ result: LintResult; lintedValue: string | null }>({
+    result: EMPTY_RESULT,
+    lintedValue: null,
+  });
 
   useEffect(() => {
     if (!value) {
-      setResult(EMPTY_RESULT);
+      setState({ result: EMPTY_RESULT, lintedValue: value });
 
       return;
     }
 
     const timeout = setTimeout(() => {
-      setResult(lintPricing2Yaml(value));
+      setState({ result: lintPricing2Yaml(value), lintedValue: value });
     }, delayMs);
 
     return () => clearTimeout(timeout);
   }, [value, delayMs]);
 
-  return useMemo(() => ({ ...result, ...countBySeverity(result.diagnostics) }), [result]);
+  return useMemo(
+    () => ({ ...state.result, ...countBySeverity(state.result.diagnostics), lintedValue: state.lintedValue }),
+    [state]
+  );
 }

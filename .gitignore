@@ -50,3 +50,5 @@ frontend/src/modules/presentation/pages/changelog/data
 docker/gh_pat.txt
 
 .claude/
+# Browser E2E screenshots
+api/test-results/
