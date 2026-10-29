@@ -8,7 +8,7 @@ A collaborative platform to model, version, analyze and govern SaaS pricings.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/SCORELabUS/SPHERE?sort=semver)](https://github.com/SCORELabUS/SPHERE/releases)
-[![Tests](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml/badge.svg)](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml)
+[![Tests](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml/badge.svg?branch=main&event=push)](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml)
 
 [Live instance](https://sphere.score.us.es/) · [API reference](api/docs/sphere-api-docs.yaml) · [Report an issue](https://github.com/SCORELabUS/SPHERE/issues)
 
