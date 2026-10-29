@@ -2680,15 +2680,13 @@ paths:
         - **Personal organizations cannot be deleted.** If the organization's `isPersonal`
           flag is `true`, the request will be rejected with a 403 error.
 
-        **Cascading Actions** (executed in order):
-        1. All `OrganizationMembership` records for this organization are deleted
-           (all members are removed)
-        2. All `OrganizationInvitation` records for this organization are deleted
-           (all pending invitations are revoked)
-        3. The organization document itself is deleted
+        **Cascading Actions**:
+        Sub-organizations are deleted deepest first, followed by the organization itself.
+        For each organization, all pricing versions, collections, entity permissions,
+        memberships and invitations are deleted before its document is removed.
 
-        **Warning**: This action removes all members and invitations permanently.
-        Pricings and collections owned by the organization are **not** affected.
+        **Warning**: Deleting an organization deletes all resources associated with it,
+        including all sub-organizations and their resources. This action cannot be undone.
 
       tags:
         - Organizations

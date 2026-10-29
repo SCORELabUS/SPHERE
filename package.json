@@ -9,7 +9,7 @@
     "dev:setup": "bash scripts/dev-setup.sh",
     "dev:api": "cd api && npx migrate up && npx tsx --tsconfig tsconfig.json --watch src/main/backend.ts",
     "dev:vite": "cd frontend && pnpx vite",
-    "test": "pnpm run test:api",
+    "test": "pnpm run test:frontend && pnpm run test:api",
     "test:api": "cd api && npx vitest --run && cd .. && pnpm run seed:mongo-local:small",
     "test:frontend": "pnpm --dir frontend run test",
     "build": "pnpm run build:frontend && pnpm run build:api",
