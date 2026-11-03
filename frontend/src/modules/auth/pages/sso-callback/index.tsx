@@ -7,7 +7,7 @@ import { exchangeSsoCode } from '../../api/usersApi';
 
 // Error keys emitted by the backend SSOController in ?sso_error=
 const ERROR_MESSAGES: Record<string, string> = {
-  email_conflict: 'An account already uses the email supplied by your identity provider, but this sign-in identity is not connected to it. Sign in using that account\'s existing method, then connect this provider in Settings > Sign-in & Security. If you already connected it or cannot access the account, contact support.',
+  email_conflict: 'An account with this email already exists. Sign in to your existing account, then link this sign-in method from Settings → Sign-in & Security.',
   invalid_response: 'Validation with the identity provider failed.',
   unknown_provider: 'Unknown identity provider.',
   invalid_state: 'The authentication session expired or is invalid. Please try again.',
