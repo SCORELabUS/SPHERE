@@ -7,6 +7,7 @@ import { exchangeSsoCode } from '../../api/usersApi';
 
 // Error keys emitted by the backend SSOController in ?sso_error=
 const ERROR_MESSAGES: Record<string, string> = {
+  email_conflict: 'An account already uses the email supplied by your identity provider, but this sign-in identity is not connected to it. Sign in using that account\'s existing method, then connect this provider in Settings > Sign-in & Security. If you already connected it or cannot access the account, contact support.',
   invalid_response: 'Validation with the identity provider failed.',
   unknown_provider: 'Unknown identity provider.',
   invalid_state: 'The authentication session expired or is invalid. Please try again.',
@@ -49,10 +50,10 @@ export default function SsoCallbackPage() {
   if (error) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/50">
+        <div className="w-full max-w-xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/50">
           <p className="text-sm text-red-600 dark:text-red-400">
             {error}{' '}
-            <Link to="/authentication" className="font-medium underline">
+            <Link to="/authentication" className="cursor-pointer font-medium underline">
               Back to sign in
             </Link>
           </p>
