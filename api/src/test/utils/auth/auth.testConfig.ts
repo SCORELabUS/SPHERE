@@ -70,10 +70,13 @@ export function getProtectedEndpoints(): RoutePermission[] {
  * set Authorization headers. The controller authenticates via a
  * query-parameter token and returns 401 when the token is missing,
  * which is expected behaviour.
+ * /oidc/userinfo likewise authenticates in its controller with a dedicated
+ * identity access token, not a SPHERE web session. Its authentication is
+ * covered by oidc.test.ts and the explicit userinfo case in auth.test.ts.
  */
 export function getPublicEndpoints(): RoutePermission[] {
   return filterEndpoints({ isPublic: true }).filter(
-    (ep) => ep.path !== '/notifications/stream'
+    (ep) => !['/notifications/stream', '/oidc/userinfo'].includes(ep.path)
   );
 }
 

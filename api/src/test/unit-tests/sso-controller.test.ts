@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   cache: {
@@ -32,7 +32,7 @@ vi.mock('../../main/services/identity/providerRegistry', () => ({
 }));
 
 import SSOController from '../../main/controllers/SSOController';
-import { IdentityOwnedByAnotherAccountError } from '../../main/services/AuthProviderService';
+import { IdentityOwnedByAnotherAccountError, SsoEmailConflictError } from '../../main/services/AuthProviderService';
 
 function response() {
   const res: any = {};
@@ -56,9 +56,47 @@ describe('SSOController flow transactions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.authProviderService.findOrCreateUser.mockReset();
+    mocks.authProviderService.linkIdentity.mockReset();
+    mocks.cache.get.mockReset();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.provider.buildLoginUrl.mockImplementation((state: string) => `https://provider.test/login?state=${state}`);
     mocks.provider.handleCallback.mockResolvedValue(profile);
     controller = new SSOController();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reports an email conflict without exposing the email or creating an exchange code', async () => {
+    const res = response();
+    mocks.cache.get.mockResolvedValue({ action: 'login' });
+    mocks.authProviderService.findOrCreateUser.mockRejectedValue(new SsoEmailConflictError());
+
+    await controller.callback(
+      { params: { provider: 'us' }, query: { state: 'state-1', ticket: 'ST-test' } },
+      res
+    );
+
+    expect(res.redirect).toHaveBeenCalledWith(expect.stringMatching(/\/sso\/callback\?sso_error=email_conflict$/));
+    expect(res.redirect.mock.calls[0][0]).not.toContain(profile.email);
+    expect(mocks.cache.set).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it('keeps unexpected failures generic and records their details on the server', async () => {
+    const res = response();
+    const error = new Error('private database details');
+    mocks.cache.get.mockResolvedValue({ action: 'login' });
+    mocks.authProviderService.findOrCreateUser.mockRejectedValue(error);
+
+    await controller.callback(
+      { params: { provider: 'us' }, query: { state: 'state-1', ticket: 'ST-test' } },
+      res
+    );
+
+    expect(res.redirect).toHaveBeenCalledWith(expect.stringMatching(/sso_error=server_error$/));
+    expect(console.error).toHaveBeenCalledWith('[SSO] callback error:', error);
+    expect(mocks.cache.set).not.toHaveBeenCalled();
   });
 
   it('stores a single-use login transaction for every provider', async () => {

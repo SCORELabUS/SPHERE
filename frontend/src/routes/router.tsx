@@ -29,6 +29,7 @@ import ChangelogPage from '../modules/presentation/pages/changelog';
 import PricingListPage from '../modules/pricing/pages/list';
 import SpherePricingPage from '../modules/presentation/pages/pricing';
 import AuthenticationPage from '../modules/auth/pages/authentication-page';
+import IdentityConsentPage from '../modules/oauth/pages/IdentityConsentPage';
 import ConsentPage from '../modules/oauth/pages/ConsentPage';
 import SsoCallbackPage from '../modules/auth/pages/sso-callback';
 import EmailVerificationPage from '../modules/auth/pages/email-verification';
@@ -101,6 +102,7 @@ export default function Router() {
         { element: <PermanentLinkPage kind="collection" />, path: '/c/:id' },
         { element: <AuthenticationPage />, path: '/authentication' },
         { element: <ConsentPage />, path: '/oauth/consent' },
+        { element: <IdentityConsentPage />, path: '/oidc/consent' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
         { element: <EmailVerificationPage />, path: '/verify-email' },
         { element: <ForgotPasswordPage />, path: '/forgot-password' },

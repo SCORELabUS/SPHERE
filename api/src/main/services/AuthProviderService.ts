@@ -11,6 +11,13 @@ export class IdentityOwnedByAnotherAccountError extends Error {
   }
 }
 
+export class SsoEmailConflictError extends Error {
+  constructor(readonly cause?: unknown) {
+    super('CONFLICT: An account already uses the email supplied by the identity provider. Sign in to that account and connect this identity in Settings > Sign-in & Security.');
+    this.name = 'SsoEmailConflictError';
+  }
+}
+
 /**
  * Provider-agnostic account logic for social logins: finds or creates the SPHERE user
  * behind a normalized ProviderProfile and issues a session JWT. Knows nothing about
@@ -55,16 +62,26 @@ class AuthProviderService {
     if (!user) {
       const username = await this.resolveFreeUsername(profile.suggestedUsername ?? providerId);
 
-      user = await this.userRepository.create({
-        username,
-        identities: [{ provider, providerId, email, emailVerified }],
-        firstName,
-        lastName,
-        email,
-        // Same default as local registration; aggregators expect the key to exist.
-        settings: { avatar: '' },
-        ...generateUserTokenDTO(),
-      });
+      try {
+        user = await this.userRepository.create({
+          username,
+          identities: [{ provider, providerId, email, emailVerified }],
+          firstName,
+          lastName,
+          email,
+          // Same default as local registration; aggregators expect the key to exist.
+          settings: { avatar: '' },
+          ...generateUserTokenDTO(),
+        });
+      } catch (err: any) {
+        // Only the account email collision has this recovery path. Other unique
+        // indexes (username, identity) and database failures keep their own error.
+        if (err?.code === 11000 && err?.keyPattern?.email === 1 &&
+            Object.keys(err.keyPattern).length === 1) {
+          throw new SsoEmailConflictError(err);
+        }
+        throw err;
+      }
 
       // Business rule shared with local registration: every user has a personal
       // organization. If this fails we must not leave a half-created account.

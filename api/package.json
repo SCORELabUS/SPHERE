@@ -1,7 +1,7 @@
 {
   "name": "sphere-backend",
   "private": true,
-  "version": "0.2.0",
+  "version": "2.10.0",
   "type": "module",
   "main": "src/main/backend.ts",
   "scripts": {
