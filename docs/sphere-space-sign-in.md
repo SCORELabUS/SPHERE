@@ -81,3 +81,8 @@ pnpm --dir api exec vitest run src/test/oidc.test.ts src/test/oauth.test.ts
 ```
 
 SPACE's isolated service tests are at `api/src/test/unit-tests/sphere-auth.test.ts` in its repository.
+
+The isolated SPACE persistence suite runs with `pnpm --dir api run test:identity` from SPACE,
+using `DATABASE_NAME=space_identity_scratch`, `MONGO_URI=mongodb://127.0.0.1:27018/space_identity_scratch`,
+`REDIS_URL=redis://127.0.0.1:6378`, `ENVIRONMENT=testing` and `SERVER_PORT=0`.
+CI executes this suite in a separate job with its own disposable MongoDB and Redis.
