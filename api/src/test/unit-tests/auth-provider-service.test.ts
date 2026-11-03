@@ -40,6 +40,10 @@ describe('AuthProviderService identity management', () => {
       findOne: vi.fn(),
       findById: vi.fn(),
       findByIdWithPassword: vi.fn(),
+      findByUsername: vi.fn(),
+      findByEmail: vi.fn(),
+      create: vi.fn(),
+      updateById: vi.fn(),
       addIdentity: vi.fn(),
       removeIdentity: vi.fn(),
       setInitialPassword: vi.fn(),
@@ -52,6 +56,69 @@ describe('AuthProviderService identity management', () => {
       return undefined;
     });
     service = new AuthProviderService();
+  });
+
+  it('explains an SSO email collision without linking an unverified email', async () => {
+    const databaseError = Object.assign(new Error('duplicate email'), {
+      code: 11000,
+      keyPattern: { email: 1 },
+    });
+    repository.findOne.mockResolvedValue(null);
+    repository.findByUsername.mockResolvedValue(null);
+    repository.create.mockRejectedValue(databaseError);
+
+    await expect(service.findOrCreateUser({
+      ...googleProfile,
+      provider: 'us-sso',
+      providerId: 'test-uvus',
+      emailVerified: false,
+    })).rejects.toMatchObject({ name: 'SsoEmailConflictError', cause: databaseError });
+
+    expect(repository.findByEmail).not.toHaveBeenCalled();
+    expect(repository.addIdentity).not.toHaveBeenCalled();
+    expect(repository.updateById).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: 11000, keyPattern: { username: 1 } },
+    { code: 11000, keyPattern: { 'identities.provider': 1, 'identities.providerId': 1 } },
+    { code: 11000, keyPattern: { email: 1, username: 1 } },
+    { code: 11000 },
+    { code: 91 },
+  ])('preserves unrelated database errors: %j', async (details) => {
+    const databaseError = Object.assign(new Error('database failure'), details);
+    repository.findOne.mockResolvedValue(null);
+    repository.findByUsername.mockResolvedValue(null);
+    repository.create.mockRejectedValue(databaseError);
+
+    await expect(service.findOrCreateUser({
+      ...googleProfile,
+      emailVerified: false,
+    })).rejects.toBe(databaseError);
+  });
+
+  it('signs in an already linked identity without attempting another account', async () => {
+    repository.findOne.mockResolvedValue(user({ identities: [googleProfile] }));
+
+    const result = await service.findOrCreateUser(googleProfile);
+
+    expect(result.token).toEqual(expect.any(String));
+    expect(repository.create).not.toHaveBeenCalled();
+    expect(repository.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('continues linking by email when the provider verifies its ownership', async () => {
+    repository.findOne.mockResolvedValue(null);
+    repository.findByEmail.mockResolvedValue(user());
+    repository.findById.mockResolvedValue(user({ identities: [googleProfile] }));
+
+    const result = await service.findOrCreateUser(googleProfile);
+
+    expect(result.token).toEqual(expect.any(String));
+    expect(repository.updateById).toHaveBeenCalledWith('user-1', {
+      $push: { identities: expect.objectContaining({ provider: 'google', providerId: 'google-sub-1' }) },
+    });
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   it('returns only safe sign-in method metadata', async () => {
