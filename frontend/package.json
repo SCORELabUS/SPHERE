@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "pnpm run test:unit && pnpm run test:node",
+    "test:unit": "vitest run",
+    "test:node": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -49,6 +51,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "@types/react": "^18.3.10",
     "@types/react-dom": "^18.3.0",
+    "@types/react-test-renderer": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.27",
     "eslint": "^9.11.1",
@@ -57,10 +60,12 @@
     "globals": "^15.9.0",
     "prettier": "3.9.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "react-test-renderer": "^18.3.1",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.7.0",
     "vite": "^5.4.8",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^2.1.9"
   }
 }

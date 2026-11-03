@@ -819,14 +819,13 @@ class PricingService {
         }
 
         const pricingAnalytics = new PricingAnalytics(parsedPricing);
-
         await pricingAnalytics
           .getAnalytics()
-          // Awaited: a version whose analytics are never stored breaks its collection's analytics.
+          // Awaited, so the collection's analytics below already count this version.
           .then((analytics: any) => this.pricingRepository.updateAnalytics(pricing[0]._id.toString(), analytics))
-          .catch(async (err: any) => {
-            await this.pricingRepository.destroy(pricing[0]._id.toString());
-            throw new Error((err as Error).message);
+          // Missing analytics must not prevent publishing an otherwise usable pricing.
+          .catch((err: any) => {
+            console.warn(`Could not compute the analytics of pricing version ${pricing[0]._id}: ${(err as Error).message}`);
           });
 
         if (collectionId) {

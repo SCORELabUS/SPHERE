@@ -5,7 +5,13 @@ import { Pricing } from "../types/database/Pricing";
  * computing or saving its analytics failed, and it must not break its collection.
  */
 export const withAnalytics = <T extends { analytics?: unknown }>(pricings: T[]): T[] =>
-  pricings.filter(pricing => pricing.analytics && typeof pricing.analytics === 'object');
+  pricings.filter(pricing => hasAnalytics(pricing.analytics));
+
+// A version is published with empty analytics ({}) that are filled once computed.
+export const hasAnalytics = (analytics: unknown): boolean =>
+  !!analytics &&
+  typeof analytics === 'object' &&
+  Object.values(analytics).some(value => typeof value === 'number' && Number.isFinite(value));
 
 export const calculateAnalyticsForPricings = (allPricings: any) => {
   const pricings: any[] = withAnalytics(allPricings ?? []);

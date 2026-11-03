@@ -586,6 +586,25 @@ class OrganizationService {
     }
   }
 
+  /** Delete a whole branch through the web API, keeping single-node deletion available
+   * for account cleanup and ORBIT's explicitly confirmed, deepest-first plans. */
+  async destroyTree(id: string) {
+    const organization = await this.organizationRepository.findById(id);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+    if (organization.isPersonal) {
+      throw new Error('PERMISSION ERROR: Personal organizations cannot be deleted');
+    }
+
+    const descendants = await this.organizationRepository.findDescendants(id);
+    const deepestFirst = [...descendants].sort((a, b) => b.ancestors.length - a.ancestors.length);
+    for (const descendant of deepestFirst) {
+      await this.destroy(descendant.id);
+    }
+    return this.destroy(id);
+  }
+
   async destroy(id: string, skipPersonalCheck = false) {
     const organization = await this.organizationRepository.findById(id);
     if (!organization) {
