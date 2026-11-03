@@ -24,6 +24,10 @@ const authenticationMiddleware = async (req: Request, res: Response, next: NextF
     const apiKey = apiKeyHeader;
 
     if (token && token !== 'null') {
+      if (token.startsWith('sph_oid_')) {
+        if (req.path !== (process.env.BASE_URL_PATH ?? '') + '/api/v1/oidc/userinfo') return res.status(401).json({ error: 'Identity tokens are restricted to userinfo' });
+        return next(); // OidcController validates the opaque identity token.
+      }
       if (token.startsWith('sph_oat_')) {
         if (!isMcp) return res.status(401).json({ error: 'OAuth access tokens are restricted to MCP' });
         const service: OAuthService = container.resolve('oauthService');

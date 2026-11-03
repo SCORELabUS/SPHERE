@@ -10,7 +10,7 @@ export const INTERNAL_CACHE_PREFIX = 'internal:';
  * and rate-limit counters. The public `/cache` endpoint neither reads nor
  * writes keys under them.
  */
-export const SERVER_CACHE_PREFIXES = [INTERNAL_CACHE_PREFIX, 'sso:', 'ratelimit:'] as const;
+export const SERVER_CACHE_PREFIXES = [INTERNAL_CACHE_PREFIX, 'sso:', 'ratelimit:', 'oidc:'] as const;
 
 /** Whether a key belongs to the server's own entries (keys are case-insensitive). */
 export function isServerCacheKey(key: string): boolean {

@@ -145,6 +145,98 @@ tags:
       follow a pricing family by its immutable `pricingId`. See `docs/permanent-links.md`.
 
 paths:
+  /.well-known/openid-configuration:
+    get:
+      summary: Discover SPHERE's identity provider (separate from ORBIT MCP OAuth)
+      security: []
+      responses:
+        '200': {description: OIDC metadata; authorization code with S256 PKCE and client_secret_post}
+        '503': {description: Identity provider is not configured}
+  /oidc/jwks:
+    get:
+      summary: Public RS256 signing keys for identity tokens
+      security: []
+      responses:
+        '200': {description: JSON Web Key Set}
+  /oidc/authorize:
+    get:
+      summary: Request identity consent for the configured SPACE client
+      description: Requires exact registered redirect_uri, response_type=code, scope=openid profile, state, nonce and S256 code_challenge. Does not grant MCP or organization access.
+      security: []
+      parameters:
+        - {name: client_id, in: query, required: true, schema: {type: string}}
+        - {name: redirect_uri, in: query, required: true, schema: {type: string, format: uri}}
+        - {name: response_type, in: query, required: true, schema: {type: string, enum: [code]}}
+        - {name: scope, in: query, required: true, schema: {type: string, example: 'openid profile'}}
+        - {name: state, in: query, required: true, schema: {type: string, minLength: 16, maxLength: 512}}
+        - {name: nonce, in: query, required: true, schema: {type: string, minLength: 16, maxLength: 512}}
+        - {name: code_challenge_method, in: query, required: true, schema: {type: string, enum: [S256]}}
+        - {name: code_challenge, in: query, required: true, schema: {type: string, minLength: 43, maxLength: 43}}
+      responses:
+        '302': {description: Redirect to SPHERE identity consent}
+        '400': {description: Invalid client or authorization parameters}
+  /oidc/requests/{requestId}:
+    parameters:
+      - {name: requestId, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Read identity consent using a SPHERE web session
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Client name and exact callback domain}
+        '401': {description: Web session required}
+    post:
+      summary: Approve or deny identity disclosure using a SPHERE web session
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: {type: boolean}
+      responses:
+        '200': {description: Single-use redirect URL with code or access_denied and original state}
+  /oidc/token:
+    post:
+      summary: Exchange an identity code using client_secret_post and PKCE
+      description: Form fields grant_type=authorization_code, client_id, client_secret, redirect_uri, code, code_verifier. Returns a five-minute RS256 id_token and opaque userinfo-only access_token. No refresh tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id, client_secret, redirect_uri, code, code_verifier]
+              properties:
+                grant_type: {type: string, enum: [authorization_code]}
+                client_id: {type: string}
+                client_secret: {type: string}
+                redirect_uri: {type: string, format: uri}
+                code: {type: string}
+                code_verifier: {type: string, minLength: 43, maxLength: 128}
+      responses:
+        '200':
+          description: OIDC token response with no-store caching
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IdentityTokens'}
+        '400': {description: Invalid or consumed code or PKCE mismatch}
+        '401': {description: Invalid client credentials}
+  /oidc/userinfo:
+    get:
+      summary: Read the subject and consented profile using an identity access token
+      description: Accepts only sph_oid_ Bearer tokens; MCP and SPHERE session tokens are not accepted. No organization memberships or roles are disclosed.
+      security: [{OidcIdentityBearer: []}]
+      responses:
+        '200':
+          description: sub and scope-authorized profile claims
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IdentityProfile'}
+        '401': {description: Invalid or expired identity access token}
   /oauth/authorize:
     get:
       tags: [Authentication]
@@ -6441,6 +6533,24 @@ paths:
 
 components:
   schemas:
+    IdentityProfile:
+      type: object
+      required: [sub]
+      properties:
+        sub: {type: string, description: Stable SPHERE account ID}
+        preferred_username: {type: string}
+        name: {type: string}
+        email: {type: string, format: email}
+        email_verified: {type: boolean}
+    IdentityTokens:
+      type: object
+      required: [access_token, token_type, expires_in, scope, id_token]
+      properties:
+        access_token: {type: string, description: Opaque userinfo-only sph_oid_ token}
+        token_type: {type: string, enum: [Bearer]}
+        expires_in: {type: integer, enum: [300]}
+        scope: {type: string}
+        id_token: {type: string, description: RS256 JWT bound to issuer, client audience and nonce}
     OrbitConversationSummary:
       type: object
       properties:
@@ -9268,6 +9378,10 @@ components:
         example: Authorization, x-api-key
 
   securitySchemes:
+    OidcIdentityBearer:
+      type: http
+      scheme: bearer
+      description: Opaque identity access token from /oidc/token, accepted only by /oidc/userinfo
     BearerAuth:
       type: http
       scheme: bearer
