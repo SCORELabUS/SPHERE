@@ -12,6 +12,7 @@ import OrganizationService from '../../main/services/OrganizationService';
 function createMockOrgRepo() {
   return {
     findById: vi.fn(),
+    findDescendants: vi.fn().mockResolvedValue([]),
     destroy: vi.fn().mockResolvedValue(true),
   };
 }
@@ -106,4 +107,44 @@ describe('OrganizationService.destroy cascade cleanup', () => {
     expect(pricingRepo.destroyByOrganizationId).toHaveBeenCalledWith('org-1');
     expect(orgRepo.destroy).toHaveBeenCalledWith('org-1');
   });
+
+  it('deletes every descendant and its resources deepest first, then the root', async () => {
+    orgRepo.findById.mockImplementation(async (id: string) => ({ id, isPersonal: false }));
+    orgRepo.findDescendants.mockResolvedValue([
+      { id: 'child', ancestors: ['root'] },
+      { id: 'grandchild', ancestors: ['root', 'child'] },
+      { id: 'sibling', ancestors: ['root'] },
+    ]);
+
+    await expect(service.destroyTree('root')).resolves.toBe(true);
+
+    const expectedOrder = ['grandchild', 'child', 'sibling', 'root'];
+    expect(orgRepo.destroy.mock.calls.map(([id]) => id)).toEqual(expectedOrder);
+    for (const repository of [pricingRepo, pricingCollectionRepo, entityPermissionRepo, membershipRepo, invitationRepo]) {
+      expect(repository.destroyByOrganizationId.mock.calls.map(([id]) => id)).toEqual(expectedOrder);
+    }
+  });
+
+  it('rejects a personal root before touching any descendants or resources', async () => {
+    orgRepo.findById.mockResolvedValue({ id: 'personal', isPersonal: true });
+    await expect(service.destroyTree('personal')).rejects.toThrow('Personal organizations cannot be deleted');
+    expect(orgRepo.findDescendants).not.toHaveBeenCalled();
+    expect(orgRepo.destroy).not.toHaveBeenCalled();
+    expect(pricingRepo.destroyByOrganizationId).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing root without deleting anything', async () => {
+    orgRepo.findById.mockResolvedValue(null);
+    await expect(service.destroyTree('missing')).rejects.toThrow('Organization not found');
+    expect(orgRepo.destroy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the parent when a descendant cleanup fails', async () => {
+    orgRepo.findById.mockImplementation(async (id: string) => ({ id, isPersonal: false }));
+    orgRepo.findDescendants.mockResolvedValue([{ id: 'child', ancestors: ['root'] }]);
+    pricingRepo.destroyByOrganizationId.mockRejectedValue(new Error('cleanup failed'));
+    await expect(service.destroyTree('root')).rejects.toThrow('cleanup failed');
+    expect(orgRepo.destroy).not.toHaveBeenCalled();
+  });
+
 });

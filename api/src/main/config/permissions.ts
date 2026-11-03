@@ -22,6 +22,11 @@ import { RoutePermission } from "../types/permissions";
  */
 export const ROUTE_PERMISSIONS: RoutePermission[] = [
   { path: '/.well-known/**', methods: ['GET'], isPublic: true },
+  { path: '/oidc/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oidc/authorize', methods: ['GET'], isPublic: true },
+  { path: '/oidc/token', methods: ['POST'], isPublic: true },
+  { path: '/oidc/jwks', methods: ['GET'], isPublic: true },
+  { path: '/oidc/userinfo', methods: ['GET'], isPublic: true },
   { path: '/oauth/authorize', methods: ['GET', 'POST'], isPublic: true },
   { path: '/oauth/token', methods: ['POST'], isPublic: true },
   { path: '/oauth/register', methods: ['POST'], isPublic: true },

@@ -266,7 +266,7 @@ class OrganizationController {
 
   async destroy(req: any, res: any) {
     try {
-      const result = await this.organizationService.destroy(req.params.organizationId);
+      const result = await this.organizationService.destroyTree(req.params.organizationId);
       const message = result ? 'Successfully deleted.' : 'Could not delete organization.';
       res.json({ message });
     } catch (err: any) {

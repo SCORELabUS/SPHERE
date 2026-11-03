@@ -14,6 +14,9 @@ import { LeanUser } from '../main/types/models/User';
 import OrganizationMembershipMongoose from '../main/repositories/mongoose/models/OrganizationMembershipMongoose';
 import OrganizationInvitationMongoose from '../main/repositories/mongoose/models/OrganizationInvitationMongoose';
 import OrganizationMongoose from '../main/repositories/mongoose/models/OrganizationMongoose';
+import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
+import PricingCollectionMongoose from '../main/repositories/mongoose/models/PricingCollectionMongoose';
+import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { MAX_CHILDREN_PER_BULK } from '../main/controllers/validation/OrganizationValidation';
 
 dotenv.config();
@@ -1499,6 +1502,51 @@ describe('Organizations API integration', () => {
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('Successfully deleted.');
       orgsToDelete.delete(org.id);
+    });
+
+    it('lets a sole owner delete the whole branch and its resources while preserving unrelated organizations', async () => {
+      const { user: owner, organizationId: personalId } = await createAndLoginUser('USER');
+      const root = await createTestOrganization(owner.token);
+      const child = await createTestOrganization(owner.token, { _parentId: root.id });
+      const grandchild = await createTestOrganization(owner.token, { _parentId: child.id });
+      const unrelated = await createTestOrganization(owner.token);
+      const branchIds = [root.id, child.id, grandchild.id];
+
+      for (const id of [...branchIds, unrelated.id]) {
+        const collection = await PricingCollectionMongoose.create({
+          name: 'Collection', slug: 'collection', _organizationId: id,
+        });
+        for (const version of ['1.0.0', '2.0.0']) {
+          await PricingMongoose.create({
+            name: 'Pricing', slug: 'pricing', version, _organizationId: id,
+            _collectionId: collection.id, createdAt: new Date(), currency: 'EUR', yaml: 'name: Pricing',
+          });
+        }
+        await EntityPermissionMongoose.create({
+          _userId: owner.id, _organizationId: id, entityType: 'pricing',
+          entitySlug: 'pricing', permissions: { GET: true },
+        });
+        await createTestInvitation(id, owner.id);
+      }
+      expect(await OrganizationMembershipMongoose.countDocuments({ _organizationId: root.id })).toBe(1);
+
+      const response = await request(app)
+        .delete(`${BASE_PATH}/orgs/${root.id}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(response.status).toBe(200);
+      expect(await OrganizationMongoose.countDocuments({ _id: { $in: branchIds } })).toBe(0);
+      for (const model of [PricingMongoose, PricingCollectionMongoose, EntityPermissionMongoose,
+        OrganizationMembershipMongoose, OrganizationInvitationMongoose]) {
+        const resources = model as any;
+        expect(await resources.countDocuments({ _organizationId: { $in: branchIds } })).toBe(0);
+        expect(await resources.countDocuments({ _organizationId: unrelated.id })).toBeGreaterThan(0);
+      }
+      expect(await OrganizationMongoose.findById(unrelated.id)).not.toBeNull();
+      expect(await OrganizationMongoose.findById(personalId)).not.toBeNull();
+      branchIds.forEach(id => orgsToDelete.delete(id));
+      // These fixtures were inserted directly rather than through the pricing test helpers.
+      await PricingMongoose.deleteMany({ _organizationId: unrelated.id });
+      await PricingCollectionMongoose.deleteMany({ _organizationId: unrelated.id });
     });
 
     it('returns 200 when global ADMIN deletes any organization', async () => {

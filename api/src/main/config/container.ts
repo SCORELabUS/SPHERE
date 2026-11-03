@@ -37,6 +37,7 @@ import OrbitImportService from '../services/orbit/OrbitImportService';
 import OrbitExecutorService from '../services/orbit/OrbitExecutorService';
 import OrbitService from '../services/orbit/OrbitService';
 import OrbitMcpService from '../services/orbit/OrbitMcpService';
+import OidcService from '../services/OidcService';
 import OAuthService from '../services/OAuthService';
 import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 
@@ -67,6 +68,7 @@ function initContainer(databaseType: string): AwilixContainer {
   container.register({
     oauthRepository: asValue(new OAuthRepository()),
     oauthService: asClass(OAuthService).singleton(),
+    oidcService: asClass(OidcService).singleton(),
     userRepository: asValue(userRepository),
     pricingRepository: asValue(pricingRepository),
     pricingCollectionRepository: asValue(pricingCollectionRepository),

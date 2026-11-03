@@ -256,6 +256,8 @@ describe('PricingCollectionService._computeCollectionAnalytics', () => {
         makePricingDoc({ analytics: { numberOfPlans: 4, numberOfAddOns: 2, numberOfFeatures: 10, configurationSpaceSize: 40 } }),
         makePricingDoc({ analytics: undefined }),
         makePricingDoc({ analytics: null }),
+        // Published versions start with empty analytics until they are computed.
+        makePricingDoc({ analytics: {} }),
       ],
     });
 
@@ -385,6 +387,7 @@ describe('calculateAnalyticsForPricings', () => {
     const result = calculateAnalyticsForPricings([
       makePricingDoc({ analytics: { numberOfPlans: 4, numberOfAddOns: 2, numberOfFeatures: 10, configurationSpaceSize: 40 } }),
       makePricingDoc({ name: 'NoAnalytics', analytics: undefined }),
+      makePricingDoc({ name: 'EmptyAnalytics', analytics: {} }),
     ]);
 
     expect(result.evolutionOfPlans.values.length).toBeGreaterThan(0);
