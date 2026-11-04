@@ -70,6 +70,8 @@ export interface OrganizationInvitation {
 
 export interface OrgPricing {
   id: string;
+  /** The pricing's identity, shared by all its versions. */
+  pricingId?: string;
   name: string;
   slug: string;
   version: string;

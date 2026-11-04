@@ -44,6 +44,20 @@ import {
     MdOutlineShield,
     MdNorthWest,
     MdMailOutline,
+    MdArrowUpward,
+    MdArrowDownward,
+    MdArrowRight,
+    MdFormatIndentIncrease,
+    MdFormatIndentDecrease,
+    MdSearch,
+    MdCheckBox,
+    MdCheckBoxOutlineBlank,
+    MdUndo,
+    MdRedo,
+    MdDragIndicator,
+    MdSubdirectoryArrowRight,
+    MdDataObject,
+    MdMoreHoriz,
 } from 'react-icons/md';
 import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
 import { IconType } from 'react-icons';
@@ -98,6 +112,22 @@ const iconMap: Record<string, IconType> = {
     'mdi:key': MdVpnKey,
     'mdi:eye-outline': MdOutlineRemoveRedEye,
     'mdi:shield-account-outline': MdOutlineShield,
+    'mdi:arrow-up': MdArrowUpward,
+    'mdi:arrow-down': MdArrowDownward,
+    'mdi:menu-right': MdArrowRight,
+    'mdi:format-indent-increase': MdFormatIndentIncrease,
+    'mdi:format-indent-decrease': MdFormatIndentDecrease,
+    'mdi:magnify': MdSearch,
+    'mdi:checkbox-marked': MdCheckBox,
+    'mdi:checkbox-blank-outline': MdCheckBoxOutlineBlank,
+    'mdi:file-tree-outline': MdAccountTree,
+    'mdi:link-variant-plus': MdAddLink,
+    'mdi:undo': MdUndo,
+    'mdi:redo': MdRedo,
+    'mdi:drag-vertical': MdDragIndicator,
+    'mdi:subdirectory-arrow-right': MdSubdirectoryArrowRight,
+    'mdi:code-braces': MdDataObject,
+    'mdi:dots-horizontal': MdMoreHoriz,
 };
 
 type IconifyProps = {

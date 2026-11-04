@@ -75,6 +75,15 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - Frontend: register each unfinished feature in `frontend/src/modules/beta/config/betaFeatures.ts` (it is then listed in the settings section), wrap its UI in `<BetaGate feature="...">` or check `useBetaFeature('...')`, and mark it with `<BetaBadge />`. When it graduates, delete its entry and the compiler points at every gate left.
 - API: guard beta routes with `requireBetaFeatures` (403 when off) from `middlewares/BetaFeaturesMiddleware.ts`; inside services (e.g. ORBIT tools) check `hasBetaFeatures(user)`.
 
+## Organization services (beta)
+
+- An organization's Services tab (beta feature `organization-services`) shows the services it offers as a tree, like Helena's: each service is autonomous ("Aut"), dependent ("Dep", on the provider's functionality or on an account) or of any kind the organization makes up (`kind` and `dependency` are free text of up to 40 characters; the known values are stored in capitals, and empty means not classified), and links pricings of the organization by `pricingId`, so links survive renames and collection moves.
+- One `serviceTrees` document per organization (`ServiceTreeMongoose`, migration `20261104120000-create-service-trees`), a flat list of nodes with `parentId`; siblings keep the list order. `GET /orgs/:id/services` is for members, `PUT` (OWNER/ADMIN) replaces the whole tree with the `revision` it was based on (409 if stale). `ServiceTreeService` validates ids, parents, cycles, depth and sizes, and that linked pricings are live pricings of the organization; organizations deleted through `OrganizationService.destroy` take their tree with them.
+- Linked pricings are named through the organization's pricing listing with the caller's permissions (which returns `pricingId`), so a member never sees the name of a pricing they cannot list; they only see how many are hidden.
+- View mode (everyone; the only mode for members) shows the tree on the left and the picked service on the right (`ServiceDetail`, read-only). OWNER/ADMIN also get Edit, with two shapes: Tree, an outline (`ServiceOutline`) where names are typed in place, the type is picked from the row (`KindPicker`), details and pricings open under the row, and services nest with Enter/Tab/Shift+Tab/Alt+arrows, the row menu (including Move to…) or dragging; and JSON. Edit mode works on a local copy with undo/redo (Ctrl+Z, Ctrl+Shift+Z, also while typing a name); `components/services/tree.ts` holds the pure tree operations. It saves in one go, leaving the tab with unsaved changes asks first, and it marks what was added, changed and removed since the last save (`diffTrees`).
+- The JSON shape shows the same tree as JSON text (`services/treeJson.ts`): nested `services`, lowercase `kind`/`dependency`, `pricings` by slug (pricingId when a slug is ambiguous or unknown). Every valid change of the text reaches the tree at once; errors keep the last valid tree and block saving.
+- Any other key of a service in the JSON is a free attribute, stored in the node's `attributes` (validated in `ServiceTreeService.parseAttributes`, names in `RESERVED_ATTRIBUTES` refused) and listed in its details. A new kind of data (e.g. `customers`) can start there with no schema change; give it a field and UI of its own only when it needs one.
+
 ## Collection PUT authority
 
 - A pricing inside a collection uses that collection's PUT permission for edits, including version visibility; individual PUT cannot override the collection. Existing GET/privacy and DELETE rules remain unchanged.
@@ -96,6 +105,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
+- /api/src/test/service-tree.test.ts — the organization service tree (beta): beta gating, roles, revisions, validation, free attributes and hiding pricings a member cannot list
 - /api/src/test/pricing-concurrency.test.ts — tests related to pricing ETags and `If-Match` on pricing writes
 - /api/src/test/unit-tests/pricing-revision-race.test.ts — deterministic claim/write interleaving, writes without If-Match, identity changes during reads and recovery after failed writes
 - /api/src/test/private-versions.test.ts — tests related to who may read private pricing versions (server-managed fields, permissions across organizations, collections, forks, follows, API keys, ORBIT and the MCP server)
