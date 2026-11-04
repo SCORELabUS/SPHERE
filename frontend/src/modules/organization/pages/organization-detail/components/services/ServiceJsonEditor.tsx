@@ -90,8 +90,12 @@ export default function ServiceJsonEditor({ text, errors, readOnly, onChange }: 
         as interactive, programmatic, conversational, agentic or event, and optionally{' '}
         <code className="font-mono">pending</code>, <code className="font-mono">description</code>,{' '}
         <code className="font-mono">mechanisms</code> and any other field, like a{' '}
-        <code className="font-mono">quote</code> with its <code className="font-mono">source</code>)
-        and the <code className="font-mono">services</code> inside it. Leave the{' '}
+        <code className="font-mono">quote</code> with its <code className="font-mono">source</code>
+        ), <code className="font-mono">links</code> to pages about its terms (each with a{' '}
+        <code className="font-mono">url</code> and optionally a{' '}
+        <code className="font-mono">title</code>, a <code className="font-mono">topic</code> like
+        "Refunds" and a <code className="font-mono">description</code>) and the{' '}
+        <code className="font-mono">services</code> inside it. Leave the{' '}
         <code className="font-mono">id</code> out of a new service to get one. Any other field, like{' '}
         <code className="font-mono">"customers": ["Acme"]</code>, is kept with the service and shown
         in its details.

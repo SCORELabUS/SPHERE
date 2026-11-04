@@ -18,6 +18,8 @@ const serviceNodeSchema = new Schema(
     attributes: { type: Schema.Types.Mixed, default: undefined },
     // The ways the service is used; loosely typed so the taxonomy of channels and fields can grow.
     interfaces: { type: [Schema.Types.Mixed], default: undefined },
+    // Pages about the terms of the service; loosely typed like the interfaces.
+    links: { type: [Schema.Types.Mixed], default: undefined },
   },
   { _id: false, minimize: false }
 );

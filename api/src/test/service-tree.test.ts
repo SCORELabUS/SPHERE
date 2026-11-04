@@ -227,6 +227,57 @@ describe('Service tree (beta) API integration', () => {
     }
   });
 
+  it('Keeps the links of a service to pages about its terms, with their free fields.', async () => {
+    const { token, organizationId } = await betaOwner();
+    const links = [
+      {
+        url: ' https://docs.github.com/en/billing/managing-your-billing/about-billing-on-github ',
+        title: 'About billing on GitHub',
+        topic: 'Billing',
+        description: 'When am I charged, and what happens if a payment fails?',
+        answered: '2026-10-22',
+      },
+      { url: 'http://example.com/terms' },
+    ];
+
+    const saved = await save(token, organizationId, { revision: 0, nodes: [node('a', { links })] });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.nodes[0].links).toEqual([
+      {
+        url: 'https://docs.github.com/en/billing/managing-your-billing/about-billing-on-github',
+        title: 'About billing on GitHub',
+        topic: 'Billing',
+        description: 'When am I charged, and what happens if a payment fails?',
+        answered: '2026-10-22',
+      },
+      { url: 'http://example.com/terms', title: '', topic: null, description: '' },
+    ]);
+    expect(saved.body.nodes[0].interfaces).toEqual([]);
+  });
+
+  it('Refuses links that are not http(s) addresses or have bad fields.', async () => {
+    const { token, organizationId } = await betaOwner();
+
+    const invalid = [
+      { url: 'https://a.com' },
+      [{ title: 'No address' }],
+      [{ url: 'javascript:alert(1)' }],
+      [{ url: 'data:text/html,hi' }],
+      [{ url: 'ftp://files.example.com/terms' }],
+      [{ url: 'not a url' }],
+      [{ url: '/relative/terms' }],
+      [{ url: 'https://a.com', title: 42 }],
+      [{ url: 'https://a.com', topic: 'x'.repeat(41) }],
+      [{ url: 'https://a.com', '1st': true }],
+      [{ url: 'https://a.com', extra: { 'a.b': 1 } }],
+    ];
+    for (const links of invalid) {
+      const response = await save(token, organizationId, { revision: 0, nodes: [node('a', { links })] });
+      expect(response.status, JSON.stringify(links)).toBe(422);
+    }
+  });
+
   it('Keeps the free attributes of a service as they were given.', async () => {
     const { token, organizationId } = await betaOwner();
     const attributes = { customers: ['Acme', 'Globex'], tier: 'enterprise', limits: { seats: 50, sso: true } };

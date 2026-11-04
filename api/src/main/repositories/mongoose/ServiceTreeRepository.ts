@@ -16,6 +16,7 @@ function toServiceTree(doc: any): ServiceTree {
       pricingIds: (node.pricingIds ?? []).map(String),
       attributes: node.attributes ?? {},
       interfaces: node.interfaces ?? [],
+      links: node.links ?? [],
     })),
     revision: doc?.revision ?? 0,
     updatedAt: doc?.updatedAt ?? null,

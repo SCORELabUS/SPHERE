@@ -22,6 +22,17 @@ export interface ServiceInterface {
   [field: string]: unknown;
 }
 
+/** A page about the service's terms (refunds, SLA...). Fields other than the named ones are kept as given. */
+export interface ServiceLink {
+  url: string;
+  title: string;
+  /** What it is about, free text (e.g. "Refunds"). */
+  topic: string | null;
+  /** The question it answers, or what it says. */
+  description: string;
+  [field: string]: unknown;
+}
+
 export interface ServiceNode {
   id: string;
   parentId: string | null;
@@ -35,6 +46,8 @@ export interface ServiceNode {
   attributes: Record<string, unknown>;
   /** The ways the service is used (web app, API, bot...), grouped by channel when shown. */
   interfaces: ServiceInterface[];
+  /** Pages answering questions about the service's terms. */
+  links: ServiceLink[];
 }
 
 export interface ServiceTreePricing {
@@ -68,6 +81,7 @@ function normalize(view: ServiceTreeView): ServiceTreeView {
       ...node,
       attributes: node.attributes ?? {},
       interfaces: node.interfaces ?? [],
+      links: node.links ?? [],
     })),
   };
 }

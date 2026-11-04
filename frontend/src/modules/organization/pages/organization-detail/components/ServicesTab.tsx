@@ -17,6 +17,7 @@ import ServiceTreeNode, {
   ROOT_TARGET,
   TreeContext,
 } from './services/ServiceTreeNode';
+import { isWebAddress } from './services/links';
 import { rowButtonClass } from './services/rowStyles';
 import ServiceDetail from './services/ServiceDetail';
 import ServiceKindBadge from './services/ServiceKindBadge';
@@ -97,7 +98,10 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   const [draft, setDraft] = useState<Draft>(freshDraft([]));
   const [selected, setSelected] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('classification');
-  const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
+  /** The interface or link picked in the tree, by its place in the list of the tab shown. */
+  const [selectedItem, setSelectedItem] = useState<number | null>(null);
+  const selectedInterface = detailTab === 'interfaces' ? selectedItem : null;
+  const selectedLink = detailTab === 'links' ? selectedItem : null;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
@@ -142,6 +146,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   const unnamed = draft.nodes.some(
     node => !node.name.trim() || node.interfaces.some(item => !item.name.trim())
   );
+  const badLinks = draft.nodes.some(node => node.links.some(link => !isWebAddress(link.url)));
   const selectedNode = nodes.find(node => node.id === selected) ?? null;
   // Kinds the organization made up, added to the legend.
   const customKinds = useMemo(
@@ -387,9 +392,9 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   }, []);
 
   const select = useCallback(
-    (id: string | null, tab?: DetailTab, interfaceIndex?: number) => {
+    (id: string | null, tab?: DetailTab, item?: number) => {
       setSelected(id);
-      setSelectedInterface(interfaceIndex ?? null);
+      setSelectedItem(item ?? null);
       if (tab) setDetailTab(tab);
       if (id) expand(ancestorsOf(nodes, id).map(ancestor => ancestor.id));
     },
@@ -397,8 +402,8 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   );
 
   /** Picking from the tree on a phone takes the page to the details, which are below it. */
-  const selectFromTree = (id: string | null, tab?: DetailTab, interfaceIndex?: number) => {
-    select(id, tab, interfaceIndex);
+  const selectFromTree = (id: string | null, tab?: DetailTab, item?: number) => {
+    select(id, tab, item);
     if (window.matchMedia('(max-width: 767px)').matches) {
       requestAnimationFrame(() =>
         detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -459,7 +464,10 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
     update: (id, changes, field) =>
       edit(
         current => updateService(current, id, changes),
-        field === 'name' || field === 'description' || field.startsWith('interface:')
+        field === 'name' ||
+          field === 'description' ||
+          field.startsWith('interface:') ||
+          field.startsWith('link:')
           ? `${id}:${field}`
           : null
       ),
@@ -554,6 +562,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
     nodes,
     selected: showingJson ? null : selected,
     selectedInterface: showingJson ? null : selectedInterface,
+    selectedLink: showingJson ? null : selectedLink,
     // Next to the JSON, picking a service opens it in the outline.
     onSelect: showingJson ? id => id && switchShape('tree', () => setFocusId(id)) : selectFromTree,
     collapsed,
@@ -752,13 +761,15 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!dirty || saving || unnamed || jsonInvalid}
+                disabled={!dirty || saving || unnamed || badLinks || jsonInvalid}
                 title={
                   jsonInvalid
                     ? 'Fix the JSON first'
                     : unnamed
                       ? 'Every service and interface needs a name'
-                      : undefined
+                      : badLinks
+                        ? 'Every link needs a full address starting with https:// or http://'
+                        : undefined
                 }
                 className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -897,9 +908,10 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
                     tab={detailTab}
                     onTab={tab => {
                       setDetailTab(tab);
-                      setSelectedInterface(null);
+                      setSelectedItem(null);
                     }}
                     highlightedInterface={selectedInterface}
+                    highlightedLink={selectedLink}
                     onSelect={select}
                     linkedPricing={linkedPricing}
                   />

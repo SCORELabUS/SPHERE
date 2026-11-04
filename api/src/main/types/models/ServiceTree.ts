@@ -28,6 +28,21 @@ export interface ServiceInterface {
   [field: string]: unknown;
 }
 
+/**
+ * A page about the terms of the service (refunds, cancellation, data retention,
+ * SLA...). The named fields are the ones the UI shows; any other is kept as given.
+ */
+export interface ServiceLink {
+  /** An http(s) address. */
+  url: string;
+  title: string;
+  /** What it is about, free text (e.g. "Refunds"); null when not given. */
+  topic: string | null;
+  /** The question the page answers, or what it says. */
+  description: string;
+  [field: string]: unknown;
+}
+
 export interface ServiceNode {
   id: string;
   parentId: string | null;
@@ -46,6 +61,8 @@ export interface ServiceNode {
   attributes: Record<string, unknown>;
   /** The ways the service is used, in the order given. */
   interfaces: ServiceInterface[];
+  /** Pages answering questions about the service's terms, in the order given. */
+  links: ServiceLink[];
 }
 
 export interface ServiceTree {

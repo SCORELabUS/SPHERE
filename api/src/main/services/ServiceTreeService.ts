@@ -6,6 +6,7 @@ import {
   InterfaceChannel,
   ServiceDependency,
   ServiceInterface,
+  ServiceLink,
   ServiceKind,
   ServiceNode,
   ServiceTree,
@@ -30,6 +31,11 @@ export const SERVICE_TREE_LIMITS = {
   mechanisms: 20,
   mechanismLength: 120,
   interfaceLength: 4000,
+  linksPerNode: 50,
+  urlLength: 2000,
+  linkTitleLength: 200,
+  linkDescriptionLength: 1000,
+  linkLength: 4000,
 };
 
 /**
@@ -48,9 +54,12 @@ export const RESERVED_ATTRIBUTES = [
   'services',
   'attributes',
   'interfaces',
+  'links',
 ];
 /** The fields of an interface; any other name is a free field of it. */
 const INTERFACE_FIELDS = ['name', 'channel', 'pending', 'description', 'mechanisms'];
+/** The fields of a link; any other name is a free field of it. */
+const LINK_FIELDS = ['url', 'title', 'topic', 'description'];
 const CHANNELS: InterfaceChannel[] = ['INTERACTIVE', 'PROGRAMMATIC', 'CONVERSATIONAL', 'AGENTIC', 'EVENT'];
 const ATTRIBUTE_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
@@ -71,6 +80,16 @@ function parseLabel<T extends string>(raw: unknown, known: T[], what: string): T
   return known.find(value => value === label.toUpperCase()) ?? (label as T);
 }
 const NODE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** An absolute http(s) address, the only kind shown as a link (never javascript: or data:). */
+function isWebAddress(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !!url.hostname;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Free values are stored as they come, so their keys must be valid MongoDB field
@@ -241,6 +260,7 @@ class ServiceTreeService {
 
     const attributes = this.parseAttributes(node.attributes, where);
     const interfaces = this.parseInterfaces(node.interfaces, where);
+    const links = this.parseLinks(node.links, where);
 
     return {
       id: node.id,
@@ -252,7 +272,50 @@ class ServiceTreeService {
       pricingIds: uniquePricingIds,
       attributes,
       interfaces,
+      links,
     };
+  }
+
+  /**
+   * The links of a service, written in one order (named fields first) so equal
+   * lists compare equal. Only http(s) addresses are taken, since they are shown as links.
+   */
+  private parseLinks(raw: unknown, where: string): ServiceLink[] {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw new Error(`INVALID DATA: The links of ${where} must be a list`);
+    if (raw.length > SERVICE_TREE_LIMITS.linksPerNode) {
+      throw new Error(`INVALID DATA: A service has at most ${SERVICE_TREE_LIMITS.linksPerNode} links`);
+    }
+    return raw.map((item, index) => {
+      const what = `link #${index + 1} of ${where}`;
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`INVALID DATA: ${what} must be an object`);
+      const entry = item as Record<string, unknown>;
+      const url = typeof entry.url === 'string' ? entry.url.trim() : '';
+      if (!isWebAddress(url) || url.length > SERVICE_TREE_LIMITS.urlLength) {
+        throw new Error(`INVALID DATA: ${what} needs a url starting with http:// or https:// (at most ${SERVICE_TREE_LIMITS.urlLength} characters)`);
+      }
+      const title = entry.title ?? '';
+      if (typeof title !== 'string' || title.length > SERVICE_TREE_LIMITS.linkTitleLength) {
+        throw new Error(`INVALID DATA: The title of ${what} must be text of at most ${SERVICE_TREE_LIMITS.linkTitleLength} characters`);
+      }
+      const topic = parseLabel(entry.topic, [], `The topic of ${what}`);
+      const description = entry.description ?? '';
+      if (typeof description !== 'string' || description.length > SERVICE_TREE_LIMITS.linkDescriptionLength) {
+        throw new Error(`INVALID DATA: The description of ${what} must be text of at most ${SERVICE_TREE_LIMITS.linkDescriptionLength} characters`);
+      }
+      const extra = Object.fromEntries(Object.entries(entry).filter(([key]) => !LINK_FIELDS.includes(key)));
+      for (const key of Object.keys(extra)) {
+        if (!ATTRIBUTE_NAME.test(key)) {
+          throw new Error(`INVALID DATA: "${key}" cannot name a field of ${what}: use a letter followed by letters, digits, - or _`);
+        }
+      }
+      assertStorable(extra, `the fields of ${what}`);
+      const parsed: ServiceLink = { url, title: title.trim(), topic, description: description.trim(), ...extra };
+      if (JSON.stringify(parsed).length > SERVICE_TREE_LIMITS.linkLength) {
+        throw new Error(`INVALID DATA: ${what} takes more than ${SERVICE_TREE_LIMITS.linkLength} characters`);
+      }
+      return parsed;
+    });
   }
 
   /** The interfaces of a service, written in one order (named fields first) so equal lists compare equal. */

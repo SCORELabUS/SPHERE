@@ -4,6 +4,7 @@ import type { ServiceNode } from '../../../../api/serviceTreeApi';
 import ChannelTag from './ChannelTag';
 import ServiceKindBadge from './ServiceKindBadge';
 import { interfaceCounts } from './interfaces';
+import { linkLabel } from './links';
 import { rowButtonClass } from './rowStyles';
 import { childrenOf, type TreeChanges } from './tree';
 
@@ -18,7 +19,7 @@ export interface LinkedPricing {
 }
 
 /** The tabs of a service's details, also opened from the rows below it in the tree. */
-export type DetailTab = 'classification' | 'interfaces' | 'pricings';
+export type DetailTab = 'classification' | 'interfaces' | 'pricings' | 'links';
 
 /** The row that stands for the organization itself. */
 export const ROOT_TARGET = '__root__';
@@ -29,10 +30,13 @@ export interface TreeContext {
   selected: string | null;
   /** The interface picked in the tree, by its place in the selected service's list. */
   selectedInterface: number | null;
-  onSelect: (id: string | null, tab?: DetailTab, interfaceIndex?: number) => void;
+  /** The link picked in the tree, by its place in the selected service's list. */
+  selectedLink: number | null;
+  /** `item` is the place of the interface or link picked, in the tab's list. */
+  onSelect: (id: string | null, tab?: DetailTab, item?: number) => void;
   collapsed: Set<string>;
   onToggleCollapsed: (id: string) => void;
-  /** The groups (pricings, interfaces) unfolded under each service, as `<group>:<id>`. */
+  /** The groups (pricings, interfaces, links) unfolded under each service, as `<group>:<id>`. */
   openGroups: Set<string>;
   onToggleGroup: (key: string) => void;
   linkedPricing: (pricingId: string) => LinkedPricing | null;
@@ -230,15 +234,69 @@ function InterfaceGroup({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) 
   );
 }
 
-/** One service of the tree on the left: its pricing, its interfaces, then the services inside it. */
+/** "Links 3", unfolding to each link; picking one shows it in the Links tab. */
+function LinkGroup({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) {
+  const key = `links:${node.id}`;
+  const open = ctx.openGroups.has(key);
+
+  return (
+    <>
+      <div className="flex items-center">
+        <Chevron
+          open={open}
+          onClick={() => ctx.onToggleGroup(key)}
+          label={open ? 'Hide links' : 'Show links'}
+        />
+        <button
+          type="button"
+          data-tree-row={node.id}
+          onClick={() => {
+            if (!open) ctx.onToggleGroup(key);
+            ctx.onSelect(node.id, 'links');
+          }}
+          className={rowButtonClass(false)}
+        >
+          <span className={groupLabel}>Links</span>
+          <span className={groupCount}>{node.links.length}</span>
+        </button>
+      </div>
+      {open && (
+        <Branch>
+          {node.links.map((link, index) => {
+            const on = ctx.selected === node.id && ctx.selectedLink === index;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-tree-row={node.id}
+                onClick={() => ctx.onSelect(node.id, 'links', index)}
+                title={link.topic ? `${linkLabel(link)} (${link.topic})` : linkLabel(link)}
+                className={`${rowButtonClass(on)} w-full text-[13px]`}
+              >
+                <Iconify icon="mdi:link-variant" width={14} className="shrink-0 text-tp-steel" />
+                <span className="min-w-0 break-words">{linkLabel(link)}</span>
+              </button>
+            );
+          })}
+        </Branch>
+      )}
+    </>
+  );
+}
+
+/** One service of the tree on the left: its pricing, interfaces and links, then the services inside it. */
 export default function ServiceTreeNode({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) {
   if (ctx.shown && !ctx.shown.has(node.id)) return null;
   const children = childrenOf(ctx.nodes, node.id);
   const hasContent =
-    children.length > 0 || node.pricingIds.length > 0 || node.interfaces.length > 0;
+    children.length > 0 ||
+    node.pricingIds.length > 0 ||
+    node.interfaces.length > 0 ||
+    node.links.length > 0;
   // While searching everything that is shown is open, so the matches can be seen.
   const open = ctx.shown !== null || !ctx.collapsed.has(node.id);
-  const on = ctx.selected === node.id && ctx.selectedInterface === null;
+  const on =
+    ctx.selected === node.id && ctx.selectedInterface === null && ctx.selectedLink === null;
   const hit = ctx.matches?.has(node.id) ?? false;
 
   return (
@@ -289,6 +347,7 @@ export default function ServiceTreeNode({ node, ctx }: { node: ServiceNode; ctx:
         <Branch>
           {node.pricingIds.length > 0 && <PricingRow node={node} ctx={ctx} />}
           {node.interfaces.length > 0 && <InterfaceGroup node={node} ctx={ctx} />}
+          {node.links.length > 0 && <LinkGroup node={node} ctx={ctx} />}
           {children.map(child => (
             <ServiceTreeNode key={child.id} node={child} ctx={ctx} />
           ))}

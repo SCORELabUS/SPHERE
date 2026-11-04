@@ -13,6 +13,7 @@ import RouterLink from '../../../../../core/components/router-link';
 import type { OrgPricing } from '../../../../api/organizationsApi';
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
 import InterfaceEditor from './InterfaceEditor';
+import LinkEditor from './LinkEditor';
 import { KindPicker, PricingPicker, ServiceDetailsForm } from './ServiceNodePanels';
 import type { LinkedPricing } from './ServiceTreeNode';
 import {
@@ -23,6 +24,7 @@ import {
   type DropPosition,
   type TreeChanges,
 } from './tree';
+import { isWebAddress } from './links';
 import { useDismiss } from './useDismiss';
 
 /** The changes the outline makes; adding returns the new service's id. */
@@ -51,7 +53,7 @@ interface Props {
   onFocused: () => void;
 }
 
-type PanelKind = 'details' | 'interfaces' | 'pricings';
+type PanelKind = 'details' | 'interfaces' | 'pricings' | 'links';
 type Panel = { id: string; kind: PanelKind } | null;
 type Drag = { id: string; over: string | null; position: DropPosition } | null;
 const TOP = '__top__';
@@ -232,7 +234,7 @@ function RowMenu({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
   );
 }
 
-/** The panel under a row: its details, or the pricings linked to it. */
+/** The panel under a row: its details, interfaces, pricings or links. */
 function RowPanel({
   node,
   kind,
@@ -249,8 +251,8 @@ function RowPanel({
 
   return (
     <div className="my-1 ml-2 mr-1 grid gap-3 sm:ml-14 rounded-xl border border-tp-hairline bg-tp-surface p-3">
-      <div className="flex items-center gap-1">
-        {(['details', 'interfaces', 'pricings'] as const).map(option => (
+      <div className="flex flex-wrap items-center gap-1">
+        {(['details', 'interfaces', 'pricings', 'links'] as const).map(option => (
           <button
             key={option}
             type="button"
@@ -265,7 +267,9 @@ function RowPanel({
               ? 'Details'
               : option === 'interfaces'
                 ? `Interfaces ${node.interfaces.length}`
-                : `Pricings ${node.pricingIds.length}`}
+                : option === 'pricings'
+                  ? `Pricings ${node.pricingIds.length}`
+                  : `Links ${node.links.length}`}
           </button>
         ))}
         <button
@@ -278,7 +282,13 @@ function RowPanel({
         </button>
       </div>
 
-      {kind === 'interfaces' ? (
+      {kind === 'links' ? (
+        <LinkEditor
+          node={node}
+          nodes={ctx.nodes}
+          onChange={(links, field) => ctx.actions.update(node.id, { links }, field)}
+        />
+      ) : kind === 'interfaces' ? (
         <InterfaceEditor
           node={node}
           nodes={ctx.nodes}
@@ -497,6 +507,24 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
           </button>
           <button
             type="button"
+            onClick={() => togglePanel('links')}
+            title="Links to pages about the service's terms"
+            aria-pressed={panel === 'links'}
+            className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-tp-hairline-soft ${
+              panel === 'links'
+                ? 'text-tp-primary'
+                : node.links.some(link => !isWebAddress(link.url))
+                  ? 'text-tp-severity-error'
+                  : node.links.length
+                    ? 'text-tp-slate'
+                    : 'text-tp-stone'
+            }`}
+          >
+            <Iconify icon="mdi:link-variant" width={14} />
+            {node.links.length}
+          </button>
+          <button
+            type="button"
             onClick={() => togglePanel('details')}
             aria-label="Details"
             title="Description, where it hangs and other fields"
@@ -510,7 +538,8 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
             onClick={() => ctx.actions.add(node.id)}
             aria-label={`Add a service inside ${node.name || 'this one'}`}
             title="Add a service inside"
-            className={`${iconButton} sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100`}
+            // On a phone it is left to the row menu, to keep the controls on one line.
+            className={`${iconButton} max-sm:hidden sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100`}
           >
             <Iconify icon="mdi:subdirectory-arrow-right" width={16} />
           </button>

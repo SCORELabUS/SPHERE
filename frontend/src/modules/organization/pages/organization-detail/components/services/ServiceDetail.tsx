@@ -4,6 +4,7 @@ import RouterLink from '../../../../../core/components/router-link';
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
 import ServiceInterfaces from './ServiceInterfaces';
 import ServiceKindBadge from './ServiceKindBadge';
+import ServiceLinks from './ServiceLinks';
 import { interfaceCounts } from './interfaces';
 import type { DetailTab, LinkedPricing } from './ServiceTreeNode';
 import { ancestorsOf, attributeText, childrenOf } from './tree';
@@ -16,6 +17,8 @@ interface Props {
   onTab: (tab: DetailTab) => void;
   /** The interface picked in the tree, highlighted in the Interfaces tab. */
   highlightedInterface: number | null;
+  /** The link picked in the tree, highlighted in the Links tab. */
+  highlightedLink: number | null;
   onSelect: (id: string | null) => void;
   linkedPricing: (pricingId: string) => LinkedPricing | null;
 }
@@ -106,7 +109,7 @@ function Overview({ orgName, nodes, onSelect }: Pick<Props, 'orgName' | 'nodes' 
         </div>
       )}
       <p className="text-sm text-tp-steel">
-        Pick a service in the tree to see what it is and its pricings.
+        Pick a service in the tree to see what it is, its pricings and its links.
       </p>
     </div>
   );
@@ -120,6 +123,7 @@ export default function ServiceDetail({
   tab,
   onTab,
   highlightedInterface,
+  highlightedLink,
   onSelect,
   linkedPricing,
 }: Props) {
@@ -137,11 +141,13 @@ export default function ServiceDetail({
     classification: null,
     interfaces: `${confirmed}${pending ? ` +${pending}` : ''}`,
     pricings: String(node.pricingIds.length),
+    links: String(node.links.length),
   };
   const labels: Record<DetailTab, string> = {
     classification: 'Classification',
     interfaces: 'Interfaces',
     pricings: 'Pricing',
+    links: 'Links',
   };
 
   return (
@@ -174,7 +180,7 @@ export default function ServiceDetail({
         aria-label="Service"
         className="inline-flex justify-self-start overflow-hidden rounded-lg border border-tp-hairline"
       >
-        {(['classification', 'interfaces', 'pricings'] as DetailTab[]).map(option => (
+        {(['classification', 'interfaces', 'pricings', 'links'] as DetailTab[]).map(option => (
           <button
             key={option}
             type="button"
@@ -193,7 +199,9 @@ export default function ServiceDetail({
         ))}
       </div>
 
-      {tab === 'interfaces' ? (
+      {tab === 'links' ? (
+        <ServiceLinks links={node.links} highlighted={highlightedLink} />
+      ) : tab === 'interfaces' ? (
         <ServiceInterfaces interfaces={node.interfaces} highlighted={highlightedInterface} />
       ) : tab === 'classification' ? (
         <dl>

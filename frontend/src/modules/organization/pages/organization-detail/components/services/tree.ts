@@ -57,6 +57,7 @@ export function addService(
     pricingIds: [],
     attributes: {},
     interfaces: [],
+    links: [],
   };
   const at = afterId ? nodes.findIndex(n => n.id === afterId) : -1;
   if (at < 0) return { nodes: [...nodes, node], id };

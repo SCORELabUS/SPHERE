@@ -7007,7 +7007,7 @@ components:
             Free fields of the service (e.g. `customers`), stored as given: any JSON values, at most 4000
             characters and 5 levels deep. Names start with a letter followed by letters, digits, `-` or `_`,
             and cannot be `id`, `parentId`, `name`, `description`, `kind`, `dependency`, `pricingIds`,
-            `pricings`, `services` or `attributes`; nested keys cannot start with `$` or contain a dot.
+            `pricings`, `services`, `attributes`, `interfaces` or `links`; nested keys cannot start with `$` or contain a dot.
             Always returned, `{}` when there are none.
           example:
             customers: [Acme, Globex]
@@ -7019,6 +7019,14 @@ components:
             named ones first and free ones after, in their order.
           items:
             $ref: '#/components/schemas/ServiceInterface'
+        links:
+          type: array
+          maxItems: 50
+          description: >-
+            Pages that answer questions about the service's terms (refunds, cancellation, SLA...). Returned
+            with every field, named ones first and free ones after, in their order; `[]` when there are none.
+          items:
+            $ref: '#/components/schemas/ServiceLink'
 
     ServiceInterface:
       type: object
@@ -7063,6 +7071,38 @@ components:
         mechanisms: [github.com web client, GitHub Command Palette]
         quote: We design GitHub with the latest web browsers in mind.
         source: https://docs.github.com/en/get-started/using-github/supported-browsers
+
+    ServiceLink:
+      type: object
+      required: [url]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones is kept as given, with the same rules as the free fields of an
+        interface; the link takes at most 4000 characters as JSON.
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Absolute http or https address; other schemes (javascript, data, ftp...) are refused.
+        title:
+          type: string
+          maxLength: 200
+          description: Empty when not given; the site's name is shown instead.
+        topic:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: What it is about, free text (e.g. Refunds), kept as written; empty or null means none.
+        description:
+          type: string
+          maxLength: 1000
+          description: The question it answers, or what it says.
+      example:
+        url: https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features
+        title: Additional product terms
+        topic: Terms
+        description: Which extra terms apply to Copilot, Actions or Packages?
 
     ServiceTreeView:
       type: object

@@ -1,5 +1,6 @@
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
 import { KNOWN_CHANNELS, interfaceExtras, normalizeInterface } from './interfaces';
+import { isWebAddress, linkExtras, normalizeLink } from './links';
 import { childrenOf, newServiceId } from './tree';
 
 // The JSON view writes the tree nested, as it is read: each service holds the
@@ -33,6 +34,7 @@ const SERVICE_KEYS = [
   'dependency',
   'pricings',
   'interfaces',
+  'links',
   'services',
 ];
 
@@ -71,6 +73,7 @@ export function treeToJson(
     if (node.description) out.description = node.description;
     if (node.pricingIds.length) out.pricings = node.pricingIds.map(pricingLabel);
     if (node.interfaces.length) out.interfaces = node.interfaces.map(writeInterface);
+    if (node.links.length) out.links = node.links.map(writeLink);
     Object.assign(out, node.attributes);
     const children = childrenOf(nodes, node.id);
     if (children.length) out.services = children.map(write);
@@ -87,6 +90,15 @@ function writeInterface(item: ServiceNode['interfaces'][number]): Record<string,
   if (item.description) out.description = item.description;
   if (item.mechanisms.length) out.mechanisms = item.mechanisms;
   return Object.assign(out, Object.fromEntries(interfaceExtras(item)));
+}
+
+/** A link as written by hand: empty fields left out. */
+function writeLink(link: ServiceNode['links'][number]): Record<string, unknown> {
+  const out: Record<string, unknown> = { url: link.url };
+  if (link.title) out.title = link.title;
+  if (link.topic) out.topic = link.topic;
+  if (link.description) out.description = link.description;
+  return Object.assign(out, Object.fromEntries(linkExtras(link)));
 }
 
 /** Where a JSON.parse error happened, as "line L, column C", when the browser says so. */
@@ -195,6 +207,28 @@ export function parseTreeJson(
         });
     }
 
+    const links: ServiceNode['links'] = [];
+    if (raw.links !== undefined) {
+      if (!Array.isArray(raw.links)) fail(`The "links" of ${where} must be a list`);
+      else
+        raw.links.forEach((item, index) => {
+          const at = `link #${index + 1} of ${where}`;
+          if (!isObject(item)) return fail(`${at} must be an object with at least a "url"`);
+          if (typeof item.url !== 'string' || !isWebAddress(item.url)) {
+            fail(`${at} needs a "url" starting with http:// or https://`);
+          }
+          for (const key of ['title', 'topic', 'description']) {
+            if (item[key] !== undefined && item[key] !== null && typeof item[key] !== 'string') {
+              fail(`The "${key}" of ${at} must be text`);
+            }
+          }
+          if (typeof item.topic === 'string' && item.topic.trim().length > LABEL_LENGTH) {
+            fail(`The "topic" of ${at} must be at most ${LABEL_LENGTH} characters`);
+          }
+          links.push(normalizeLink(item));
+        });
+    }
+
     const attributes: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (SERVICE_KEYS.includes(key)) continue;
@@ -219,6 +253,7 @@ export function parseTreeJson(
       pricingIds,
       attributes,
       interfaces,
+      links,
     });
 
     if (raw.services !== undefined) {
