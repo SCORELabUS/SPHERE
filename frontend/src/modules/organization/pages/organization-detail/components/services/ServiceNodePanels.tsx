@@ -13,9 +13,13 @@ export const inputClass =
 const labelClass = 'mb-1 block text-xs font-medium text-tp-slate';
 
 const KIND_NAMES: Record<string, string> = { AUTONOMOUS: 'Autonomous', DEPENDENT: 'Dependent' };
-const DEPENDENCY_NAMES: Record<string, string> = { FUNCTIONAL: 'Its functionality', ACCOUNT: 'Only its account' };
+const DEPENDENCY_NAMES: Record<string, string> = {
+  FUNCTIONAL: 'Its functionality',
+  ACCOUNT: 'Only its account',
+};
 
-const shownLabel = (label: string | null, names: Record<string, string>) => (label ? (names[label] ?? label) : '');
+const shownLabel = (label: string | null, names: Record<string, string>) =>
+  label ? (names[label] ?? label) : '';
 
 interface LabelInputProps {
   value: string | null;
@@ -29,13 +33,15 @@ interface LabelInputProps {
  * A kind or dependency typed freely: what is typed stays as typed (spaces
  * included) while the service gets the value it means, a known one in capitals.
  */
-function LabelInput({ value, known, names, placeholder, onChange }: LabelInputProps) {
+export function LabelInput({ value, known, names, placeholder, onChange }: LabelInputProps) {
   const custom = value && !known.includes(value) ? value : null;
   const [text, setText] = useState(shownLabel(custom, names));
 
   // Picking a chip (or undo) clears or fills the field.
   useEffect(() => {
-    setText(current => (readLabel(current, known) === custom ? current : shownLabel(custom, names)));
+    setText(current =>
+      readLabel(current, known) === custom ? current : shownLabel(custom, names)
+    );
   }, [custom, known, names]);
 
   return (
@@ -52,7 +58,15 @@ function LabelInput({ value, known, names, placeholder, onChange }: LabelInputPr
   );
 }
 
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+export function Chip({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -85,7 +99,10 @@ export function KindPicker({ node, nodes, onChange }: KindPickerProps) {
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   const kinds = useMemo(() => labelsOf(nodes, n => n.kind, KNOWN_KINDS), [nodes]);
-  const dependencies = useMemo(() => labelsOf(nodes, n => n.dependency, KNOWN_DEPENDENCIES), [nodes]);
+  const dependencies = useMemo(
+    () => labelsOf(nodes, n => n.dependency, KNOWN_DEPENDENCIES),
+    [nodes]
+  );
 
   return (
     <div ref={ref} className="relative flex min-w-0 shrink">
@@ -134,7 +151,11 @@ export function KindPicker({ node, nodes, onChange }: KindPickerProps) {
               <span className="text-xs font-medium text-tp-slate">It depends on</span>
               <div className="flex flex-wrap gap-1">
                 {dependencies.map(dependency => (
-                  <Chip key={dependency} on={node.dependency === dependency} onClick={() => onChange({ dependency })}>
+                  <Chip
+                    key={dependency}
+                    on={node.dependency === dependency}
+                    onClick={() => onChange({ dependency })}
+                  >
                     {DEPENDENCY_NAMES[dependency] ?? dependency}
                   </Chip>
                 ))}
@@ -270,7 +291,9 @@ export function PricingPicker({ node, pricings, error, onToggle }: PickerProps) 
           </p>
         ) : matching.length === 0 ? (
           <p className="px-1 py-3 text-xs text-tp-steel">
-            {pricings.length ? 'No pricing matches the search.' : 'This organization has no pricings yet.'}
+            {pricings.length
+              ? 'No pricing matches the search.'
+              : 'This organization has no pricings yet.'}
           </p>
         ) : (
           <ul className="space-y-0.5">
@@ -289,7 +312,9 @@ export function PricingPicker({ node, pricings, error, onToggle }: PickerProps) 
                       width={18}
                       className={linked ? 'text-tp-primary' : 'text-tp-stone'}
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm text-tp-ink">{pricing.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-tp-ink">
+                      {pricing.name}
+                    </span>
                     {pricing.collection && (
                       <span className="hidden truncate text-[11px] text-tp-steel sm:inline">
                         {pricing.collection.name}

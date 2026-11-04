@@ -172,6 +172,61 @@ describe('Service tree (beta) API integration', () => {
     ]);
   });
 
+  it('Keeps the interfaces of a service, with known channels in capitals and their free fields.', async () => {
+    const { token, organizationId } = await betaOwner();
+    const interfaces = [
+      {
+        name: 'GitHub web app',
+        channel: 'interactive',
+        description: 'Web application at github.com',
+        mechanisms: ['github.com web client'],
+        quote: 'We design GitHub with the latest web browsers in mind.',
+        source: 'https://docs.github.com/en/get-started/using-github/supported-browsers',
+      },
+      { name: 'REST API', channel: 'Programmatic', pending: true },
+      { name: 'Copilot in the CLI', channel: 'Agentic surface' },
+      { name: 'Not classified yet' },
+    ];
+
+    const saved = await save(token, organizationId, { revision: 0, nodes: [node('a', { interfaces })] });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.nodes[0].interfaces).toEqual([
+      {
+        name: 'GitHub web app',
+        channel: 'INTERACTIVE',
+        pending: false,
+        description: 'Web application at github.com',
+        mechanisms: ['github.com web client'],
+        quote: 'We design GitHub with the latest web browsers in mind.',
+        source: 'https://docs.github.com/en/get-started/using-github/supported-browsers',
+      },
+      { name: 'REST API', channel: 'PROGRAMMATIC', pending: true, description: '', mechanisms: [] },
+      { name: 'Copilot in the CLI', channel: 'Agentic surface', pending: false, description: '', mechanisms: [] },
+      { name: 'Not classified yet', channel: null, pending: false, description: '', mechanisms: [] },
+    ]);
+  });
+
+  it('Refuses interfaces without a name, with bad fields or too large.', async () => {
+    const { token, organizationId } = await betaOwner();
+
+    const invalid = [
+      { not: 'a list' },
+      ['text'],
+      [{ channel: 'interactive' }],
+      [{ name: 'A', pending: 'yes' }],
+      [{ name: 'A', mechanisms: 'cli' }],
+      [{ name: 'A', mechanisms: [''] }],
+      [{ name: 'A', '1st': true }],
+      [{ name: 'A', extra: { $set: 1 } }],
+      [{ name: 'A', quote: 'x'.repeat(5000) }],
+    ];
+    for (const interfaces of invalid) {
+      const response = await save(token, organizationId, { revision: 0, nodes: [node('a', { interfaces })] });
+      expect(response.status, JSON.stringify(interfaces)).toBe(422);
+    }
+  });
+
   it('Keeps the free attributes of a service as they were given.', async () => {
     const { token, organizationId } = await betaOwner();
     const attributes = { customers: ['Acme', 'Globex'], tier: 'enterprise', limits: { seats: 50, sso: true } };

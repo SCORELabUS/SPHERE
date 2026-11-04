@@ -96,9 +96,10 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   const [mode, setMode] = useState<Mode>('view');
   const [draft, setDraft] = useState<Draft>(freshDraft([]));
   const [selected, setSelected] = useState<string | null>(null);
-  const [detailTab, setDetailTab] = useState<DetailTab>('details');
+  const [detailTab, setDetailTab] = useState<DetailTab>('classification');
+  const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [openPricings, setOpenPricings] = useState<Set<string>>(new Set());
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [shape, setShape] = useState<Shape>('tree');
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -138,7 +139,9 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
     [editing, draft.nodes, tree]
   );
   const dirty = editing && tree !== null && !sameTree(draft.nodes, tree.nodes);
-  const unnamed = draft.nodes.some(node => !node.name.trim());
+  const unnamed = draft.nodes.some(
+    node => !node.name.trim() || node.interfaces.some(item => !item.name.trim())
+  );
   const selectedNode = nodes.find(node => node.id === selected) ?? null;
   // Kinds the organization made up, added to the legend.
   const customKinds = useMemo(
@@ -192,12 +195,16 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
       const listed = orgPricingsById.get(pricingId);
       const source = known ?? listed;
       if (!source) return null;
+      const plans = known ? known.plans : (listed?.analytics?.numberOfPlans ?? null);
+      const addOns = known ? known.addOns : (listed?.analytics?.numberOfAddOns ?? null);
       const collectionSlug = source.collection?.slug;
       const path = `/pricings/${org.id}/${source.slug}`;
       return {
         name: source.name,
         version: source.version,
         private: source.private,
+        plans,
+        addOns,
         href: collectionSlug ? `${path}?collection=${encodeURIComponent(collectionSlug)}` : path,
       };
     },
@@ -380,8 +387,9 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   }, []);
 
   const select = useCallback(
-    (id: string | null, tab?: DetailTab) => {
+    (id: string | null, tab?: DetailTab, interfaceIndex?: number) => {
       setSelected(id);
+      setSelectedInterface(interfaceIndex ?? null);
       if (tab) setDetailTab(tab);
       if (id) expand(ancestorsOf(nodes, id).map(ancestor => ancestor.id));
     },
@@ -389,8 +397,8 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   );
 
   /** Picking from the tree on a phone takes the page to the details, which are below it. */
-  const selectFromTree = (id: string | null, tab?: DetailTab) => {
-    select(id, tab);
+  const selectFromTree = (id: string | null, tab?: DetailTab, interfaceIndex?: number) => {
+    select(id, tab, interfaceIndex);
     if (window.matchMedia('(max-width: 767px)').matches) {
       requestAnimationFrame(() =>
         detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -451,7 +459,9 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
     update: (id, changes, field) =>
       edit(
         current => updateService(current, id, changes),
-        field === 'name' || field === 'description' ? `${id}:${field}` : null
+        field === 'name' || field === 'description' || field.startsWith('interface:')
+          ? `${id}:${field}`
+          : null
       ),
     moveTo: (id, targetId, position) => {
       edit(current =>
@@ -510,10 +520,10 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
     });
   }, []);
 
-  const togglePricings = useCallback((id: string) => {
-    setOpenPricings(current => {
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups(current => {
       const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
+      if (!next.delete(key)) next.add(key);
       return next;
     });
   }, []);
@@ -543,12 +553,13 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   const ctx: TreeContext = {
     nodes,
     selected: showingJson ? null : selected,
+    selectedInterface: showingJson ? null : selectedInterface,
     // Next to the JSON, picking a service opens it in the outline.
     onSelect: showingJson ? id => id && switchShape('tree', () => setFocusId(id)) : selectFromTree,
     collapsed,
     onToggleCollapsed: toggleCollapsed,
-    openPricings,
-    onTogglePricings: togglePricings,
+    openGroups,
+    onToggleGroup: toggleGroup,
     linkedPricing,
     matches: showingJson ? null : matches,
     shown: showingJson ? null : shown,
@@ -746,7 +757,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
                   jsonInvalid
                     ? 'Fix the JSON first'
                     : unnamed
-                      ? 'Every service needs a name'
+                      ? 'Every service and interface needs a name'
                       : undefined
                 }
                 className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
@@ -884,7 +895,11 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
                     nodes={nodes}
                     node={selectedNode}
                     tab={detailTab}
-                    onTab={setDetailTab}
+                    onTab={tab => {
+                      setDetailTab(tab);
+                      setSelectedInterface(null);
+                    }}
+                    highlightedInterface={selectedInterface}
                     onSelect={select}
                     linkedPricing={linkedPricing}
                   />

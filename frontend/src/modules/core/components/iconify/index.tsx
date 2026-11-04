@@ -58,6 +58,7 @@ import {
     MdSubdirectoryArrowRight,
     MdDataObject,
     MdMoreHoriz,
+    MdDevices,
 } from 'react-icons/md';
 import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
 import { IconType } from 'react-icons';
@@ -128,6 +129,7 @@ const iconMap: Record<string, IconType> = {
     'mdi:subdirectory-arrow-right': MdSubdirectoryArrowRight,
     'mdi:code-braces': MdDataObject,
     'mdi:dots-horizontal': MdMoreHoriz,
+    'mdi:devices': MdDevices,
 };
 
 type IconifyProps = {

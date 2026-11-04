@@ -47,6 +47,12 @@ function createMockEntityPermissionRepo() {
   };
 }
 
+function createMockServiceTreeRepo() {
+  return {
+    deleteByOrganizationId: vi.fn(),
+  };
+}
+
 describe('OrganizationService.destroy cascade cleanup', () => {
   let orgRepo: ReturnType<typeof createMockOrgRepo>;
   let membershipRepo: ReturnType<typeof createMockMembershipRepo>;
@@ -54,6 +60,7 @@ describe('OrganizationService.destroy cascade cleanup', () => {
   let pricingRepo: ReturnType<typeof createMockPricingRepo>;
   let pricingCollectionRepo: ReturnType<typeof createMockPricingCollectionRepo>;
   let entityPermissionRepo: ReturnType<typeof createMockEntityPermissionRepo>;
+  let serviceTreeRepo: ReturnType<typeof createMockServiceTreeRepo>;
   let service: OrganizationService;
 
   beforeEach(() => {
@@ -64,6 +71,7 @@ describe('OrganizationService.destroy cascade cleanup', () => {
     pricingRepo = createMockPricingRepo();
     pricingCollectionRepo = createMockPricingCollectionRepo();
     entityPermissionRepo = createMockEntityPermissionRepo();
+    serviceTreeRepo = createMockServiceTreeRepo();
 
     (container.resolve as any).mockImplementation((name: string) => {
       if (name === 'organizationRepository') return orgRepo;
@@ -72,6 +80,7 @@ describe('OrganizationService.destroy cascade cleanup', () => {
       if (name === 'pricingRepository') return pricingRepo;
       if (name === 'pricingCollectionRepository') return pricingCollectionRepo;
       if (name === 'entityPermissionRepository') return entityPermissionRepo;
+      if (name === 'serviceTreeRepository') return serviceTreeRepo;
       return null;
     });
 
@@ -88,6 +97,7 @@ describe('OrganizationService.destroy cascade cleanup', () => {
     expect(entityPermissionRepo.destroyByOrganizationId).toHaveBeenCalledWith('org-1');
     expect(membershipRepo.destroyByOrganizationId).toHaveBeenCalledWith('org-1');
     expect(invitationRepo.destroyByOrganizationId).toHaveBeenCalledWith('org-1');
+    expect(serviceTreeRepo.deleteByOrganizationId).toHaveBeenCalledWith('org-1');
     expect(orgRepo.destroy).toHaveBeenCalledWith('org-1');
   });
 
@@ -123,6 +133,7 @@ describe('OrganizationService.destroy cascade cleanup', () => {
     for (const repository of [pricingRepo, pricingCollectionRepo, entityPermissionRepo, membershipRepo, invitationRepo]) {
       expect(repository.destroyByOrganizationId.mock.calls.map(([id]) => id)).toEqual(expectedOrder);
     }
+    expect(serviceTreeRepo.deleteByOrganizationId.mock.calls.map(([id]) => id)).toEqual(expectedOrder);
   });
 
   it('rejects a personal root before touching any descendants or resources', async () => {

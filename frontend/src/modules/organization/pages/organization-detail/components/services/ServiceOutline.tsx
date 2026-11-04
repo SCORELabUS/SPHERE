@@ -12,6 +12,7 @@ import Iconify from '../../../../../core/components/iconify';
 import RouterLink from '../../../../../core/components/router-link';
 import type { OrgPricing } from '../../../../api/organizationsApi';
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
+import InterfaceEditor from './InterfaceEditor';
 import { KindPicker, PricingPicker, ServiceDetailsForm } from './ServiceNodePanels';
 import type { LinkedPricing } from './ServiceTreeNode';
 import {
@@ -50,7 +51,8 @@ interface Props {
   onFocused: () => void;
 }
 
-type Panel = { id: string; kind: 'details' | 'pricings' } | null;
+type PanelKind = 'details' | 'interfaces' | 'pricings';
+type Panel = { id: string; kind: PanelKind } | null;
 type Drag = { id: string; over: string | null; position: DropPosition } | null;
 const TOP = '__top__';
 
@@ -237,7 +239,7 @@ function RowPanel({
   ctx,
 }: {
   node: ServiceNode;
-  kind: 'details' | 'pricings';
+  kind: PanelKind;
   ctx: OutlineContext;
 }) {
   const visible = node.pricingIds
@@ -248,7 +250,7 @@ function RowPanel({
   return (
     <div className="my-1 ml-2 mr-1 grid gap-3 sm:ml-14 rounded-xl border border-tp-hairline bg-tp-surface p-3">
       <div className="flex items-center gap-1">
-        {(['details', 'pricings'] as const).map(option => (
+        {(['details', 'interfaces', 'pricings'] as const).map(option => (
           <button
             key={option}
             type="button"
@@ -259,7 +261,11 @@ function RowPanel({
                 : 'text-tp-steel hover:text-tp-ink'
             }`}
           >
-            {option === 'details' ? 'Details' : `Pricings ${node.pricingIds.length}`}
+            {option === 'details'
+              ? 'Details'
+              : option === 'interfaces'
+                ? `Interfaces ${node.interfaces.length}`
+                : `Pricings ${node.pricingIds.length}`}
           </button>
         ))}
         <button
@@ -272,7 +278,13 @@ function RowPanel({
         </button>
       </div>
 
-      {kind === 'details' ? (
+      {kind === 'interfaces' ? (
+        <InterfaceEditor
+          node={node}
+          nodes={ctx.nodes}
+          onChange={(interfaces, field) => ctx.actions.update(node.id, { interfaces }, field)}
+        />
+      ) : kind === 'details' ? (
         <ServiceDetailsForm
           node={node}
           nodes={ctx.nodes}
@@ -333,7 +345,7 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
   const added = ctx.changes?.added.has(node.id);
   const changed = ctx.changes?.changed.has(node.id);
   const rowRef = useRef<HTMLDivElement>(null);
-  const togglePanel = (kind: 'details' | 'pricings') =>
+  const togglePanel = (kind: PanelKind) =>
     ctx.setPanel(panel === kind ? null : { id: node.id, kind });
   const dropLabel =
     over === 'inside'
@@ -451,6 +463,22 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
             onChange={changes => ctx.actions.update(node.id, changes, 'kind')}
           />
 
+          <button
+            type="button"
+            onClick={() => togglePanel('interfaces')}
+            title="Interfaces of the service"
+            aria-pressed={panel === 'interfaces'}
+            className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-tp-hairline-soft ${
+              panel === 'interfaces'
+                ? 'text-tp-primary'
+                : node.interfaces.length
+                  ? 'text-tp-slate'
+                  : 'text-tp-stone'
+            }`}
+          >
+            <Iconify icon="mdi:devices" width={14} />
+            {node.interfaces.length}
+          </button>
           <button
             type="button"
             onClick={() => togglePanel('pricings')}

@@ -43,7 +43,8 @@ export default function ServiceJsonEditor({ text, errors, readOnly, onChange }: 
             </span>
           ) : (
             <span className="flex items-center gap-1 text-xs text-tp-severity-error">
-              {errors.length === 1 ? '1 error' : `${errors.length} errors`}, the tree keeps the last valid version
+              {errors.length === 1 ? '1 error' : `${errors.length} errors`}, the tree keeps the last
+              valid version
             </span>
           )}
           <div className="ml-auto flex items-center gap-0.5">
@@ -80,12 +81,20 @@ export default function ServiceJsonEditor({ text, errors, readOnly, onChange }: 
 
       <p className="text-xs leading-5 text-tp-steel">
         Each service needs a <code className="font-mono">name</code>. Everything else is optional:{' '}
-        <code className="font-mono">kind</code> (autonomous, dependent or any new type, like "Add-on"),{' '}
-        <code className="font-mono">dependency</code> (functional, account or anything else),{' '}
-        <code className="font-mono">description</code>, <code className="font-mono">pricings</code> (their slugs) and the{' '}
-        <code className="font-mono">services</code> inside it. Leave the <code className="font-mono">id</code> out of a new
-        service to get one. Any other field, like <code className="font-mono">"customers": ["Acme"]</code>, is kept with the
-        service and shown in its details.
+        <code className="font-mono">kind</code> (autonomous, dependent or any new type, like
+        "Add-on"), <code className="font-mono">dependency</code> (functional, account or anything
+        else), <code className="font-mono">description</code>,{' '}
+        <code className="font-mono">pricings</code> (their slugs),{' '}
+        <code className="font-mono">interfaces</code> (each with a{' '}
+        <code className="font-mono">name</code>, a <code className="font-mono">channel</code> such
+        as interactive, programmatic, conversational, agentic or event, and optionally{' '}
+        <code className="font-mono">pending</code>, <code className="font-mono">description</code>,{' '}
+        <code className="font-mono">mechanisms</code> and any other field, like a{' '}
+        <code className="font-mono">quote</code> with its <code className="font-mono">source</code>)
+        and the <code className="font-mono">services</code> inside it. Leave the{' '}
+        <code className="font-mono">id</code> out of a new service to get one. Any other field, like{' '}
+        <code className="font-mono">"customers": ["Acme"]</code>, is kept with the service and shown
+        in its details.
       </p>
     </div>
   );

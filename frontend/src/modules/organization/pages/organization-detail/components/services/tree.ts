@@ -56,6 +56,7 @@ export function addService(
     dependency: null,
     pricingIds: [],
     attributes: {},
+    interfaces: [],
   };
   const at = afterId ? nodes.findIndex(n => n.id === afterId) : -1;
   if (at < 0) return { nodes: [...nodes, node], id };
@@ -70,7 +71,12 @@ export function canDrop(nodes: ServiceNode[], id: string, targetId: string): boo
 }
 
 /** Moves a service before or after another one (as its sibling), or inside it as its last child. */
-export function moveService(nodes: ServiceNode[], id: string, targetId: string, position: DropPosition): ServiceNode[] {
+export function moveService(
+  nodes: ServiceNode[],
+  id: string,
+  targetId: string,
+  position: DropPosition
+): ServiceNode[] {
   const node = nodes.find(n => n.id === id);
   const target = nodes.find(n => n.id === targetId);
   if (!node || !target || !canDrop(nodes, id, targetId)) return nodes;
@@ -80,7 +86,11 @@ export function moveService(nodes: ServiceNode[], id: string, targetId: string, 
   return [...rest.slice(0, at), { ...node, parentId: target.parentId }, ...rest.slice(at)];
 }
 
-export function updateService(nodes: ServiceNode[], id: string, changes: Partial<ServiceNode>): ServiceNode[] {
+export function updateService(
+  nodes: ServiceNode[],
+  id: string,
+  changes: Partial<ServiceNode>
+): ServiceNode[] {
   return nodes.map(node => {
     if (node.id !== id) return node;
     const next = { ...node, ...changes };
@@ -98,7 +108,11 @@ export function removeService(nodes: ServiceNode[], id: string): ServiceNode[] {
 }
 
 /** Swaps a service with its previous (-1) or next (1) sibling. */
-export function moveAmongSiblings(nodes: ServiceNode[], id: string, direction: -1 | 1): ServiceNode[] {
+export function moveAmongSiblings(
+  nodes: ServiceNode[],
+  id: string,
+  direction: -1 | 1
+): ServiceNode[] {
   const node = nodes.find(n => n.id === id);
   if (!node) return nodes;
   const siblings = childrenOf(nodes, node.parentId);
@@ -113,7 +127,11 @@ export function moveAmongSiblings(nodes: ServiceNode[], id: string, direction: -
 }
 
 /** Puts a service last under a new parent (null for the top level). */
-export function reparentService(nodes: ServiceNode[], id: string, parentId: string | null): ServiceNode[] {
+export function reparentService(
+  nodes: ServiceNode[],
+  id: string,
+  parentId: string | null
+): ServiceNode[] {
   const node = nodes.find(n => n.id === id);
   if (!node || node.parentId === parentId) return nodes;
   if (parentId && (parentId === id || descendantIds(nodes, id).has(parentId))) return nodes;
@@ -145,13 +163,18 @@ export function togglePricing(nodes: ServiceNode[], id: string, pricingId: strin
     const linked = node.pricingIds.includes(pricingId);
     return {
       ...node,
-      pricingIds: linked ? node.pricingIds.filter(p => p !== pricingId) : [...node.pricingIds, pricingId],
+      pricingIds: linked
+        ? node.pricingIds.filter(p => p !== pricingId)
+        : [...node.pricingIds, pricingId],
     };
   });
 }
 
 /** "Top level" and every service but the node and those below it, indented by depth. */
-export function parentOptions(nodes: ServiceNode[], id: string): { id: string | null; label: string }[] {
+export function parentOptions(
+  nodes: ServiceNode[],
+  id: string
+): { id: string | null; label: string }[] {
   const excluded = descendantIds(nodes, id);
   excluded.add(id);
   const options: { id: string | null; label: string }[] = [{ id: null, label: 'Top level' }];
@@ -192,14 +215,21 @@ export function diffTrees(before: ServiceNode[], after: ServiceNode[]): TreeChan
 }
 
 /** The known kinds (or dependencies), then the others the tree already uses. */
-export function labelsOf(nodes: ServiceNode[], pick: (node: ServiceNode) => string | null, known: string[]): string[] {
+export function labelsOf(
+  nodes: ServiceNode[],
+  pick: (node: ServiceNode) => string | null,
+  known: string[]
+): string[] {
   return [...new Set([...known, ...nodes.map(pick).filter((label): label is string => !!label)])];
 }
 
 /** A free attribute as text: lists joined with commas, anything else as JSON. */
 export function attributeText(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (Array.isArray(value) && value.every(item => ['string', 'number', 'boolean'].includes(typeof item))) {
+  if (
+    Array.isArray(value) &&
+    value.every(item => ['string', 'number', 'boolean'].includes(typeof item))
+  ) {
     return value.join(', ');
   }
   return JSON.stringify(value);

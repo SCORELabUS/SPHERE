@@ -84,6 +84,8 @@ export interface OrgPricing {
     configurationSpaceSize: number;
     minSubscriptionPrice: number;
     maxSubscriptionPrice: number;
+    numberOfPlans?: number;
+    numberOfAddOns?: number;
   };
 }
 

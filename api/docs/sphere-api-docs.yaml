@@ -7011,6 +7011,58 @@ components:
             Always returned, `{}` when there are none.
           example:
             customers: [Acme, Globex]
+        interfaces:
+          type: array
+          maxItems: 100
+          description: >-
+            The ways the service is used (its web app, its REST API, a chat bot...). Returned with every field,
+            named ones first and free ones after, in their order.
+          items:
+            $ref: '#/components/schemas/ServiceInterface'
+
+    ServiceInterface:
+      type: object
+      required: [name]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones (e.g. `quote`, `source`) is kept as given: names start with a letter
+        followed by letters, digits, `-` or `_`, nested keys cannot start with `$` or contain a dot, and the
+        interface takes at most 4000 characters as JSON.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        channel:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            INTERACTIVE, PROGRAMMATIC, CONVERSATIONAL, AGENTIC, EVENT or any other text for a channel the
+            organization makes up. Known channels are stored in capitals; empty or null means not classified.
+        pending:
+          type: boolean
+          default: false
+          description: Found but not confirmed yet
+        description:
+          type: string
+          maxLength: 2000
+        mechanisms:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+          description: How it is reached (clients, commands, protocols...)
+      example:
+        name: GitHub web app
+        channel: INTERACTIVE
+        pending: false
+        description: Web application at github.com
+        mechanisms: [github.com web client, GitHub Command Palette]
+        quote: We design GitHub with the latest web browsers in mind.
+        source: https://docs.github.com/en/get-started/using-github/supported-browsers
 
     ServiceTreeView:
       type: object
@@ -7048,6 +7100,8 @@ components:
                   id: { type: string }
                   name: { type: string }
                   slug: { type: string }
+              plans: { type: integer, nullable: true, description: Plans of the version listed, when known }
+              addOns: { type: integer, nullable: true, description: Add-ons of the version listed, when known }
 
     Error:
       type: object

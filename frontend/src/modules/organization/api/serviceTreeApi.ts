@@ -8,6 +8,20 @@ export type ServiceKind = 'AUTONOMOUS' | 'DEPENDENT' | (string & {});
 /** FUNCTIONAL and ACCOUNT are known; any other text is kept as written. */
 export type ServiceDependency = 'FUNCTIONAL' | 'ACCOUNT' | (string & {});
 
+/** The known channels, in capitals; any other text is a channel the organization made up. */
+export type InterfaceChannel =
+  'INTERACTIVE' | 'PROGRAMMATIC' | 'CONVERSATIONAL' | 'AGENTIC' | 'EVENT' | (string & {});
+
+/** A way of using a service. Fields other than the named ones (a quote, its source...) are kept as given. */
+export interface ServiceInterface {
+  name: string;
+  channel: InterfaceChannel | null;
+  pending: boolean;
+  description: string;
+  mechanisms: string[];
+  [field: string]: unknown;
+}
+
 export interface ServiceNode {
   id: string;
   parentId: string | null;
@@ -19,6 +33,8 @@ export interface ServiceNode {
   pricingIds: string[];
   /** Free fields (e.g. customers), edited in the JSON view and kept as given. */
   attributes: Record<string, unknown>;
+  /** The ways the service is used (web app, API, bot...), grouped by channel when shown. */
+  interfaces: ServiceInterface[];
 }
 
 export interface ServiceTreePricing {
@@ -28,6 +44,8 @@ export interface ServiceTreePricing {
   version: string;
   private: boolean;
   collection: { id: string; name: string; slug: string } | null;
+  plans: number | null;
+  addOns: number | null;
 }
 
 export interface ServiceTreeView {
@@ -44,7 +62,14 @@ export class ServiceTreeConflictError extends Error {}
 
 /** Every node with its attributes, so trees from before they existed compare equal to their edits. */
 function normalize(view: ServiceTreeView): ServiceTreeView {
-  return { ...view, nodes: view.nodes.map(node => ({ ...node, attributes: node.attributes ?? {} })) };
+  return {
+    ...view,
+    nodes: view.nodes.map(node => ({
+      ...node,
+      attributes: node.attributes ?? {},
+      interfaces: node.interfaces ?? [],
+    })),
+  };
 }
 
 export function useServiceTreeApi() {
@@ -63,7 +88,11 @@ export function useServiceTreeApi() {
   );
 
   const saveServiceTree = useCallback(
-    async (organizationId: string, nodes: ServiceNode[], revision: number): Promise<ServiceTreeView> => {
+    async (
+      organizationId: string,
+      nodes: ServiceNode[],
+      revision: number
+    ): Promise<ServiceTreeView> => {
       const res = await fetchWithInterceptor(`${BASE_PATH}/orgs/${organizationId}/services`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

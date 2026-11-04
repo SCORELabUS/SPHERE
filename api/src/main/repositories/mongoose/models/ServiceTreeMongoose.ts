@@ -16,6 +16,8 @@ const serviceNodeSchema = new Schema(
     pricingIds: { type: [Schema.Types.ObjectId], ref: 'PricingIdentity', default: [] },
     // Free fields added by hand (e.g. in the JSON editor), so new kinds of data need no schema change.
     attributes: { type: Schema.Types.Mixed, default: undefined },
+    // The ways the service is used; loosely typed so the taxonomy of channels and fields can grow.
+    interfaces: { type: [Schema.Types.Mixed], default: undefined },
   },
   { _id: false, minimize: false }
 );

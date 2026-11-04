@@ -3,7 +3,9 @@ import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepositor
 import { LeanUser } from '../types/models/User';
 import { OrgRole } from '../types/models/Organization';
 import {
+  InterfaceChannel,
   ServiceDependency,
+  ServiceInterface,
   ServiceKind,
   ServiceNode,
   ServiceTree,
@@ -22,13 +24,34 @@ export const SERVICE_TREE_LIMITS = {
   attributes: 30,
   attributesLength: 4000,
   attributesDepth: 5,
+  interfacesPerNode: 100,
+  interfaceNameLength: 200,
+  interfaceDescriptionLength: 2000,
+  mechanisms: 20,
+  mechanismLength: 120,
+  interfaceLength: 4000,
 };
 
 /**
  * Names a free attribute cannot take: the fields of a service, and the names
  * the JSON editor uses for them, so a service written as JSON reads back the same.
  */
-export const RESERVED_ATTRIBUTES = ['id', 'parentId', 'name', 'description', 'kind', 'dependency', 'pricingIds', 'pricings', 'services', 'attributes'];
+export const RESERVED_ATTRIBUTES = [
+  'id',
+  'parentId',
+  'name',
+  'description',
+  'kind',
+  'dependency',
+  'pricingIds',
+  'pricings',
+  'services',
+  'attributes',
+  'interfaces',
+];
+/** The fields of an interface; any other name is a free field of it. */
+const INTERFACE_FIELDS = ['name', 'channel', 'pending', 'description', 'mechanisms'];
+const CHANNELS: InterfaceChannel[] = ['INTERACTIVE', 'PROGRAMMATIC', 'CONVERSATIONAL', 'AGENTIC', 'EVENT'];
 const ATTRIBUTE_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
 const KINDS: ServiceKind[] = ['AUTONOMOUS', 'DEPENDENT'];
@@ -48,6 +71,24 @@ function parseLabel<T extends string>(raw: unknown, known: T[], what: string): T
   return known.find(value => value === label.toUpperCase()) ?? (label as T);
 }
 const NODE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Free values are stored as they come, so their keys must be valid MongoDB field
+ * names, and they may not be nested without end.
+ */
+function assertStorable(value: unknown, what: string, depth = 1): void {
+  if (value === null || typeof value !== 'object') return;
+  if (depth > SERVICE_TREE_LIMITS.attributesDepth) {
+    throw new Error(`INVALID DATA: ${what} are nested more than ${SERVICE_TREE_LIMITS.attributesDepth} levels`);
+  }
+  if (Array.isArray(value)) return value.forEach(item => assertStorable(item, what, depth + 1));
+  for (const [key, item] of Object.entries(value)) {
+    if (key.startsWith('$') || key.includes('.') || !key) {
+      throw new Error(`INVALID DATA: "${key}" in ${what} cannot start with $ or contain a dot`);
+    }
+    assertStorable(item, what, depth + 1);
+  }
+}
 
 /** Who may change an organization's tree: its OWNER and ADMIN members. */
 export function canEditServiceTree(orgRole: OrgRole | null | undefined): boolean {
@@ -119,6 +160,8 @@ class ServiceTreeService {
           slug: pricing.slug,
           version: pricing.version,
           private: pricing.private === true,
+          plans: typeof pricing.analytics?.numberOfPlans === 'number' ? pricing.analytics.numberOfPlans : null,
+          addOns: typeof pricing.analytics?.numberOfAddOns === 'number' ? pricing.analytics.numberOfAddOns : null,
           collection: pricing.collection?.slug
             ? { id: pricing.collection.id, name: pricing.collection.name, slug: pricing.collection.slug }
             : null,
@@ -197,6 +240,7 @@ class ServiceTreeService {
     }
 
     const attributes = this.parseAttributes(node.attributes, where);
+    const interfaces = this.parseInterfaces(node.interfaces, where);
 
     return {
       id: node.id,
@@ -207,7 +251,63 @@ class ServiceTreeService {
       dependency,
       pricingIds: uniquePricingIds,
       attributes,
+      interfaces,
     };
+  }
+
+  /** The interfaces of a service, written in one order (named fields first) so equal lists compare equal. */
+  private parseInterfaces(raw: unknown, where: string): ServiceInterface[] {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw new Error(`INVALID DATA: The interfaces of ${where} must be a list`);
+    if (raw.length > SERVICE_TREE_LIMITS.interfacesPerNode) {
+      throw new Error(`INVALID DATA: A service has at most ${SERVICE_TREE_LIMITS.interfacesPerNode} interfaces`);
+    }
+    return raw.map((item, index) => {
+      const what = `interface #${index + 1} of ${where}`;
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`INVALID DATA: ${what} must be an object`);
+      const entry = item as Record<string, unknown>;
+      const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+      if (!name || name.length > SERVICE_TREE_LIMITS.interfaceNameLength) {
+        throw new Error(`INVALID DATA: ${what} needs a name of 1 to ${SERVICE_TREE_LIMITS.interfaceNameLength} characters`);
+      }
+      const channel = parseLabel(entry.channel, CHANNELS, `The channel of ${what}`);
+      if (entry.pending !== undefined && entry.pending !== null && typeof entry.pending !== 'boolean') {
+        throw new Error(`INVALID DATA: pending in ${what} must be true or false`);
+      }
+      const description = entry.description ?? '';
+      if (typeof description !== 'string' || description.length > SERVICE_TREE_LIMITS.interfaceDescriptionLength) {
+        throw new Error(`INVALID DATA: The description of ${what} must be text of at most ${SERVICE_TREE_LIMITS.interfaceDescriptionLength} characters`);
+      }
+      const mechanisms = entry.mechanisms ?? [];
+      if (
+        !Array.isArray(mechanisms) ||
+        mechanisms.length > SERVICE_TREE_LIMITS.mechanisms ||
+        mechanisms.some(m => typeof m !== 'string' || !m.trim() || m.length > SERVICE_TREE_LIMITS.mechanismLength)
+      ) {
+        throw new Error(
+          `INVALID DATA: The mechanisms of ${what} must be a list of at most ${SERVICE_TREE_LIMITS.mechanisms} texts of up to ${SERVICE_TREE_LIMITS.mechanismLength} characters`
+        );
+      }
+      const extra = Object.fromEntries(Object.entries(entry).filter(([key]) => !INTERFACE_FIELDS.includes(key)));
+      for (const key of Object.keys(extra)) {
+        if (!ATTRIBUTE_NAME.test(key)) {
+          throw new Error(`INVALID DATA: "${key}" cannot name a field of ${what}: use a letter followed by letters, digits, - or _`);
+        }
+      }
+      assertStorable(extra, `the fields of ${what}`);
+      const parsed: ServiceInterface = {
+        name,
+        channel,
+        pending: entry.pending === true,
+        description: description.trim(),
+        mechanisms: (mechanisms as string[]).map(m => m.trim()),
+        ...extra,
+      };
+      if (JSON.stringify(parsed).length > SERVICE_TREE_LIMITS.interfaceLength) {
+        throw new Error(`INVALID DATA: ${what} takes more than ${SERVICE_TREE_LIMITS.interfaceLength} characters`);
+      }
+      return parsed;
+    });
   }
 
   private parseAttributes(raw: unknown, where: string): Record<string, unknown> {
@@ -227,21 +327,7 @@ class ServiceTreeService {
     if (JSON.stringify(raw).length > SERVICE_TREE_LIMITS.attributesLength) {
       throw new Error(`INVALID DATA: The attributes of ${where} take more than ${SERVICE_TREE_LIMITS.attributesLength} characters`);
     }
-    // Nested keys are stored as they come, so they must be valid MongoDB field names.
-    const check = (value: unknown, depth: number): void => {
-      if (value === null || typeof value !== 'object') return;
-      if (depth > SERVICE_TREE_LIMITS.attributesDepth) {
-        throw new Error(`INVALID DATA: The attributes of ${where} are nested more than ${SERVICE_TREE_LIMITS.attributesDepth} levels`);
-      }
-      if (Array.isArray(value)) return value.forEach(item => check(item, depth + 1));
-      for (const [key, item] of Object.entries(value)) {
-        if (key.startsWith('$') || key.includes('.') || !key) {
-          throw new Error(`INVALID DATA: "${key}" in the attributes of ${where} cannot start with $ or contain a dot`);
-        }
-        check(item, depth + 1);
-      }
-    };
-    check(raw, 1);
+    assertStorable(raw, `the attributes of ${where}`);
     return raw as Record<string, unknown>;
   }
 }

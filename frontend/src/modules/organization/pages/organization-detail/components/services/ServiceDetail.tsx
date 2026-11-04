@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import Iconify from '../../../../../core/components/iconify';
 import RouterLink from '../../../../../core/components/router-link';
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
+import ServiceInterfaces from './ServiceInterfaces';
 import ServiceKindBadge from './ServiceKindBadge';
+import { interfaceCounts } from './interfaces';
 import type { DetailTab, LinkedPricing } from './ServiceTreeNode';
 import { ancestorsOf, attributeText, childrenOf } from './tree';
 
@@ -12,6 +14,8 @@ interface Props {
   node: ServiceNode | null;
   tab: DetailTab;
   onTab: (tab: DetailTab) => void;
+  /** The interface picked in the tree, highlighted in the Interfaces tab. */
+  highlightedInterface: number | null;
   onSelect: (id: string | null) => void;
   linkedPricing: (pricingId: string) => LinkedPricing | null;
 }
@@ -37,7 +41,8 @@ function kindSentence(node: ServiceNode, parent: ServiceNode | undefined): strin
         : node.dependency
           ? `it depends on: ${node.dependency}`
           : '';
-  if (node.kind === 'AUTONOMOUS') return 'Autonomous: it has a purpose of its own and is contracted on its own.';
+  if (node.kind === 'AUTONOMOUS')
+    return 'Autonomous: it has a purpose of its own and is contracted on its own.';
   if (node.kind === 'DEPENDENT') return needs ? `Dependent: ${needs}.` : `Dependent on ${base}.`;
   if (!node.kind) return needs ? `Not classified yet; ${needs}.` : 'Not classified yet.';
   return needs ? `${node.kind}: ${needs}.` : node.kind;
@@ -50,7 +55,10 @@ function Overview({ orgName, nodes, onSelect }: Pick<Props, 'orgName' | 'nodes' 
   const otherKinds = [
     ...nodes
       .filter(node => node.kind && node.kind !== 'AUTONOMOUS' && node.kind !== 'DEPENDENT')
-      .reduce((totals, node) => totals.set(node.kind!, (totals.get(node.kind!) ?? 0) + 1), new Map<string, number>()),
+      .reduce(
+        (totals, node) => totals.set(node.kind!, (totals.get(node.kind!) ?? 0) + 1),
+        new Map<string, number>()
+      ),
   ];
   const linked = new Set(nodes.flatMap(node => node.pricingIds)).size;
   const roots = childrenOf(nodes, null);
@@ -97,25 +105,52 @@ function Overview({ orgName, nodes, onSelect }: Pick<Props, 'orgName' | 'nodes' 
           ))}
         </div>
       )}
-      <p className="text-sm text-tp-steel">Pick a service in the tree to see what it is and its pricings.</p>
+      <p className="text-sm text-tp-steel">
+        Pick a service in the tree to see what it is and its pricings.
+      </p>
     </div>
   );
 }
 
 /** The right side of the view mode: the organization, or the service picked in the tree. */
-export default function ServiceDetail({ orgName, nodes, node, tab, onTab, onSelect, linkedPricing }: Props) {
+export default function ServiceDetail({
+  orgName,
+  nodes,
+  node,
+  tab,
+  onTab,
+  highlightedInterface,
+  onSelect,
+  linkedPricing,
+}: Props) {
   if (!node) return <Overview orgName={orgName} nodes={nodes} onSelect={onSelect} />;
 
   const ancestors = ancestorsOf(nodes, node.id);
   const parent = ancestors[ancestors.length - 1];
   const children = childrenOf(nodes, node.id);
-  const visible = node.pricingIds.map(id => ({ id, pricing: linkedPricing(id) })).filter(entry => entry.pricing);
+  const visible = node.pricingIds
+    .map(id => ({ id, pricing: linkedPricing(id) }))
+    .filter(entry => entry.pricing);
   const hidden = node.pricingIds.length - visible.length;
+  const { confirmed, pending } = interfaceCounts(node.interfaces);
+  const counts: Record<DetailTab, string | null> = {
+    classification: null,
+    interfaces: `${confirmed}${pending ? ` +${pending}` : ''}`,
+    pricings: String(node.pricingIds.length),
+  };
+  const labels: Record<DetailTab, string> = {
+    classification: 'Classification',
+    interfaces: 'Interfaces',
+    pricings: 'Pricing',
+  };
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-1.5">
-        <nav aria-label="Path" className="flex flex-wrap items-center gap-x-1 text-xs text-tp-steel">
+        <nav
+          aria-label="Path"
+          className="flex flex-wrap items-center gap-x-1 text-xs text-tp-steel"
+        >
           <button type="button" onClick={() => onSelect(null)} className={linkClass}>
             {orgName}
           </button>
@@ -134,27 +169,37 @@ export default function ServiceDetail({ orgName, nodes, node, tab, onTab, onSele
         </h3>
       </div>
 
-      <div role="tablist" aria-label="Service" className="inline-flex justify-self-start overflow-hidden rounded-lg border border-tp-hairline">
-        {(['details', 'pricings'] as DetailTab[]).map(option => (
+      <div
+        role="tablist"
+        aria-label="Service"
+        className="inline-flex justify-self-start overflow-hidden rounded-lg border border-tp-hairline"
+      >
+        {(['classification', 'interfaces', 'pricings'] as DetailTab[]).map(option => (
           <button
             key={option}
             type="button"
             role="tab"
             aria-selected={tab === option}
             onClick={() => onTab(option)}
-            className={`flex cursor-pointer items-center gap-1.5 border-l border-tp-hairline px-3.5 py-1.5 text-xs font-medium transition-colors first:border-l-0 ${
-              tab === option ? 'bg-tp-primary/10 text-tp-primary' : 'text-tp-steel hover:text-tp-ink'
+            className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-l border-tp-hairline px-3 sm:px-3.5 py-1.5 text-xs font-medium transition-colors first:border-l-0 ${
+              tab === option
+                ? 'bg-tp-primary/10 text-tp-primary'
+                : 'text-tp-steel hover:text-tp-ink'
             }`}
           >
-            {option === 'details' ? 'Details' : 'Pricings'}
-            {option === 'pricings' && <span className="font-mono text-[11px]">{node.pricingIds.length}</span>}
+            {labels[option]}
+            {counts[option] && <span className="font-mono text-[11px]">{counts[option]}</span>}
           </button>
         ))}
       </div>
 
-      {tab === 'details' ? (
+      {tab === 'interfaces' ? (
+        <ServiceInterfaces interfaces={node.interfaces} highlighted={highlightedInterface} />
+      ) : tab === 'classification' ? (
         <dl>
-          <Fact label="Description">{node.description || <span className="text-tp-steel">No description.</span>}</Fact>
+          <Fact label="Description">
+            {node.description || <span className="text-tp-steel">No description.</span>}
+          </Fact>
           <Fact label="Type">{kindSentence(node, parent)}</Fact>
           <Fact label="Inside">
             {parent ? (
@@ -176,7 +221,12 @@ export default function ServiceDetail({ orgName, nodes, node, tab, onTab, onSele
             ) : (
               <span className="flex flex-wrap gap-x-3 gap-y-1">
                 {children.map(child => (
-                  <button key={child.id} type="button" onClick={() => onSelect(child.id)} className={linkClass}>
+                  <button
+                    key={child.id}
+                    type="button"
+                    onClick={() => onSelect(child.id)}
+                    className={linkClass}
+                  >
                     {child.name}
                   </button>
                 ))}
@@ -197,8 +247,19 @@ export default function ServiceDetail({ orgName, nodes, node, tab, onTab, onSele
               >
                 {pricing!.name}
               </RouterLink>
-              {pricing!.version && <span className="shrink-0 font-mono text-[11px] text-tp-steel">{pricing!.version}</span>}
-              {pricing!.private && <Iconify icon="mdi:lock-outline" width={13} className="shrink-0 text-tp-steel" aria-label="Private" />}
+              {pricing!.version && (
+                <span className="shrink-0 font-mono text-[11px] text-tp-steel">
+                  {pricing!.version}
+                </span>
+              )}
+              {pricing!.private && (
+                <Iconify
+                  icon="mdi:lock-outline"
+                  width={13}
+                  className="shrink-0 text-tp-steel"
+                  aria-label="Private"
+                />
+              )}
             </li>
           ))}
           {hidden > 0 && (
