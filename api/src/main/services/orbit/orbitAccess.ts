@@ -1,4 +1,5 @@
 import { OrgRole } from '../../types/models/Organization';
+import { ApiKey } from '../../types/models/User';
 import { generateSlug } from '../../utils/slug-manager';
 
 /** The signed-in user ORBIT acts for. */
@@ -6,6 +7,13 @@ export interface OrbitActor {
   id: string;
   username: string;
   role: string;
+  /**
+   * The API key the user came with (the MCP server). Its scopes bound what
+   * ORBIT reads for it as they bound the REST API: a VIEW scope acts as a
+   * plain MEMBER, MANAGEMENT at most as an ADMIN, and the global ADMIN bypass
+   * does not apply (see `policies/privateReadRule.ts`).
+   */
+  apiKey?: ApiKey;
 }
 
 interface RoleSource {
@@ -15,13 +23,19 @@ interface RoleSource {
 /**
  * The role the user holds in an organization, counting the ones inherited from
  * above, exactly as the route guard works it out: a platform administrator
- * answers for every organization as its owner.
+ * answers for every organization as its owner. With an API key, the role the
+ * key acts with in that organization (none where it has no scope).
  */
 export async function resolveOrgRole(
   organizationService: RoleSource,
   actor: OrbitActor,
   organizationId: string
 ): Promise<OrgRole | null> {
+  if (actor.apiKey) {
+    const { default: container } = await import('../../config/container');
+    const access = await container.resolve('permissionService').actingAccess(actor as any, organizationId, 'api-key');
+    return access.reachable ? access.role : null;
+  }
   if (actor.role === 'ADMIN') return 'OWNER';
   return organizationService.getUserOrgRole(actor.id, organizationId);
 }

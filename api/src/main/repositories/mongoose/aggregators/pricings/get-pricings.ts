@@ -1,10 +1,10 @@
 import { PipelineStage } from "mongoose";
-import { OrgUserPermissionsContext } from "../../../../types/policies";
+import { OrgUserPermissionsContext, PrivateCollectionAccess } from "../../../../types/policies";
 import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorRootAggregator } from "./group-pricing-versions";
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
 import { filterByOrganizationAggregator } from "./filter-by-organization";
-import { considerUserPermissionsAggregator } from "./filter-by-user-permissions";
+import { considerUserPermissionsAggregator, grantedByKey } from "./filter-by-user-permissions";
 import { filtersDataGenerator } from "./filters-data-generator";
 import { refactorOutputAggregator } from "./refactor-output";
 
@@ -13,12 +13,14 @@ export function getPricingsAggregator(
   permissions?: OrgUserPermissionsContext,
   filteringAggregator: PipelineStage[] = [],
   sortAggregator: PipelineStage[] = [],
+  // Private collections the viewer may see; the others are hidden from the result.
+  collectionVisibility: PrivateCollectionAccess = [],
 ){
   const pipeline: PipelineStage[] = [
       { $sort: { createdAt: -1 } },
       latestPricingsByNameAggregator,
       refactorRootAggregator,
-      ...populateCollectionDataAggregator,
+      ...populateCollectionDataAggregator(collectionVisibility),
       ...populateOrganizationDataAggregator,
       ...(organizationId ? filterByOrganizationAggregator(organizationId) : [{ $match: {} }]),
       ...pickVisibleVersionAggregator(canSeePrivateVersions(permissions)),
@@ -56,8 +58,8 @@ function canSeePrivateVersions(permissions?: OrgUserPermissionsContext): unknown
   return {
     $or: [
       { $in: [{ $toString: '$_organizationId' }, permissions.adminOrgIds] },
-      { $in: [{ $ifNull: ['$collection.slug', null] }, permissions.collections] },
-      { $in: ['$slug', permissions.pricings] },
+      grantedByKey('$collection.slug', permissions.collectionKeys, permissions.collections),
+      grantedByKey('$slug', permissions.pricingKeys, permissions.pricings),
     ],
   };
 }

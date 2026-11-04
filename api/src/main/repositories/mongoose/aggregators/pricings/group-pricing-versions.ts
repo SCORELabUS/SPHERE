@@ -45,7 +45,8 @@ export const pickVisibleVersionAggregator = (canSeePrivate: unknown) => [
           {
             $mergeObjects: [
               '$_latestPublicPricing',
-              { collection: '$collection', organization: '$organization' },
+              // `_collectionId` too, as the collection lookup may have hidden it.
+              { collection: '$collection', organization: '$organization', _collectionId: { $ifNull: ['$_collectionId', null] } },
             ],
           },
         ],

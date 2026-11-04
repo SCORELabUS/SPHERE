@@ -318,6 +318,14 @@ describe('Auth Middleware - Integration Tests', () => {
   });
 
   describe('Public endpoints', () => {
+    it('delegates OIDC userinfo authentication to its dedicated identity token', async () => {
+      for (const auth of [undefined, { token: adminUser.token }]) {
+        const response = await requestWithAuth(app, 'GET', `${BASE_PATH}/oidc/userinfo`, auth);
+        expect(response.status).toBe(401);
+        expect(response.body.error).toBe('invalid_token');
+      }
+    });
+
     it('allows unauthenticated access to every public endpoint defined in permissions', async () => {
       const ctx = buildContext();
       for (const endpoint of getPublicEndpoints()) {

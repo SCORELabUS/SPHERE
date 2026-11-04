@@ -2,6 +2,22 @@ import dotenv from 'dotenv';
 import { RedisClientType } from 'redis';
 dotenv.config();
 
+/** Prefix of the entries only the server reads and writes, such as computed configuration spaces. */
+export const INTERNAL_CACHE_PREFIX = 'internal:';
+
+/**
+ * Prefixes of the server's own entries: its computed results, SSO login state
+ * and rate-limit counters. The public `/cache` endpoint neither reads nor
+ * writes keys under them.
+ */
+export const SERVER_CACHE_PREFIXES = [INTERNAL_CACHE_PREFIX, 'sso:', 'ratelimit:', 'oidc:'] as const;
+
+/** Whether a key belongs to the server's own entries (keys are case-insensitive). */
+export function isServerCacheKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  return SERVER_CACHE_PREFIXES.some(prefix => normalized.startsWith(prefix));
+}
+
 class CacheService {
   private redisClient: RedisClientType | null = null;
   private readonly namespace = (process.env.REDIS_KEY_PREFIX ?? 'sphere:').replace(/:$/, '') + ':';
@@ -59,6 +75,24 @@ class CacheService {
     await this.redisClient?.set(this.key(key), JSON.stringify(value), {
       EX: expirationInSeconds ?? 300,
     });
+  }
+
+  /**
+   * Adds one to a counter that disappears after `ttlSeconds`, and returns the
+   * new count. The expiry is only set by the first increment, so the counter
+   * covers a fixed window instead of being pushed back by every hit.
+   */
+  async incrementWindow(key: string, ttlSeconds: number): Promise<number> {
+    if (!this.redisClient) {
+      throw new Error('ERROR: Redis client not initialized');
+    }
+
+    const count = await this.redisClient.incr(this.key(key));
+    if (count === 1) {
+      await this.redisClient.expire(this.key(key), ttlSeconds);
+    }
+
+    return count;
   }
 }
 

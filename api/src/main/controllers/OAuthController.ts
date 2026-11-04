@@ -16,7 +16,8 @@ export default class OAuthController {
           : await service.decide(req.params.requestId, userId, req.body.approve, req.body.scopes));
       }
       if (req.method === 'GET') return res.json(await service.listGrants(userId));
-      await service.revokeGrant(userId, req.params.grantId);
+      if (req.method === 'PUT') await service.updateGrant(userId, req.params.grantId, req.body.scopes);
+      else await service.revokeGrant(userId, req.params.grantId);
       return res.status(204).end();
     } catch (error) {
       const { status, message } = handleError(error);

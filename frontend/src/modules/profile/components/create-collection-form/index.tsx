@@ -47,6 +47,8 @@ export default function CreateCollectionForm({ setShowLoading }: CreateCollectio
     if (orgId !== prevOrgIdRef.current) {
       prevOrgIdRef.current = orgId;
       setDismissedPermissionError(false);
+      // The selected pricings belong to the previous organization.
+      setSelectedPricings([]);
     }
 
     if (!selectedOrg) {
@@ -219,7 +221,11 @@ export default function CreateCollectionForm({ setShowLoading }: CreateCollectio
       </div>
       {tabValue === 0 ? (
         <>
-          <PricingSelector value={selectedPricings} onChange={setSelectedPricings} />{' '}
+          <PricingSelector
+            organizationId={selectedOrg?.id ?? null}
+            value={selectedPricings}
+            onChange={setSelectedPricings}
+          />{' '}
           <div className="flex items-center justify-center">
             <ActionButton 
               text='Add Collection' 

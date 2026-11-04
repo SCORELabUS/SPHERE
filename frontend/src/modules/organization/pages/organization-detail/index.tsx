@@ -6,8 +6,6 @@ import { FaFileInvoiceDollar } from 'react-icons/fa';
 import { useRouter } from '../../../core/hooks/useRouter';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { useAuth } from '../../../auth/hooks/useAuth';
-import customConfirm from '../../../core/utils/custom-confirm';
-import customAlert from '../../../core/utils/custom-alert';
 import { staggerContainer, fadeInUp, transitionDefault } from '../../../core/utils/motion-variants';
 import {
   Organization,
@@ -36,6 +34,7 @@ import AddMemberModal from './components/AddMemberModal';
 import InviteModal from './components/InviteModal';
 import OverviewTab from './components/OverviewTab';
 import MembersTab from './components/MembersTab';
+import OrganizationExitButton from './components/OrganizationExitButton';
 import InvitationsTab from './components/InvitationsTab';
 import PricingsTab from './components/PricingsTab';
 import CollectionsTab from './components/CollectionsTab';
@@ -87,24 +86,14 @@ export default function OrganizationDetailPage() {
     getUserAccessiblePricings,
     getUserAccessibleCollections,
     getOrgHierarchy,
-    removeMember,
   } = useOrganizationsApi();
 
   const canManage = !isPublicView && (myRole === 'OWNER' || myRole === 'ADMIN');
 
-  const handleLeaveOrg = useCallback(() => {
-    if (!authUser.user?.id || !organizationId) return;
-    customConfirm(
-      'Are you sure you want to leave this organization? You will lose access to all its resources.',
-      { danger: true }
-    )
-      .then(() =>
-        removeMember(organizationId, authUser.user!.id)
-          .then(() => router.push('/'))
-          .catch((err: Error) => customAlert(err.message))
-      )
-      .catch(() => {});
-  }, [authUser.user?.id, organizationId, removeMember, router]);
+  const handleOrganizationExited = async () => {
+    await refreshMyOrganizations();
+    router.push('/');
+  };
 
   /* ─── Data loading ─── */
   const loadOrgData = useCallback(async () => {
@@ -258,19 +247,11 @@ export default function OrganizationDetailPage() {
       }
     }
 
-    // A branch the viewer cannot open stays closed: what is under it is none of
-    // their business, the same way it was hidden before.
-    for (const treeNode of byId.values()) {
-      if (!treeNode.hasAccess) {
-        treeNode.children = [];
-      }
-    }
-
     setHierarchyTree(root ?? byId.get(org.id) ?? null);
   }, [org, getOrgHierarchy]);
 
   useEffect(() => {
-    if (org && myRole) buildHierarchyTree();
+    if (org) buildHierarchyTree();
   }, [org, myRole, buildHierarchyTree]);
 
   const autoExpandedOrgIdRef = useRef<string | null>(null);
@@ -449,7 +430,7 @@ export default function OrganizationDetailPage() {
   /* ─── Tabs ─── */
   const availableTabs = useMemo(() => {
     if (isPublicView) {
-      return ['overview', 'members', 'pricings', 'collections'] as Tab[];
+      return ['overview', 'members', 'pricings', 'collections', 'children'] as Tab[];
     }
     const tabs: Tab[] = [
       'overview',
@@ -562,15 +543,14 @@ export default function OrganizationDetailPage() {
                         Edit
                       </button>
                     )}
-                    {!isPublicView && !org.isPersonal && (
-                      <button
-                        type="button"
-                        onClick={handleLeaveOrg}
-                        className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-900/40"
-                      >
-                        <Iconify icon="mdi:logout" width={15} />
-                        Leave
-                      </button>
+                    {!isPublicView && (
+                      <OrganizationExitButton
+                        orgId={org.id}
+                        isPersonal={org.isPersonal}
+                        members={members}
+                        currentUserId={authUser.user?.id}
+                        onExited={handleOrganizationExited}
+                      />
                     )}
                   </div>
                 </motion.div>
@@ -718,7 +698,8 @@ export default function OrganizationDetailPage() {
               onRefresh={refreshMembers}
               onOwnershipTransferred={handleOrgChanged}
               onAddMember={() => setAddMemberModalOpen(true)}
-              onLeave={() => router.push('/')}
+              onLeave={handleOrganizationExited}
+              isPersonal={org.isPersonal}
               isPublicView={isPublicView}
             />
           )}
@@ -764,7 +745,7 @@ export default function OrganizationDetailPage() {
             />
           )}
 
-          {!isPublicView && activeTab === 'children' && (
+          {activeTab === 'children' && (
             <HierarchyTab
               org={org}
               canManage={canManage}

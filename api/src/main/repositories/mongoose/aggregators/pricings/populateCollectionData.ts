@@ -1,45 +1,71 @@
-export const populateCollectionDataAggregator = [
-  {
-    $lookup: {
-      from: 'pricingCollections',
-      let: {
-        localCollectionId: {
-          $convert: {
-            input: '$_collectionId',
+import { PrivateCollectionAccess } from '../../../../types/policies';
 
-            to: 'objectId',
+/**
+ * Adds the pricing's collection as `{ id, name, slug }`. A private collection
+ * the viewer may not see is left out, `_collectionId` included, so the pricing
+ * reads, filters and sorts exactly like one in no collection.
+ */
+export const populateCollectionDataAggregator = (visibility: PrivateCollectionAccess) => {
+  const visible =
+    visibility === 'all'
+      ? true
+      : {
+          $or: [
+            { $ne: ['$collection.private', true] },
+            { $in: [{ $toString: '$collection._id' }, visibility] },
+          ],
+        };
 
-            onError: null,
+  return [
+    {
+      $lookup: {
+        from: 'pricingCollections',
+        let: {
+          localCollectionId: {
+            $convert: {
+              input: '$_collectionId',
 
-            onNull: null,
-          },
-        },
-      },
-      pipeline: [
-        {
-          $match: {
-            $expr: {
-              $eq: ['$_id', '$$localCollectionId'],
+              to: 'objectId',
+
+              onError: null,
+
+              onNull: null,
             },
           },
         },
-      ],
-      as: 'collection',
-    },
-  },
-  {
-    $unwind: {
-      path: '$collection',
-      preserveNullAndEmptyArrays: true,
-    },
-  },
-  {
-    $set: {
-      collection: {
-        id: { $toString: '$collection._id' },
-        name: '$collection.name',
-        slug: '$collection.slug',
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $eq: ['$_id', '$$localCollectionId'],
+              },
+            },
+          },
+        ],
+        as: 'collection',
       },
     },
-  },
-];
+    {
+      $unwind: {
+        path: '$collection',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $set: {
+        _collectionId: { $cond: [visible, '$_collectionId', null] },
+        collection: {
+          $cond: [
+            visible,
+            {
+              id: { $toString: '$collection._id' },
+              name: '$collection.name',
+              slug: '$collection.slug',
+            },
+            { id: null },
+          ],
+        },
+      },
+    },
+  ];
+};

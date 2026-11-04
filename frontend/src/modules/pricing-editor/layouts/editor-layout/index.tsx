@@ -92,7 +92,7 @@ export default function EditorLayout({ children }: { children?: React.ReactNode 
     <EditorValueContext.Provider value={{ editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, setPendingVisualDraft, saveDraft, sourcePricing, setSourcePricing }}>
       <div className="flex h-dvh flex-col bg-tp-surface-code">
         <EditorHeader onShareLink={renderSharedLink} onImport={renderYamlImport} />
-        <Main>{children}</Main>
+        <Main className="relative">{children}</Main>
       </div>
 
       {/* Share Link Modal */}

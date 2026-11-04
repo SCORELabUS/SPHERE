@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePricingContext } from '../hooks/usePricingContext';
 import { usePricingVersions } from '../hooks/useVersion';
 import { fetchPricingYaml } from '../sphere';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { SphereContextItemInput } from '../types/types';
 import PricingVersionLoader from './PricingVersionLoader';
 
@@ -23,6 +24,7 @@ function PricingVersions({
   onContextRemove,
 }: PricingVersionProps) {
   const { loading, error, versions } = usePricingVersions(organizationId, slug, collectionSlug);
+  const { authUser } = useAuth();
   const pricingContextItems = usePricingContext();
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [isAdding, setIsAdding] = useState(false);
@@ -57,7 +59,7 @@ function PricingVersions({
     try {
       setIsAdding(true);
       setActionError(null);
-      const yamlFile = await fetchPricingYaml(selectedVersion.yaml);
+      const yamlFile = await fetchPricingYaml(selectedVersion.yaml, authUser?.token);
       onContextAdd({
         sphereId: selectedVersion.id,
         kind: 'yaml',

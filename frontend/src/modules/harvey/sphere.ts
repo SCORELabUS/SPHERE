@@ -1,3 +1,5 @@
+import { pricingYamlRequestInit } from '../core/utils/pricing-yaml';
+
 export interface PricingSearchResult {
   total: number;
   pricings: PricingSearchResultItem[];
@@ -37,8 +39,9 @@ function getPricingYamlRequestUrl(url: string) {
   return parsedUrl.toString();
 }
 
-export async function fetchPricingYaml(url: string) {
-  const response = await fetch(getPricingYamlRequestUrl(url));
+export async function fetchPricingYaml(url: string, token?: string | null) {
+  const requestUrl = getPricingYamlRequestUrl(url);
+  const response = await fetch(requestUrl, pricingYamlRequestInit(requestUrl, token));
   if (!response.ok) {
     throw new Error(`Response status: ${response.status}`);
   }

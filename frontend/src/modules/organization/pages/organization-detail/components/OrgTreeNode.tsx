@@ -46,13 +46,13 @@ export default function OrgTreeNode({
         } ${dnd.isDragging ? 'opacity-40' : ''} ${
           node.isCurrent
             ? 'bg-tp-primary/8 ring-1 ring-tp-primary/20'
-            : node.hasAccess
-              ? 'hover:bg-tp-surface cursor-pointer'
-              : 'opacity-60'
+            : `hover:bg-tp-surface cursor-pointer ${node.hasAccess ? '' : 'opacity-60'}`
         }`}
         style={{ paddingLeft: `${level * 24 + 12}px` }}
+        // Every organization has a public page, so a node the viewer cannot open
+        // as a member still leads somewhere: to what it makes public.
         onClick={() => {
-          if (node.hasAccess && !node.isCurrent) {
+          if (!node.isCurrent) {
             onNavigate(node.id);
           }
         }}
@@ -102,7 +102,9 @@ export default function OrgTreeNode({
         )}
 
         {!node.hasAccess && (
-          <Iconify icon="mdi:lock-outline" width={14} className="shrink-0 text-tp-ink" />
+          <span title="Only its public content is visible to you" className="shrink-0">
+            <Iconify icon="mdi:lock-outline" width={14} className="text-tp-ink" />
+          </span>
         )}
 
         {node.isAncestor && (

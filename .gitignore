@@ -48,3 +48,7 @@ api/scripts/.local-sso.*
 frontend/src/modules/presentation/pages/changelog/data
 # Github PAT secret to build changelog
 docker/gh_pat.txt
+
+.claude/
+# Browser E2E screenshots
+api/test-results/

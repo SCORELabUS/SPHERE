@@ -137,7 +137,7 @@ class OrganizationService {
    * costs a request per node, several times over, so it is answered here in two
    * queries: one for the branch, one for the caller's memberships.
    */
-  async getHierarchy(organizationId: string, user: { id: string; role?: string }) {
+  async getHierarchy(organizationId: string, user?: { id: string; role?: string }) {
     const organization: any = await this.organizationRepository.findById(organizationId);
     if (!organization) {
       throw new Error('NOT FOUND: Organization not found');
@@ -149,10 +149,12 @@ class OrganizationService {
     const [branch, roles] = await Promise.all([
       this.organizationRepository.findBranch(rootId),
       // A platform administrator answers for every organization, so there is no
-      // point asking which ones they belong to.
-      user.role === 'ADMIN'
-        ? Promise.resolve(null)
-        : this.organizationMembershipRepository.findRolesByUserId(user.id),
+      // point asking which ones they belong to. A visitor belongs to none.
+      !user
+        ? Promise.resolve(new Map<string, OrgRole>())
+        : user.role === 'ADMIN'
+          ? Promise.resolve(null)
+          : this.organizationMembershipRepository.findRolesByUserId(user.id),
     ]);
 
     // Management cascades down the tree, so a node is open to the caller when
@@ -582,6 +584,25 @@ class OrganizationService {
     if (role !== 'OWNER') {
       throw new Error(`PERMISSION ERROR: You must be an OWNER of ${description} to move it`);
     }
+  }
+
+  /** Delete a whole branch through the web API, keeping single-node deletion available
+   * for account cleanup and ORBIT's explicitly confirmed, deepest-first plans. */
+  async destroyTree(id: string) {
+    const organization = await this.organizationRepository.findById(id);
+    if (!organization) {
+      throw new Error('NOT FOUND: Organization not found');
+    }
+    if (organization.isPersonal) {
+      throw new Error('PERMISSION ERROR: Personal organizations cannot be deleted');
+    }
+
+    const descendants = await this.organizationRepository.findDescendants(id);
+    const deepestFirst = [...descendants].sort((a, b) => b.ancestors.length - a.ancestors.length);
+    for (const descendant of deepestFirst) {
+      await this.destroy(descendant.id);
+    }
+    return this.destroy(id);
   }
 
   async destroy(id: string, skipPersonalCheck = false) {

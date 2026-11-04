@@ -44,6 +44,10 @@ const axisTick = { fill: '#4a4a4a', fontSize: 11 };
 const compactNum = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const fmtY = (v: number) => { if (!Number.isFinite(v)) return ''; return Math.abs(v) >= 1000 ? compactNum.format(v) : String(v); };
 const fmtTooltip = (v: number) => Number.isFinite(v) ? Number(v.toFixed(2)).toString() : String(v);
+// The API sends null bounds when no pricing in the collection has analytics.
+const fmtRange = (range: { min: number | null; max: number | null } | undefined, format: (v: number) => string) =>
+  range && Number.isFinite(range.min) && Number.isFinite(range.max) ? `${format(range.min!)} – ${format(range.max!)}` : '—';
+const fmtPrice = (v: number) => `$${v.toFixed(2)}`;
 
 export default function CollectionCardPage() {
   const { organizationId, collectionSlug } = useParams<{ organizationId: string; collectionSlug: string }>();
@@ -264,9 +268,9 @@ export default function CollectionCardPage() {
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...transitionDefault, delay: 0.05 }} className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: 'Pricings', value: String(pricingsTotal || (d?.pricings?.length ?? 0)) },
-            { label: 'Min price', value: d?.minPrice ? `$${d.minPrice.min.toFixed(2)} – $${d.minPrice.max.toFixed(2)}` : '—' },
-            { label: 'Max price', value: d?.maxPrice ? `$${d.maxPrice.min.toFixed(2)} – $${d.maxPrice.max.toFixed(2)}` : '—' },
-            { label: 'Config space', value: d?.configurationSpaceSize ? `${d.configurationSpaceSize.min.toLocaleString()} – ${d.configurationSpaceSize.max.toLocaleString()}` : '—' },
+            { label: 'Min price', value: fmtRange(d?.minPrice, fmtPrice) },
+            { label: 'Max price', value: fmtRange(d?.maxPrice, fmtPrice) },
+            { label: 'Config space', value: fmtRange(d?.configurationSpaceSize, v => v.toLocaleString()) },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
               <p className="text-[11px] text-tp-steel">{s.label}</p>

@@ -3,7 +3,6 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import { ApiKeySummary, CreateApiKeyData } from '../api/apiKeysApi';
 import ApiKeyList from '../components/ApiKeyList';
 import CreateApiKeyDialog from '../components/CreateApiKeyDialog';
-import McpConnectCard from '../components/McpConnectCard';
 import BlockAlert from '../../core/components/block-alert';
 import Iconify from '../../core/components/iconify';
 
@@ -179,10 +178,6 @@ export default function ApiKeysPage() {
           onDelete={handleDelete}
         />
       )}
-
-      <div className="mt-8">
-        <McpConnectCard />
-      </div>
 
       <CreateApiKeyDialog
         open={showCreateDialog}

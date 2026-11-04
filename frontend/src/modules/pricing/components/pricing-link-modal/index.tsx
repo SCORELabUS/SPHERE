@@ -3,17 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface PricingLinkModalProps {
   linkUrl: string;
+  /** Replaces the default description (a direct link to the YAML file). */
+  description?: string;
   onClose: () => void;
 }
 
-export default function PricingLinkModal({ linkUrl, onClose }: PricingLinkModalProps) {
+export default function PricingLinkModal({ linkUrl, description, onClose }: PricingLinkModalProps) {
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-[90vw] max-w-150 rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-4" onClick={e => e.stopPropagation()}>
         <h2 className="text-center text-xl font-bold text-tp-ink">Your link is ready!</h2>
-        <p className="mt-2 text-center text-sm text-tp-steel">This link points directly to the YAML file of the selected pricing version. It can be used to integrate with some <a href="https://sphere-docs.vercel.app" target="_blank" rel="noopener noreferrer" className="cursor-pointer underline">Pricing Intelligence tools</a>.</p>
+        {description ? (
+          <p className="mt-2 text-center text-sm text-tp-steel">{description}</p>
+        ) : (
+          <p className="mt-2 text-center text-sm text-tp-steel">This link points directly to the YAML file of the selected pricing version. It can be used to integrate with some <a href="https://sphere-docs.vercel.app" target="_blank" rel="noopener noreferrer" className="cursor-pointer underline">Pricing Intelligence tools</a>.</p>
+        )}
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-tp-hairline-strong bg-tp-surface p-2">
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="truncate text-xs text-tp-ink">{linkUrl}</p>

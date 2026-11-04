@@ -22,13 +22,18 @@ import { RoutePermission } from "../types/permissions";
  */
 export const ROUTE_PERMISSIONS: RoutePermission[] = [
   { path: '/.well-known/**', methods: ['GET'], isPublic: true },
+  { path: '/oidc/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oidc/authorize', methods: ['GET'], isPublic: true },
+  { path: '/oidc/token', methods: ['POST'], isPublic: true },
+  { path: '/oidc/jwks', methods: ['GET'], isPublic: true },
+  { path: '/oidc/userinfo', methods: ['GET'], isPublic: true },
   { path: '/oauth/authorize', methods: ['GET', 'POST'], isPublic: true },
   { path: '/oauth/token', methods: ['POST'], isPublic: true },
   { path: '/oauth/register', methods: ['POST'], isPublic: true },
   { path: '/oauth/revoke', methods: ['POST'], isPublic: true },
   { path: '/oauth/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
   { path: '/oauth/grants', methods: ['GET'], allowedUserRoles: ['USER', 'ADMIN'] },
-  { path: '/oauth/grants/*', methods: ['DELETE'], allowedUserRoles: ['USER', 'ADMIN'] },
+  { path: '/oauth/grants/*', methods: ['PUT', 'DELETE'], allowedUserRoles: ['USER', 'ADMIN'] },
   // ============================================
   // User Management Routes
   // ============================================
@@ -222,6 +227,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   {
     path: '/orgs/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
+  // The tree of a branch is public too: every organization in it already has a
+  // public page, and the caller's memberships only decide which nodes are marked
+  // as open to them.
+  {
+    path: '/orgs/*/hierarchy',
     methods: ['GET'],
     isPublic: true,
   },

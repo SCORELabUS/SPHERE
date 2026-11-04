@@ -76,6 +76,34 @@ export const createPricingForOrganization = async (params: {
   return { response, serviceName, version, id: response.body.id };
 };
 
+/** Forks a pricing into `targetOrganizationId` as `token`'s user, tracking the copy it creates. */
+export const forkPricingIntoOrganization = async (params: {
+  token: string;
+  sourceOrganizationId: string;
+  sourceSlug: string;
+  sourceVersion: string;
+  targetOrganizationId: string;
+  name?: string;
+}): Promise<{ slug: string; name: string; id: string }> => {
+  const { token, ...payload } = params;
+  const response = await request(testContainer.resolve('app'))
+    .post(`${BASE_PATH}/pricing-forks`)
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
+
+  if (response.status !== 200) {
+    throw new Error(`Pricing fork failed with status ${response.status}: ${JSON.stringify(response.body)}`);
+  }
+
+  testContainer.resolve('pricingsToDelete').add(response.body.id);
+  if (typeof response.body.yaml === 'string') {
+    const relativePath = response.body.yaml.replace(/^https?:\/\/[^/]+\//, '');
+    testContainer.resolve('generatedFilesToDelete').add(path.resolve(process.cwd(), 'public', relativePath));
+  }
+
+  return { slug: response.body.slug, name: response.body.name, id: response.body.id };
+};
+
 export async function generatePricingFile(serviceName?: string, version?: string): Promise<string> {
   if (!version) {
     version = uuidv4();

@@ -129,12 +129,14 @@ const addMembersBulk = [
 ];
 
 
+export const MAX_CHILDREN_PER_BULK = 50;
+
 const createChildrenBulk = [
   check('organizations')
     .exists()
     .withMessage('An organizations array must be provided')
-    .isArray({ min: 1, max: 100 })
-    .withMessage('The organizations field must contain between 1 and 100 organizations'),
+    .isArray({ min: 1, max: MAX_CHILDREN_PER_BULK })
+    .withMessage(`The organizations field must contain between 1 and ${MAX_CHILDREN_PER_BULK} organizations`),
   check('organizations.*')
     .custom((organization) => {
       if (!organization || typeof organization !== 'object' || Array.isArray(organization)) {

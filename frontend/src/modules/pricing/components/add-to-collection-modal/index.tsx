@@ -51,8 +51,9 @@ export default function AddToCollectionModal({ pricingName, pricingSlug, onAdded
       await addPricingToCollection(organizationId!, pricingSlug, collection.slug);
       customAlert(`"${pricingName}" added to "${collection.name}"`, 'success');
       onAdded();
-    } catch {
-      customAlert('Failed to add pricing to collection', 'error');
+    } catch (error) {
+      const reason = (error as { message?: string })?.message;
+      customAlert(reason ? `Failed to add pricing to collection: ${reason}` : 'Failed to add pricing to collection', 'error');
     } finally {
       setIsAdding(false);
     }

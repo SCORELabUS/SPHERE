@@ -28,6 +28,13 @@ export default class OAuthRepository {
     return OAuthGrant.find({ userId, revoked: false, expiresAt: { $gt: new Date() } })
       .select('clientName scopes lastUsedAt createdAt expiresAt').lean();
   }
+  findActiveGrantForUser(grantId: string, userId: string) {
+    return OAuthGrant.findOne({ _id: grantId, userId, revoked: false, expiresAt: { $gt: new Date() } }).select('_id').lean();
+  }
+  updateScopesForUser(grantId: string, userId: string, scopes: ApiKey['scopes']) {
+    return OAuthGrant.findOneAndUpdate({ _id: grantId, userId, revoked: false, expiresAt: { $gt: new Date() } },
+      { $set: { scopes } }, { new: true }).select('_id').lean();
+  }
   findToken(hash: string, kind: 'access' | 'refresh', resource?: string) {
     return OAuthToken.findOne({ hash, kind, expiresAt: { $gt: new Date() }, ...(resource ? { resource } : {}) }).lean();
   }

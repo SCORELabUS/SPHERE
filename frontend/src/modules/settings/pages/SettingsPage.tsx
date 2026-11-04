@@ -104,6 +104,7 @@ export default function SettingsPage() {
   const accountDirtyChange = useCallback((d: boolean) => markDirty('account', d), [markDirty]);
   const profileDirtyChange = useCallback((d: boolean) => markDirty('profile', d), [markDirty]);
   const socialDirtyChange = useCallback((d: boolean) => markDirty('social', d), [markDirty]);
+  const applicationsDirtyChange = useCallback((d: boolean) => markDirty('applications', d), [markDirty]);
   const notificationsDirtyChange = useCallback((d: boolean) => markDirty('notifications', d), [markDirty]);
 
   useEffect(() => {
@@ -252,7 +253,7 @@ export default function SettingsPage() {
                   <SocialLinksSection settings={settings} onUpdate={updateSettings} onDirtyChange={socialDirtyChange} />
                 )}
                 {activeSection === 'integrations' && <IntegrationsSection />}
-                {activeSection === 'applications' && <ConnectedApplications />}
+                {activeSection === 'applications' && <ConnectedApplications onDirtyChange={applicationsDirtyChange} />}
                 {activeSection === 'notifications' && (
                   <NotificationsSection settings={settings} onUpdate={updateSettings} onDirtyChange={notificationsDirtyChange} />
                 )}

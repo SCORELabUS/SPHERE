@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import container from '../config/container';
-import AuthProviderService, { IdentityOwnedByAnotherAccountError } from '../services/AuthProviderService';
+import AuthProviderService, { IdentityOwnedByAnotherAccountError, SsoEmailConflictError } from '../services/AuthProviderService';
 import CacheService from '../services/CacheService';
 import { getProvider } from '../services/identity/providerRegistry';
 import {
@@ -99,7 +99,8 @@ class SSOController {
           `${FRONTEND_URL()}/me/settings?section=integrations&identity_error=${errorCode}`
         );
       }
-      return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=server_error`);
+      const errorCode = err instanceof SsoEmailConflictError ? 'email_conflict' : 'server_error';
+      return res.redirect(`${FRONTEND_URL()}/sso/callback?sso_error=${errorCode}`);
     }
   }
 

@@ -107,6 +107,16 @@ class OrganizationRepository extends RepositoryBase {
     }));
   }
 
+  /** The given organizations and every one below them, at any depth. */
+  async findIdsWithin(rootIds: string[]): Promise<string[]> {
+    if (rootIds.length === 0) return [];
+    const ids = rootIds.map(id => new mongoose.Types.ObjectId(id));
+    const organizations = await OrganizationMongoose.find({ $or: [{ _id: { $in: ids } }, { ancestors: { $in: ids } }] })
+      .select('_id')
+      .lean();
+    return organizations.map((organization: any) => organization._id.toString());
+  }
+
   /**
    * Every organization in a branch: the root itself and everything below it, at
    * any depth.

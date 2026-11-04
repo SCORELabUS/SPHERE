@@ -39,5 +39,5 @@ export default function loadOAuthRoutes(app: Application) {
   const controller = new OAuthController();
   app.route(base + '/requests/:requestId').get(controller.handle).post(controller.handle);
   app.get(base + '/grants', controller.handle);
-  app.delete(base + '/grants/:grantId', controller.handle);
+  app.route(base + '/grants/:grantId').put(controller.handle).delete(controller.handle);
 }
