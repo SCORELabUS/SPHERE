@@ -1,0 +1,258 @@
+import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
+
+// The layout of a version graph, drawn like a commit graph turned on its side:
+// one horizontal lane per pricing, one column per version in release order, and
+// a branch from each forked version's origin to it.
+//
+// Large families stay readable in three ways:
+// - quiet stretches collapse: a run of versions of one lane that no branch starts
+//   or ends at becomes one "+N" gap, which the viewer can open;
+// - lanes are ordered like a tree: the pricings it came from above it, the most
+//   recently linked closest, and its forks below it, the most recent fork first,
+//   so a branch going down only crosses lanes that have not started yet;
+// - only the most recent forks are drawn until the viewer asks for more.
+
+export interface GraphNode {
+  key: string;
+  lane: number;
+  column: number;
+  version: PricingGraphVersion;
+}
+
+export interface GraphEdge {
+  from: GraphNode;
+  to: GraphNode;
+}
+
+/** Versions of a lane hidden between two shown ones. */
+export interface GraphGap {
+  key: string;
+  lane: number;
+  /** The shown versions of the lane around it. */
+  afterColumn: number;
+  beforeColumn: number;
+  versions: PricingGraphVersion[];
+}
+
+export interface GraphLayout {
+  /** Sources first, then the pricing shown, then its forks. */
+  lanes: PricingGraphLane[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  gaps: GraphGap[];
+  columns: number;
+  /** Forks left out by `forkLimit`. */
+  hiddenForks: number;
+}
+
+export interface LayoutOptions {
+  /** Gaps opened by the viewer (by key), or every version shown. */
+  expanded?: ReadonlySet<string> | 'all';
+  /** Nodes that must stay visible (the version on the page, the one picked), by key. */
+  keep?: ReadonlySet<string>;
+  /** How many forks to draw, most recent first. */
+  forkLimit?: number;
+}
+
+export const nodeKey = (pricingId: string, version: string) => `${pricingId}\u0000${version}`;
+
+interface Entry {
+  key: string;
+  pricingId: string;
+  version: PricingGraphVersion;
+  time: number;
+}
+
+export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
+  const { expanded = new Set<string>(), keep = new Set<string>(), forkLimit = Infinity } = options;
+
+  // Every version with the instant it was released. One whose date is unknown (a
+  // source the viewer cannot read) goes right before the first version forked from it.
+  const all: Entry[] = graph.lanes.flatMap(lane =>
+    lane.versions.map(version => ({
+      key: nodeKey(lane.pricingId, version.version),
+      pricingId: lane.pricingId,
+      version,
+      time: version.createdAt ? Date.parse(version.createdAt) : NaN,
+    }))
+  );
+  const children = new Map<string, Entry[]>();
+  for (const entry of all) {
+    const origin = entry.version.forkedFrom;
+    if (!origin) continue;
+    const key = nodeKey(origin.pricingId, origin.version);
+    children.set(key, [...(children.get(key) ?? []), entry]);
+  }
+  for (const entry of all) {
+    if (!Number.isNaN(entry.time)) continue;
+    const known = (children.get(entry.key) ?? [])
+      .map(child => child.time)
+      .filter(t => !Number.isNaN(t));
+    entry.time = known.length ? Math.min(...known) - 1 : Number.NEGATIVE_INFINITY;
+  }
+  const byKey = new Map(all.map(entry => [entry.key, entry]));
+  const entriesOf = (lane: PricingGraphLane) =>
+    lane.versions.map(version => byKey.get(nodeKey(lane.pricingId, version.version))!);
+
+  // When a lane last met the pricing shown: its latest version forked from it or into it.
+  const current = graph.lanes.find(lane => lane.role === 'current');
+  const linkTime = (lane: PricingGraphLane) => {
+    const times = [
+      ...entriesOf(lane).filter(
+        entry => entry.version.forkedFrom?.pricingId === current?.pricingId
+      ),
+      ...(current ? entriesOf(current) : []).filter(
+        entry => entry.version.forkedFrom?.pricingId === lane.pricingId
+      ),
+    ].map(entry => entry.time);
+    return times.length ? Math.max(...times) : Number.NEGATIVE_INFINITY;
+  };
+  const sources = graph.lanes
+    .filter(lane => lane.role === 'source')
+    .sort((a, b) => linkTime(a) - linkTime(b));
+  const forks = graph.lanes
+    .filter(lane => lane.role === 'fork')
+    .sort((a, b) => linkTime(b) - linkTime(a));
+  const shownForks = forks.slice(0, Math.max(0, forkLimit));
+  const lanes = [...sources, ...(current ? [current] : []), ...shownForks];
+  const laneOf = new Map(lanes.map((lane, index) => [lane.pricingId, index]));
+
+  // The versions that must be seen: where a branch starts or ends, each lane's
+  // first and last, and those the caller keeps.
+  const visibleEntries = all.filter(entry => laneOf.has(entry.pricingId));
+  const linked = new Set<string>();
+  for (const entry of visibleEntries) {
+    const origin = entry.version.forkedFrom;
+    if (!origin || !laneOf.has(origin.pricingId)) continue;
+    const originKey = nodeKey(origin.pricingId, origin.version);
+    if (!byKey.has(originKey)) continue;
+    linked.add(entry.key);
+    linked.add(originKey);
+  }
+
+  const hidden = new Set<string>();
+  const gapRuns: { key: string; lane: number; entries: Entry[] }[] = [];
+  lanes.forEach((lane, laneIndex) => {
+    const ordered = entriesOf(lane).sort((a, b) => a.time - b.time);
+    let run: Entry[] = [];
+    const close = () => {
+      if (!run.length) return;
+      const key = `${lane.pricingId}\u0000${run[0].version.version}`;
+      // A single quiet version is not worth a gap of its own.
+      if (expanded !== 'all' && !expanded.has(key) && run.length > 1) {
+        run.forEach(entry => hidden.add(entry.key));
+        gapRuns.push({ key, lane: laneIndex, entries: run });
+      }
+      run = [];
+    };
+    ordered.forEach((entry, index) => {
+      const quiet =
+        index > 0 && index < ordered.length - 1 && !linked.has(entry.key) && !keep.has(entry.key);
+      if (quiet) run.push(entry);
+      else close();
+    });
+    close();
+  });
+
+  const ordered = visibleEntries
+    .filter(entry => !hidden.has(entry.key))
+    .sort((a, b) => a.time - b.time || laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)!);
+  const nodes: GraphNode[] = ordered.map((entry, column) => ({
+    key: entry.key,
+    lane: laneOf.get(entry.pricingId)!,
+    column,
+    version: entry.version,
+  }));
+  const nodeByKey = new Map(nodes.map(node => [node.key, node]));
+
+  const edges: GraphEdge[] = [];
+  for (const node of nodes) {
+    const origin = node.version.forkedFrom;
+    const from = origin && nodeByKey.get(nodeKey(origin.pricingId, origin.version));
+    if (from) edges.push({ from, to: node });
+  }
+
+  // A gap sits between the shown versions of its lane right before and after it.
+  const gaps: GraphGap[] = gapRuns.map(run => {
+    const laneNodes = nodes.filter(node => node.lane === run.lane);
+    const firstTime = run.entries[0].time;
+    const lastTime = run.entries[run.entries.length - 1].time;
+    const before = [...laneNodes].reverse().find(node => byKey.get(node.key)!.time <= firstTime);
+    const after = laneNodes.find(node => byKey.get(node.key)!.time >= lastTime);
+    return {
+      key: run.key,
+      lane: run.lane,
+      afterColumn: before?.column ?? 0,
+      beforeColumn: after?.column ?? nodes.length - 1,
+      versions: run.entries.map(entry => entry.version),
+    };
+  });
+
+  return {
+    lanes,
+    nodes,
+    edges,
+    gaps,
+    columns: nodes.length,
+    hiddenForks: forks.length - shownForks.length,
+  };
+}
+
+/**
+ * How a branch is drawn: when its target lane starts with it, it bends down
+ * right after its origin and runs along that lane (a fork branching off); when
+ * its origin lane ends with it and the target is close, it runs along that lane
+ * and bends down right before its target (merging in); otherwise one S-curve
+ * between them. A long run along a lane would read as part of that lane, so a
+ * distant merge is a curve too.
+ */
+export function routeEdge(edge: GraphEdge, layout: GraphLayout): 'branch' | 'merge' | 'curve' {
+  // A version dated before its origin (dates can be edited) runs backwards: one curve.
+  if (edge.to.column <= edge.from.column) return 'curve';
+  const laneNodes = (lane: number) => layout.nodes.filter(node => node.lane === lane);
+  const targetFirst = laneNodes(edge.to.lane)[0];
+  if (targetFirst === edge.to) return 'branch';
+  const sourceNodes = laneNodes(edge.from.lane);
+  if (sourceNodes[sourceNodes.length - 1] === edge.from && edge.to.column - edge.from.column <= 2) {
+    return 'merge';
+  }
+  return 'curve';
+}
+
+/** Columns a curve may span before it counts as a long link. */
+export const LONG_LINK_COLUMNS = 3;
+
+/**
+ * A link between distant versions of two lanes (an old version of an origin
+ * brought into a much later one). It crosses everything in between, so it is
+ * drawn thin and quiet until one of its ends is picked or pointed at.
+ */
+export function isLongLink(edge: GraphEdge, layout: GraphLayout): boolean {
+  return (
+    routeEdge(edge, layout) !== 'branch' &&
+    Math.abs(edge.to.column - edge.from.column) > LONG_LINK_COLUMNS
+  );
+}
+
+/** What a version label may look like (the API's rule): it is a path segment of the pricing's URLs. */
+export const VERSION_LABEL = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+
+/**
+ * The name offered for a version forked into a pricing: the next minor version
+ * after its newest semantic version (1.1.0 → 1.2.0), skipping names it already
+ * has; the source's own label when the pricing does not use x.y.z names.
+ */
+export function suggestVersionName(existing: string[], fallback: string): string {
+  const semver = existing
+    .map(label => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(label))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map(match => [Number(match[1]), Number(match[2])] as const)
+    .sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  if (!semver.length) {
+    return existing.includes(fallback) ? `${fallback}-fork` : fallback;
+  }
+  const [major, minor] = semver[0];
+  let next = minor + 1;
+  while (existing.includes(`${major}.${next}.0`)) next += 1;
+  return `${major}.${next}.0`;
+}

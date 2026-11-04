@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import type { PricingGraph } from '../types/graph';
 import { useAuth } from '../../auth/hooks/useAuth';
 
 export const PRICINGS_BASE_PATH = import.meta.env.VITE_API_URL + '/pricings';
@@ -316,7 +317,9 @@ export function usePricingsApi() {
     sourceSlug: string,
     sourceVersion: string,
     targetOrganizationId: string,
-    name?: string
+    name?: string,
+    /** An existing pricing of the target organization to add the version to, and the version's name. */
+    into?: { targetSlug: string; version?: string }
   ) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-forks`, {
       method: 'POST',
@@ -327,6 +330,7 @@ export function usePricingsApi() {
         sourceVersion,
         targetOrganizationId,
         name,
+        ...(into ? { targetSlug: into.targetSlug, version: into.version } : {}),
       }),
     })
       .then(async response => {
@@ -339,6 +343,20 @@ export function usePricingsApi() {
         return parsedResponse;
       });
   }, [fetchWithInterceptor, basicHeaders]);
+
+  /** The pricing's lane, the pricings its versions were forked from and those forked from it. */
+  const getPricingGraph = useCallback(
+    async (organizationId: string, pricingSlug: string, signal?: AbortSignal): Promise<PricingGraph> => {
+      const response = await fetchWithInterceptor(
+        `${import.meta.env.VITE_API_URL}/pricing-graphs/${organizationId}/${pricingSlug}`,
+        { method: 'GET', headers: basicHeaders, signal }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not load the version graph');
+      return body as PricingGraph;
+    },
+    [fetchWithInterceptor, basicHeaders]
+  );
 
   const followRequest = useCallback(async (method: 'GET' | 'PUT' | 'DELETE', organizationId: string, pricingSlug: string) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-follows/${organizationId}/${pricingSlug}`, {
@@ -392,6 +410,7 @@ export function usePricingsApi() {
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingGraph,
       getPricingFollow,
       followPricing,
       unfollowPricing,
@@ -411,6 +430,7 @@ export function usePricingsApi() {
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingGraph,
       getPricingFollow,
       followPricing,
       unfollowPricing,

@@ -4404,13 +4404,22 @@ paths:
         reference to where it came from (`forkedFrom`). The copied version's `createdAt`
         is the moment of the fork, not the date of the original version.
 
-        A fork is a single branching point: it **always creates a new pricing** in the target
-        organization and never adds a version to an existing one, forked or not. To fork
-        again an origin that is already forked there, the new pricing needs a different
-        `name`. When the name the fork would take (`name`, or the source's own name) already
-        belongs to a pricing in the target organization, a request without `name` performs
-        no write and responds with `nameTaken`, so the client can ask the user for another
-        name. If `name` is sent and is already taken, the request fails with 409.
+        Without `targetSlug`, the fork **creates a new pricing** in the target organization
+        (never the source's own organization). To fork again an origin that is already forked
+        there, the new pricing needs a different `name`. When the name the fork would take
+        (`name`, or the source's own name) already belongs to a pricing in the target
+        organization, a request without `name` performs no write and responds with
+        `nameTaken`, so the client can ask the user for another name. If `name` is sent and is
+        already taken, the request fails with 409.
+
+        With `targetSlug`, the version is added instead as the **latest version of that
+        existing pricing** of the target organization (which may be the source's own
+        organization, but not the source pricing itself). It is stored under `version`, or
+        the source version's label when absent, written into its YAML; the pricing's name
+        replaces `saasName`. Its followers are notified as for any new version. This is how
+        a newer version of an original is brought into a pricing forked from it, or into
+        one that was never forked. The new version's `forkedFrom` draws the edge in the
+        version graph (`GET /pricing-graphs/{organizationId}/{pricingSlug}`).
 
         **Authentication**: Required
 
@@ -4420,7 +4429,8 @@ paths:
           its pricing (OWNER/ADMIN of the source organization, a member granted GET on the
           pricing or on its collection, a global ADMIN with a token; API keys within their
           scopes). Anyone else gets the same `404` as for a version that does not exist.
-        - The caller needs `CREATE` permission for pricings in the target organization.
+        - The caller needs `CREATE` permission for pricings in the target organization, or,
+          with `targetSlug`, `CREATE` on that pricing (as when publishing a version of it).
       tags:
         - Pricings
       security:
@@ -4457,8 +4467,23 @@ paths:
                   type: string
                   description: |
                     Optional name for the new forked pricing. It must not belong to a
-                    pricing that already exists in the target organization.
+                    pricing that already exists in the target organization. Ignored with
+                    `targetSlug`.
                   example: "Dropbox (internal)"
+                targetSlug:
+                  type: string
+                  description: |
+                    Slug of an existing pricing of the target organization that gets the
+                    forked version as its latest version, instead of creating a new pricing.
+                  example: "dropbox-internal"
+                version:
+                  type: string
+                  maxLength: 64
+                  pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+                  description: |
+                    Name of the forked version, written into its YAML. Defaults to the source
+                    version's label with `targetSlug`, and to the YAML's own version without it.
+                  example: "1.2.0"
       responses:
         '200':
           description: |
@@ -4491,13 +4516,57 @@ paths:
         '403':
           description: Insufficient permissions in the target organization
         '404':
-          description: Source pricing or its YAML file not found
+          description: Source pricing, its YAML file, or the `targetSlug` pricing not found
         '409':
           description: |
-            The requested `name` already belongs to a pricing in the target organization.
-            Forking under another `name` does not conflict.
+            The requested `name` already belongs to a pricing in the target organization, or
+            the `targetSlug` pricing already has a version with that name. Forking under
+            another `name` or `version` does not conflict.
         '422':
-          description: Missing required fields, or the source and target organizations are the same
+          description: |
+            Missing required fields, an invalid `version`, the source and target organizations
+            being the same without `targetSlug`, or `targetSlug` naming the source pricing
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pricing-graphs/{organizationId}/{pricingSlug}:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationId'
+      - $ref: '#/components/parameters/PricingSlug'
+    get:
+      summary: Get the version graph of a pricing
+      description: |
+        The versions of a pricing drawn like a commit graph: one lane for the pricing, one for
+        each pricing its versions were forked from (`source`) and one for each pricing with a
+        version forked from it (`fork`), at most 20 of each (`truncated` says when more
+        exist). Each version names the one it was forked from (`forkedFrom`, by pricing and
+        label), which gives the edges between lanes.
+
+        Every lane holds only the versions the caller may read, by the same rules as
+        `GET /pricings/{organizationId}/{pricingSlug}`: a pricing the caller may not read
+        answers 404, a fork the caller may not read is left out, and a source the caller may
+        not read keeps a lane with `available: false` holding only the labels its forks
+        already name (`createdAt: null`).
+
+        **Authentication**: Optional (private versions need it)
+      tags:
+        - Pricings
+      security:
+        - {}
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The lanes of the graph, the pricing asked for first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingGraph'
+        '404':
+          description: The pricing does not exist, or the caller may not read it
         default:
           description: Unexpected error
           content:
@@ -6531,6 +6600,70 @@ paths:
 
 components:
   schemas:
+    PricingGraph:
+      type: object
+      required: [pricingId, lanes, truncated]
+      properties:
+        pricingId:
+          type: string
+        truncated:
+          type: boolean
+          description: More sources or forks exist than the 20 of each drawn
+        lanes:
+          type: array
+          items:
+            type: object
+            required: [pricingId, name, slug, organization, role, available, versions]
+            properties:
+              pricingId:
+                type: string
+              name:
+                type: string
+              slug:
+                type: string
+              organization:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  displayName:
+                    type: string
+              collectionSlug:
+                type: string
+                nullable: true
+              role:
+                type: string
+                enum: [current, source, fork]
+              available:
+                type: boolean
+                description: False for a source the caller may not read
+              versions:
+                type: array
+                items:
+                  type: object
+                  required: [id, version, createdAt, private, forkedFrom]
+                  properties:
+                    id:
+                      type: string
+                    version:
+                      type: string
+                    createdAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    private:
+                      type: boolean
+                    forkedFrom:
+                      type: object
+                      nullable: true
+                      properties:
+                        pricingId:
+                          type: string
+                        version:
+                          type: string
+
     IdentityProfile:
       type: object
       required: [sub]

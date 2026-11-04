@@ -24,6 +24,7 @@ class PricingController {
     this.create = this.create.bind(this);
     this.createVersion = this.createVersion.bind(this);
     this.fork = this.fork.bind(this);
+    this.graph = this.graph.bind(this);
     this.update = this.update.bind(this);
     this.updateVersionVisibility = this.updateVersionVisibility.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
@@ -150,7 +151,12 @@ class PricingController {
 
   async fork(req: any, res: any) {
     try {
-      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name } = req.body;
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name, targetSlug, version } = req.body;
+      for (const [field, value] of Object.entries({ name, targetSlug, version })) {
+        if (value !== undefined && value !== null && typeof value !== 'string') {
+          throw new Error(`INVALID DATA: ${field} must be a string`);
+        }
+      }
       if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
         throw new Error(
           'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
@@ -163,9 +169,21 @@ class PricingController {
         sourceVersion,
         targetOrganizationId,
         req.user,
-        { name }
+        { name, targetSlug, version }
       );
       res.json(Array.isArray(result) ? result[0] : result);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async graph(req: any, res: any) {
+    try {
+      const graph = await this.pricingService.graph(req.params.pricingSlug, req.params.organizationId, req.user);
+      // Depends on the caller, like the pricing itself.
+      res.set('Cache-Control', 'no-store');
+      res.json(graph);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

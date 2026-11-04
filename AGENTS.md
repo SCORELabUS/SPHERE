@@ -69,6 +69,12 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - No clients, grants or tokens are seeded; the seeder initializes the empty indexed OAuth collections. Run migration `20261024120000-create-oauth-collections` for existing databases.
 - `/api/src/test/oauth.test.ts` covers discovery, DCR, PKCE, audience binding, single-use codes, refresh replay, consent ownership, grant revocation and MCP credential isolation. Run integration tests only against `DATABASE_NAME=sphere_scratch`, Mongo 27018 and Redis 6378: the shared test harness drops its selected database.
 
+## Pricing version graph and forks
+
+- Every forked version stores `forkedFrom` (source pricingId, organization, slug, name and version label). `GET /pricing-graphs/:org/:slug` (`PricingService.graph`) builds the version graph from it: the pricing's lane, the pricings its versions came from (`source`) and those forked from it (`fork`, found through the `forkedFrom.pricingId` index, migration `20261104130000-pricing-fork-index`), at most 20 of each. Each lane is read through `show()`, so private versions, hidden collections and unreadable pricings follow the same rules; an unreadable source keeps a lane with `available: false` and only the labels its forks name. It lives outside `/pricings/**` so it cannot clash with a version named "graph".
+- `POST /pricing-forks` creates a new pricing by default. With `targetSlug` it adds the version as the latest version of that existing pricing instead (any organization, even the source's, but not the source pricing itself), named `version` (or the source's label), written into the YAML by `utils/yaml-version.ts`; permission is `CREATE` on that pricing, as when publishing a version, and followers are notified.
+- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in release order, branches colored by role: origin, this pricing, fork). It is built for large families: from 13 versions on, runs of versions no branch touches fold into "+N" gaps, origins are ordered by their latest link and forks by most recent fork (5 at first, "Show more"), a fork's branch bends off its origin and runs along its own lane, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) and the suggested name (the next minor version) are in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`. Picking a version of another lane offers "Fork into this pricing" (`fork-version-modal`: name of the version and confirmation that it becomes the latest one); the Fork dialog also offers "A new version" of an existing pricing.
+
 ## Collection PUT authority
 
 - A pricing inside a collection uses that collection's PUT permission for edits, including version visibility; individual PUT cannot override the collection. Existing GET/privacy and DELETE rules remain unchanged.
@@ -90,6 +96,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/organization.test.ts – tests related to organization management and organization-user interactions
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
+- /api/src/test/pricing.test.ts also covers forking into an existing pricing and the version graph (`GET /pricing-graphs`)
 - /api/src/test/pricing-concurrency.test.ts — tests related to pricing ETags and `If-Match` on pricing writes
 - /api/src/test/unit-tests/pricing-revision-race.test.ts — deterministic claim/write interleaving, writes without If-Match, identity changes during reads and recovery after failed writes
 - /api/src/test/private-versions.test.ts — tests related to who may read private pricing versions (server-managed fields, permissions across organizations, collections, forks, follows, API keys, ORBIT and the MCP server)
