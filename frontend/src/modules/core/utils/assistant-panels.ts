@@ -1,8 +1,30 @@
-// HARVEY and ORBIT share the bottom-right corner: on a page with both, ORBIT's
-// bubble sits above HARVEY's, and only one of their panels is open at a time.
+import type { ComponentType } from 'react';
+
+// HARVEY and ORBIT share the bottom-right corner: on a page with more than one
+// assistant their bubbles fold into a single launcher (`AssistantLauncher`), and
+// only one of their panels is open at a time.
 const EVENT_NAME = 'sphere:assistant-panel-open';
 
 export type AssistantPanel = 'harvey' | 'orbit';
+
+// Order of the bubbles in the launcher, from the top.
+const ORDER: AssistantPanel[] = ['orbit', 'harvey'];
+
+export interface AssistantEntry {
+  id: AssistantPanel;
+  name: string;
+  description: string;
+  /** A component rather than an element, so the entry stays stable between renders. */
+  Icon: ComponentType<{ busy?: boolean; className?: string }>;
+  isOpen: boolean;
+  busy: boolean;
+  /** Short note shown next to the launcher, e.g. "ORBIT replied". */
+  attention: string | null;
+  open: () => void;
+  close: () => void;
+  /** Lets the assistant load what it needs when it is about to be picked. */
+  prepare: () => void;
+}
 
 /** Tells the other assistant that this one has just opened its panel. */
 export function announcePanelOpen(panel: AssistantPanel) {
@@ -18,22 +40,24 @@ export function closeWhenOtherPanelOpens(panel: AssistantPanel, close: () => voi
   return () => window.removeEventListener(EVENT_NAME, listener);
 }
 
-// Which assistants are on the page right now, so each can make room for the other.
-const present = new Map<AssistantPanel, number>();
+// The assistants shown on the page right now.
+const entries = new Map<AssistantPanel, AssistantEntry>();
+let snapshot: AssistantEntry[] = [];
 const listeners = new Set<() => void>();
 
-function notify() {
+function publish() {
+  snapshot = ORDER.flatMap(id => entries.get(id) ?? []);
   listeners.forEach(listener => listener());
 }
 
-/** Marks an assistant as shown on the page. Returns the function that removes it. */
-export function registerAssistant(panel: AssistantPanel) {
-  present.set(panel, (present.get(panel) ?? 0) + 1);
-  notify();
-  return () => {
-    present.set(panel, Math.max(0, (present.get(panel) ?? 1) - 1));
-    notify();
-  };
+/** Adds or refreshes an assistant on the page. */
+export function setAssistant(entry: AssistantEntry) {
+  entries.set(entry.id, entry);
+  publish();
+}
+
+export function removeAssistant(id: AssistantPanel) {
+  if (entries.delete(id)) publish();
 }
 
 export function subscribeToAssistants(listener: () => void) {
@@ -43,6 +67,6 @@ export function subscribeToAssistants(listener: () => void) {
   };
 }
 
-export function isAssistantPresent(panel: AssistantPanel): boolean {
-  return (present.get(panel) ?? 0) > 0;
+export function getAssistants(): AssistantEntry[] {
+  return snapshot;
 }

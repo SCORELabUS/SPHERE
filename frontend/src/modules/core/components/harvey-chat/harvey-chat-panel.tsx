@@ -15,8 +15,6 @@ interface Props {
   pricingName?: string;
   suggestedQuestions: SuggestedQuestion[];
   isLoading?: boolean;
-  /** ORBIT's bubble sits above HARVEY's, so the panel opens above both. */
-  stacked?: boolean;
 }
 
 const panelVariants = {
@@ -55,7 +53,6 @@ export default function HarveyChatPanel({
   pricingName,
   suggestedQuestions,
   isLoading = false,
-  stacked = false,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isWelcome = messages.length <= 1 && messages[0]?.role === 'assistant';
@@ -73,11 +70,9 @@ export default function HarveyChatPanel({
       initial="hidden"
       animate="visible"
       exit="exit"
-      className={`fixed right-6 z-50 flex w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4 ${
-        stacked ? 'bottom-[10.5rem]' : 'bottom-24'
-      }`}
+      className="fixed bottom-24 right-6 z-50 flex w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
       // Its top stays clear of the sticky header (3.5rem) with a small margin.
-      style={{ height: stacked ? 'min(580px, calc(100dvh - 240px))' : 'min(580px, calc(100dvh - 168px))' }}
+      style={{ height: 'min(580px, calc(100dvh - 168px))' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-tp-hairline bg-tp-surface px-4 py-3">
