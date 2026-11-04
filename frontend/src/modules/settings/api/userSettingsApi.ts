@@ -28,6 +28,7 @@ export interface UserSettings {
       x?: string;
     };
     notificationPrefs?: Record<string, { email: boolean; inbox: boolean }>;
+    betaFeatures?: boolean;
   };
 }
 
@@ -115,6 +116,19 @@ export function useUserSettingsApi() {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || 'Failed to update notification preferences');
+    }
+    return res.json();
+  }
+
+  async function updateBetaFeatures(enabled: boolean): Promise<UserSettings> {
+    const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/settings/beta-features`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to update beta features');
     }
     return res.json();
   }
@@ -236,6 +250,7 @@ export function useUserSettingsApi() {
     updateProfile,
     updateSocialLinks,
     updateNotificationPrefs,
+    updateBetaFeatures,
     uploadAvatar,
     removeAvatar,
     updateAvatarColors,

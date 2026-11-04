@@ -1355,6 +1355,49 @@ it('Deletes organization when it becomes empty after user deletion (non-personal
     });
   });
 
+  describe('PUT /api/v1/users/me/settings/beta-features', () => {
+    it('Return 200, turn beta features on and back off.', async () => {
+      const { user } = await createAndLoginUser('USER', 'settings_beta');
+      const enable = await request(app)
+        .put(`${BASE_PATH}/users/me/settings/beta-features`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({ enabled: true });
+
+      expect(enable.status).toBe(200);
+      expect(enable.body.settings.betaFeatures).toBe(true);
+
+      const settings = await request(app)
+        .get(`${BASE_PATH}/users/me/settings`)
+        .set('Authorization', `Bearer ${user.token}`);
+      expect(settings.body.settings.betaFeatures).toBe(true);
+
+      const disable = await request(app)
+        .put(`${BASE_PATH}/users/me/settings/beta-features`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({ enabled: false });
+      expect(disable.status).toBe(200);
+      expect(disable.body.settings.betaFeatures).toBe(false);
+    });
+
+    it('Return 400 when enabled is not a boolean.', async () => {
+      const { user } = await createAndLoginUser('USER', 'settings_beta_invalid');
+      const response = await request(app)
+        .put(`${BASE_PATH}/users/me/settings/beta-features`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({ enabled: 'yes' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('Return 401 without authorization header.', async () => {
+      const response = await request(app)
+        .put(`${BASE_PATH}/users/me/settings/beta-features`)
+        .send({ enabled: true });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
   describe('Notification delivery follows the notification settings', () => {
     const invite = async (inviterToken: string, organizationId: string, inviteeId: string) =>
       request(app)
