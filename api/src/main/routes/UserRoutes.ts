@@ -82,6 +82,10 @@ const loadFileRoutes = function (app: express.Application) {
     .put(userController.updateNotificationPrefs);
 
   app
+    .route(baseUrl + '/users/me/settings/beta-features')
+    .put(userController.updateBetaFeatures);
+
+  app
     .route(baseUrl + '/users/me/identities')
     .get(identityController.index);
 

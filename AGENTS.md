@@ -69,6 +69,12 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - No clients, grants or tokens are seeded; the seeder initializes the empty indexed OAuth collections. Run migration `20261024120000-create-oauth-collections` for existing databases.
 - `/api/src/test/oauth.test.ts` covers discovery, DCR, PKCE, audience binding, single-use codes, refresh replay, consent ownership, grant revocation and MCP credential isolation. Run integration tests only against `DATABASE_NAME=sphere_scratch`, Mongo 27018 and Redis 6378: the shared test harness drops its selected database.
 
+## Beta features
+
+- Users opt in from Settings → Beta features, stored as `settings.betaFeatures` (default `false`) and changed with `PUT /users/me/settings/beta-features` (`{ enabled }`). It is one switch for every beta feature.
+- Frontend: register each unfinished feature in `frontend/src/modules/beta/config/betaFeatures.ts` (it is then listed in the settings section), wrap its UI in `<BetaGate feature="...">` or check `useBetaFeature('...')`, and mark it with `<BetaBadge />`. When it graduates, delete its entry and the compiler points at every gate left.
+- API: guard beta routes with `requireBetaFeatures` (403 when off) from `middlewares/BetaFeaturesMiddleware.ts`; inside services (e.g. ORBIT tools) check `hasBetaFeatures(user)`.
+
 ## Collection PUT authority
 
 - A pricing inside a collection uses that collection's PUT permission for edits, including version visibility; individual PUT cannot override the collection. Existing GET/privacy and DELETE rules remain unchanged.
