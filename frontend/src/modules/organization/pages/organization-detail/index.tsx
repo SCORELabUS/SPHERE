@@ -641,7 +641,7 @@ export default function OrganizationDetailPage() {
       {/* ═══ TAB NAVIGATION ═══ */}
       <div className="sticky top-14 z-30 border-b border-tp-hairline bg-tp-canvas/80 backdrop-blur-xl">
         <div className="mx-auto max-w-5xl px-4 md:px-8">
-          <div className="py-2 md:hidden">
+          <div className="py-2 lg:hidden">
             <div className="relative">
               <select
                 value={activeTab}
@@ -666,7 +666,11 @@ export default function OrganizationDetailPage() {
             </div>
           </div>
 
-          <nav className="hidden gap-1 overflow-x-auto py-1 md:flex" role="tablist">
+          {/* Every tab fits from lg on (the dropdown covers narrower screens); the bar never shows a scrollbar. */}
+          <nav
+            className="hidden gap-1 overflow-x-auto py-1 [scrollbar-width:none] lg:flex [&::-webkit-scrollbar]:hidden"
+            role="tablist"
+          >
             {availableTabs.map(tab => {
               const meta = TAB_META[tab];
               return (
@@ -676,7 +680,7 @@ export default function OrganizationDetailPage() {
                   role="tab"
                   aria-selected={activeTab === tab}
                   onClick={() => selectTab(tab)}
-                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     activeTab === tab
                       ? 'bg-tp-primary/8 text-tp-primary'
                       : 'text-tp-steel hover:bg-tp-surface hover:text-tp-ink'
