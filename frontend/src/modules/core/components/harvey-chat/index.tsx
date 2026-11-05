@@ -3,8 +3,9 @@ import { AnimatePresence } from 'framer-motion';
 import { retrievePricingFromYaml } from 'pricing4ts';
 import HarveyChatBubble from './harvey-chat-bubble';
 import HarveyChatPanel from './harvey-chat-panel';
+import HarveyIcon from './harvey-icon';
 import { announcePanelOpen, closeWhenOtherPanelOpens } from '../../utils/assistant-panels';
-import { useAssistantPresence } from '../../hooks/useAssistantPresence';
+import { useAssistantLauncher } from '../../hooks/useAssistantLauncher';
 import { chatWithAgent, createContextBodyPayload } from '../../../harvey/utils';
 import type { ChatMessage, ChatRequest } from '../../../harvey/types/types';
 
@@ -46,7 +47,6 @@ export default function HarveyChat({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const hasOpened = useRef(false);
-  const orbitPresent = useAssistantPresence('harvey', 'orbit');
 
   const pricingName = useMemo(
     () => (yamlContent ? extractPricingName(yamlContent) : null),
@@ -128,6 +128,21 @@ export default function HarveyChat({
 
   useEffect(() => closeWhenOtherPanelOpens('harvey', () => setIsOpen(false)), []);
 
+  // With another assistant on the page, the shared launcher replaces HARVEY's bubble.
+  const grouped = useAssistantLauncher({
+    id: 'harvey',
+    name: 'H.A.R.V.E.Y.',
+    description: 'Questions about this pricing',
+    Icon: HarveyIcon,
+    isOpen,
+    busy: isLoading,
+    open: () => {
+      announcePanelOpen('harvey');
+      setIsOpen(true);
+    },
+    close: () => setIsOpen(false),
+  });
+
   return (
     <>
       <AnimatePresence>
@@ -142,12 +157,11 @@ export default function HarveyChat({
             pricingName={pricingName ?? undefined}
             suggestedQuestions={suggestedQuestions}
             isLoading={isLoading}
-            stacked={orbitPresent}
           />
         )}
       </AnimatePresence>
 
-      <HarveyChatBubble isOpen={isOpen} onClick={handleToggle} />
+      {!grouped && <HarveyChatBubble isOpen={isOpen} onClick={handleToggle} />}
     </>
   );
 }

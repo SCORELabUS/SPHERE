@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { MdAdd, MdClose, MdOpenInFull } from 'react-icons/md';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { announcePanelOpen, closeWhenOtherPanelOpens } from '../../../core/utils/assistant-panels';
-import { useAssistantPresence } from '../../../core/hooks/useAssistantPresence';
+import { useAssistantLauncher } from '../../../core/hooks/useAssistantLauncher';
 import { useOrbitChat } from '../../hooks/useOrbitChat';
 import OrbitAvatar from '../orbit-avatar';
 import OrbitLogo from '../orbit-logo';
@@ -34,8 +34,8 @@ function storeConversation(userId: string | undefined, conversationId: string | 
 }
 
 /**
- * ORBIT on every signed-in page, as a bubble in the bottom-right corner (above
- * HARVEY's on the pages that have it). Nothing is fetched until the bubble is hovered
+ * ORBIT on every signed-in page, as a bubble in the bottom-right corner (folded
+ * with HARVEY's into one launcher on the pages that have it). Nothing is fetched until the bubble is hovered
  * or opened, and the panel stays mounted once opened, so closing and reopening
  * it is instant and keeps what was being typed.
  */
@@ -90,8 +90,6 @@ export default function OrbitWidget() {
     // Only when a reply starts or the page is left, not when the user picks another conversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answeringId, onOrbitPage]);
-  // On a page with HARVEY, whose bubble keeps the corner, ORBIT's sits above it.
-  const stacked = useAssistantPresence('orbit', 'harvey', !onOrbitPage);
 
   const openPanel = useCallback(() => {
     announcePanelOpen('orbit');
@@ -117,9 +115,27 @@ export default function OrbitWidget() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
+  const busy = chat.isSending || chat.running !== null;
+
+  // With another assistant on the page, the shared launcher replaces ORBIT's bubble.
+  const grouped = useAssistantLauncher(
+    {
+      id: 'orbit',
+      name: 'ORBIT',
+      description: 'Your SPHERE assistant',
+      Icon: OrbitLogo,
+      isOpen: open,
+      busy,
+      attention: unseenReply ? 'ORBIT replied' : null,
+      open: openPanel,
+      close: () => setOpen(false),
+      prepare: () => setWarm(true),
+    },
+    !onOrbitPage
+  );
+
   if (onOrbitPage) return null;
 
-  const busy = chat.isSending || chat.running !== null;
   const title = chat.conversations.find(conversation => conversation.id === conversationId)?.title;
 
   return (
@@ -129,12 +145,10 @@ export default function OrbitWidget() {
           ref={panelRef}
           aria-label="ORBIT assistant"
           aria-hidden={!open}
-          className={`fixed left-2 right-2 z-30 flex flex-col overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4 transition-[opacity,transform,visibility] duration-200 ease-out sm:left-auto sm:right-6 sm:w-[410px] ${
-            stacked ? 'bottom-[10.5rem]' : 'bottom-24'
-          } ${open ? 'visible translate-y-0 scale-100 opacity-100' : 'pointer-events-none invisible translate-y-3 scale-[0.97] opacity-0'}`}
+          className={`fixed bottom-24 left-2 right-2 z-30 flex flex-col overflow-hidden rounded-2xl border border-tp-hairline bg-tp-canvas shadow-elevation-4 transition-[opacity,transform,visibility] duration-200 ease-out sm:left-auto sm:right-6 sm:w-[410px] ${open ? 'visible translate-y-0 scale-100 opacity-100' : 'pointer-events-none invisible translate-y-3 scale-[0.97] opacity-0'}`}
           style={{
             // Its top stays clear of the sticky header (3.5rem) with a small margin.
-            height: stacked ? 'min(620px, calc(100dvh - 240px))' : 'min(620px, calc(100dvh - 168px))',
+            height: 'min(620px, calc(100dvh - 168px))',
             transformOrigin: 'bottom right',
           }}
         >
@@ -196,36 +210,38 @@ export default function OrbitWidget() {
         </section>
       )}
 
-      <div className={`fixed right-6 z-30 transition-[bottom] duration-300 ease-out ${stacked ? 'bottom-24' : 'bottom-6'}`}>
-        {!open && !mounted && (
-          <span className="pointer-events-none absolute inset-0 animate-pulse-ring rounded-full bg-tp-primary/20" />
-        )}
-        <button
-          ref={bubbleRef}
-          type="button"
-          onClick={() => (open ? setOpen(false) : openPanel())}
-          onMouseEnter={() => setWarm(true)}
-          onFocus={() => setWarm(true)}
-          onTouchStart={() => setWarm(true)}
-          aria-label={open ? 'Close ORBIT' : 'Open ORBIT, your SPHERE assistant'}
-          aria-expanded={open}
-          className="relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-tp-primary text-tp-on-primary shadow-elevation-3 transition-transform duration-150 hover:scale-[1.06] active:scale-95"
-        >
-          {open ? <MdClose size={24} /> : <OrbitLogo busy={busy} className="h-8 w-8" />}
-          {unseenReply && !open && (
-            <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-tp-canvas bg-tp-severity-success" />
+      {!grouped && (
+        <div className="fixed bottom-6 right-6 z-30">
+          {!open && !mounted && (
+            <span className="pointer-events-none absolute inset-0 animate-pulse-ring rounded-full bg-tp-primary/20" />
           )}
-        </button>
-        {unseenReply && !open && (
           <button
+            ref={bubbleRef}
             type="button"
-            onClick={openPanel}
-            className="absolute bottom-3 right-16 cursor-pointer whitespace-nowrap rounded-full border border-tp-hairline bg-tp-canvas px-3 py-1.5 text-[12px] font-medium text-tp-ink shadow-elevation-2 animate-slide-up hover:border-tp-primary/40"
+            onClick={() => (open ? setOpen(false) : openPanel())}
+            onMouseEnter={() => setWarm(true)}
+            onFocus={() => setWarm(true)}
+            onTouchStart={() => setWarm(true)}
+            aria-label={open ? 'Close ORBIT' : 'Open ORBIT, your SPHERE assistant'}
+            aria-expanded={open}
+            className="relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-tp-primary text-tp-on-primary shadow-elevation-3 transition-transform duration-150 hover:scale-[1.06] active:scale-95"
           >
-            ORBIT replied
+            {open ? <MdClose size={24} /> : <OrbitLogo busy={busy} className="h-8 w-8" />}
+            {unseenReply && !open && (
+              <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-tp-canvas bg-tp-severity-success" />
+            )}
           </button>
-        )}
-      </div>
+          {unseenReply && !open && (
+            <button
+              type="button"
+              onClick={openPanel}
+              className="absolute bottom-3 right-16 cursor-pointer whitespace-nowrap rounded-full border border-tp-hairline bg-tp-canvas px-3 py-1.5 text-[12px] font-medium text-tp-ink shadow-elevation-2 animate-slide-up hover:border-tp-primary/40"
+            >
+              ORBIT replied
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }
