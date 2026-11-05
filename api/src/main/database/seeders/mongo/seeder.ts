@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { up as initializeOAuth } from '../../../migrations/mongo/20261024120000-create-oauth-collections';
 import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092005000-pricing-identities';
+import { up as initializeServiceTrees } from '../../../migrations/mongo/20261104120000-create-service-trees';
 import { Seeder } from 'mongo-seeding';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -29,6 +30,8 @@ export const seedDatabase = async () => {
     await seeder.import(collections);
     // OAuth credentials are never seeded: only create their empty indexed collections.
     await initializeOAuth(mongoose.connection);
+    // Service trees (beta) are not seeded either: only their empty indexed collection.
+    await initializeServiceTrees(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     console.log('==== Mongo seeding successfull ====');
   } catch (err) {

@@ -41,6 +41,10 @@ import CollectionsTab from './components/CollectionsTab';
 import HierarchyTab from './components/HierarchyTab';
 import ChildRolesManager from './components/ChildRolesManager';
 import ShareOrgMenu from './components/ShareOrgMenu';
+import ServicesTab from './components/ServicesTab';
+import { useBetaFeature } from '../../../beta/hooks/useBetaFeatures';
+import BetaBadge from '../../../beta/components/beta-badge';
+import ConfirmModal from '../../../core/components/confirm-modal';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -89,6 +93,17 @@ export default function OrganizationDetailPage() {
   } = useOrganizationsApi();
 
   const canManage = !isPublicView && (myRole === 'OWNER' || myRole === 'ADMIN');
+  const showServices = useBetaFeature('organization-services');
+  // Leaving the Services tab with unsaved changes asks first, since they live in the tab.
+  const servicesDirtyRef = useRef(false);
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
+  const selectTab = useCallback((tab: Tab) => {
+    if (activeTab === 'services' && tab !== 'services' && servicesDirtyRef.current) setPendingTab(tab);
+    else setActiveTab(tab);
+  }, [activeTab]);
+  const onServicesDirtyChange = useCallback((dirty: boolean) => {
+    servicesDirtyRef.current = dirty;
+  }, []);
 
   const handleOrganizationExited = async () => {
     await refreshMyOrganizations();
@@ -438,11 +453,17 @@ export default function OrganizationDetailPage() {
       'invitations',
       'pricings',
       'collections',
+      ...(showServices ? ['services' as const] : []),
       'children',
     ];
     if (canManage) tabs.push('permissions');
     return tabs;
-  }, [isPublicView, canManage]);
+  }, [isPublicView, canManage, showServices]);
+
+  // Turning beta features off while on the Services tab leaves it.
+  useEffect(() => {
+    if (!availableTabs.includes(activeTab)) setActiveTab('overview');
+  }, [availableTabs, activeTab]);
 
   /* ─── Loading / Error ─── */
   if (isLoading) return <OrgDetailSkeleton />;
@@ -624,12 +645,12 @@ export default function OrganizationDetailPage() {
             <div className="relative">
               <select
                 value={activeTab}
-                onChange={e => setActiveTab(e.target.value as Tab)}
+                onChange={e => selectTab(e.target.value as Tab)}
                 className="w-full appearance-none rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2.5 pr-8 text-sm font-medium text-tp-ink transition-colors focus:border-tp-primary focus:outline-none"
               >
                 {availableTabs.map(tab => (
                   <option key={tab} value={tab}>
-                    {TAB_META[tab].label}
+                    {TAB_META[tab].beta ? `${TAB_META[tab].label} (Beta)` : TAB_META[tab].label}
                   </option>
                 ))}
               </select>
@@ -654,7 +675,7 @@ export default function OrganizationDetailPage() {
                   type="button"
                   role="tab"
                   aria-selected={activeTab === tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => selectTab(tab)}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     activeTab === tab
                       ? 'bg-tp-primary/8 text-tp-primary'
@@ -667,6 +688,7 @@ export default function OrganizationDetailPage() {
                     <Iconify icon={meta.icon} width={16} />
                   )}
                   {meta.label}
+                  {meta.beta && <BetaBadge />}
                 </button>
               );
             })}
@@ -745,6 +767,10 @@ export default function OrganizationDetailPage() {
             />
           )}
 
+          {!isPublicView && showServices && activeTab === 'services' && (
+            <ServicesTab org={org} onDirtyChange={onServicesDirtyChange} />
+          )}
+
           {activeTab === 'children' && (
             <HierarchyTab
               org={org}
@@ -782,6 +808,19 @@ export default function OrganizationDetailPage() {
 
       {/* ═══ MODALS ═══ */}
       <AnimatePresence>
+        {pendingTab && (
+          <ConfirmModal
+            message="Leave the services without saving your changes?"
+            confirmLabel="Leave"
+            danger
+            onCancel={() => setPendingTab(null)}
+            onConfirm={() => {
+              servicesDirtyRef.current = false;
+              setActiveTab(pendingTab);
+              setPendingTab(null);
+            }}
+          />
+        )}
         {editModalOpen && org && (
           <EditOrgModal
             org={org}

@@ -40,6 +40,8 @@ import OrbitMcpService from '../services/orbit/OrbitMcpService';
 import OidcService from '../services/OidcService';
 import OAuthService from '../services/OAuthService';
 import OAuthRepository from '../repositories/mongoose/OAuthRepository';
+import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
+import ServiceTreeService from '../services/ServiceTreeService';
 
 dotenv.config();
 
@@ -69,6 +71,8 @@ function initContainer(databaseType: string): AwilixContainer {
     oauthRepository: asValue(new OAuthRepository()),
     oauthService: asClass(OAuthService).singleton(),
     oidcService: asClass(OidcService).singleton(),
+    serviceTreeRepository: asValue(new ServiceTreeRepository()),
+    serviceTreeService: asClass(ServiceTreeService).singleton(),
     userRepository: asValue(userRepository),
     pricingRepository: asValue(pricingRepository),
     pricingCollectionRepository: asValue(pricingCollectionRepository),

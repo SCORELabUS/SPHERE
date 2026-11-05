@@ -23,6 +23,7 @@ import { processFileUris } from './FileService';
 import { isSelectableAvatarPath } from '../config/defaultAvatars';
 import { generateSlug } from '../utils/slug-manager';
 import { OrganizationIndexByUserOptions } from '../types/services/Organization';
+import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
 
 /** Default colours for an organization that has never picked any. */
 const DEFAULT_AVATAR_BG_COLOR = '#023e8a';
@@ -60,6 +61,7 @@ class OrganizationService {
   private organizationRepository: OrganizationRepository;
   private organizationMembershipRepository: OrganizationMembershipRepository;
   private organizationInvitationRepository: OrganizationInvitationRepository;
+  private serviceTreeRepository: ServiceTreeRepository;
   private pricingRepository: PricingRepository;
   private pricingCollectionRepository: PricingCollectionRepository;
   private entityPermissionRepository: EntityPermissionRepository;
@@ -70,6 +72,7 @@ class OrganizationService {
     this.organizationRepository = container.resolve('organizationRepository');
     this.organizationMembershipRepository = container.resolve('organizationMembershipRepository');
     this.organizationInvitationRepository = container.resolve('organizationInvitationRepository');
+    this.serviceTreeRepository = container.resolve('serviceTreeRepository');
     this.pricingRepository = container.resolve('pricingRepository');
     this.pricingCollectionRepository = container.resolve('pricingCollectionRepository');
     this.entityPermissionRepository = container.resolve('entityPermissionRepository');
@@ -620,6 +623,7 @@ class OrganizationService {
     await this.entityPermissionRepository.destroyByOrganizationId(id);
     await this.organizationMembershipRepository.destroyByOrganizationId(id);
     await this.organizationInvitationRepository.destroyByOrganizationId(id);
+    await this.serviceTreeRepository.deleteByOrganizationId(id);
     const result = await this.organizationRepository.destroy(id);
     if (!result) {
       throw new Error('NOT FOUND: Organization not found');
