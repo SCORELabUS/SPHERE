@@ -3409,4 +3409,205 @@ describe('Pricings API integration', () => {
       expect(await fs.readFile(originPath, 'utf8')).toBe(originalContent);
     });
   });
+
+  describe('Forking a version into an existing pricing', { timeout: 30000 }, () => {
+    const forkInto = (token: string, payload: Record<string, unknown>) =>
+      request(app).post(`${BASE_PATH}/pricing-forks`).set('Authorization', `Bearer ${token}`).send(payload);
+    const track = (body: any) => {
+      if (body?.id) pricingsToDelete.add(body.id);
+      if (typeof body?.yaml === 'string') {
+        generatedFilesToDelete.add(path.resolve(process.cwd(), 'public', body.yaml.replace(/^https?:\/\/[^/]+\//, '')));
+      }
+    };
+
+    it('Adds the version as the latest one of the target pricing, under the label given.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: owner, organizationId: targetOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId, version: '2.0.0' });
+      const target = await createPricingForOrganization({ organizationId: targetOrganizationId, version: '1.1.0' });
+
+      const response = await forkInto(owner.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId,
+        targetSlug: target.serviceName,
+        version: '2.1.0',
+      });
+      track(response.body);
+
+      expect(response.status).toBe(200);
+      expect(response.body.version).toBe('2.1.0');
+      expect(response.body.forkedFrom).toMatchObject({ name: source.serviceName, version: '2.0.0' });
+      const targetDocument = await PricingMongoose.findOne({ _id: target.id }).lean();
+      expect(String(response.body.pricingId)).toBe(String(targetDocument!.pricingId));
+
+      const shown = await request(app)
+        .get(`${BASE_PATH}/pricings/${targetOrganizationId}/${target.serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(shown.status).toBe(200);
+      expect(shown.body.name).toBe(target.serviceName);
+      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['2.1.0', '1.1.0']);
+
+      const forked = await PricingMongoose.findOne({ _id: response.body.id }).lean();
+      const forkedYaml = yaml.load(
+        await fs.readFile(path.resolve(process.env.SERVER_STATICS_FOLDER || 'public', forked!.yaml), 'utf8')
+      ) as { version: string; saasName: string };
+      expect(forkedYaml.version).toBe('2.1.0');
+      expect(forkedYaml.saasName).toBe(target.serviceName);
+    });
+
+    it('Keeps the label of the source version when none is given, and may target the same organization.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId, version: '3.0.0' });
+      const target = await createPricingForOrganization({ organizationId, version: '0.5.0' });
+
+      const response = await forkInto(owner.token, {
+        sourceOrganizationId: organizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: organizationId,
+        targetSlug: target.serviceName,
+      });
+      track(response.body);
+
+      expect(response.status).toBe(200);
+      expect(response.body.version).toBe('3.0.0');
+    });
+
+    it('Refuses a label the target already has, an invalid label, an unknown target and the source itself.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId, version: '1.0.0' });
+      const target = await createPricingForOrganization({ organizationId, version: '1.0.0' });
+      const base = {
+        sourceOrganizationId: organizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: organizationId,
+      };
+
+      const taken = await forkInto(owner.token, { ...base, targetSlug: target.serviceName });
+      expect(taken.status).toBe(409);
+      expect(taken.body.error).toContain('already has a version 1.0.0');
+
+      const invalid = await forkInto(owner.token, { ...base, targetSlug: target.serviceName, version: '../2.0' });
+      expect(invalid.status).toBe(422);
+
+      const unknown = await forkInto(owner.token, { ...base, targetSlug: `missing-${randomSuffix()}`, version: '2.0.0' });
+      expect(unknown.status).toBe(404);
+
+      const itself = await forkInto(owner.token, { ...base, targetSlug: source.serviceName, version: '2.0.0' });
+      expect(itself.status).toBe(422);
+
+      expect(await PricingMongoose.countDocuments({ _organizationId: organizationId, version: '2.0.0' })).toBe(0);
+    });
+
+    it('Refuses to add a version to a pricing of an organization the user cannot create in.', async () => {
+      const { organizationId: sourceOrganizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const { organizationId: foreignOrganizationId } = await createAndLoginUser('USER');
+      const source = await createPricingForOrganization({ organizationId: sourceOrganizationId });
+      const target = await createPricingForOrganization({ organizationId: foreignOrganizationId, version: '0.1.0' });
+
+      const response = await forkInto(outsider.token, {
+        sourceOrganizationId,
+        sourceSlug: source.serviceName,
+        sourceVersion: source.version,
+        targetOrganizationId: foreignOrganizationId,
+        targetSlug: target.serviceName,
+        version: '9.0.0',
+      });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/v1/pricing-graphs/{organizationId}/{slug}', { timeout: 30000 }, () => {
+    const graphOf = (organizationId: string, slug: string, token?: string) => {
+      const call = request(app).get(`${BASE_PATH}/pricing-graphs/${organizationId}/${slug}`);
+      return token ? call.set('Authorization', `Bearer ${token}`) : call;
+    };
+    const fork = async (token: string, payload: Record<string, unknown>) => {
+      const response = await request(app).post(`${BASE_PATH}/pricing-forks`).set('Authorization', `Bearer ${token}`).send(payload);
+      if (response.status !== 200) throw new Error(`Fork failed: ${response.status} ${JSON.stringify(response.body)}`);
+      pricingsToDelete.add(response.body.id);
+      if (typeof response.body.yaml === 'string') {
+        generatedFilesToDelete.add(path.resolve(process.cwd(), 'public', response.body.yaml.replace(/^https?:\/\/[^/]+\//, '')));
+      }
+      return response.body;
+    };
+
+    it('Draws the pricing, its source and its forks as lanes joined by the versions they came from.', async () => {
+      const { user: originalOwner, organizationId: originalOrg } = await createAndLoginUser('USER');
+      const { user: personalOwner, organizationId: personalOrg } = await createAndLoginUser('USER');
+      const original = await createPricingForOrganization({ organizationId: originalOrg, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: originalOrg, serviceName: original.serviceName, version: '1.1.0' });
+
+      const forked = await fork(personalOwner.token, {
+        sourceOrganizationId: originalOrg,
+        sourceSlug: original.serviceName,
+        sourceVersion: '1.1.0',
+        targetOrganizationId: personalOrg,
+        name: `personal_${randomSuffix()}`,
+      });
+
+      // From the fork: its own lane first, then the original it came from.
+      const fromFork = await graphOf(personalOrg, forked.slug, personalOwner.token);
+      expect(fromFork.status).toBe(200);
+      expect(fromFork.body.truncated).toBe(false);
+      const [own, source] = fromFork.body.lanes;
+      expect(own).toMatchObject({ role: 'current', slug: forked.slug, available: true });
+      expect(own.versions).toHaveLength(1);
+      expect(own.versions[0].forkedFrom).toEqual({ pricingId: source.pricingId, version: '1.1.0' });
+      expect(source).toMatchObject({ role: 'source', name: original.serviceName, available: true });
+      expect(source.versions.map((v: any) => v.version).sort()).toEqual(['1.0.0', '1.1.0']);
+      expect(source.organization.id).toBe(originalOrg);
+
+      // From the original, anonymously: the fork shows up as a lane of its own.
+      const fromOriginal = await graphOf(originalOrg, original.serviceName);
+      expect(fromOriginal.status).toBe(200);
+      expect(fromOriginal.body.lanes.map((lane: any) => lane.role)).toEqual(['current', 'fork']);
+      expect(fromOriginal.body.lanes[1].slug).toBe(forked.slug);
+      expect(originalOwner.token).toBeTruthy();
+    });
+
+    it('Leaves out forks the caller may not read, and names unreadable sources only by what the fork says.', async () => {
+      const { organizationId: originalOrg } = await createAndLoginUser('USER');
+      const { user: personalOwner, organizationId: personalOrg } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const original = await createPricingForOrganization({ organizationId: originalOrg, version: '1.0.0' });
+      const forked = await fork(personalOwner.token, {
+        sourceOrganizationId: originalOrg,
+        sourceSlug: original.serviceName,
+        sourceVersion: '1.0.0',
+        targetOrganizationId: personalOrg,
+        name: `personal_${randomSuffix()}`,
+      });
+
+      // The fork turns private: someone outside its organization no longer sees it.
+      await PricingMongoose.updateMany({ _id: forked.id }, { $set: { private: true } });
+      const fromOriginal = await graphOf(originalOrg, original.serviceName, outsider.token);
+      expect(fromOriginal.status).toBe(200);
+      expect(fromOriginal.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
+
+      // The original turns private: the fork's owner keeps a lane with only the label forked.
+      await PricingMongoose.updateMany({ _id: original.id }, { $set: { private: true } });
+      const fromFork = await graphOf(personalOrg, forked.slug, personalOwner.token);
+      expect(fromFork.status).toBe(200);
+      const source = fromFork.body.lanes[1];
+      expect(source).toMatchObject({ role: 'source', available: false, name: original.serviceName });
+      expect(source.versions).toEqual([
+        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, private: false, forkedFrom: null },
+      ]);
+    });
+
+    it('Answers 404 for a pricing the caller may not read.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const hidden = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      expect((await graphOf(organizationId, hidden.serviceName, outsider.token)).status).toBe(404);
+      expect((await graphOf(organizationId, `missing-${randomSuffix()}`)).status).toBe(404);
+    });
+  });
 });

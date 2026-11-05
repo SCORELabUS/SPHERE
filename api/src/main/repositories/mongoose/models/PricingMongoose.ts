@@ -117,6 +117,12 @@ pricingSchema.index({ slug: 1, _organizationId: 1, version: 1, _collectionId: 1 
 
 pricingSchema.index({ pricingId: 1, version: 1 }, { unique: true, partialFilterExpression: { pricingId: { $type: 'objectId' } } });
 
+// The pricings forked from one, for its version graph (PricingRepository.findForkPricingIds).
+pricingSchema.index(
+  { 'forkedFrom.pricingId': 1 },
+  { name: 'forkedFrom_pricingId_1', partialFilterExpression: { 'forkedFrom.pricingId': { $exists: true } } }
+);
+
 /**
  * Collation of the `yaml` lookups done for every pricing file requested under
  * /static (StaticFilesMiddleware): case-insensitive, so a case-insensitive file

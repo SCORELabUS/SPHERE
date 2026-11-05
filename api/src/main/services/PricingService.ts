@@ -2,12 +2,13 @@ import { formatPricingEtag, PreconditionFailedError, PricingRevisionContext } fr
 import { withPricingRevisionLock, withPricingRevisionLocks } from '../utils/pricing-revision-lock';
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
-import { ForkedFrom } from '../types/models/Pricing';
+import { ForkedFrom, PricingGraphLane } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
 import { requirePricingFile, resolvePricingFile } from '../utils/pricing-files';
 import { stampCreatedAt } from '../utils/created-at';
+import { stampVersion, VERSION_LABEL } from '../utils/yaml-version';
 import { permanentYamlPath } from '../utils/permanent-links';
 import {
   PricingService as PricingAnalytics,
@@ -45,6 +46,9 @@ interface RevisionReader {
   slug: string;
   collectionSlug?: string;
 }
+
+/** How many source lanes and fork lanes a version graph draws at most, each. */
+const GRAPH_MAX_LANES = 20;
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -206,6 +210,113 @@ class PricingService {
     }
 
     return pricing;
+  }
+
+  /**
+   * The version graph of a pricing, drawn like a commit graph: one lane for the
+   * pricing, one for each pricing its versions were forked from and one for each
+   * pricing forked from it, each with the versions the caller may read (the same
+   * rule as show()). A version names the one it was forked from by pricing and
+   * label, which gives the edges between lanes. A source the caller may not read
+   * keeps a lane with only the labels its forks already name, marked unavailable;
+   * a fork the caller may not read is left out.
+   */
+  async graph(slug: string, organizationId: string, reqUser?: LeanUser) {
+    const current = await this.show(slug, organizationId, reqUser);
+    const currentId = String(current.pricingId);
+    const lanes: PricingGraphLane[] = [this._graphLane(current, 'current')];
+
+    const sourceIds = [
+      ...new Set(
+        current.versions
+          .map(version => version.forkedFrom?.pricingId)
+          .filter(Boolean)
+          .map(String)
+          .filter(id => id !== currentId)
+      ),
+    ];
+    for (const id of sourceIds.slice(0, GRAPH_MAX_LANES)) {
+      lanes.push((await this._graphLaneOf(id, 'source', reqUser)) ?? this._unavailableSourceLane(id, current.versions));
+    }
+
+    const forkIds = (await this.pricingRepository.findForkPricingIds(currentId, GRAPH_MAX_LANES + 1)).filter(
+      id => !sourceIds.includes(id)
+    );
+    for (const id of forkIds.slice(0, GRAPH_MAX_LANES)) {
+      const lane = await this._graphLaneOf(id, 'fork', reqUser);
+      if (lane) lanes.push(lane);
+    }
+
+    return {
+      pricingId: currentId,
+      lanes,
+      // More lanes exist than were drawn.
+      truncated: sourceIds.length > GRAPH_MAX_LANES || forkIds.length > GRAPH_MAX_LANES,
+    };
+  }
+
+  /** The lane of a pricing by id, or null when it is gone or the caller may not read it. */
+  private async _graphLaneOf(pricingId: string, role: 'source' | 'fork', reqUser?: LeanUser) {
+    const location = await this.pricingRepository.findLocation(pricingId);
+    if (!location) return null;
+    try {
+      return this._graphLane(await this.show(location.slug, location.organizationId, reqUser), role);
+    } catch (err) {
+      if ((err as Error).message.startsWith('NOT FOUND')) return null;
+      throw err;
+    }
+  }
+
+  private _graphLane(pricing: Awaited<ReturnType<PricingService['show']>>, role: PricingGraphLane['role']): PricingGraphLane {
+    const organization = (pricing.versions[0] as any)?.organization ?? {};
+    return {
+      pricingId: String(pricing.pricingId),
+      name: pricing.name,
+      slug: pricing.slug,
+      organization: {
+        id: String(organization.id ?? ''),
+        name: organization.name ?? '',
+        displayName: organization.displayName ?? organization.name ?? '',
+      },
+      collectionSlug: pricing.collection?.id ? (pricing.collection.slug ?? null) : null,
+      role,
+      available: true,
+      versions: pricing.versions.map(version => ({
+        id: String(version.id),
+        version: String((version as any).version),
+        createdAt: new Date(version.createdAt as any).toISOString(),
+        private: version.private === true,
+        forkedFrom: version.forkedFrom?.pricingId
+          ? { pricingId: String(version.forkedFrom.pricingId), version: String(version.forkedFrom.version) }
+          : null,
+      })),
+    };
+  }
+
+  /** A source the caller may not read: only what its forks already say about it. */
+  private _unavailableSourceLane(pricingId: string, versions: Array<{ forkedFrom?: any }>): PricingGraphLane {
+    const origins = versions.map(version => version.forkedFrom).filter(origin => origin && String(origin.pricingId) === pricingId);
+    const first = origins[0];
+    return {
+      pricingId,
+      name: first.name,
+      slug: first.slug,
+      organization: {
+        id: String(first.organizationId),
+        name: first.organizationName,
+        displayName: first.organizationDisplayName || first.organizationName,
+      },
+      collectionSlug: null,
+      role: 'source',
+      available: false,
+      versions: [...new Set(origins.map(origin => String(origin.version)))].map(version => ({
+        id: `${pricingId}:${version}`,
+        version,
+        createdAt: null,
+        private: false,
+        forkedFrom: null,
+      })),
+    };
   }
 
   /**
@@ -496,9 +607,24 @@ class PricingService {
     sourceVersion: string,
     targetOrganizationId: string,
     reqUser: LeanUser,
-    options: { name?: string } = {}
+    options: {
+      name?: string;
+      /** An existing pricing of the target organization to add the forked version to, instead of a new pricing. */
+      targetSlug?: string;
+      /** The label of the forked version (its YAML's `version`); the source's label when absent. */
+      version?: string;
+    } = {}
   ) {
-    if (sourceOrganizationId === targetOrganizationId) {
+    const targetSlug = options.targetSlug?.trim() || undefined;
+    const versionLabel = options.version?.trim() || undefined;
+    if (versionLabel && !VERSION_LABEL.test(versionLabel)) {
+      throw new Error(
+        'INVALID DATA: The version must start with a letter or digit and use only letters, digits, ".", "_", "+" or "-" (at most 64 characters)'
+      );
+    }
+    // A new pricing is always created in another organization; a version can be
+    // brought into any other pricing, in the same organization too.
+    if (sourceOrganizationId === targetOrganizationId && !targetSlug) {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
     }
 
@@ -523,6 +649,23 @@ class PricingService {
 
     const sourceVersionDoc = sourcePricing.versions[0];
 
+    let targetPricing: any = null;
+    if (targetSlug) {
+      targetPricing = await this.pricingRepository.findOne(targetSlug, targetOrganizationId, { includePrivate: true });
+      if (!targetPricing?.versions?.length) {
+        throw new Error('NOT FOUND: Target pricing not found');
+      }
+      if (String(targetPricing.pricingId) === String(sourcePricing.pricingId)) {
+        throw new Error('INVALID DATA: A pricing cannot take a version of itself');
+      }
+      const label = versionLabel ?? sourceVersionDoc.version;
+      if (targetPricing.versions.some((version: { version: string }) => version.version === label)) {
+        throw new Error(
+          `CONFLICT: ${targetPricing.name} already has a version ${label}. Choose another name for the forked version.`
+        );
+      }
+    }
+
     const sourceAbsolutePath = resolvePricingFile(sourceVersionDoc.yaml);
     if (!sourceAbsolutePath || !fs.existsSync(sourceAbsolutePath)) {
       throw new Error('NOT FOUND: Pricing file not found');
@@ -544,13 +687,20 @@ class PricingService {
     let versionCreated = false;
 
     try {
+      // The version is stored under the label its YAML gives. A version brought into
+      // an existing pricing keeps the source's label unless it is given another one.
+      const stampedLabel = versionLabel ?? (targetPricing ? sourceVersionDoc.version : undefined);
+      if (stampedLabel) {
+        fs.writeFileSync(copiedAbsolutePath, stampVersion(fs.readFileSync(copiedAbsolutePath, 'utf8'), stampedLabel), 'utf8');
+      }
+
       const requestedName = options.name?.trim();
-      const forkedPricingName = requestedName || sourcePricing.name;
-      const nameClash = await this.pricingRepository.findOne(
-        generateSlug(forkedPricingName),
-        targetOrganizationId,
-        { includePrivate: true }
-      );
+      const forkedPricingName = targetPricing ? targetPricing.name : requestedName || sourcePricing.name;
+      const nameClash = targetPricing
+        ? null
+        : await this.pricingRepository.findOne(generateSlug(forkedPricingName), targetOrganizationId, {
+            includePrivate: true,
+          });
 
       if (nameClash?.versions?.length) {
         if (!requestedName) {
@@ -597,7 +747,8 @@ class PricingService {
         undefined,
         forkedPricingName,
         forkedFrom,
-        null,
+        // An existing target gets a new version; otherwise a new pricing is created.
+        targetPricing ?? null,
         new Date()
       );
       // From here on the stored version references the copied file, so it must not
@@ -832,7 +983,8 @@ class PricingService {
           await this.pricingCollectionService.updateCollectionAnalytics(collectionId);
         }
 
-        if (isAddingVersion && !forkedFrom) {
+        // A version forked into an existing pricing is a new version of it too.
+        if (isAddingVersion) {
           // Not awaited: telling followers must not delay or fail the publish itself.
           void container
             .resolve('pricingFollowService')

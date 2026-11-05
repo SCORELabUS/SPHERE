@@ -28,6 +28,7 @@ import YamlSourcePanel from '../../components/yaml-source-panel';
 import PricingTree from '../../components/pricing-tree';
 import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
 import PricingVersionsTab from '../../components/pricing-versions-tab';
+import PricingVersionGraph from '../../components/pricing-version-graph';
 import PricingSettingsTab from '../../components/pricing-settings-tab';
 import VersionsVisibilityModal from '../../components/versions-visibility-modal';
 import PricingLinkModal from '../../components/pricing-link-modal';
@@ -1130,6 +1131,27 @@ export default function CardPage() {
               {isPrivateNoAccess ? (
                 <PrivateAccessFallback />
               ) : (
+                <div className="space-y-4">
+                {organizationId && slug && (
+                  <PricingVersionGraph
+                    organizationId={organizationId}
+                    slug={slug}
+                    refreshKey={versions.map(v => `${v.id}:${v.private}`).join(',')}
+                    currentVersionId={currentVersion?.id ?? null}
+                    canAddVersions={!!entityPermissions?.CREATE}
+                    onSelectVersion={id => {
+                      const picked = versions.find(v => v.id === id);
+                      if (picked) setCurrentVersion(picked);
+                    }}
+                    onForked={id => {
+                      customAlert('Version forked into this pricing', 'success');
+                      const params = new URLSearchParams();
+                      if (collectionSlug) params.set('collection', collectionSlug);
+                      params.set('version', id);
+                      router.push(`/pricings/${organizationId}/${slug}?${params.toString()}`);
+                    }}
+                  />
+                )}
                 <PricingVersionsTab
                   versions={versions}
                   currentVersion={currentVersion}
@@ -1146,6 +1168,7 @@ export default function CardPage() {
                   onToggleVisibility={handleToggleVersionVisibility}
                   onViewOrigin={handleViewOrigin}
                 />
+                </div>
               )}
             </motion.div>
           )}
@@ -1214,7 +1237,17 @@ export default function CardPage() {
         {showForkModal && (
           <ForkPricingModal
             pricingName={pricingName}
+            sourceOrganizationId={organizationId ?? ''}
+            sourceSlug={slug ?? ''}
+            sourceVersion={currentVersion?.version ?? ''}
             onFork={handleFork}
+            onForkInto={(targetOrganizationId, targetSlug, versionName) => {
+              if (!organizationId || !slug || !currentVersion) throw new Error('Pricing not loaded yet');
+              return forkPricing(organizationId, slug, currentVersion.version, targetOrganizationId, undefined, {
+                targetSlug,
+                version: versionName,
+              });
+            }}
             onClose={() => setShowForkModal(false)}
             onSuccess={handleForkSuccess}
           />
