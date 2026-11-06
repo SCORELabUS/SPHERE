@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FiUser, FiGlobe, FiLink2, FiBell, FiCreditCard, FiAlertTriangle, FiChevronDown, FiShield } from 'react-icons/fi';
+import { FiUser, FiGlobe, FiLink2, FiBell, FiCreditCard, FiAlertTriangle, FiChevronDown, FiShield, FiZap } from 'react-icons/fi';
 import { useSearchParams } from 'react-router-dom';
 import { type UserSettings } from '../api/userSettingsApi';
 import { useAuth } from '../../auth/hooks/useAuth';
@@ -13,6 +13,7 @@ import PaymentsSection from '../components/PaymentsSection';
 import DangerZoneSection from '../components/DangerZoneSection';
 import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 import IntegrationsSection from '../components/IntegrationsSection';
+import BetaFeaturesSection from '../components/BetaFeaturesSection';
 import ConnectedApplications from '../../oauth/components/ConnectedApplications';
 import { fadeInUp, transitionDefault } from '../../core/utils/motion-variants';
 
@@ -24,6 +25,7 @@ const SECTIONS = [
   { id: 'applications', label: 'Connected applications', icon: FiLink2 },
   { id: 'notifications', label: 'Notifications', icon: FiBell },
   { id: 'payments', label: 'Payments', icon: FiCreditCard },
+  { id: 'beta', label: 'Beta features', icon: FiZap },
   { id: 'danger', label: 'Danger Zone', icon: FiAlertTriangle },
 ] as const;
 
@@ -256,6 +258,7 @@ export default function SettingsPage() {
                   <NotificationsSection settings={settings} onUpdate={updateSettings} onDirtyChange={notificationsDirtyChange} />
                 )}
                 {activeSection === 'payments' && <PaymentsSection settings={settings} />}
+                {activeSection === 'beta' && <BetaFeaturesSection settings={settings} onUpdate={updateSettings} />}
                 {activeSection === 'danger' && <DangerZoneSection />}
               </motion.div>
             </AnimatePresence>

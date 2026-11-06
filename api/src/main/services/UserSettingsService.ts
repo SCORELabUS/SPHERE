@@ -129,6 +129,15 @@ class UserSettingsService {
     return this.sanitize(updated);
   }
 
+  async updateBetaFeatures(userId: string, enabled: boolean) {
+    const user = await this.userRepository.findById(userId);
+    if (!user) throw new Error('NOT FOUND: User not found');
+
+    const updated = await this.userRepository.updateById(userId, { 'settings.betaFeatures': enabled });
+    if (!updated) throw new Error('NOT FOUND: User not found after update');
+    return this.sanitize(updated);
+  }
+
   async updateAvatar(userId: string, data: { avatarPath: string; avatarBgColor: string; avatarFgColor: string }) {
     const user = await this.userRepository.findById(userId);
     if (!user) throw new Error('NOT FOUND: User not found');

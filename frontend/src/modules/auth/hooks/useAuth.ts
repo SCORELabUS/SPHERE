@@ -36,6 +36,7 @@ export interface AuthUserSettings {
     x?: string;
   };
   notificationPrefs?: Record<string, { email: boolean; inbox: boolean }>;
+  betaFeatures?: boolean;
 }
 
 export interface AuthUser {

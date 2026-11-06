@@ -49,6 +49,7 @@ class UserController {
     this.updateProfile = this.updateProfile.bind(this);
     this.updateSocialLinks = this.updateSocialLinks.bind(this);
     this.updateNotificationPrefs = this.updateNotificationPrefs.bind(this);
+    this.updateBetaFeatures = this.updateBetaFeatures.bind(this);
     this.uploadAvatar = this.uploadAvatar.bind(this);
     this.removeAvatar = this.removeAvatar.bind(this);
     this.updateAvatarColors = this.updateAvatarColors.bind(this);
@@ -310,6 +311,21 @@ class UserController {
     try {
       const targetUserId = await this.resolveTargetUserId(req);
       const settings = await this.userSettingsService.updateNotificationPrefs(targetUserId, req.body);
+      res.json(settings);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async updateBetaFeatures(req: any, res: any) {
+    try {
+      const { enabled } = req.body ?? {};
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).send({ error: 'enabled must be a boolean' });
+      }
+      const targetUserId = await this.resolveTargetUserId(req);
+      const settings = await this.userSettingsService.updateBetaFeatures(targetUserId, enabled);
       res.json(settings);
     } catch (err: any) {
       const { status, message } = handleError(err);

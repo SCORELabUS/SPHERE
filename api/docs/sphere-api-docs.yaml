@@ -1283,6 +1283,53 @@ paths:
           description: Authentication required
         default:
           description: Unexpected error
+
+  /users/me/settings/beta-features:
+    put:
+      summary: Turn beta features on or off for the current user
+      description: |
+        Opts the currently authenticated user in or out of beta features: functionality
+        that is not finished yet. Routes guarded by `requireBetaFeatures` answer 403
+        while it is off.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+              example:
+                enabled: true
+      responses:
+        '200':
+          description: Beta features setting updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '400':
+          description: "`enabled` is missing or not a boolean"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
           content:
             application/json:
               schema:
@@ -7158,6 +7205,10 @@ components:
                     type: boolean
                   inbox:
                     type: boolean
+            betaFeatures:
+              type: boolean
+              default: false
+              description: Whether the user opted in to features that are not finished yet
         createdAt:
           type: string
           format: date-time

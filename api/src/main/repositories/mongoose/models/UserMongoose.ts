@@ -69,6 +69,8 @@ const UserSettingsSchema = new Schema(
         PricingUpdated: { email: true, inbox: true },
       }),
     },
+    // Opt-in to unfinished features (see `requireBetaFeatures`).
+    betaFeatures: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -227,6 +229,7 @@ export interface UserDocument extends Document {
       x?: string;
     };
     notificationPrefs?: Record<string, { email: boolean; inbox: boolean }>;
+    betaFeatures?: boolean;
   };
   token?: string;
   tokenExpiration?: Date;
