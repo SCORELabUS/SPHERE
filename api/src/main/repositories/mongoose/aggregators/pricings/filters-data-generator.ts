@@ -4,6 +4,7 @@ export const filtersDataGenerator = {
       {
         $project: {
           id: { $toString: '$_id' },
+          pricingId: { $toString: '$pricingId' },
           name: 1,
           slug: 1,
           organization: 1,

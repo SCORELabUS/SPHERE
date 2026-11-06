@@ -70,6 +70,8 @@ export interface OrganizationInvitation {
 
 export interface OrgPricing {
   id: string;
+  /** The pricing's identity, shared by all its versions. */
+  pricingId?: string;
   name: string;
   slug: string;
   version: string;
@@ -82,6 +84,8 @@ export interface OrgPricing {
     configurationSpaceSize: number;
     minSubscriptionPrice: number;
     maxSubscriptionPrice: number;
+    numberOfPlans?: number;
+    numberOfAddOns?: number;
   };
 }
 

@@ -281,6 +281,19 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },
+  // Service tree (beta, also behind requireBetaFeatures): members read it, OWNER/ADMIN replace it.
+  {
+    path: '/orgs/*/services',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN', 'MEMBER'],
+  },
+  {
+    path: '/orgs/*/services',
+    methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
   // Everything under /orgs/:organizationId/** requires membership context.
   // Global ADMIN bypasses membership checks.
   {
