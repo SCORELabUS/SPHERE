@@ -104,8 +104,8 @@ export interface PricingGraphLane {
   slug: string;
   organization: { id: string; name: string; displayName: string };
   collectionSlug: string | null;
-  /** The pricing asked for, one its versions were forked from, or one forked from it. */
-  role: 'current' | 'source' | 'fork';
+  /** The pricing asked for, or the one it was forked from. */
+  role: 'current' | 'source';
   /** False for a source the caller may not read. */
   available: boolean;
   versions: PricingGraphVersion[];

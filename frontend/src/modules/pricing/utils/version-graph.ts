@@ -2,15 +2,11 @@ import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../typ
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
 // one horizontal lane per pricing, one column per version in release order, and
-// a branch from each forked version's origin to it.
+// a branch from the origin of a fork to its first version. Only where a pricing
+// came from is drawn (the lane of its origin above it), never the forks made of it.
 //
-// Large families stay readable in three ways:
-// - quiet stretches collapse: a run of versions of one lane that no branch starts
-//   or ends at becomes one "+N" gap, which the viewer can open;
-// - lanes are ordered like a tree: the pricings it came from above it, the most
-//   recently linked closest, and its forks below it, the most recent fork first,
-//   so a branch going down only crosses lanes that have not started yet;
-// - only the most recent forks are drawn until the viewer asks for more.
+// Long histories stay readable: a run of versions of one lane that no branch
+// starts or ends at folds into one "+N" gap, which the viewer can open.
 
 export interface GraphNode {
   key: string;
@@ -35,14 +31,12 @@ export interface GraphGap {
 }
 
 export interface GraphLayout {
-  /** Sources first, then the pricing shown, then its forks. */
+  /** The pricing it came from first, then the pricing shown. */
   lanes: PricingGraphLane[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   gaps: GraphGap[];
   columns: number;
-  /** Forks left out by `forkLimit`. */
-  hiddenForks: number;
 }
 
 export interface LayoutOptions {
@@ -50,8 +44,6 @@ export interface LayoutOptions {
   expanded?: ReadonlySet<string> | 'all';
   /** Nodes that must stay visible (the version on the page, the one picked), by key. */
   keep?: ReadonlySet<string>;
-  /** How many forks to draw, most recent first. */
-  forkLimit?: number;
 }
 
 export const nodeKey = (pricingId: string, version: string) => `${pricingId}\u0000${version}`;
@@ -64,7 +56,7 @@ interface Entry {
 }
 
 export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
-  const { expanded = new Set<string>(), keep = new Set<string>(), forkLimit = Infinity } = options;
+  const { expanded = new Set<string>(), keep = new Set<string>() } = options;
 
   // Every version with the instant it was released. One whose date is unknown (a
   // source the viewer cannot read) goes right before the first version forked from it.
@@ -94,27 +86,19 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   const entriesOf = (lane: PricingGraphLane) =>
     lane.versions.map(version => byKey.get(nodeKey(lane.pricingId, version.version))!);
 
-  // When a lane last met the pricing shown: its latest version forked from it or into it.
+  // Origins above the pricing shown: a fork has one. Older data, whose later
+  // versions may name origins too, puts the most recently linked one closest.
   const current = graph.lanes.find(lane => lane.role === 'current');
   const linkTime = (lane: PricingGraphLane) => {
-    const times = [
-      ...entriesOf(lane).filter(
-        entry => entry.version.forkedFrom?.pricingId === current?.pricingId
-      ),
-      ...(current ? entriesOf(current) : []).filter(
-        entry => entry.version.forkedFrom?.pricingId === lane.pricingId
-      ),
-    ].map(entry => entry.time);
+    const times = (current ? entriesOf(current) : [])
+      .filter(entry => entry.version.forkedFrom?.pricingId === lane.pricingId)
+      .map(entry => entry.time);
     return times.length ? Math.max(...times) : Number.NEGATIVE_INFINITY;
   };
   const sources = graph.lanes
     .filter(lane => lane.role === 'source')
     .sort((a, b) => linkTime(a) - linkTime(b));
-  const forks = graph.lanes
-    .filter(lane => lane.role === 'fork')
-    .sort((a, b) => linkTime(b) - linkTime(a));
-  const shownForks = forks.slice(0, Math.max(0, forkLimit));
-  const lanes = [...sources, ...(current ? [current] : []), ...shownForks];
+  const lanes = [...sources, ...(current ? [current] : [])];
   const laneOf = new Map(lanes.map((lane, index) => [lane.pricingId, index]));
 
   // The versions that must be seen: where a branch starts or ends, each lane's
@@ -194,7 +178,6 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
     edges,
     gaps,
     columns: nodes.length,
-    hiddenForks: forks.length - shownForks.length,
   };
 }
 
@@ -232,27 +215,4 @@ export function isLongLink(edge: GraphEdge, layout: GraphLayout): boolean {
     routeEdge(edge, layout) !== 'branch' &&
     Math.abs(edge.to.column - edge.from.column) > LONG_LINK_COLUMNS
   );
-}
-
-/** What a version label may look like (the API's rule): it is a path segment of the pricing's URLs. */
-export const VERSION_LABEL = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
-
-/**
- * The name offered for a version forked into a pricing: the next minor version
- * after its newest semantic version (1.1.0 → 1.2.0), skipping names it already
- * has; the source's own label when the pricing does not use x.y.z names.
- */
-export function suggestVersionName(existing: string[], fallback: string): string {
-  const semver = existing
-    .map(label => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(label))
-    .filter((match): match is RegExpExecArray => match !== null)
-    .map(match => [Number(match[1]), Number(match[2])] as const)
-    .sort((a, b) => b[0] - a[0] || b[1] - a[1]);
-  if (!semver.length) {
-    return existing.includes(fallback) ? `${fallback}-fork` : fallback;
-  }
-  const [major, minor] = semver[0];
-  let next = minor + 1;
-  while (existing.includes(`${major}.${next}.0`)) next += 1;
-  return `${major}.${next}.0`;
 }

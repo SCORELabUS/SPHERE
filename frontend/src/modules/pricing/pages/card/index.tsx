@@ -1138,17 +1138,9 @@ export default function CardPage() {
                     slug={slug}
                     refreshKey={versions.map(v => `${v.id}:${v.private}`).join(',')}
                     currentVersionId={currentVersion?.id ?? null}
-                    canAddVersions={!!entityPermissions?.CREATE}
                     onSelectVersion={id => {
                       const picked = versions.find(v => v.id === id);
                       if (picked) setCurrentVersion(picked);
-                    }}
-                    onForked={id => {
-                      customAlert('Version forked into this pricing', 'success');
-                      const params = new URLSearchParams();
-                      if (collectionSlug) params.set('collection', collectionSlug);
-                      params.set('version', id);
-                      router.push(`/pricings/${organizationId}/${slug}?${params.toString()}`);
                     }}
                   />
                 )}
@@ -1237,17 +1229,7 @@ export default function CardPage() {
         {showForkModal && (
           <ForkPricingModal
             pricingName={pricingName}
-            sourceOrganizationId={organizationId ?? ''}
-            sourceSlug={slug ?? ''}
-            sourceVersion={currentVersion?.version ?? ''}
             onFork={handleFork}
-            onForkInto={(targetOrganizationId, targetSlug, versionName) => {
-              if (!organizationId || !slug || !currentVersion) throw new Error('Pricing not loaded yet');
-              return forkPricing(organizationId, slug, currentVersion.version, targetOrganizationId, undefined, {
-                targetSlug,
-                version: versionName,
-              });
-            }}
             onClose={() => setShowForkModal(false)}
             onSuccess={handleForkSuccess}
           />

@@ -151,12 +151,7 @@ class PricingController {
 
   async fork(req: any, res: any) {
     try {
-      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name, targetSlug, version } = req.body;
-      for (const [field, value] of Object.entries({ name, targetSlug, version })) {
-        if (value !== undefined && value !== null && typeof value !== 'string') {
-          throw new Error(`INVALID DATA: ${field} must be a string`);
-        }
-      }
+      const { sourceOrganizationId, sourceSlug, sourceVersion, targetOrganizationId, name } = req.body;
       if (!sourceOrganizationId || !sourceSlug || !sourceVersion || !targetOrganizationId) {
         throw new Error(
           'INVALID DATA: sourceOrganizationId, sourceSlug, sourceVersion and targetOrganizationId are required'
@@ -169,7 +164,7 @@ class PricingController {
         sourceVersion,
         targetOrganizationId,
         req.user,
-        { name, targetSlug, version }
+        { name }
       );
       res.json(Array.isArray(result) ? result[0] : result);
     } catch (err: any) {

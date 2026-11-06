@@ -186,19 +186,6 @@ class PricingRepository extends RepositoryBase {
     return identity ? { slug: identity.slug, organizationId: String(identity._organizationId) } : null;
   }
 
-  /** The pricings with at least one version forked from the given one, at most `limit` of them. */
-  async findForkPricingIds(pricingId: string, limit: number): Promise<string[]> {
-    if (!mongoose.isValidObjectId(pricingId)) return [];
-    const ids = await PricingMongoose.distinct('pricingId', {
-      'forkedFrom.pricingId': new mongoose.Types.ObjectId(pricingId),
-    });
-    return ids
-      .filter(Boolean)
-      .map(String)
-      .filter(id => id !== pricingId)
-      .slice(0, limit);
-  }
-
   async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
     const existing = await PricingMongoose.findOne({
       slug,

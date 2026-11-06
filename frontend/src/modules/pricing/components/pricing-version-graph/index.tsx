@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { usePricingsApi } from '../../api/pricingsApi';
 import { useRouter } from '../../../core/hooks/useRouter';
@@ -9,12 +8,10 @@ import {
   layoutGraph,
   nodeKey,
   routeEdge,
-  suggestVersionName,
   type GraphEdge,
   type GraphLayout,
   type GraphNode,
 } from '../../utils/version-graph';
-import ForkVersionModal from '../fork-version-modal';
 
 interface PricingVersionGraphProps {
   organizationId: string;
@@ -22,11 +19,7 @@ interface PricingVersionGraphProps {
   /** Changes whenever the pricing's versions do, to draw the graph again. */
   refreshKey: string;
   currentVersionId: string | null;
-  /** Whether the viewer may add versions to this pricing (fork others into it). */
-  canAddVersions: boolean;
   onSelectVersion: (versionId: string) => void;
-  /** A version was forked into this pricing. */
-  onForked: (versionId: string) => void;
 }
 
 const LANE_HEIGHT = 64;
@@ -34,8 +27,6 @@ const COLUMN_WIDTH = 76;
 const PAD_X = 34;
 const DOT_Y = 26;
 const DOT_RADIUS = 6;
-/** Forks drawn before the viewer asks for more, and how many more each time. */
-const FORK_STEP = 5;
 /** Up to this many versions in all, every one is drawn: folding only pays off in large families. */
 const FOLD_FROM = 13;
 /** Longer version names are shortened under their dot (the full name is in the tooltip). */
@@ -43,14 +34,12 @@ const LABEL_CHARS = 11;
 
 const ROLE_LABEL: Record<PricingGraphLane['role'], string> = {
   current: 'This pricing',
-  source: 'Origin',
-  fork: 'Fork',
+  source: 'Forked from',
 };
 
 /**
- * One color per kind of lane, so a large family still reads at a glance: the
- * pricing shown, where it came from, and its forks. Spelled out so Tailwind
- * finds every class.
+ * One color per kind of lane: the pricing shown and the one it was forked from.
+ * Spelled out so Tailwind finds every class.
  */
 const ROLE_COLORS = {
   current: {
@@ -66,13 +55,6 @@ const ROLE_COLORS = {
     fill: 'fill-sky-500',
     soft: 'fill-sky-500/15',
     dot: 'bg-sky-500',
-  },
-  fork: {
-    stroke: 'stroke-violet-500',
-    rail: 'stroke-violet-500/50',
-    fill: 'fill-violet-500',
-    soft: 'fill-violet-500/15',
-    dot: 'bg-violet-500',
   },
 } as const;
 
@@ -112,31 +94,26 @@ function laneHref(lane: PricingGraphLane, versionId?: string) {
 }
 
 /**
- * The versions of a pricing drawn like a commit graph: a lane per pricing (where
- * it came from above it, its forks below), a dot per version in release order,
- * and a branch from each forked version's origin to it. Quiet stretches fold into
- * "+N" gaps and only the most recent forks are drawn, so large families stay
- * readable; the viewer can open either.
+ * The versions of a pricing drawn like a commit graph: its lane, and above it the
+ * lane of the pricing it was forked from, with a branch from that version to its
+ * first one. The forks made of it are not drawn. Quiet stretches of long
+ * histories fold into "+N" gaps the viewer can open.
  */
 export default function PricingVersionGraph({
   organizationId,
   slug,
   refreshKey,
   currentVersionId,
-  canAddVersions,
   onSelectVersion,
-  onForked,
 }: PricingVersionGraphProps) {
-  const { getPricingGraph, forkPricing } = usePricingsApi();
+  const { getPricingGraph } = usePricingsApi();
   const router = useRouter();
   const [graph, setGraph] = useState<PricingGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // The version pointed at, whose links stand out like the picked one's.
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [forking, setForking] = useState<GraphNode | null>(null);
   const [expanded, setExpanded] = useState<Set<string> | 'all'>(() => new Set());
-  const [forkLimit, setForkLimit] = useState(FORK_STEP);
   const scrollRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLUListElement>(null);
   const [viewWidth, setViewWidth] = useState(0);
@@ -164,11 +141,10 @@ export default function PricingVersionGraph({
       graph
         ? layoutGraph(graph, {
             expanded: small ? 'all' : expanded,
-            forkLimit,
             keep: new Set([shownKey, selectedKey].filter((key): key is string => !!key)),
           })
         : null,
-    [graph, small, expanded, forkLimit, shownKey, selectedKey]
+    [graph, small, expanded, shownKey, selectedKey]
   );
   const currentLaneIndex = layout?.lanes.findIndex(lane => lane.role === 'current') ?? -1;
   const currentLane = layout?.lanes[currentLaneIndex] ?? null;
@@ -192,7 +168,7 @@ export default function PricingVersionGraph({
 
   // Open on the version the page shows, centred in both directions (or on the
   // newest versions, on the right). Only when the graph or that version changes:
-  // opening a gap or more forks must not move the view.
+  // opening a gap must not move the view.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   useLayoutEffect(() => {
@@ -238,21 +214,9 @@ export default function PricingVersionGraph({
       edge => (edge.from === focus && edge.to === node) || (edge.to === focus && edge.from === node)
     );
   const selectedLane = selected ? layout.lanes[selected.lane] : null;
-  const childrenOfSelected = selected
-    ? layout.edges.filter(edge => edge.from === selected).map(edge => edge.to)
-    : [];
   const parentOfSelected = selected
     ? (layout.edges.find(edge => edge.to === selected)?.from ?? null)
     : null;
-  const alreadyInCurrent = childrenOfSelected.find(node => node.lane === currentLaneIndex) ?? null;
-  const canForkSelected =
-    canAddVersions &&
-    !!selected &&
-    !!selectedLane &&
-    selectedLane.role !== 'current' &&
-    selectedLane.available;
-  const currentNames = currentLane.versions.map(version => version.version);
-
   const openNode = (node: GraphNode) => {
     const lane = layout.lanes[node.lane];
     if (lane.role === 'current') onSelectVersion(node.version.id);
@@ -261,22 +225,6 @@ export default function PricingVersionGraph({
 
   const openGap = (key: string) =>
     setExpanded(current => (current === 'all' ? current : new Set(current).add(key)));
-
-  const confirmFork = async (versionName: string) => {
-    if (!forking) return;
-    const lane = layout.lanes[forking.lane];
-    const result = await forkPricing(
-      lane.organization.id,
-      lane.slug,
-      forking.version.version,
-      currentLane.organization.id,
-      undefined,
-      { targetSlug: currentLane.slug, version: versionName }
-    );
-    setForking(null);
-    setSelectedKey(null);
-    onForked(result.id);
-  };
 
   const toolButton =
     'cursor-pointer rounded-lg border border-tp-hairline-strong px-2.5 py-1 text-[11px] font-medium text-tp-ink transition-colors hover:border-tp-primary/40';
@@ -291,8 +239,8 @@ export default function PricingVersionGraph({
           <h3 className="text-sm font-semibold text-tp-ink">Version graph</h3>
           <p className="text-xs text-tp-steel">
             {graph.lanes.length === 1
-              ? 'No forks yet: the pricings this one is forked from, and its forks, show up here as lanes.'
-              : `${graph.lanes.length} pricings · ${totalVersions} versions. A branch joins each forked version to the one it came from.`}
+              ? `${totalVersions} versions, in the order they were released.`
+              : `${totalVersions} versions. A branch joins the pricing it was forked from to its first version.`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -300,7 +248,7 @@ export default function PricingVersionGraph({
             className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-tp-steel"
             aria-label="Legend"
           >
-            {(['source', 'current', 'fork'] as const).map(role => (
+            {(['source', 'current'] as const).map(role => (
               <li key={role} className="flex items-center gap-1.5">
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${ROLE_COLORS[role].dot}`}
@@ -597,36 +545,10 @@ export default function PricingVersionGraph({
         </div>
       </div>
 
-      {(layout.hiddenForks > 0 || forkLimit > FORK_STEP || graph.truncated) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-tp-hairline px-4 py-2 text-[11px] text-tp-steel">
-          <span>
-            {layout.hiddenForks > 0
-              ? `Showing the ${forkLimit} most recent forks; ${layout.hiddenForks} more are not drawn.`
-              : 'Showing every fork.'}
-            {graph.truncated && ' Only the first 20 origins and 20 forks are loaded.'}
-          </span>
-          <span className="flex gap-2">
-            {layout.hiddenForks > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setForkLimit(limit => limit + FORK_STEP)}
-                  className={toolButton}
-                >
-                  Show {Math.min(FORK_STEP, layout.hiddenForks)} more
-                </button>
-                <button type="button" onClick={() => setForkLimit(Infinity)} className={toolButton}>
-                  Show all forks
-                </button>
-              </>
-            )}
-            {layout.hiddenForks === 0 && forkLimit > FORK_STEP && (
-              <button type="button" onClick={() => setForkLimit(FORK_STEP)} className={toolButton}>
-                Show fewer
-              </button>
-            )}
-          </span>
-        </div>
+      {graph.truncated && (
+        <p className="border-t border-tp-hairline px-4 py-2 text-[11px] text-tp-steel">
+          Only the first 20 pricings it came from are drawn.
+        </p>
       )}
 
       {selected && selectedLane && (
@@ -657,14 +579,6 @@ export default function PricingVersionGraph({
                   <span className="font-mono">{parentOfSelected.version.version}</span>
                 </>
               )}
-              {childrenOfSelected.length > 0 && (
-                <>
-                  {' · forked into '}
-                  {childrenOfSelected
-                    .map(child => `${layout.lanes[child.lane].name} ${child.version.version}`)
-                    .join(', ')}
-                </>
-              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -679,39 +593,9 @@ export default function PricingVersionGraph({
                   : `Open in ${selectedLane.name}`}
               </button>
             )}
-            {canForkSelected && (
-              <button
-                type="button"
-                onClick={() => setForking(selected)}
-                title={
-                  alreadyInCurrent
-                    ? `Already in ${currentLane.name} as ${alreadyInCurrent.version.version}`
-                    : undefined
-                }
-                className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
-              >
-                {alreadyInCurrent
-                  ? `Fork again into ${currentLane.name}`
-                  : `Fork into ${currentLane.name}`}
-              </button>
-            )}
           </div>
         </div>
       )}
-
-      <AnimatePresence>
-        {forking && (
-          <ForkVersionModal
-            sourceName={layout.lanes[forking.lane].name}
-            sourceVersion={forking.version.version}
-            targetName={currentLane.name}
-            takenNames={currentNames}
-            suggestedName={suggestVersionName(currentNames, forking.version.version)}
-            onConfirm={confirmFork}
-            onClose={() => setForking(null)}
-          />
-        )}
-      </AnimatePresence>
     </section>
   );
 }

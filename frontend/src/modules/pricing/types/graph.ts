@@ -16,8 +16,8 @@ export interface PricingGraphLane {
   slug: string;
   organization: { id: string; name: string; displayName: string };
   collectionSlug: string | null;
-  /** The pricing shown, one its versions were forked from, or one forked from it. */
-  role: 'current' | 'source' | 'fork';
+  /** The pricing shown, or the one it was forked from. */
+  role: 'current' | 'source';
   /** False for a source the viewer may not read. */
   available: boolean;
   versions: PricingGraphVersion[];
@@ -26,6 +26,6 @@ export interface PricingGraphLane {
 export interface PricingGraph {
   pricingId: string;
   lanes: PricingGraphLane[];
-  /** More sources or forks exist than were drawn. */
+  /** More sources exist than were drawn. */
   truncated: boolean;
 }
