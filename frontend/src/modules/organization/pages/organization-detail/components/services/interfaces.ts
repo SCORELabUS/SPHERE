@@ -1,4 +1,5 @@
 import type { ServiceInterface } from '../../../../api/serviceTreeApi';
+import { BADGE_TONES } from './badgeTones';
 
 // The interfaces of a service: the ways it is used (its web app, its REST API,
 // a chat bot...). The taxonomy is still growing, so everything about channels
@@ -16,27 +17,27 @@ export const CHANNELS: Record<string, ChannelStyle> = {
   INTERACTIVE: {
     label: 'Interactive',
     tag: 'Int',
-    className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    className: BADGE_TONES.emerald,
   },
   PROGRAMMATIC: {
     label: 'Programmatic',
     tag: 'Prog',
-    className: 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+    className: BADGE_TONES.sky,
   },
   CONVERSATIONAL: {
     label: 'Conversational',
     tag: 'Conv',
-    className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+    className: BADGE_TONES.violet,
   },
   AGENTIC: {
     label: 'Agentic',
     tag: 'Agent',
-    className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    className: BADGE_TONES.amber,
   },
   EVENT: {
     label: 'Event',
     tag: 'Event',
-    className: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+    className: BADGE_TONES.rose,
   },
 };
 
@@ -47,7 +48,7 @@ export const CHANNEL_NAMES: Record<string, string> = Object.fromEntries(
   Object.entries(CHANNELS).map(([key, style]) => [key, style.label])
 );
 
-const NEUTRAL = 'border border-tp-hairline-strong bg-tp-surface text-tp-slate';
+const NEUTRAL = BADGE_TONES.neutral;
 
 /** How a channel looks: its own style when known, its name in a neutral tag otherwise. */
 export function channelStyle(channel: string | null): ChannelStyle {

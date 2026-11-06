@@ -3,6 +3,7 @@ import Iconify from '../../../../../core/components/iconify';
 import type { ServiceNode } from '../../../../api/serviceTreeApi';
 import ChannelTag from './ChannelTag';
 import ServiceKindBadge from './ServiceKindBadge';
+import { BADGE_SHAPE, BADGE_TONES } from './badgeTones';
 import { interfaceCounts } from './interfaces';
 import { linkLabel } from './links';
 import { rowButtonClass } from './rowStyles';
@@ -96,85 +97,53 @@ function planSummary(plans?: number | null, addOns?: number | null): string | nu
 }
 
 /**
- * The pricing row of a service, as in Helena: "Pricing 3 plans · 9 add-ons" when it
- * links one pricing; "Pricings N", unfolding to each of them, when it links more.
+ * The pricings of a service, one row each: the $ icon, the pricing's name and a
+ * "Pricing" badge, with its plans and add-ons when known. Pricings the viewer
+ * cannot list are only counted.
  */
-function PricingRow({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) {
-  const key = `pricings:${node.id}`;
-  const open = ctx.openGroups.has(key);
+function PricingRows({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) {
   const visible = node.pricingIds
     .map(id => ({ id, pricing: ctx.linkedPricing(id) }))
-    .filter(entry => entry.pricing);
+    .filter((entry): entry is { id: string; pricing: LinkedPricing } => entry.pricing !== null);
   const hidden = node.pricingIds.length - visible.length;
-  const single = node.pricingIds.length === 1 && visible.length === 1 ? visible[0].pricing! : null;
-
-  if (single) {
-    return (
-      <div className="flex items-center">
-        <Spacer />
-        <button
-          type="button"
-          data-tree-row={node.id}
-          onClick={() => ctx.onSelect(node.id, 'pricings')}
-          className={rowButtonClass(false)}
-        >
-          <span className={groupLabel}>Pricing</span>
-          <span className={`${groupCount} truncate`}>
-            {planSummary(single.plans, single.addOns) ?? single.name}
-          </span>
-        </button>
-      </div>
-    );
-  }
 
   return (
     <>
-      <div className="flex items-center">
-        <Chevron
-          open={open}
-          onClick={() => ctx.onToggleGroup(key)}
-          label={open ? 'Hide pricings' : 'Show pricings'}
-        />
-        <button
-          type="button"
-          data-tree-row={node.id}
-          onClick={() => {
-            if (!open) ctx.onToggleGroup(key);
-            ctx.onSelect(node.id, 'pricings');
-          }}
-          className={rowButtonClass(false)}
-        >
-          <span className={groupLabel}>Pricings</span>
-          <span className={groupCount}>{node.pricingIds.length}</span>
-        </button>
-      </div>
-      {open && (
-        <Branch>
-          {visible.map(({ id, pricing }) => (
-            <div key={id} className="flex items-center">
-              <Spacer />
-              <button
-                type="button"
-                data-tree-row={node.id}
-                onClick={() => ctx.onSelect(node.id, 'pricings')}
-                title={pricing!.name}
-                className={`${rowButtonClass(false)} text-[13px]`}
-              >
-                <Iconify icon="mdi:tag-outline" width={14} className="shrink-0 text-tp-steel" />
-                <span className="truncate">{pricing!.name}</span>
-                {pricing!.private && (
-                  <Iconify icon="mdi:lock-outline" width={12} className="shrink-0 text-tp-steel" />
-                )}
-              </button>
-            </div>
-          ))}
-          {hidden > 0 && (
-            <div className="flex items-center">
-              <Spacer />
-              <span className="px-2 py-1 text-xs italic text-tp-steel">{hidden} restricted</span>
-            </div>
-          )}
-        </Branch>
+      {visible.map(({ id, pricing }) => {
+        const summary = planSummary(pricing.plans, pricing.addOns);
+        return (
+          <div key={id} className="flex items-center">
+            <Spacer />
+            <button
+              type="button"
+              data-tree-row={node.id}
+              onClick={() => ctx.onSelect(node.id, 'pricings')}
+              title={summary ? `${pricing.name} (${summary})` : pricing.name}
+              className={`${rowButtonClass(false)} text-[13px]`}
+            >
+              <Iconify
+                icon="tabler:currency-dollar"
+                width={15}
+                className="shrink-0 text-tp-steel"
+              />
+              <span className="min-w-[3rem] truncate font-medium text-tp-ink">{pricing.name}</span>
+              <span className={`${BADGE_SHAPE} ${BADGE_TONES.indigo} shrink-0`}>Pricing</span>
+              {pricing.private && (
+                <Iconify icon="mdi:lock-outline" width={12} className="shrink-0 text-tp-steel" />
+              )}
+              {summary && <span className={`${groupCount} shrink-[2] truncate`}>{summary}</span>}
+            </button>
+          </div>
+        );
+      })}
+      {hidden > 0 && (
+        <div className="flex items-center">
+          <Spacer />
+          <span className="flex items-center gap-2 px-2 py-1 text-xs italic text-tp-steel">
+            <Iconify icon="tabler:currency-dollar" width={15} className="shrink-0" />
+            {hidden} restricted {hidden === 1 ? 'pricing' : 'pricings'}
+          </span>
+        </div>
       )}
     </>
   );
@@ -203,6 +172,7 @@ function InterfaceGroup({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) 
           }}
           className={rowButtonClass(false)}
         >
+          <Iconify icon="tabler:binary-tree-2-right" width={15} className="shrink-0 text-tp-steel" />
           <span className={groupLabel}>Interfaces</span>
           <span className={groupCount}>
             {confirmed}
@@ -256,6 +226,7 @@ function LinkGroup({ node, ctx }: { node: ServiceNode; ctx: TreeContext }) {
           }}
           className={rowButtonClass(false)}
         >
+          <Iconify icon="mdi:link-variant" width={15} className="shrink-0 text-tp-steel" />
           <span className={groupLabel}>Links</span>
           <span className={groupCount}>{node.links.length}</span>
         </button>
@@ -345,7 +316,7 @@ export default function ServiceTreeNode({ node, ctx }: { node: ServiceNode; ctx:
 
       {hasContent && open && (
         <Branch>
-          {node.pricingIds.length > 0 && <PricingRow node={node} ctx={ctx} />}
+          {node.pricingIds.length > 0 && <PricingRows node={node} ctx={ctx} />}
           {node.interfaces.length > 0 && <InterfaceGroup node={node} ctx={ctx} />}
           {node.links.length > 0 && <LinkGroup node={node} ctx={ctx} />}
           {children.map(child => (

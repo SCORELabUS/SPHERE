@@ -1,4 +1,5 @@
 import type { ServiceDependency, ServiceKind } from '../../../../api/serviceTreeApi';
+import { BADGE_SHAPE, BADGE_TONES } from './badgeTones';
 
 const DEPENDENCY_LABELS: Record<string, { short: string; title: string }> = {
   FUNCTIONAL: { short: 'func', title: "Dependent on the provider's functionality" },
@@ -6,8 +7,7 @@ const DEPENDENCY_LABELS: Record<string, { short: string; title: string }> = {
 };
 
 // The badge gives way before the service's name does: it shrinks and cuts its text first.
-const pill =
-  'min-w-8 max-w-[10rem] shrink-[4] truncate rounded-full px-2 py-0.5 font-sans text-[11px] font-semibold';
+const pill = `${BADGE_SHAPE} min-w-8 max-w-[10rem] shrink-[4] truncate`;
 
 /** The short form of what a service depends on: "func", "acct" or the text the organization wrote. */
 const dependencyShort = (dependency: ServiceDependency) =>
@@ -28,7 +28,7 @@ export default function ServiceKindBadge({
     return (
       <span
         title="Autonomous service: it can be contracted on its own"
-        className={`${pill} bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400`}
+        className={`${pill} ${BADGE_TONES.emerald}`}
       >
         Aut
       </span>
@@ -43,7 +43,7 @@ export default function ServiceKindBadge({
             ? `Dependent: ${dependency}`
             : 'Dependent service: it needs another service of the provider')
         }
-        className={`${pill} bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400`}
+        className={`${pill} ${BADGE_TONES.sky}`}
       >
         Dep{dependency ? ` · ${dependencyShort(dependency)}` : ''}
       </span>
@@ -53,7 +53,7 @@ export default function ServiceKindBadge({
   return (
     <span
       title={`${kind}${dependency ? `, depends on: ${dependency}` : ''}`}
-      className={`${pill} border border-tp-hairline-strong bg-tp-surface text-tp-slate`}
+      className={`${pill} ${BADGE_TONES.neutral}`}
     >
       {kind}
       {dependency ? ` · ${dependencyShort(dependency)}` : ''}

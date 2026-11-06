@@ -486,7 +486,7 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
                   : 'text-tp-stone'
             }`}
           >
-            <Iconify icon="mdi:devices" width={14} />
+            <Iconify icon="tabler:binary-tree-2-right" width={14} />
             {node.interfaces.length}
           </button>
           <button
@@ -502,7 +502,7 @@ function OutlineRow({ node, ctx }: { node: ServiceNode; ctx: OutlineContext }) {
                   : 'text-tp-stone'
             }`}
           >
-            <Iconify icon="mdi:tag-outline" width={14} />
+            <Iconify icon="tabler:currency-dollar" width={14} />
             {node.pricingIds.length}
           </button>
           <button

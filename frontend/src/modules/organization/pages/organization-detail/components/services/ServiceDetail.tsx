@@ -248,7 +248,11 @@ export default function ServiceDetail({
         <ul className="divide-y divide-tp-hairline rounded-xl border border-tp-hairline">
           {visible.map(({ id, pricing }) => (
             <li key={id} className="flex items-center gap-2 px-3 py-2">
-              <Iconify icon="mdi:tag-outline" width={15} className="shrink-0 text-tp-steel" />
+              <Iconify
+                icon="tabler:currency-dollar"
+                width={15}
+                className="shrink-0 text-tp-steel"
+              />
               <RouterLink
                 href={pricing!.href}
                 className="min-w-0 cursor-pointer truncate text-sm text-tp-ink underline-offset-2 hover:text-tp-primary hover:underline"

@@ -61,8 +61,14 @@ import {
   MdMoreHoriz,
   MdDevices,
 } from 'react-icons/md';
+import { TbBinaryTree2, TbCurrencyDollar } from 'react-icons/tb';
 import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
 import { IconType } from 'react-icons';
+
+/** Three dots joining into one, left to right: Tabler's binary tree turned on its side. */
+const ThreeIntoOne: IconType = props => (
+  <TbBinaryTree2 {...props} style={{ ...props.style, transform: 'rotate(90deg)' }} />
+);
 
 const iconMap: Record<string, IconType> = {
   'mdi:account-group-outline': MdOutlineGroup,
@@ -131,6 +137,8 @@ const iconMap: Record<string, IconType> = {
   'mdi:code-braces': MdDataObject,
   'mdi:dots-horizontal': MdMoreHoriz,
   'mdi:devices': MdDevices,
+  'tabler:currency-dollar': TbCurrencyDollar,
+  'tabler:binary-tree-2-right': ThreeIntoOne,
   'mdi:open-in-new': MdOpenInNew,
 };
 
