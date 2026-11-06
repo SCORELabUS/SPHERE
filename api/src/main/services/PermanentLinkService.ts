@@ -7,6 +7,7 @@ import Pricing from '../repositories/mongoose/models/PricingMongoose';
 import Collection from '../repositories/mongoose/models/PricingCollectionMongoose';
 import Identity from '../repositories/mongoose/models/PricingIdentityMongoose';
 import { privateReader } from '../policies/privateReadRule';
+import { VERSION_ORDER } from '../utils/version-order';
 
 export function functionalHash(text: string): string {
   const value = yaml.load(text) as Record<string, unknown>;
@@ -22,7 +23,7 @@ export default class PermanentLinkService {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
     if (!identity) throw new Error('NOT FOUND');
-    const versions = await Pricing.find({ pricingId: id, private: false }).sort({ createdAt: -1, _id: -1 }).lean();
+    const versions = await Pricing.find({ pricingId: id, private: false }).sort(VERSION_ORDER).lean();
     if (!versions.length) throw new Error('NOT FOUND');
     return { identity, versions };
   }
@@ -76,7 +77,7 @@ export default class PermanentLinkService {
     if (!identity) throw new Error('NOT FOUND');
     const includesPrivate = await this.canReadPrivateVersions(identity, user, authType);
     const versions = await Pricing.find({ pricingId: id, ...(includesPrivate ? {} : { private: false }) })
-      .sort({ createdAt: -1, _id: -1 }).lean();
+      .sort(VERSION_ORDER).lean();
     if (!versions.length) throw new Error('NOT FOUND');
     return { identity, versions, includesPrivate };
   }
@@ -120,7 +121,7 @@ export default class PermanentLinkService {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
     if (!identity) throw new Error('NOT FOUND');
-    const allVersions = await Pricing.find({ pricingId: id }).sort({ createdAt: -1, _id: -1 }).lean();
+    const allVersions = await Pricing.find({ pricingId: id }).sort(VERSION_ORDER).lean();
     if (!allVersions.length) throw new Error('NOT FOUND');
 
     const hasPrivateVersions = allVersions.some(version => version.private);

@@ -32,6 +32,7 @@ export interface UserSettings {
   profile?: UserPublicProfile;
   socialLinks?: UserSocialLinks;
   notificationPrefs?: NotificationPreferences;
+  betaFeatures?: boolean;
 }
 
 export interface LeanUser {

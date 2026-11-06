@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { escapeRegex } from '../../../utils/regex';
+import { VERSION_ITEM_ORDER } from '../../../utils/version-order';
 
 export function getPricingByNameAndOrganizationAggregator(pricingName: string, organizationId: string) {
   return [
@@ -86,6 +87,7 @@ export function getPricingByNameAndOrganizationAggregator(pricingName: string, o
             private: '$private',
             collectionName: { $ifNull: ['$collection.name', null] },
             createdAt: '$createdAt',
+            addedAt: { $ifNull: ['$addedAt', null] },
             url: '$url',
             yaml: '$yaml',
             analytics: '$analytics',
@@ -106,7 +108,7 @@ export function getPricingByNameAndOrganizationAggregator(pricingName: string, o
         name: 1,
         organization: 1,
         collection: 1,
-        versions: { $sortArray: { input: '$versions', sortBy: { createdAt: -1 } } },
+        versions: { $sortArray: { input: '$versions', sortBy: VERSION_ITEM_ORDER } },
       },
     },
   ];

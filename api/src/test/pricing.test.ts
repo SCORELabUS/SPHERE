@@ -2399,6 +2399,55 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
+    it.each([false, true])('orders versions by server addedAt, even with older release dates (%s).', async olderRelease => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+      const releasedAt = new Date(Date.now() - 60 * 60 * 1000);
+      const forgedAddedAt = '2000-01-01T00:00:00.000Z';
+
+      // Same instant for both; 1.0.2 is published before 1.0.1.
+      const added: Record<string, string> = {};
+      for (const version of ['1.0.2', '1.0.1']) {
+        const fixture = await createValidPricingYaml(serviceName, version);
+        const response = await request(app)
+          .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
+          .set('Authorization', `Bearer ${adminUser.token}`)
+          .field('private', 'false')
+          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 86400000 : 0)).toISOString())
+          .field('addedAt', forgedAddedAt)
+          .attach('yaml', fixture.filePath);
+        expect(response.status).toBe(200);
+        pricingsToDelete.add(response.body.id);
+        const stored = await PricingMongoose.findById(response.body.id).lean();
+        expect(stored?.addedAt).toBeInstanceOf(Date);
+        expect(stored!.addedAt!.toISOString()).not.toBe(forgedAddedAt);
+        added[version] = stored!.addedAt!.toISOString();
+        // Two inserts in the same millisecond would still be ordered by _id; keep them apart.
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      expect(Date.parse(added['1.0.1'])).toBeGreaterThan(Date.parse(added['1.0.2']));
+
+      // Newest first: the tie goes to the version received last, not to its label.
+      const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
+      expect(shown.status).toBe(200);
+      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.1', '1.0.2', '1.0.0']);
+      expect(shown.body.versions[0].addedAt).toBe(added['1.0.1']);
+
+      // The listing names the same latest version.
+      const listed = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+      const row = listed.body.pricings.find((pricing: any) => pricing.name === serviceName);
+      expect(row?.version).toBe('1.0.1');
+
+      // Updates cannot move it either.
+      await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });
+      const kept = await PricingMongoose.findOne({ name: serviceName, version: '1.0.1' }).lean();
+      expect(kept!.addedAt!.toISOString()).toBe(added['1.0.1']);
+    });
+
     it('Return 422 when the createdAt sent with a new version is invalid or in the future.', async () => {
       const { organizationId } = await createAndLoginUser('USER');
       const { serviceName } = await createPricingForOrganization({
@@ -3407,6 +3456,90 @@ describe('Pricings API integration', () => {
 
       expect(response.status).toBe(200);
       expect(await fs.readFile(originPath, 'utf8')).toBe(originalContent);
+    });
+  });
+
+  describe('GET /api/v1/pricing-graphs/{organizationId}/{slug}', { timeout: 30000 }, () => {
+    const graphOf = (organizationId: string, slug: string, token?: string) => {
+      const call = request(app).get(`${BASE_PATH}/pricing-graphs/${organizationId}/${slug}`);
+      return token ? call.set('Authorization', `Bearer ${token}`) : call;
+    };
+    const fork = async (token: string, payload: Record<string, unknown>) => {
+      const response = await request(app).post(`${BASE_PATH}/pricing-forks`).set('Authorization', `Bearer ${token}`).send(payload);
+      if (response.status !== 200) throw new Error(`Fork failed: ${response.status} ${JSON.stringify(response.body)}`);
+      pricingsToDelete.add(response.body.id);
+      if (typeof response.body.yaml === 'string') {
+        generatedFilesToDelete.add(path.resolve(process.cwd(), 'public', response.body.yaml.replace(/^https?:\/\/[^/]+\//, '')));
+      }
+      return response.body;
+    };
+
+    it('Draws the pricing and the one it was forked from, joined by its first version, never its forks.', async () => {
+      const { organizationId: originalOrg } = await createAndLoginUser('USER');
+      const { user: personalOwner, organizationId: personalOrg } = await createAndLoginUser('USER');
+      const original = await createPricingForOrganization({ organizationId: originalOrg, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: originalOrg, serviceName: original.serviceName, version: '1.1.0' });
+
+      const forked = await fork(personalOwner.token, {
+        sourceOrganizationId: originalOrg,
+        sourceSlug: original.serviceName,
+        sourceVersion: '1.1.0',
+        targetOrganizationId: personalOrg,
+        name: `personal_${randomSuffix()}`,
+      });
+
+      // From the fork: its own lane first, then the original it came from.
+      const fromFork = await graphOf(personalOrg, forked.slug, personalOwner.token);
+      expect(fromFork.status).toBe(200);
+      expect(fromFork.body.truncated).toBe(false);
+      const [own, source] = fromFork.body.lanes;
+      expect(own).toMatchObject({ role: 'current', slug: forked.slug, available: true });
+      expect(own.versions).toHaveLength(1);
+      expect(own.versions[0].forkedFrom).toEqual({ pricingId: source.pricingId, version: '1.1.0' });
+      // Each readable version links its YAML, so the graph can say what changed.
+      expect(own.versions[0].yaml).toMatch(/\.ya?ml$/);
+      // When the fork was made, set by the server.
+      expect(Date.parse(own.versions[0].addedAt)).toBeGreaterThan(Date.now() - 60 * 1000);
+      expect(source).toMatchObject({ role: 'source', name: original.serviceName, available: true });
+      expect(source.versions.map((v: any) => v.version).sort()).toEqual(['1.0.0', '1.1.0']);
+      expect(source.organization.id).toBe(originalOrg);
+
+      // From the original, anonymously: only its own lane; the forks made of it are not drawn.
+      const fromOriginal = await graphOf(originalOrg, original.serviceName);
+      expect(fromOriginal.status).toBe(200);
+      expect(fromOriginal.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
+    });
+
+    it('Names a source the caller may not read only by what the fork says.', async () => {
+      const { organizationId: originalOrg } = await createAndLoginUser('USER');
+      const { user: personalOwner, organizationId: personalOrg } = await createAndLoginUser('USER');
+      const original = await createPricingForOrganization({ organizationId: originalOrg, version: '1.0.0' });
+      const forked = await fork(personalOwner.token, {
+        sourceOrganizationId: originalOrg,
+        sourceSlug: original.serviceName,
+        sourceVersion: '1.0.0',
+        targetOrganizationId: personalOrg,
+        name: `personal_${randomSuffix()}`,
+      });
+
+      // The original turns private: the fork's owner keeps a lane with only the label forked.
+      await PricingMongoose.updateMany({ _id: original.id }, { $set: { private: true } });
+      const fromFork = await graphOf(personalOrg, forked.slug, personalOwner.token);
+      expect(fromFork.status).toBe(200);
+      const source = fromFork.body.lanes[1];
+      expect(source).toMatchObject({ role: 'source', available: false, name: original.serviceName });
+      expect(source.versions).toEqual([
+        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, addedAt: null, yaml: null, private: false, forkedFrom: null },
+      ]);
+    });
+
+    it('Answers 404 for a pricing the caller may not read.', async () => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { user: outsider } = await createAndLoginUser('USER');
+      const hidden = await createPricingForOrganization({ organizationId, isPrivate: true });
+
+      expect((await graphOf(organizationId, hidden.serviceName, outsider.token)).status).toBe(404);
+      expect((await graphOf(organizationId, `missing-${randomSuffix()}`)).status).toBe(404);
     });
   });
 });

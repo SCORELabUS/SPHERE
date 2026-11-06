@@ -24,6 +24,7 @@ class PricingController {
     this.create = this.create.bind(this);
     this.createVersion = this.createVersion.bind(this);
     this.fork = this.fork.bind(this);
+    this.graph = this.graph.bind(this);
     this.update = this.update.bind(this);
     this.updateVersionVisibility = this.updateVersionVisibility.bind(this);
     this.updateVersion = this.updateVersion.bind(this);
@@ -166,6 +167,18 @@ class PricingController {
         { name }
       );
       res.json(Array.isArray(result) ? result[0] : result);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  async graph(req: any, res: any) {
+    try {
+      const graph = await this.pricingService.graph(req.params.pricingSlug, req.params.organizationId, req.user);
+      // Depends on the caller, like the pricing itself.
+      res.set('Cache-Control', 'no-store');
+      res.json(graph);
     } catch (err: any) {
       const { status, message } = handleError(err);
       res.status(status).send({ error: message });

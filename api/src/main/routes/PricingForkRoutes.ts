@@ -13,6 +13,13 @@ const loadFileRoutes = function (app: express.Application) {
   app
     .route(baseUrl + '/pricing-forks')
     .post(pricingController.fork);
+
+  // The version graph of a pricing: its lane, the pricings its versions were forked
+  // from and those forked from it. Outside /pricings/** so it cannot be taken for a
+  // version named "graph"; PricingService.graph applies show()'s visibility rules.
+  app
+    .route(baseUrl + '/pricing-graphs/:organizationId/:pricingSlug')
+    .get(pricingController.graph);
 };
 
 export default loadFileRoutes;

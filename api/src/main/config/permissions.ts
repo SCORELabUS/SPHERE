@@ -154,6 +154,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // The version graph of a pricing. PricingService.graph reads every lane with the
+  // visibility rules of show(), so it is public like reading a pricing.
+  {
+    path: '/pricing-graphs/*/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
+
   // Following a pricing to be notified of new versions. PricingFollowService applies the
   // pricing's visibility rule; this only requires login.
   {
@@ -278,6 +286,19 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   {
     path: '/orgs/*/permissions/**',
     methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
+  // Service tree (beta, also behind requireBetaFeatures): members read it, OWNER/ADMIN replace it.
+  {
+    path: '/orgs/*/services',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN', 'MEMBER'],
+  },
+  {
+    path: '/orgs/*/services',
+    methods: ['PUT'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },

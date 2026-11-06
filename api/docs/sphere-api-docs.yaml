@@ -1283,6 +1283,53 @@ paths:
           description: Authentication required
         default:
           description: Unexpected error
+
+  /users/me/settings/beta-features:
+    put:
+      summary: Turn beta features on or off for the current user
+      description: |
+        Opts the currently authenticated user in or out of beta features: functionality
+        that is not finished yet. Routes guarded by `requireBetaFeatures` answer 403
+        while it is off.
+
+        **Authentication**: User token
+
+        **Permission**: Any authenticated user (ADMIN or USER).
+
+      tags:
+        - Users
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+              example:
+                enabled: true
+      responses:
+        '200':
+          description: Beta features setting updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '400':
+          description: "`enabled` is missing or not a boolean"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+        default:
+          description: Unexpected error
           content:
             application/json:
               schema:
@@ -3116,6 +3163,118 @@ paths:
                     hasAccess: { type: boolean }
         '404': { description: Organization not found }
 
+  /orgs/{organizationId}/services:
+    get:
+      summary: Get the tree of services of an organization (beta)
+      description: |
+        Returns the services the organization offers as a flat list of nodes (each with its
+        `parentId`; siblings keep the order of the list), the pricings linked to them and
+        whether the caller may edit the tree.
+
+        **Authentication**: User token
+
+        **Permission**: Any member of the organization (OWNER, ADMIN or MEMBER). Requires beta
+        features to be turned on (`PUT /users/me/settings/beta-features`); otherwise 403.
+
+        **Pricings**: `pricings` only holds the linked pricings the caller may list in the
+        organization. A `pricingId` in a node that is missing from it is a pricing the caller
+        cannot see.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: The tree of services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceTreeView'
+        '401': { description: Authentication required }
+        '403':
+          description: Not a member of the organization, or beta features are off
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Replace the tree of services of an organization (beta)
+      description: |
+        Replaces the whole tree. The body names the `revision` it was based on: if the tree was
+        saved by someone else since then, nothing changes and the answer is 409. The first save
+        of an organization uses revision 0.
+
+        **Authentication**: User token
+
+        **Permission**: OWNER or ADMIN of the organization. Requires beta features.
+
+        **Validation**: at most 500 services, nested at most 12 levels, unique node ids, every
+        `parentId` in the tree and no cycles; names of 1 to 120 characters, descriptions of at
+        most 1000; `dependency` only for `DEPENDENT` services; at most 50 pricings per service,
+        each a live pricing (`pricingId`) of the organization.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodes, revision]
+              properties:
+                nodes:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/ServiceNode'
+                revision:
+                  type: integer
+                  minimum: 0
+            example:
+              revision: 0
+              nodes:
+                - id: github
+                  parentId: null
+                  name: GitHub
+                  description: Code hosting
+                  kind: AUTONOMOUS
+                  dependency: null
+                  pricingIds: ['68050bd09890322c57842f6f']
+                - id: github-actions
+                  parentId: github
+                  name: GitHub Actions
+                  kind: DEPENDENT
+                  dependency: FUNCTIONAL
+                  pricingIds: []
+      responses:
+        '200':
+          description: The saved tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceTreeView'
+        '401': { description: Authentication required }
+        '403':
+          description: Not an OWNER or ADMIN of the organization, or beta features are off
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The tree was saved by someone else after `revision`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The tree is not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/parent:
     put:
       summary: Move an organization to another parent
@@ -4229,8 +4388,10 @@ paths:
                   format: date-time
                   description: |
                     Optional release timestamp of the version (ISO 8601, not in the future).
-                    Defaults to the `createdAt` date of the uploaded YAML. Versions are ordered
-                    by this value, so it lets several versions be published on the same day.
+                    Defaults to the `createdAt` date of the uploaded YAML. This is release metadata.
+                    Versions are ordered by `addedAt`, the instant SPHERE received them,
+                    with the version ID as a deterministic tie-breaker. The server sets
+                    `addedAt` and no request can change it.
                 collectionId:
                   type: string
                   description: Optional collection ID to associate this version with
@@ -4498,6 +4659,47 @@ paths:
             Forking under another `name` does not conflict.
         '422':
           description: Missing required fields, or the source and target organizations are the same
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pricing-graphs/{organizationId}/{pricingSlug}:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationId'
+      - $ref: '#/components/parameters/PricingSlug'
+    get:
+      summary: Get the version graph of a pricing
+      description: |
+        The versions of a pricing drawn like a commit graph: one lane for the pricing and one
+        for the pricing it was forked from (`source`). A fork is a new pricing whose first
+        version names the one it was forked from (`forkedFrom`, by pricing and label), which
+        gives the edge between the lanes. Only where a pricing came from is drawn, never the
+        forks made of it. Older data whose later versions name an origin draws those origins
+        too, at most 20 (`truncated` says when more exist).
+
+        Every lane holds only the versions the caller may read, by the same rules as
+        `GET /pricings/{organizationId}/{pricingSlug}`: a pricing the caller may not read
+        answers 404, and a source the caller may not read keeps a lane with `available: false` holding only the labels its forks
+        already name (`createdAt: null`).
+
+        **Authentication**: Optional (private versions need it)
+      tags:
+        - Pricings
+      security:
+        - {}
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The lanes of the graph, the pricing asked for first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingGraph'
+        '404':
+          description: The pricing does not exist, or the caller may not read it
         default:
           description: Unexpected error
           content:
@@ -6331,8 +6533,9 @@ paths:
         only sees private versions where the user holds GET on the pricing or its collection),
         and a key scoped to another organization grants nothing.
 
-        **Versions**: sorted newest first by the pricing `createdAt` (from the YAML), with
-        the version ID as deterministic tie-breaker; `latestVersionId` is the first of them,
+        **Versions**: sorted newest first by when SPHERE received each version (`addedAt`),
+        independently of its release date (`createdAt`), with the version ID as the last
+        tie-breaker; `latestVersionId` is the first of them,
         so for an authorized caller it can be a private version. A deleted family is answered
         with 404; so is a family whose versions are all private, unless the caller may read
         them.
@@ -6531,6 +6734,83 @@ paths:
 
 components:
   schemas:
+    PricingGraph:
+      type: object
+      required: [pricingId, lanes, truncated]
+      properties:
+        pricingId:
+          type: string
+        truncated:
+          type: boolean
+          description: More sources exist than the 20 drawn
+        lanes:
+          type: array
+          items:
+            type: object
+            required: [pricingId, name, slug, organization, role, available, versions]
+            properties:
+              pricingId:
+                type: string
+              name:
+                type: string
+              slug:
+                type: string
+              organization:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  displayName:
+                    type: string
+              collectionSlug:
+                type: string
+                nullable: true
+              role:
+                type: string
+                enum: [current, source]
+              available:
+                type: boolean
+                description: False for a source the caller may not read
+              versions:
+                type: array
+                items:
+                  type: object
+                  required: [id, version, createdAt, addedAt, yaml, private, forkedFrom]
+                  properties:
+                    id:
+                      type: string
+                    version:
+                      type: string
+                    createdAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    yaml:
+                      type: string
+                      nullable: true
+                      description: |
+                        URL of the version's YAML, as in the pricing's versions (the web compares it
+                        with the version before it). Null for a source the caller may not read.
+                    addedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: |
+                        When SPHERE received the version, set by the server. Orders versions
+                        when their release dates differ too. Null for a source the caller may not read.
+                    private:
+                      type: boolean
+                    forkedFrom:
+                      type: object
+                      nullable: true
+                      properties:
+                        pricingId:
+                          type: string
+                        version:
+                          type: string
+
     IdentityProfile:
       type: object
       required: [sub]
@@ -6798,7 +7078,192 @@ components:
       example: 68050bd09890322c57842f6f
       pattern: '^[a-f0-9]{24}$'
       readOnly: true
-    
+
+    ServiceNode:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+          description: Chosen by the client, unique within the tree
+        parentId:
+          type: string
+          nullable: true
+          description: The id of the parent service, or null for a top-level one
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        kind:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            AUTONOMOUS, DEPENDENT or any other text for a kind the organization makes up (e.g. `Add-on`).
+            Known kinds are stored in capitals whatever case they are sent in; empty or null means not classified.
+          example: AUTONOMOUS
+        dependency:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            What the service depends on: FUNCTIONAL (the provider's functionality), ACCOUNT (an account with it)
+            or any other text, for any kind. Known values are stored in capitals; empty or null means nothing.
+          example: FUNCTIONAL
+        pricingIds:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: Pricing identities (`pricingId`) of the organization linked to the service
+        attributes:
+          type: object
+          additionalProperties: true
+          maxProperties: 30
+          description: >-
+            Free fields of the service (e.g. `customers`), stored as given: any JSON values, at most 4000
+            characters and 5 levels deep. Names start with a letter followed by letters, digits, `-` or `_`,
+            and cannot be `id`, `parentId`, `name`, `description`, `kind`, `dependency`, `pricingIds`,
+            `pricings`, `services`, `attributes`, `interfaces` or `links`; nested keys cannot start with `$` or contain a dot.
+            Always returned, `{}` when there are none.
+          example:
+            customers: [Acme, Globex]
+        interfaces:
+          type: array
+          maxItems: 100
+          description: >-
+            The ways the service is used (its web app, its REST API, a chat bot...). Returned with every field,
+            named ones first and free ones after, in their order.
+          items:
+            $ref: '#/components/schemas/ServiceInterface'
+        links:
+          type: array
+          maxItems: 50
+          description: >-
+            Pages that answer questions about the service's terms (refunds, cancellation, SLA...). Returned
+            with every field, named ones first and free ones after, in their order; `[]` when there are none.
+          items:
+            $ref: '#/components/schemas/ServiceLink'
+
+    ServiceInterface:
+      type: object
+      required: [name]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones (e.g. `quote`, `source`) is kept as given: names start with a letter
+        followed by letters, digits, `-` or `_`, nested keys cannot start with `$` or contain a dot, and the
+        interface takes at most 4000 characters as JSON.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        channel:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            INTERACTIVE, PROGRAMMATIC, CONVERSATIONAL, AGENTIC, EVENT or any other text for a channel the
+            organization makes up. Known channels are stored in capitals; empty or null means not classified.
+        pending:
+          type: boolean
+          default: false
+          description: Found but not confirmed yet
+        description:
+          type: string
+          maxLength: 2000
+        mechanisms:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+          description: How it is reached (clients, commands, protocols...)
+      example:
+        name: GitHub web app
+        channel: INTERACTIVE
+        pending: false
+        description: Web application at github.com
+        mechanisms: [github.com web client, GitHub Command Palette]
+        quote: We design GitHub with the latest web browsers in mind.
+        source: https://docs.github.com/en/get-started/using-github/supported-browsers
+
+    ServiceLink:
+      type: object
+      required: [url]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones is kept as given, with the same rules as the free fields of an
+        interface; the link takes at most 4000 characters as JSON.
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Absolute http or https address; other schemes (javascript, data, ftp...) are refused.
+        title:
+          type: string
+          maxLength: 200
+          description: Empty when not given; the site's name is shown instead.
+        topic:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: What it is about, free text (e.g. Refunds), kept as written; empty or null means none.
+        description:
+          type: string
+          maxLength: 1000
+          description: The question it answers, or what it says.
+      example:
+        url: https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features
+        title: Additional product terms
+        topic: Terms
+        description: Which extra terms apply to Copilot, Actions or Packages?
+
+    ServiceTreeView:
+      type: object
+      required: [nodes, revision, pricings, canEdit]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceNode'
+        revision:
+          type: integer
+          description: Send it back when saving the tree
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        canEdit:
+          type: boolean
+          description: Whether the caller may replace the tree (OWNER or ADMIN)
+        pricings:
+          type: object
+          description: Linked pricings the caller may see, by pricingId
+          additionalProperties:
+            type: object
+            properties:
+              pricingId: { type: string }
+              name: { type: string }
+              slug: { type: string }
+              version: { type: string }
+              private: { type: boolean }
+              collection:
+                type: object
+                nullable: true
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  slug: { type: string }
+              plans: { type: integer, nullable: true, description: Plans of the version listed, when known }
+              addOns: { type: integer, nullable: true, description: Add-ons of the version listed, when known }
+
     Error:
       type: object
       properties:
@@ -7158,6 +7623,10 @@ components:
                     type: boolean
                   inbox:
                     type: boolean
+            betaFeatures:
+              type: boolean
+              default: false
+              description: Whether the user opted in to features that are not finished yet
         createdAt:
           type: string
           format: date-time
@@ -7444,6 +7913,16 @@ components:
             slug: "my-collection"
         createdAt:
           $ref: '#/components/schemas/Date'
+        addedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: |
+            When SPHERE received this version (created in the editor, uploaded, forked...),
+            set by the server and never changed. Versions are listed newest first by
+            `addedAt`, then by their ID, independently of the release date (`createdAt`).
+          example: "2026-11-06T10:15:30.123Z"
         url:
           type: string
           format: uri
