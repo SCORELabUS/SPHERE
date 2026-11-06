@@ -1,4 +1,5 @@
 import { Pricing } from "../types/database/Pricing";
+import { compareVersionsNewestFirst } from './version-order';
 
 /**
  * The pricing versions whose analytics were stored. A version can lack them when
@@ -71,7 +72,7 @@ function _simulateCollectionEvolution(pricings: Pricing[]) {
     for (const pricing of filteredPricings) {
       if (
         !latestPricings[pricing.name] ||
-        new Date(pricing.createdAt) > new Date(latestPricings[pricing.name].createdAt)
+        compareVersionsNewestFirst(pricing, latestPricings[pricing.name]) < 0
       ) {
         latestPricings[pricing.name] = pricing;
       }

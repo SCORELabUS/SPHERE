@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { VERSION_ITEM_ORDER } from '../../../utils/version-order';
 
 export function getPricingBySlugOrganizationAndVersionAggregator(
   pricingSlug: string,
@@ -95,6 +96,7 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
             private: '$private',
             collectionName: { $ifNull: ['$collection.name', null] },
             createdAt: '$createdAt',
+            addedAt: { $ifNull: ['$addedAt', null] },
             url: '$url',
             yaml: '$yaml',
             analytics: '$analytics',
@@ -117,7 +119,7 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
         slug: 1,
         organization: 1,
         collection: 1,
-        versions: { $sortArray: { input: '$versions', sortBy: { createdAt: -1 } } },
+        versions: { $sortArray: { input: '$versions', sortBy: VERSION_ITEM_ORDER } },
       },
     },
   ];

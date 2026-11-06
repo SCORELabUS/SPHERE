@@ -1,7 +1,8 @@
+import { versionAddedTime } from './version-order.ts';
 import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
-// one horizontal lane per pricing, one column per version in release order, and
+// one horizontal lane per pricing, one column per version in insertion order, and
 // a branch from the origin of a fork to its first version. Only where a pricing
 // came from is drawn (the lane of its origin above it), never the forks made of it.
 //
@@ -55,17 +56,22 @@ interface Entry {
   time: number;
 }
 
+const compare = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
+
+/** Insertion order, including the id for versions received together. */
+const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || a.version.id.localeCompare(b.version.id);
+
 export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
   const { expanded = new Set<string>(), keep = new Set<string>() } = options;
 
-  // Every version with the instant it was released. One whose date is unknown (a
+  // Every version with the instant it entered SPHERE. One whose date is unknown (a
   // source the viewer cannot read) goes right before the first version forked from it.
   const all: Entry[] = graph.lanes.flatMap(lane =>
     lane.versions.map(version => ({
       key: nodeKey(lane.pricingId, version.version),
       pricingId: lane.pricingId,
       version,
-      time: version.createdAt ? Date.parse(version.createdAt) : NaN,
+      time: version.addedAt || version.createdAt ? versionAddedTime(version) : NaN,
     }))
   );
   const children = new Map<string, Entry[]>();
@@ -117,7 +123,7 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   const hidden = new Set<string>();
   const gapRuns: { key: string; lane: number; entries: Entry[] }[] = [];
   lanes.forEach((lane, laneIndex) => {
-    const ordered = entriesOf(lane).sort((a, b) => a.time - b.time);
+    const ordered = entriesOf(lane).sort((a, b) => byRelease(a, b) || a.version.id.localeCompare(b.version.id));
     let run: Entry[] = [];
     const close = () => {
       if (!run.length) return;
@@ -140,7 +146,12 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
 
   const ordered = visibleEntries
     .filter(entry => !hidden.has(entry.key))
-    .sort((a, b) => a.time - b.time || laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)!);
+    .sort(
+      (a, b) =>
+        byRelease(a, b) ||
+        laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)! ||
+        a.version.id.localeCompare(b.version.id)
+    );
   const nodes: GraphNode[] = ordered.map((entry, column) => ({
     key: entry.key,
     lane: laneOf.get(entry.pricingId)!,
@@ -159,10 +170,10 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   // A gap sits between the shown versions of its lane right before and after it.
   const gaps: GraphGap[] = gapRuns.map(run => {
     const laneNodes = nodes.filter(node => node.lane === run.lane);
-    const firstTime = run.entries[0].time;
-    const lastTime = run.entries[run.entries.length - 1].time;
-    const before = [...laneNodes].reverse().find(node => byKey.get(node.key)!.time <= firstTime);
-    const after = laneNodes.find(node => byKey.get(node.key)!.time >= lastTime);
+    const first = run.entries[0];
+    const last = run.entries[run.entries.length - 1];
+    const before = [...laneNodes].reverse().find(node => byRelease(byKey.get(node.key)!, first) <= 0);
+    const after = laneNodes.find(node => byRelease(byKey.get(node.key)!, last) >= 0);
     return {
       key: run.key,
       lane: run.lane,
