@@ -2399,6 +2399,55 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
+    it.each([false, true])('orders versions by server addedAt, even with older release dates (%s).', async olderRelease => {
+      const { organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({
+        organizationId,
+        version: '1.0.0',
+        isPrivate: false,
+      });
+      const releasedAt = new Date(Date.now() - 60 * 60 * 1000);
+      const forgedAddedAt = '2000-01-01T00:00:00.000Z';
+
+      // Same instant for both; 1.0.2 is published before 1.0.1.
+      const added: Record<string, string> = {};
+      for (const version of ['1.0.2', '1.0.1']) {
+        const fixture = await createValidPricingYaml(serviceName, version);
+        const response = await request(app)
+          .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
+          .set('Authorization', `Bearer ${adminUser.token}`)
+          .field('private', 'false')
+          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 86400000 : 0)).toISOString())
+          .field('addedAt', forgedAddedAt)
+          .attach('yaml', fixture.filePath);
+        expect(response.status).toBe(200);
+        pricingsToDelete.add(response.body.id);
+        const stored = await PricingMongoose.findById(response.body.id).lean();
+        expect(stored?.addedAt).toBeInstanceOf(Date);
+        expect(stored!.addedAt!.toISOString()).not.toBe(forgedAddedAt);
+        added[version] = stored!.addedAt!.toISOString();
+        // Two inserts in the same millisecond would still be ordered by _id; keep them apart.
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      expect(Date.parse(added['1.0.1'])).toBeGreaterThan(Date.parse(added['1.0.2']));
+
+      // Newest first: the tie goes to the version received last, not to its label.
+      const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
+      expect(shown.status).toBe(200);
+      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.1', '1.0.2', '1.0.0']);
+      expect(shown.body.versions[0].addedAt).toBe(added['1.0.1']);
+
+      // The listing names the same latest version.
+      const listed = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+      const row = listed.body.pricings.find((pricing: any) => pricing.name === serviceName);
+      expect(row?.version).toBe('1.0.1');
+
+      // Updates cannot move it either.
+      await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });
+      const kept = await PricingMongoose.findOne({ name: serviceName, version: '1.0.1' }).lean();
+      expect(kept!.addedAt!.toISOString()).toBe(added['1.0.1']);
+    });
+
     it('Return 422 when the createdAt sent with a new version is invalid or in the future.', async () => {
       const { organizationId } = await createAndLoginUser('USER');
       const { serviceName } = await createPricingForOrganization({
@@ -3447,6 +3496,8 @@ describe('Pricings API integration', () => {
       expect(own).toMatchObject({ role: 'current', slug: forked.slug, available: true });
       expect(own.versions).toHaveLength(1);
       expect(own.versions[0].forkedFrom).toEqual({ pricingId: source.pricingId, version: '1.1.0' });
+      // When the fork was made, set by the server.
+      expect(Date.parse(own.versions[0].addedAt)).toBeGreaterThan(Date.now() - 60 * 1000);
       expect(source).toMatchObject({ role: 'source', name: original.serviceName, available: true });
       expect(source.versions.map((v: any) => v.version).sort()).toEqual(['1.0.0', '1.1.0']);
       expect(source.organization.id).toBe(originalOrg);
@@ -3476,7 +3527,7 @@ describe('Pricings API integration', () => {
       const source = fromFork.body.lanes[1];
       expect(source).toMatchObject({ role: 'source', available: false, name: original.serviceName });
       expect(source.versions).toEqual([
-        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, private: false, forkedFrom: null },
+        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, addedAt: null, private: false, forkedFrom: null },
       ]);
     });
 

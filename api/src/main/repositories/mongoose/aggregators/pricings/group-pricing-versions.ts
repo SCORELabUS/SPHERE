@@ -1,4 +1,5 @@
 import { PipelineStage } from "mongoose";
+import { VERSION_ORDER } from "../../../../utils/version-order";
 
 export const latestPricingsByNameAggregator: PipelineStage = {
   $group: {
@@ -14,7 +15,7 @@ export const latestPricingsByNameAggregator: PipelineStage = {
     // public version at all), for viewers who cannot see private versions.
     latestPublicPricing: {
       $top: {
-        sortBy: { private: 1, createdAt: -1 },
+        sortBy: { private: 1, ...VERSION_ORDER },
         output: '$$ROOT',
       },
     },
