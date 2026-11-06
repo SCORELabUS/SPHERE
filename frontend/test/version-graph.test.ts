@@ -21,6 +21,7 @@ const lane = (
     id: `${pricingId}-${version}`,
     version,
     createdAt,
+    addedAt: null,
     private: false,
     forkedFrom: origin ? { pricingId: origin[0], version: origin[1] } : null,
   })),
@@ -138,4 +139,29 @@ test('routes links of older data, whose later versions name origins, as curves o
   assert.equal(routeEdge(into('original'), layout), 'curve');
   // Nothing came after 9.0.0: the branch runs along its lane and bends down at the end.
   assert.equal(routeEdge(into('ended'), layout), 'merge');
+});
+
+test('orders versions released at the same instant by when they were added to SPHERE', () => {
+  const sameDay = '2026-03-01T00:00:00Z';
+  const current = lane('personal', 'current', [
+    // Listed newest first, as the API sends them; the dates tie.
+    ['b', sameDay],
+    ['a', sameDay],
+    ['first', month(0)],
+  ]);
+  current.versions[0].addedAt = '2026-11-06T10:00:05.000Z';
+  current.versions[1].addedAt = '2026-11-06T10:00:01.000Z';
+  const layout = layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] });
+  assert.deepEqual(
+    layout.nodes.map(node => node.version.version),
+    ['first', 'a', 'b']
+  );
+
+  // Swapping when they were added swaps them, whatever order they arrive in.
+  current.versions[0].addedAt = '2026-11-06T10:00:01.000Z';
+  current.versions[1].addedAt = '2026-11-06T10:00:05.000Z';
+  assert.deepEqual(
+    layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] }).nodes.map(node => node.version.version),
+    ['first', 'b', 'a']
+  );
 });

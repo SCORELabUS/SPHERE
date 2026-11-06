@@ -2,6 +2,8 @@ export interface VersionData {
   id: string;
   version: string;
   createdAt: string;
+  /** When SPHERE received it (set by the server): orders versions with the same `createdAt`. */
+  addedAt?: string | null;
   yaml: string;
   private: boolean;
   collection: { id: string; name: string; slug: string } | null;

@@ -53,7 +53,14 @@ interface Entry {
   pricingId: string;
   version: PricingGraphVersion;
   time: number;
+  /** When SPHERE received it, which orders versions released at the same instant. */
+  added: number;
 }
+
+const compare = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
+
+/** Release order: the version's date, then when it was added to SPHERE. */
+const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || compare(a.added, b.added);
 
 export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
   const { expanded = new Set<string>(), keep = new Set<string>() } = options;
@@ -66,6 +73,7 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
       pricingId: lane.pricingId,
       version,
       time: version.createdAt ? Date.parse(version.createdAt) : NaN,
+      added: version.addedAt ? Date.parse(version.addedAt) : Number.NEGATIVE_INFINITY,
     }))
   );
   const children = new Map<string, Entry[]>();
@@ -117,7 +125,7 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   const hidden = new Set<string>();
   const gapRuns: { key: string; lane: number; entries: Entry[] }[] = [];
   lanes.forEach((lane, laneIndex) => {
-    const ordered = entriesOf(lane).sort((a, b) => a.time - b.time);
+    const ordered = entriesOf(lane).sort((a, b) => byRelease(a, b) || a.version.id.localeCompare(b.version.id));
     let run: Entry[] = [];
     const close = () => {
       if (!run.length) return;
@@ -140,7 +148,12 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
 
   const ordered = visibleEntries
     .filter(entry => !hidden.has(entry.key))
-    .sort((a, b) => a.time - b.time || laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)!);
+    .sort(
+      (a, b) =>
+        byRelease(a, b) ||
+        laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)! ||
+        a.version.id.localeCompare(b.version.id)
+    );
   const nodes: GraphNode[] = ordered.map((entry, column) => ({
     key: entry.key,
     lane: laneOf.get(entry.pricingId)!,
@@ -159,10 +172,10 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   // A gap sits between the shown versions of its lane right before and after it.
   const gaps: GraphGap[] = gapRuns.map(run => {
     const laneNodes = nodes.filter(node => node.lane === run.lane);
-    const firstTime = run.entries[0].time;
-    const lastTime = run.entries[run.entries.length - 1].time;
-    const before = [...laneNodes].reverse().find(node => byKey.get(node.key)!.time <= firstTime);
-    const after = laneNodes.find(node => byKey.get(node.key)!.time >= lastTime);
+    const first = run.entries[0];
+    const last = run.entries[run.entries.length - 1];
+    const before = [...laneNodes].reverse().find(node => byRelease(byKey.get(node.key)!, first) <= 0);
+    const after = laneNodes.find(node => byRelease(byKey.get(node.key)!, last) >= 0);
     return {
       key: run.key,
       lane: run.lane,

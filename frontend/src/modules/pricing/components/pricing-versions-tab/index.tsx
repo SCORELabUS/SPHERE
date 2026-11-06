@@ -35,7 +35,13 @@ export default function PricingVersionsTab({
 
   // Oldest first, so a version's neighbour is the one released right before it.
   const byDate = useMemo(
-    () => [...versions].sort((a, b) => parseISO(a.createdAt).getTime() - parseISO(b.createdAt).getTime()),
+    () =>
+      [...versions].sort(
+        (a, b) =>
+          parseISO(a.createdAt).getTime() - parseISO(b.createdAt).getTime() ||
+          // Same date: the one added to SPHERE first goes first.
+          (a.addedAt ? Date.parse(a.addedAt) : 0) - (b.addedAt ? Date.parse(b.addedAt) : 0)
+      ),
     [versions]
   );
   const pairFor = (target: VersionData) => {

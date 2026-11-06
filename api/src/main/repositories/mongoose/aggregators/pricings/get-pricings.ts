@@ -7,6 +7,7 @@ import { filterByOrganizationAggregator } from "./filter-by-organization";
 import { considerUserPermissionsAggregator, grantedByKey } from "./filter-by-user-permissions";
 import { filtersDataGenerator } from "./filters-data-generator";
 import { refactorOutputAggregator } from "./refactor-output";
+import { VERSION_ORDER } from "../../../../utils/version-order";
 
 export function getPricingsAggregator(
   organizationId?: string,
@@ -17,7 +18,7 @@ export function getPricingsAggregator(
   collectionVisibility: PrivateCollectionAccess = [],
 ){
   const pipeline: PipelineStage[] = [
-      { $sort: { createdAt: -1 } },
+      { $sort: VERSION_ORDER },
       latestPricingsByNameAggregator,
       refactorRootAggregator,
       ...populateCollectionDataAggregator(collectionVisibility),
