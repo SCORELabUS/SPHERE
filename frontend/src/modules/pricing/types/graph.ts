@@ -4,7 +4,9 @@ export interface PricingGraphVersion {
   version: string;
   /** Null for a version of a source the viewer may not read: only its label is known. */
   createdAt: string | null;
-  /** When SPHERE received it (set by the server): orders versions with the same `createdAt`. */
+  /** URL of its YAML; null for a version the viewer may not read. */
+  yaml: string | null;
+  /** When SPHERE received it (set by the server): orders versions independently of `createdAt`. */
   addedAt: string | null;
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */

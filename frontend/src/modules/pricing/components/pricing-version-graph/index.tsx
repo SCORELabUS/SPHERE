@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { usePricingsApi } from '../../api/pricingsApi';
+import ChangeSummaryCard from './change-summary-card';
+import { useVersionChanges, type ChangesTarget } from './use-version-changes';
 import { useRouter } from '../../../core/hooks/useRouter';
 import type { PricingGraph, PricingGraphLane } from '../../types/graph';
 import {
+  baseVersionOf,
   isLongLink,
   layoutGraph,
   nodeKey,
@@ -116,6 +119,9 @@ export default function PricingVersionGraph({
   const [expanded, setExpanded] = useState<Set<string> | 'all'>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLUListElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // The version whose changes are shown in a card, and where the card goes.
+  const [card, setCard] = useState<{ key: string; left: number; top: number } | null>(null);
   const [viewWidth, setViewWidth] = useState(0);
 
   useEffect(() => {
@@ -154,6 +160,21 @@ export default function PricingVersionGraph({
     layout?.nodes.find(node => node.key === selectedKey) ??
     layout?.nodes.find(node => node.key === shownKey) ??
     null;
+
+  // What the pointed version changed: compared with the version before it, or
+  // with the one it was forked from. Versions the viewer cannot read have no card.
+  const cardNode = card ? (layout?.nodes.find(node => node.key === card.key) ?? null) : null;
+  const cardLane = cardNode && layout ? layout.lanes[cardNode.lane] : null;
+  const cardBase =
+    graph && cardNode && cardLane ? baseVersionOf(graph, cardLane.pricingId, cardNode.version.version) : null;
+  const changesTarget = useMemo<ChangesTarget | null>(
+    () =>
+      cardNode && cardLane?.available && cardNode.version.yaml
+        ? { key: cardNode.key, before: cardBase?.version.yaml ?? null, after: cardNode.version.yaml }
+        : null,
+    [cardNode, cardLane, cardBase]
+  );
+  const changes = useVersionChanges(changesTarget, graph);
 
   // The drawing fills the width it is given, however few versions there are. The
   // scroll area only exists once there is something to draw.
@@ -223,6 +244,21 @@ export default function PricingVersionGraph({
     else if (lane.available) router.push(laneHref(lane, node.version.id));
   };
 
+  // The card sits under the dot, kept inside the graph's width.
+  const showCard = (node: GraphNode, dot: Element) => {
+    const area = sectionRef.current?.getBoundingClientRect();
+    const box = dot.getBoundingClientRect();
+    if (!area) return;
+    const half = 148;
+    const centre = box.left + box.width / 2 - area.left;
+    setCard({
+      key: node.key,
+      left: Math.min(Math.max(centre, half), Math.max(area.width - half, half)),
+      top: box.bottom - area.top + 6,
+    });
+  };
+  const hideCard = (key: string) => setCard(current => (current?.key === key ? null : current));
+
   const openGap = (key: string) =>
     setExpanded(current => (current === 'all' ? current : new Set(current).add(key)));
 
@@ -231,7 +267,8 @@ export default function PricingVersionGraph({
 
   return (
     <section
-      className="rounded-xl border border-tp-hairline bg-tp-canvas"
+      ref={sectionRef}
+      className="relative rounded-xl border border-tp-hairline bg-tp-canvas"
       aria-label="Version graph"
     >
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-tp-hairline px-4 py-3">
@@ -279,7 +316,11 @@ export default function PricingVersionGraph({
         </div>
       </header>
 
-      <div ref={scrollRef} className="max-h-[26rem] overflow-auto overscroll-contain">
+      <div
+        ref={scrollRef}
+        onScroll={() => setCard(null)}
+        className="max-h-[26rem] overflow-auto overscroll-contain"
+      >
         <div className="flex w-max min-w-full">
           <ul
             ref={labelsRef}
@@ -486,12 +527,22 @@ export default function PricingVersionGraph({
                   aria-pressed={isSelected}
                   aria-label={`${lane.name} ${node.version.version}, ${date}${node.version.private ? ', private' : ''}`}
                   onClick={() => setSelectedKey(node.key)}
-                  onMouseEnter={() => setHoveredKey(node.key)}
-                  onMouseLeave={() =>
-                    setHoveredKey(current => (current === node.key ? null : current))
-                  }
-                  onFocus={() => setHoveredKey(node.key)}
-                  onBlur={() => setHoveredKey(current => (current === node.key ? null : current))}
+                  onMouseEnter={event => {
+                    setHoveredKey(node.key);
+                    showCard(node, event.currentTarget);
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredKey(current => (current === node.key ? null : current));
+                    hideCard(node.key);
+                  }}
+                  onFocus={event => {
+                    setHoveredKey(node.key);
+                    showCard(node, event.currentTarget);
+                  }}
+                  onBlur={() => {
+                    setHoveredKey(current => (current === node.key ? null : current));
+                    hideCard(node.key);
+                  }}
                   onDoubleClick={() => openNode(node)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -501,7 +552,8 @@ export default function PricingVersionGraph({
                   }}
                   className={`group/dot cursor-pointer outline-none transition-opacity duration-200 ${related(node) ? 'opacity-100' : 'opacity-55'}`}
                 >
-                  <title>{`${lane.name} ${node.version.version} · ${date}`}</title>
+                  {/* Readable versions get the card instead of the browser's tooltip. */}
+                  {!lane.available && <title>{`${lane.name} ${node.version.version} · ${date}`}</title>}
                   {/* Hit area and selection ring. */}
                   <circle
                     cx={cx}
@@ -544,6 +596,25 @@ export default function PricingVersionGraph({
           </svg>
         </div>
       </div>
+
+      {card && cardNode && cardLane && changesTarget && (
+        <ChangeSummaryCard
+          pricingName={cardLane.name}
+          version={cardNode.version.version}
+          createdAt={cardNode.version.createdAt}
+          firstVersion={!cardBase}
+          heading={
+            cardBase
+              ? `Changes since ${cardBase.version.version}${cardBase.lane.pricingId === cardLane.pricingId ? '' : ` in ${cardBase.lane.name}`}`
+              : cardNode.version.forkedFrom
+                ? 'Forked from a version you cannot read: what it starts with'
+                : 'First version: what it starts with'
+          }
+          state={changes}
+          left={card.left}
+          top={card.top}
+        />
+      )}
 
       {graph.truncated && (
         <p className="border-t border-tp-hairline px-4 py-2 text-[11px] text-tp-steel">
