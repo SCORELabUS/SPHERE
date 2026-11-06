@@ -11,6 +11,6 @@ export interface TreeNode {
   isCurrent?: boolean;
 }
 
-export type Tab = 'overview' | 'members' | 'invitations' | 'pricings' | 'collections' | 'children' | 'permissions';
+export type Tab = 'overview' | 'members' | 'invitations' | 'pricings' | 'collections' | 'services' | 'children' | 'permissions';
 
 export const PER_PAGE = 10;

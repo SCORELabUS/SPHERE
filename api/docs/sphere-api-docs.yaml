@@ -3163,6 +3163,118 @@ paths:
                     hasAccess: { type: boolean }
         '404': { description: Organization not found }
 
+  /orgs/{organizationId}/services:
+    get:
+      summary: Get the tree of services of an organization (beta)
+      description: |
+        Returns the services the organization offers as a flat list of nodes (each with its
+        `parentId`; siblings keep the order of the list), the pricings linked to them and
+        whether the caller may edit the tree.
+
+        **Authentication**: User token
+
+        **Permission**: Any member of the organization (OWNER, ADMIN or MEMBER). Requires beta
+        features to be turned on (`PUT /users/me/settings/beta-features`); otherwise 403.
+
+        **Pricings**: `pricings` only holds the linked pricings the caller may list in the
+        organization. A `pricingId` in a node that is missing from it is a pricing the caller
+        cannot see.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: The tree of services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceTreeView'
+        '401': { description: Authentication required }
+        '403':
+          description: Not a member of the organization, or beta features are off
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Replace the tree of services of an organization (beta)
+      description: |
+        Replaces the whole tree. The body names the `revision` it was based on: if the tree was
+        saved by someone else since then, nothing changes and the answer is 409. The first save
+        of an organization uses revision 0.
+
+        **Authentication**: User token
+
+        **Permission**: OWNER or ADMIN of the organization. Requires beta features.
+
+        **Validation**: at most 500 services, nested at most 12 levels, unique node ids, every
+        `parentId` in the tree and no cycles; names of 1 to 120 characters, descriptions of at
+        most 1000; `dependency` only for `DEPENDENT` services; at most 50 pricings per service,
+        each a live pricing (`pricingId`) of the organization.
+      tags: [Organizations]
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodes, revision]
+              properties:
+                nodes:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/ServiceNode'
+                revision:
+                  type: integer
+                  minimum: 0
+            example:
+              revision: 0
+              nodes:
+                - id: github
+                  parentId: null
+                  name: GitHub
+                  description: Code hosting
+                  kind: AUTONOMOUS
+                  dependency: null
+                  pricingIds: ['68050bd09890322c57842f6f']
+                - id: github-actions
+                  parentId: github
+                  name: GitHub Actions
+                  kind: DEPENDENT
+                  dependency: FUNCTIONAL
+                  pricingIds: []
+      responses:
+        '200':
+          description: The saved tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceTreeView'
+        '401': { description: Authentication required }
+        '403':
+          description: Not an OWNER or ADMIN of the organization, or beta features are off
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The tree was saved by someone else after `revision`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The tree is not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /orgs/{organizationId}/parent:
     put:
       summary: Move an organization to another parent
@@ -6845,7 +6957,192 @@ components:
       example: 68050bd09890322c57842f6f
       pattern: '^[a-f0-9]{24}$'
       readOnly: true
-    
+
+    ServiceNode:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+          description: Chosen by the client, unique within the tree
+        parentId:
+          type: string
+          nullable: true
+          description: The id of the parent service, or null for a top-level one
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        kind:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            AUTONOMOUS, DEPENDENT or any other text for a kind the organization makes up (e.g. `Add-on`).
+            Known kinds are stored in capitals whatever case they are sent in; empty or null means not classified.
+          example: AUTONOMOUS
+        dependency:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            What the service depends on: FUNCTIONAL (the provider's functionality), ACCOUNT (an account with it)
+            or any other text, for any kind. Known values are stored in capitals; empty or null means nothing.
+          example: FUNCTIONAL
+        pricingIds:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: Pricing identities (`pricingId`) of the organization linked to the service
+        attributes:
+          type: object
+          additionalProperties: true
+          maxProperties: 30
+          description: >-
+            Free fields of the service (e.g. `customers`), stored as given: any JSON values, at most 4000
+            characters and 5 levels deep. Names start with a letter followed by letters, digits, `-` or `_`,
+            and cannot be `id`, `parentId`, `name`, `description`, `kind`, `dependency`, `pricingIds`,
+            `pricings`, `services`, `attributes`, `interfaces` or `links`; nested keys cannot start with `$` or contain a dot.
+            Always returned, `{}` when there are none.
+          example:
+            customers: [Acme, Globex]
+        interfaces:
+          type: array
+          maxItems: 100
+          description: >-
+            The ways the service is used (its web app, its REST API, a chat bot...). Returned with every field,
+            named ones first and free ones after, in their order.
+          items:
+            $ref: '#/components/schemas/ServiceInterface'
+        links:
+          type: array
+          maxItems: 50
+          description: >-
+            Pages that answer questions about the service's terms (refunds, cancellation, SLA...). Returned
+            with every field, named ones first and free ones after, in their order; `[]` when there are none.
+          items:
+            $ref: '#/components/schemas/ServiceLink'
+
+    ServiceInterface:
+      type: object
+      required: [name]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones (e.g. `quote`, `source`) is kept as given: names start with a letter
+        followed by letters, digits, `-` or `_`, nested keys cannot start with `$` or contain a dot, and the
+        interface takes at most 4000 characters as JSON.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        channel:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >-
+            INTERACTIVE, PROGRAMMATIC, CONVERSATIONAL, AGENTIC, EVENT or any other text for a channel the
+            organization makes up. Known channels are stored in capitals; empty or null means not classified.
+        pending:
+          type: boolean
+          default: false
+          description: Found but not confirmed yet
+        description:
+          type: string
+          maxLength: 2000
+        mechanisms:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+          description: How it is reached (clients, commands, protocols...)
+      example:
+        name: GitHub web app
+        channel: INTERACTIVE
+        pending: false
+        description: Web application at github.com
+        mechanisms: [github.com web client, GitHub Command Palette]
+        quote: We design GitHub with the latest web browsers in mind.
+        source: https://docs.github.com/en/get-started/using-github/supported-browsers
+
+    ServiceLink:
+      type: object
+      required: [url]
+      additionalProperties: true
+      description: >-
+        Any field besides the named ones is kept as given, with the same rules as the free fields of an
+        interface; the link takes at most 4000 characters as JSON.
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Absolute http or https address; other schemes (javascript, data, ftp...) are refused.
+        title:
+          type: string
+          maxLength: 200
+          description: Empty when not given; the site's name is shown instead.
+        topic:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: What it is about, free text (e.g. Refunds), kept as written; empty or null means none.
+        description:
+          type: string
+          maxLength: 1000
+          description: The question it answers, or what it says.
+      example:
+        url: https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features
+        title: Additional product terms
+        topic: Terms
+        description: Which extra terms apply to Copilot, Actions or Packages?
+
+    ServiceTreeView:
+      type: object
+      required: [nodes, revision, pricings, canEdit]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceNode'
+        revision:
+          type: integer
+          description: Send it back when saving the tree
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        canEdit:
+          type: boolean
+          description: Whether the caller may replace the tree (OWNER or ADMIN)
+        pricings:
+          type: object
+          description: Linked pricings the caller may see, by pricingId
+          additionalProperties:
+            type: object
+            properties:
+              pricingId: { type: string }
+              name: { type: string }
+              slug: { type: string }
+              version: { type: string }
+              private: { type: boolean }
+              collection:
+                type: object
+                nullable: true
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  slug: { type: string }
+              plans: { type: integer, nullable: true, description: Plans of the version listed, when known }
+              addOns: { type: integer, nullable: true, description: Add-ons of the version listed, when known }
+
     Error:
       type: object
       properties:

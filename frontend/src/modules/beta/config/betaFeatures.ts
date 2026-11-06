@@ -19,6 +19,12 @@ export interface BetaFeature {
  *     description: 'Dictate your messages to ORBIT.',
  *   },
  */
-export const BETA_FEATURES = {} satisfies Record<string, BetaFeature>;
+export const BETA_FEATURES = {
+  'organization-services': {
+    area: 'Organizations',
+    name: 'Services',
+    description: 'A Services tab with the tree of services an organization offers and the pricings of each one.',
+  },
+} satisfies Record<string, BetaFeature>;
 
 export type BetaFeatureKey = keyof typeof BETA_FEATURES;
