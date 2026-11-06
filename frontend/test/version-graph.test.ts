@@ -141,7 +141,7 @@ test('routes links of older data, whose later versions name origins, as curves o
   assert.equal(routeEdge(into('ended'), layout), 'merge');
 });
 
-test('orders versions released at the same instant by when they were added to SPHERE', () => {
+test('orders versions by addedAt even when release dates disagree', () => {
   const sameDay = '2026-03-01T00:00:00Z';
   const current = lane('personal', 'current', [
     // Listed newest first, as the API sends them; the dates tie.
@@ -151,6 +151,9 @@ test('orders versions released at the same instant by when they were added to SP
   ]);
   current.versions[0].addedAt = '2026-11-06T10:00:05.000Z';
   current.versions[1].addedAt = '2026-11-06T10:00:01.000Z';
+  // The release dates disagree with insertion order and must not win.
+  current.versions[0].createdAt = '2025-01-01T00:00:00Z';
+  current.versions[1].createdAt = '2026-02-01T00:00:00Z';
   const layout = layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] });
   assert.deepEqual(
     layout.nodes.map(node => node.version.version),

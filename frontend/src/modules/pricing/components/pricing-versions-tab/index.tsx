@@ -1,3 +1,4 @@
+import { compareVersionsOldestFirst } from '../../utils/version-order';
 import { useMemo, useState } from 'react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { FiColumns, FiEye, FiEyeOff } from 'react-icons/fi';
@@ -33,17 +34,8 @@ export default function PricingVersionsTab({
 }: PricingVersionsTabProps) {
   const [comparePair, setComparePair] = useState<{ from: string; to: string } | null>(null);
 
-  // Oldest first, so a version's neighbour is the one released right before it.
-  const byDate = useMemo(
-    () =>
-      [...versions].sort(
-        (a, b) =>
-          parseISO(a.createdAt).getTime() - parseISO(b.createdAt).getTime() ||
-          // Same date: the one added to SPHERE first goes first.
-          (a.addedAt ? Date.parse(a.addedAt) : 0) - (b.addedAt ? Date.parse(b.addedAt) : 0)
-      ),
-    [versions]
-  );
+  // Oldest insertion first, using the same order as the graph and API.
+  const byDate = useMemo(() => [...versions].sort(compareVersionsOldestFirst), [versions]);
   const pairFor = (target: VersionData) => {
     const index = byDate.findIndex(v => v.id === target.id);
     const base = byDate[index - 1] ?? byDate[index + 1];

@@ -2399,7 +2399,7 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
-    it('orders versions with the same createdAt by when SPHERE received them, which no request can set.', async () => {
+    it.each([false, true])('orders versions by server addedAt, even with older release dates (%s).', async olderRelease => {
       const { organizationId } = await createAndLoginUser('USER');
       const { serviceName } = await createPricingForOrganization({
         organizationId,
@@ -2417,7 +2417,7 @@ describe('Pricings API integration', () => {
           .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
           .set('Authorization', `Bearer ${adminUser.token}`)
           .field('private', 'false')
-          .field('createdAt', releasedAt.toISOString())
+          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 86400000 : 0)).toISOString())
           .field('addedAt', forgedAddedAt)
           .attach('yaml', fixture.filePath);
         expect(response.status).toBe(200);

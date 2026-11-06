@@ -1,7 +1,8 @@
+import { versionAddedTime } from './version-order.ts';
 import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
-// one horizontal lane per pricing, one column per version in release order, and
+// one horizontal lane per pricing, one column per version in insertion order, and
 // a branch from the origin of a fork to its first version. Only where a pricing
 // came from is drawn (the lane of its origin above it), never the forks made of it.
 //
@@ -53,27 +54,24 @@ interface Entry {
   pricingId: string;
   version: PricingGraphVersion;
   time: number;
-  /** When SPHERE received it, which orders versions released at the same instant. */
-  added: number;
 }
 
 const compare = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
 
-/** Release order: the version's date, then when it was added to SPHERE. */
-const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || compare(a.added, b.added);
+/** Insertion order, including the id for versions received together. */
+const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || a.version.id.localeCompare(b.version.id);
 
 export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
   const { expanded = new Set<string>(), keep = new Set<string>() } = options;
 
-  // Every version with the instant it was released. One whose date is unknown (a
+  // Every version with the instant it entered SPHERE. One whose date is unknown (a
   // source the viewer cannot read) goes right before the first version forked from it.
   const all: Entry[] = graph.lanes.flatMap(lane =>
     lane.versions.map(version => ({
       key: nodeKey(lane.pricingId, version.version),
       pricingId: lane.pricingId,
       version,
-      time: version.createdAt ? Date.parse(version.createdAt) : NaN,
-      added: version.addedAt ? Date.parse(version.addedAt) : Number.NEGATIVE_INFINITY,
+      time: version.addedAt || version.createdAt ? versionAddedTime(version) : NaN,
     }))
   );
   const children = new Map<string, Entry[]>();

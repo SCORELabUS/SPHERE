@@ -4,10 +4,10 @@ import { compareVersionsNewestFirst } from '../../main/utils/version-order';
 describe('compareVersionsNewestFirst', () => {
   const day = '2026-03-01T00:00:00.000Z';
 
-  it('puts the later createdAt first, whatever addedAt says', () => {
+  it('puts the later addedAt first even when its release date is older', () => {
     const older = { createdAt: '2026-02-01T00:00:00.000Z', addedAt: '2026-11-06T12:00:00.000Z', id: 'b' };
     const newer = { createdAt: day, addedAt: '2026-11-01T12:00:00.000Z', id: 'a' };
-    expect([older, newer].sort(compareVersionsNewestFirst)).toEqual([newer, older]);
+    expect([older, newer].sort(compareVersionsNewestFirst)).toEqual([older, newer]);
   });
 
   it('breaks a createdAt tie with the version added to SPHERE last', () => {
