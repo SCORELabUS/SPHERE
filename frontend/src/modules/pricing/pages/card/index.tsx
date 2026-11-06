@@ -28,6 +28,7 @@ import YamlSourcePanel from '../../components/yaml-source-panel';
 import PricingTree from '../../components/pricing-tree';
 import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
 import PricingVersionsTab from '../../components/pricing-versions-tab';
+import PricingVersionGraph from '../../components/pricing-version-graph';
 import PricingSettingsTab from '../../components/pricing-settings-tab';
 import VersionsVisibilityModal from '../../components/versions-visibility-modal';
 import PricingLinkModal from '../../components/pricing-link-modal';
@@ -1130,6 +1131,19 @@ export default function CardPage() {
               {isPrivateNoAccess ? (
                 <PrivateAccessFallback />
               ) : (
+                <div className="space-y-4">
+                {organizationId && slug && (
+                  <PricingVersionGraph
+                    organizationId={organizationId}
+                    slug={slug}
+                    refreshKey={versions.map(v => `${v.id}:${v.private}`).join(',')}
+                    currentVersionId={currentVersion?.id ?? null}
+                    onSelectVersion={id => {
+                      const picked = versions.find(v => v.id === id);
+                      if (picked) setCurrentVersion(picked);
+                    }}
+                  />
+                )}
                 <PricingVersionsTab
                   versions={versions}
                   currentVersion={currentVersion}
@@ -1146,6 +1160,7 @@ export default function CardPage() {
                   onToggleVisibility={handleToggleVersionVisibility}
                   onViewOrigin={handleViewOrigin}
                 />
+                </div>
               )}
             </motion.div>
           )}

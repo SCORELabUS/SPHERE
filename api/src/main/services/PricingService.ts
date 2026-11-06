@@ -2,7 +2,7 @@ import { formatPricingEtag, PreconditionFailedError, PricingRevisionContext } fr
 import { withPricingRevisionLock, withPricingRevisionLocks } from '../utils/pricing-revision-lock';
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
-import { ForkedFrom } from '../types/models/Pricing';
+import { ForkedFrom, PricingGraphLane } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
@@ -45,6 +45,9 @@ interface RevisionReader {
   slug: string;
   collectionSlug?: string;
 }
+
+/** How many source lanes a version graph draws at most (a fork has one; older data may name more). */
+const GRAPH_MAX_LANES = 20;
 
 class PricingService {
   private pricingRepository: PricingRepository;
@@ -206,6 +209,105 @@ class PricingService {
     }
 
     return pricing;
+  }
+
+  /**
+   * The version graph of a pricing, drawn like a commit graph: one lane for the
+   * pricing and one for the pricing it was forked from, each with the versions the
+   * caller may read (the same rule as show()). A fork is a new pricing whose first
+   * version names the one it was forked from, by pricing and label, which gives
+   * the edge between the lanes. Only where a pricing came from is drawn, never the
+   * forks made of it. A source the caller may not read keeps a lane with only the
+   * label its fork already names, marked unavailable.
+   */
+  async graph(slug: string, organizationId: string, reqUser?: LeanUser) {
+    const current = await this.show(slug, organizationId, reqUser);
+    const currentId = String(current.pricingId);
+    const lanes: PricingGraphLane[] = [this._graphLane(current, 'current')];
+
+    const sourceIds = [
+      ...new Set(
+        current.versions
+          .map(version => version.forkedFrom?.pricingId)
+          .filter(Boolean)
+          .map(String)
+          .filter(id => id !== currentId)
+      ),
+    ];
+    for (const id of sourceIds.slice(0, GRAPH_MAX_LANES)) {
+      lanes.push((await this._graphLaneOf(id, 'source', reqUser)) ?? this._unavailableSourceLane(id, current.versions));
+    }
+
+    return {
+      pricingId: currentId,
+      lanes,
+      // More lanes exist than were drawn.
+      truncated: sourceIds.length > GRAPH_MAX_LANES,
+    };
+  }
+
+  /** The lane of a pricing by id, or null when it is gone or the caller may not read it. */
+  private async _graphLaneOf(pricingId: string, role: 'source', reqUser?: LeanUser) {
+    const location = await this.pricingRepository.findLocation(pricingId);
+    if (!location) return null;
+    try {
+      return this._graphLane(await this.show(location.slug, location.organizationId, reqUser), role);
+    } catch (err) {
+      if ((err as Error).message.startsWith('NOT FOUND')) return null;
+      throw err;
+    }
+  }
+
+  private _graphLane(pricing: Awaited<ReturnType<PricingService['show']>>, role: PricingGraphLane['role']): PricingGraphLane {
+    const organization = (pricing.versions[0] as any)?.organization ?? {};
+    return {
+      pricingId: String(pricing.pricingId),
+      name: pricing.name,
+      slug: pricing.slug,
+      organization: {
+        id: String(organization.id ?? ''),
+        name: organization.name ?? '',
+        displayName: organization.displayName ?? organization.name ?? '',
+      },
+      collectionSlug: pricing.collection?.id ? (pricing.collection.slug ?? null) : null,
+      role,
+      available: true,
+      versions: pricing.versions.map(version => ({
+        id: String(version.id),
+        version: String((version as any).version),
+        createdAt: new Date(version.createdAt as any).toISOString(),
+        private: version.private === true,
+        forkedFrom: version.forkedFrom?.pricingId
+          ? { pricingId: String(version.forkedFrom.pricingId), version: String(version.forkedFrom.version) }
+          : null,
+      })),
+    };
+  }
+
+  /** A source the caller may not read: only what its forks already say about it. */
+  private _unavailableSourceLane(pricingId: string, versions: Array<{ forkedFrom?: any }>): PricingGraphLane {
+    const origins = versions.map(version => version.forkedFrom).filter(origin => origin && String(origin.pricingId) === pricingId);
+    const first = origins[0];
+    return {
+      pricingId,
+      name: first.name,
+      slug: first.slug,
+      organization: {
+        id: String(first.organizationId),
+        name: first.organizationName,
+        displayName: first.organizationDisplayName || first.organizationName,
+      },
+      collectionSlug: null,
+      role: 'source',
+      available: false,
+      versions: [...new Set(origins.map(origin => String(origin.version)))].map(version => ({
+        id: `${pricingId}:${version}`,
+        version,
+        createdAt: null,
+        private: false,
+        forkedFrom: null,
+      })),
+    };
   }
 
   /**

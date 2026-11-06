@@ -86,6 +86,12 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - Each service also has `links`, pages that answer questions about its terms (refunds, cancellation, SLA...): `url` (absolute http/https only, checked in `ServiceTreeService.parseLinks` and in `services/links.ts`), `title`, `topic` (free text, kept as written) and `description`, plus any other field, kept like an interface's. The tree shows a "Links N" group under the service, its details have a Links tab grouped by topic (opened in a new tab with `rel="noreferrer noopener"`), and Edit has a Links panel in each row (`LinkEditor`); Save waits until every link has a valid address.
 - Any other key of a service in the JSON is a free attribute, stored in the node's `attributes` (validated in `ServiceTreeService.parseAttributes`, names in `RESERVED_ATTRIBUTES` refused) and listed in its details. A new kind of data (e.g. `customers`) can start there with no schema change; give it a field and UI of its own only when it needs one.
 
+## Pricing version graph and forks
+
+- A fork always creates a new pricing (`POST /pricing-forks`), whose first version stores `forkedFrom` (source pricingId, organization, slug, name and version label). A version is never forked into a pricing that already exists: that would be a pull request, which SPHERE does not have.
+- `GET /pricing-graphs/:org/:slug` (`PricingService.graph`) returns the pricing's lane and the lane of the pricing it was forked from (`source`); the forks made of a pricing are never drawn. Each lane is read through `show()`, so private versions, hidden collections and unreadable pricings follow the same rules; an unreadable source keeps a lane with `available: false` and only the label its fork names. Older data whose later versions name origins draws those too (at most 20). It lives outside `/pricings/**` so it cannot clash with a version named "graph".
+- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in release order, a branch from the origin to the fork's first version). From 13 versions on, runs of versions no branch touches fold into "+N" gaps, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) is in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`.
+
 ## Collection PUT authority
 
 - A pricing inside a collection uses that collection's PUT permission for edits, including version visibility; individual PUT cannot override the collection. Existing GET/privacy and DELETE rules remain unchanged.
@@ -108,6 +114,8 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - /api/src/test/collection.test.ts — tests related to collection management and collection-pricing interactions
 - /api/src/test/pricing.test.ts — tests related to pricing management and pricing-analytics
 - /api/src/test/service-tree.test.ts — the organization service tree (beta): beta gating, roles, revisions, validation, interfaces, links, free attributes and hiding pricings a member cannot list
+
+- /api/src/test/pricing.test.ts also covers the version graph (`GET /pricing-graphs`)
 - /api/src/test/pricing-concurrency.test.ts — tests related to pricing ETags and `If-Match` on pricing writes
 - /api/src/test/unit-tests/pricing-revision-race.test.ts — deterministic claim/write interleaving, writes without If-Match, identity changes during reads and recovery after failed writes
 - /api/src/test/private-versions.test.ts — tests related to who may read private pricing versions (server-managed fields, permissions across organizations, collections, forks, follows, API keys, ORBIT and the MCP server)

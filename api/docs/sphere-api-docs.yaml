@@ -4664,6 +4664,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /pricing-graphs/{organizationId}/{pricingSlug}:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationId'
+      - $ref: '#/components/parameters/PricingSlug'
+    get:
+      summary: Get the version graph of a pricing
+      description: |
+        The versions of a pricing drawn like a commit graph: one lane for the pricing and one
+        for the pricing it was forked from (`source`). A fork is a new pricing whose first
+        version names the one it was forked from (`forkedFrom`, by pricing and label), which
+        gives the edge between the lanes. Only where a pricing came from is drawn, never the
+        forks made of it. Older data whose later versions name an origin draws those origins
+        too, at most 20 (`truncated` says when more exist).
+
+        Every lane holds only the versions the caller may read, by the same rules as
+        `GET /pricings/{organizationId}/{pricingSlug}`: a pricing the caller may not read
+        answers 404, and a source the caller may not read keeps a lane with `available: false` holding only the labels its forks
+        already name (`createdAt: null`).
+
+        **Authentication**: Optional (private versions need it)
+      tags:
+        - Pricings
+      security:
+        - {}
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The lanes of the graph, the pricing asked for first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingGraph'
+        '404':
+          description: The pricing does not exist, or the caller may not read it
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /pricing-follows/{organizationId}/{pricingSlug}:
     parameters:
       - $ref: '#/components/parameters/OrganizationId'
@@ -6690,6 +6731,70 @@ paths:
 
 components:
   schemas:
+    PricingGraph:
+      type: object
+      required: [pricingId, lanes, truncated]
+      properties:
+        pricingId:
+          type: string
+        truncated:
+          type: boolean
+          description: More sources exist than the 20 drawn
+        lanes:
+          type: array
+          items:
+            type: object
+            required: [pricingId, name, slug, organization, role, available, versions]
+            properties:
+              pricingId:
+                type: string
+              name:
+                type: string
+              slug:
+                type: string
+              organization:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  displayName:
+                    type: string
+              collectionSlug:
+                type: string
+                nullable: true
+              role:
+                type: string
+                enum: [current, source]
+              available:
+                type: boolean
+                description: False for a source the caller may not read
+              versions:
+                type: array
+                items:
+                  type: object
+                  required: [id, version, createdAt, private, forkedFrom]
+                  properties:
+                    id:
+                      type: string
+                    version:
+                      type: string
+                    createdAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    private:
+                      type: boolean
+                    forkedFrom:
+                      type: object
+                      nullable: true
+                      properties:
+                        pricingId:
+                          type: string
+                        version:
+                          type: string
+
     IdentityProfile:
       type: object
       required: [sub]
