@@ -6615,7 +6615,7 @@ components:
                 type: array
                 items:
                   type: object
-                  required: [id, version, createdAt, private, forkedFrom]
+                  required: [id, version, createdAt, yaml, private, forkedFrom]
                   properties:
                     id:
                       type: string
@@ -6625,6 +6625,12 @@ components:
                       type: string
                       format: date-time
                       nullable: true
+                    yaml:
+                      type: string
+                      nullable: true
+                      description: |
+                        URL of the version's YAML, as in the pricing's versions (the web compares it
+                        with the version before it). Null for a source the caller may not read.
                     private:
                       type: boolean
                     forkedFrom:

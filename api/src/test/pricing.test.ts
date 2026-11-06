@@ -3447,6 +3447,8 @@ describe('Pricings API integration', () => {
       expect(own).toMatchObject({ role: 'current', slug: forked.slug, available: true });
       expect(own.versions).toHaveLength(1);
       expect(own.versions[0].forkedFrom).toEqual({ pricingId: source.pricingId, version: '1.1.0' });
+      // Each readable version links its YAML, so the graph can say what changed.
+      expect(own.versions[0].yaml).toMatch(/\.ya?ml$/);
       expect(source).toMatchObject({ role: 'source', name: original.serviceName, available: true });
       expect(source.versions.map((v: any) => v.version).sort()).toEqual(['1.0.0', '1.1.0']);
       expect(source.organization.id).toBe(originalOrg);
@@ -3476,7 +3478,7 @@ describe('Pricings API integration', () => {
       const source = fromFork.body.lanes[1];
       expect(source).toMatchObject({ role: 'source', available: false, name: original.serviceName });
       expect(source.versions).toEqual([
-        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, private: false, forkedFrom: null },
+        { id: `${source.pricingId}:1.0.0`, version: '1.0.0', createdAt: null, yaml: null, private: false, forkedFrom: null },
       ]);
     });
 

@@ -92,6 +92,8 @@ export interface PricingGraphVersion {
   version: string;
   /** Null for a version of a source the caller may not read: only its label is known. */
   createdAt: string | null;
+  /** URL of its YAML, to compare it with the version before; null when the caller may not read it. */
+  yaml: string | null;
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */
   forkedFrom: { pricingId: string; version: string } | null;

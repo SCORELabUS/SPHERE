@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { layoutGraph, nodeKey, routeEdge } from '../src/modules/pricing/utils/version-graph.ts';
+import { baseVersionOf, layoutGraph, nodeKey, routeEdge } from '../src/modules/pricing/utils/version-graph.ts';
 import type { PricingGraph, PricingGraphLane } from '../src/modules/pricing/types/graph.ts';
 
 const lane = (
@@ -21,6 +21,7 @@ const lane = (
     id: `${pricingId}-${version}`,
     version,
     createdAt,
+    yaml: createdAt ? `/static/${pricingId}/${version}.yml` : null,
     private: false,
     forkedFrom: origin ? { pricingId: origin[0], version: origin[1] } : null,
   })),
@@ -138,4 +139,33 @@ test('routes links of older data, whose later versions name origins, as curves o
   assert.equal(routeEdge(into('original'), layout), 'curve');
   // Nothing came after 9.0.0: the branch runs along its lane and bends down at the end.
   assert.equal(routeEdge(into('ended'), layout), 'merge');
+});
+
+test('compares a version with the one before it, or with the one it was forked from', () => {
+  const graph: PricingGraph = {
+    pricingId: 'personal',
+    truncated: false,
+    lanes: [
+      lane('personal', 'current', [
+        ['1.2.0', month(5)],
+        ['1.1.0', month(3), ['original', '1.0.0']],
+      ]),
+      lane('original', 'source', [
+        ['1.0.0', month(1)],
+        ['0.9.0', month(0)],
+      ]),
+    ],
+  };
+  const base = (pricingId: string, version: string) => {
+    const found = baseVersionOf(graph, pricingId, version);
+    return found && `${found.lane.pricingId} ${found.version.version}`;
+  };
+  assert.equal(base('personal', '1.2.0'), 'personal 1.1.0');
+  assert.equal(base('personal', '1.1.0'), 'original 1.0.0');
+  assert.equal(base('original', '1.0.0'), 'original 0.9.0');
+  assert.equal(base('original', '0.9.0'), null);
+
+  // An origin the viewer cannot read gives nothing to compare with.
+  const hidden = { ...graph, lanes: [graph.lanes[0], lane('original', 'source', [['1.0.0', null]], false)] };
+  assert.equal(baseVersionOf(hidden, 'personal', '1.1.0'), null);
 });
