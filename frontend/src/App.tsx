@@ -10,6 +10,7 @@ import { NotificationsProvider } from './modules/notification/contexts/notificat
 import { useNotificationsSSE } from './modules/notification/hooks/useNotificationsSSE';
 import { ToastProvider } from './modules/core/contexts/toastContext';
 import { useToast } from './modules/core/contexts/useToast';
+import AssistantLauncher from './modules/core/components/assistant-launcher';
 
 function OrganizationProvider({ children }: { children: React.ReactNode }) {
   const { organizations, isLoading, page, totalPages, setPage, refresh } = useOrganizationManager();
@@ -48,6 +49,7 @@ export default function App() {
             <ToastProvider>
               <NotificationsSSEProvider>
                 <Router />
+                <AssistantLauncher />
               </NotificationsSSEProvider>
             </ToastProvider>
           </NotificationsProvider>
