@@ -112,6 +112,8 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   // The nodes the JSON text was last written from or read into; other changes rewrite the text.
   const jsonSource = useRef<ServiceNode[] | null>(null);
   const [saving, setSaving] = useState(false);
+  // Also guards callbacks already captured by keyboard and drag handlers.
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<{ message: string; conflict: boolean } | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [orgPricings, setOrgPricings] = useState<OrgPricing[] | null>(null);
@@ -292,6 +294,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   // ─── Editing ───
   const edit = useCallback(
     (change: (current: ServiceNode[]) => ServiceNode[], typing: string | null = null) => {
+      if (savingRef.current) return;
       setDraft(current => {
         const next = change(current.nodes);
         if (next === current.nodes) return current;
@@ -309,6 +312,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   );
 
   const undo = useCallback(() => {
+    if (savingRef.current) return;
     setDraft(current =>
       current.past.length
         ? {
@@ -322,6 +326,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   }, []);
 
   const redo = useCallback(() => {
+    if (savingRef.current) return;
     setDraft(current =>
       current.future.length
         ? {
@@ -353,6 +358,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   }, [editing, undo, redo]);
 
   const onJsonChange = (text: string) => {
+    if (savingRef.current) return;
     setJsonText(text);
     const result = parseTreeJson(text, resolvePricing);
     if ('errors' in result) return setJsonErrors(result.errors);
@@ -364,6 +370,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
 
   /** Goes to the outline or the JSON; JSON with errors is only left once confirmed. */
   const switchShape = (next: Shape, then?: () => void) => {
+    if (savingRef.current) return;
     const leave = () => {
       resetJson();
       setShape(next);
@@ -412,6 +419,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   };
 
   const switchMode = (next: Mode) => {
+    if (savingRef.current) return;
     if (next === mode) return;
     if (next === 'view' && dirty) {
       setConfirm({
@@ -494,7 +502,8 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
   };
 
   const handleSave = async () => {
-    if (!tree) return;
+    if (!tree || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -509,6 +518,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
         conflict: err instanceof ServiceTreeConflictError,
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -644,7 +654,12 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
       exit={{ opacity: 0, y: -8 }}
       transition={transitionDefault}
     >
-      <div className="rounded-xl border border-tp-hairline bg-tp-canvas">
+      <fieldset
+        disabled={saving}
+        aria-busy={saving}
+        aria-label="Organization services"
+        className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas"
+      >
         <div className="flex flex-col gap-3 border-b border-tp-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="flex items-center gap-2 font-display text-lg text-tp-ink">
@@ -828,7 +843,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
                 <ServiceJsonEditor
                   text={jsonText}
                   errors={jsonErrors}
-                  readOnly={false}
+                  readOnly={saving}
                   onChange={onJsonChange}
                 />
                 <div className="grid gap-1.5">
@@ -920,7 +935,7 @@ export default function ServicesTab({ org, onDirtyChange }: Props) {
             </>
           )}
         </div>
-      </div>
+      </fieldset>
 
       <AnimatePresence>
         {confirm && (
