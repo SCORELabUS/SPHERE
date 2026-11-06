@@ -22,6 +22,7 @@ const lane = (
     version,
     createdAt,
     yaml: createdAt ? `/static/${pricingId}/${version}.yml` : null,
+    addedAt: null,
     private: false,
     forkedFrom: origin ? { pricingId: origin[0], version: origin[1] } : null,
   })),
@@ -168,4 +169,32 @@ test('compares a version with the one before it, or with the one it was forked f
   // An origin the viewer cannot read gives nothing to compare with.
   const hidden = { ...graph, lanes: [graph.lanes[0], lane('original', 'source', [['1.0.0', null]], false)] };
   assert.equal(baseVersionOf(hidden, 'personal', '1.1.0'), null);
+});
+
+test('orders versions by addedAt even when release dates disagree', () => {
+  const sameDay = '2026-03-01T00:00:00Z';
+  const current = lane('personal', 'current', [
+    // Listed newest first, as the API sends them; the dates tie.
+    ['b', sameDay],
+    ['a', sameDay],
+    ['first', month(0)],
+  ]);
+  current.versions[0].addedAt = '2026-11-06T10:00:05.000Z';
+  current.versions[1].addedAt = '2026-11-06T10:00:01.000Z';
+  // The release dates disagree with insertion order and must not win.
+  current.versions[0].createdAt = '2025-01-01T00:00:00Z';
+  current.versions[1].createdAt = '2026-02-01T00:00:00Z';
+  const layout = layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] });
+  assert.deepEqual(
+    layout.nodes.map(node => node.version.version),
+    ['first', 'a', 'b']
+  );
+
+  // Swapping when they were added swaps them, whatever order they arrive in.
+  current.versions[0].addedAt = '2026-11-06T10:00:01.000Z';
+  current.versions[1].addedAt = '2026-11-06T10:00:05.000Z';
+  assert.deepEqual(
+    layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] }).nodes.map(node => node.version.version),
+    ['first', 'b', 'a']
+  );
 });

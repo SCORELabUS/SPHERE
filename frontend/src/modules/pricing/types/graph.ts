@@ -6,6 +6,8 @@ export interface PricingGraphVersion {
   createdAt: string | null;
   /** URL of its YAML; null for a version the viewer may not read. */
   yaml: string | null;
+  /** When SPHERE received it (set by the server): orders versions with the same `createdAt`. */
+  addedAt: string | null;
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */
   forkedFrom: { pricingId: string; version: string } | null;

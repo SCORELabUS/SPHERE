@@ -643,6 +643,9 @@ export default function PricingVersionGraph({
               {selected.version.createdAt
                 ? format(parseISO(selected.version.createdAt), 'PPp')
                 : 'Its date is not visible to you'}
+              {selected.version.addedAt && (
+                <> · added to SPHERE {format(parseISO(selected.version.addedAt), 'PPpp')}</>
+              )}
               {parentOfSelected && (
                 <>
                   {' '}

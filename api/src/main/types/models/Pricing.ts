@@ -9,6 +9,8 @@ export interface LeanPricing {
 
   version: string;
   createdAt: Date;
+  /** When the version was added to SPHERE: set by the server, it breaks `createdAt` ties. */
+  addedAt?: Date;
 
   url?: string;
   currency: string;
@@ -94,6 +96,8 @@ export interface PricingGraphVersion {
   createdAt: string | null;
   /** URL of its YAML, to compare it with the version before; null when the caller may not read it. */
   yaml: string | null;
+  /** When it was added to SPHERE, which orders versions with the same `createdAt`. */
+  addedAt: string | null;
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */
   forkedFrom: { pricingId: string; version: string } | null;

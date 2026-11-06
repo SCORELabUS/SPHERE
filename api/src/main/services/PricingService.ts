@@ -277,6 +277,7 @@ class PricingService {
         version: String((version as any).version),
         createdAt: new Date(version.createdAt as any).toISOString(),
         yaml: version.yaml ? String(version.yaml) : null,
+        addedAt: (version as any).addedAt ? new Date((version as any).addedAt).toISOString() : null,
         private: version.private === true,
         forkedFrom: version.forkedFrom?.pricingId
           ? { pricingId: String(version.forkedFrom.pricingId), version: String(version.forkedFrom.version) }
@@ -306,6 +307,7 @@ class PricingService {
         version,
         createdAt: null,
         yaml: null,
+        addedAt: null,
         private: false,
         forkedFrom: null,
       })),

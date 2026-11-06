@@ -11,6 +11,10 @@ const pricingSchema = new Schema(
     _organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     version: { type: String, required: true },
     createdAt: { type: Date, required: true },
+    // When the version was added to SPHERE, set by the server on insert
+    // (`PricingRepository.create`) and never changed. `createdAt` comes from the
+    // YAML and can tie (same day, or same second); this breaks the tie.
+    addedAt: { type: Date, required: false, immutable: true },
     url: { type: String, required: false },
     currency: { type: String, required: true },
     yaml: { type: String, required: true },
