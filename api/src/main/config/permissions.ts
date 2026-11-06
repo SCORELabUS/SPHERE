@@ -154,6 +154,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // The version graph of a pricing. PricingService.graph reads every lane with the
+  // visibility rules of show(), so it is public like reading a pricing.
+  {
+    path: '/pricing-graphs/*/*',
+    methods: ['GET'],
+    isPublic: true,
+  },
+
   // Following a pricing to be notified of new versions. PricingFollowService applies the
   // pricing's visibility rule; this only requires login.
   {

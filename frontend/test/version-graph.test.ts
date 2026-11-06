@@ -1,0 +1,141 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import { layoutGraph, nodeKey, routeEdge } from '../src/modules/pricing/utils/version-graph.ts';
+import type { PricingGraph, PricingGraphLane } from '../src/modules/pricing/types/graph.ts';
+
+const lane = (
+  pricingId: string,
+  role: PricingGraphLane['role'],
+  versions: Array<[string, string | null, [string, string]?]>,
+  available = true
+): PricingGraphLane => ({
+  pricingId,
+  name: pricingId,
+  slug: pricingId,
+  organization: { id: `org-${pricingId}`, name: pricingId, displayName: pricingId },
+  collectionSlug: null,
+  role,
+  available,
+  versions: versions.map(([version, createdAt, origin]) => ({
+    id: `${pricingId}-${version}`,
+    version,
+    createdAt,
+    private: false,
+    forkedFrom: origin ? { pricingId: origin[0], version: origin[1] } : null,
+  })),
+});
+
+const month = (n: number) => new Date(Date.UTC(2024, n, 1)).toISOString();
+
+test('puts the pricing it was forked from above it, with versions in release order', () => {
+  const graph: PricingGraph = {
+    pricingId: 'personal',
+    truncated: false,
+    lanes: [
+      lane('personal', 'current', [
+        ['1.2.0', '2026-03-01T00:00:00Z'],
+        ['1.1.0', '2026-02-01T00:00:00Z', ['original', '1.1.0']],
+      ]),
+      lane('original', 'source', [
+        ['2.0.0', '2026-05-01T00:00:00Z'],
+        ['1.1.0', '2026-01-15T00:00:00Z'],
+        ['1.0.0', '2026-01-01T00:00:00Z'],
+      ]),
+    ],
+  };
+
+  const layout = layoutGraph(graph);
+
+  assert.deepEqual(
+    layout.lanes.map(l => l.role),
+    ['source', 'current']
+  );
+  assert.deepEqual(
+    layout.nodes.map(node => `${layout.lanes[node.lane].pricingId} ${node.version.version}`),
+    ['original 1.0.0', 'original 1.1.0', 'personal 1.1.0', 'personal 1.2.0', 'original 2.0.0']
+  );
+  assert.deepEqual(
+    layout.edges.map(edge => `${edge.from.version.id} > ${edge.to.version.id}`),
+    ['original-1.1.0 > personal-1.1.0']
+  );
+  // The fork's first version is where its lane starts: the branch bends off its origin.
+  assert.equal(routeEdge(layout.edges[0], layout), 'branch');
+});
+
+test('places a version of an unreadable source right before what was forked from it', () => {
+  const layout = layoutGraph({
+    pricingId: 'personal',
+    truncated: false,
+    lanes: [
+      lane('personal', 'current', [
+        ['1.0.0', '2026-01-01T00:00:00Z', ['hidden', '2024']],
+        ['1.1.0', '2026-03-01T00:00:00Z'],
+      ]),
+      lane('hidden', 'source', [['2024', null]], false),
+    ],
+  });
+
+  assert.deepEqual(
+    layout.nodes.map(node => node.version.version),
+    ['2024', '1.0.0', '1.1.0']
+  );
+  assert.equal(layout.edges.length, 1);
+});
+
+test('folds quiet stretches into gaps, keeps branch ends and kept versions, and opens on request', () => {
+  const graph: PricingGraph = {
+    pricingId: 'main',
+    truncated: false,
+    lanes: [
+      lane('main', 'current', [['0.1.0', month(6).replace('01T', '02T'), ['origin', '1.6.0']]]),
+      lane(
+        'origin',
+        'source',
+        Array.from({ length: 12 }, (_, i) => [`1.${i}.0`, month(i)] as [string, string])
+      ),
+    ],
+  };
+
+  const folded = layoutGraph(graph, { keep: new Set([nodeKey('origin', '1.9.0')]) });
+  assert.deepEqual(
+    folded.nodes.filter(node => node.lane === 0).map(node => node.version.version),
+    ['1.0.0', '1.6.0', '1.9.0', '1.10.0', '1.11.0']
+  );
+  assert.deepEqual(
+    folded.gaps.map(gap => gap.versions.map(v => v.version).join(' ')),
+    ['1.1.0 1.2.0 1.3.0 1.4.0 1.5.0', '1.7.0 1.8.0']
+  );
+  // A single quiet version (1.10.0) is not worth a gap.
+  assert.ok(folded.nodes.some(node => node.version.version === '1.10.0'));
+  assert.equal(folded.edges.length, 1);
+
+  const opened = layoutGraph(graph, { expanded: new Set([folded.gaps[0].key]) });
+  assert.equal(opened.gaps.length, 1);
+  assert.equal(layoutGraph(graph, { expanded: 'all' }).nodes.length, 13);
+});
+
+test('routes links of older data, whose later versions name origins, as curves or merges', () => {
+  const layout = layoutGraph({
+    pricingId: 'personal',
+    truncated: false,
+    lanes: [
+      lane('personal', 'current', [
+        ['0.5.0', month(0)],
+        ['1.2.0', month(6), ['original', '1.1.0']],
+        ['1.3.0', month(7), ['ended', '9.0.0']],
+      ]),
+      lane('original', 'source', [
+        ['1.1.0', month(3)],
+        ['2.0.0', month(9)],
+      ]),
+      lane('ended', 'source', [['9.0.0', month(4)]]),
+    ],
+  });
+  const into = (pricingId: string) =>
+    layout.edges.find(edge => layout.lanes[edge.from.lane].pricingId === pricingId)!;
+  // The original goes on after 1.1.0: one curve between the two lanes.
+  assert.equal(routeEdge(into('original'), layout), 'curve');
+  // Nothing came after 9.0.0: the branch runs along its lane and bends down at the end.
+  assert.equal(routeEdge(into('ended'), layout), 'merge');
+});

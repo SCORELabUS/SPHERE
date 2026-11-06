@@ -179,6 +179,13 @@ class PricingRepository extends RepositoryBase {
     return pricing.toObject<LeanPricing>();
   }
 
+  /** Where a pricing lives now (its slug and organization follow renames and moves), unless it was deleted. */
+  async findLocation(pricingId: string): Promise<{ slug: string; organizationId: string } | null> {
+    if (!mongoose.isValidObjectId(pricingId)) return null;
+    const identity = await PricingIdentity.findOne({ _id: pricingId, deleted: { $ne: true } }).lean();
+    return identity ? { slug: identity.slug, organizationId: String(identity._organizationId) } : null;
+  }
+
   async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
     const existing = await PricingMongoose.findOne({
       slug,

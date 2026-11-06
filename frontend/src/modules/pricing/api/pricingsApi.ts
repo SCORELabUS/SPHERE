@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import type { PricingGraph } from '../types/graph';
 import { useAuth } from '../../auth/hooks/useAuth';
 
 export const PRICINGS_BASE_PATH = import.meta.env.VITE_API_URL + '/pricings';
@@ -340,6 +341,20 @@ export function usePricingsApi() {
       });
   }, [fetchWithInterceptor, basicHeaders]);
 
+  /** The pricing's lane and that of the pricing it was forked from. */
+  const getPricingGraph = useCallback(
+    async (organizationId: string, pricingSlug: string, signal?: AbortSignal): Promise<PricingGraph> => {
+      const response = await fetchWithInterceptor(
+        `${import.meta.env.VITE_API_URL}/pricing-graphs/${organizationId}/${pricingSlug}`,
+        { method: 'GET', headers: basicHeaders, signal }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not load the version graph');
+      return body as PricingGraph;
+    },
+    [fetchWithInterceptor, basicHeaders]
+  );
+
   const followRequest = useCallback(async (method: 'GET' | 'PUT' | 'DELETE', organizationId: string, pricingSlug: string) => {
     return fetchWithInterceptor(`${import.meta.env.VITE_API_URL}/pricing-follows/${organizationId}/${pricingSlug}`, {
       method,
@@ -392,6 +407,7 @@ export function usePricingsApi() {
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingGraph,
       getPricingFollow,
       followPricing,
       unfollowPricing,
@@ -411,6 +427,7 @@ export function usePricingsApi() {
       createPricing,
       createPricingVersion,
       forkPricing,
+      getPricingGraph,
       getPricingFollow,
       followPricing,
       unfollowPricing,
