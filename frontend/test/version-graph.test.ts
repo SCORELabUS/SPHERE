@@ -166,6 +166,16 @@ test('compares a version with the one before it, or with the one it was forked f
   assert.equal(base('original', '1.0.0'), 'original 0.9.0');
   assert.equal(base('original', '0.9.0'), null);
 
+  // Insertion order wins even when release dates and ids say the reverse.
+  const versions = graph.lanes[0].versions;
+  versions[0].createdAt = month(0);
+  versions[0].addedAt = '2026-11-06T10:00:03Z';
+  versions[0].id = 'first-id';
+  versions[1].createdAt = month(10);
+  versions[1].addedAt = '2026-11-06T10:00:01Z';
+  versions[1].id = 'last-id';
+  assert.equal(base('personal', '1.2.0'), 'personal 1.1.0');
+
   // An origin the viewer cannot read gives nothing to compare with.
   const hidden = { ...graph, lanes: [graph.lanes[0], lane('original', 'source', [['1.0.0', null]], false)] };
   assert.equal(baseVersionOf(hidden, 'personal', '1.1.0'), null);

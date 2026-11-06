@@ -174,7 +174,7 @@ export default function PricingVersionGraph({
         : null,
     [cardNode, cardLane, cardBase]
   );
-  const changes = useVersionChanges(changesTarget);
+  const changes = useVersionChanges(changesTarget, graph);
 
   // The drawing fills the width it is given, however few versions there are. The
   // scroll area only exists once there is something to draw.

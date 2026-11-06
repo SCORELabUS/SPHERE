@@ -1,4 +1,4 @@
-import { versionAddedTime } from './version-order.ts';
+import { compareVersionsOldestFirst, versionAddedTime } from './version-order.ts';
 import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
@@ -252,9 +252,7 @@ export function baseVersionOf(graph: PricingGraph, pricingId: string, label: str
     return originLane?.available && originVersion?.yaml ? { lane: originLane, version: originVersion } : null;
   }
 
-  const time = (candidate: PricingGraphVersion) =>
-    candidate.createdAt ? Date.parse(candidate.createdAt) : Number.NEGATIVE_INFINITY;
-  const ordered = [...lane.versions].sort((a, b) => time(a) - time(b) || a.id.localeCompare(b.id));
+  const ordered = [...lane.versions].sort(compareVersionsOldestFirst);
   const before = ordered[ordered.indexOf(version) - 1];
   return before?.yaml ? { lane, version: before } : null;
 }
