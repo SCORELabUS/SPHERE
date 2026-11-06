@@ -17,6 +17,7 @@ import type { VersionData } from '../../types/card';
 import FileDiffView from './file-diff-view';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { versionYamlUrl } from '../../utils/version-yaml';
 import {
   diffPricings,
   formatDiffValue,
@@ -81,23 +82,7 @@ interface LoadedVersion {
   parsed: unknown;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL.replace('/api/v1', '');
-
-/**
- * The API stamps absolute URLs with its own `SERVER_HOST`, which the browser
- * cannot always reach (local development). Everything under `/static` and
- * `/api/v1` (where versions of a private collection link their YAML) is served
- * from this page's origin in every environment, so only the path is kept.
- */
-const yamlUrl = (version: VersionData) => {
-  if (!version.yaml.startsWith('http')) return `${import.meta.env.VITE_API_URL}${version.yaml}`;
-  try {
-    const { pathname } = new URL(version.yaml);
-    return pathname.startsWith('/static/') || pathname.startsWith('/api/v1/') ? `${API_BASE}${pathname}` : version.yaml;
-  } catch {
-    return version.yaml;
-  }
-};
+const yamlUrl = (version: VersionData) => versionYamlUrl(version.yaml);
 
 function KindBadge({ kind }: { kind: ChangeKind }) {
   const style = KIND_STYLES[kind];

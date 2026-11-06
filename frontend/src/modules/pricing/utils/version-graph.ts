@@ -1,4 +1,4 @@
-import { versionAddedTime } from './version-order.ts';
+import { compareVersionsOldestFirst, versionAddedTime } from './version-order.ts';
 import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
@@ -226,4 +226,33 @@ export function isLongLink(edge: GraphEdge, layout: GraphLayout): boolean {
     routeEdge(edge, layout) !== 'branch' &&
     Math.abs(edge.to.column - edge.from.column) > LONG_LINK_COLUMNS
   );
+}
+
+/** A version found by pricing and label, with its lane. */
+export interface VersionRef {
+  lane: PricingGraphLane;
+  version: PricingGraphVersion;
+}
+
+/**
+ * The version to compare a version with, to say what it changed: the one it was
+ * forked from when it names one, otherwise the version of its own lane released
+ * right before it. Null for the first version of a pricing, or when that version
+ * is not one the viewer can read.
+ */
+export function baseVersionOf(graph: PricingGraph, pricingId: string, label: string): VersionRef | null {
+  const lane = graph.lanes.find(candidate => candidate.pricingId === pricingId);
+  const version = lane?.versions.find(candidate => candidate.version === label);
+  if (!lane || !version) return null;
+
+  const origin = version.forkedFrom;
+  if (origin) {
+    const originLane = graph.lanes.find(candidate => candidate.pricingId === origin.pricingId);
+    const originVersion = originLane?.versions.find(candidate => candidate.version === origin.version);
+    return originLane?.available && originVersion?.yaml ? { lane: originLane, version: originVersion } : null;
+  }
+
+  const ordered = [...lane.versions].sort(compareVersionsOldestFirst);
+  const before = ordered[ordered.indexOf(version) - 1];
+  return before?.yaml ? { lane, version: before } : null;
 }
