@@ -900,11 +900,15 @@ export default function CardPage() {
                   </div>
 
                   <div className="hidden flex-col gap-6 md:flex md:flex-row">
-                    <motion.div
-                      className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
-                      animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                    >
+                    {/* Plain flex-1, not an animated `flex`. The shorthand is three values and is
+                        not interpolable, so framer-motion wrote the CSS default `0 1 auto` to this
+                        column whenever the panel remounted -- on every tab switch. With no basis
+                        and nothing to grow into, the column collapsed to its min-content width
+                        (~34px), the renderer inside went to 0, and its container query dropped the
+                        plan grid to a single 0px track: 50px-wide cards 3,733px tall until a later
+                        frame put the value back. The sidebar beside this animates its own width,
+                        which reflows this column every frame for free. */}
+                    <div className="min-w-0 flex-1 rounded-xl border border-tp-hairline bg-tp-canvas p-4">
                       {isLoadingYaml ? (
                         <div className="flex h-64 items-center justify-center">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
@@ -920,7 +924,7 @@ export default function CardPage() {
                           {errors[0] && <span className="text-xs text-tp-muted">{errors[0]}</span>}
                         </div>
                       )}
-                    </motion.div>
+                    </div>
 
                     <AnimatePresence initial={false}>
                       {sidebarOpen && (
