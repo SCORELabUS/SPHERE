@@ -109,51 +109,53 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   // --- holding configurations for comparison ------------------------------------------------
   // Both slots live in the query string, so a comparison is a link. Writing uses `replace` so the
   // back button still leaves the tab rather than stepping through every capture.
-  const writeSide = useCallback(
-    (side: CompareSide, selection: PricingSelection | undefined) => {
-      const params = new URLSearchParams(searchParams);
-      const prefix = `cfg${side.toUpperCase()}.`;
-      for (const key of [...params.keys()]) if (key.startsWith(prefix)) params.delete(key);
-      if (selection) {
-        for (const [k, v] of selectionToSearchParams(selection, { prefix })) params.append(k, v);
-      }
-      setSearchParams(params, { replace: true });
+  //
+  // Both sides are written in one pass from the next state, through the functional form of
+  // setSearchParams. Writing them one side at a time from the `searchParams` of this render meant
+  // the second write started from the params the first had not yet produced, so clearing both left
+  // A behind and swapping wrote one side twice.
+  const applySlots = useCallback(
+    (next: CompareSlots) => {
+      setSlots(next);
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          for (const side of ['a', 'b'] as const) {
+            const prefix = `cfg${side.toUpperCase()}.`;
+            for (const key of [...params.keys()]) if (key.startsWith(prefix)) params.delete(key);
+            const held = next[side];
+            if (held) {
+              for (const [k, v] of selectionToSearchParams(held, { prefix })) params.append(k, v);
+            }
+          }
+          return params;
+        },
+        { replace: true }
+      );
     },
-    [searchParams, setSearchParams]
+    [setSearchParams]
   );
 
   const hold = useCallback(
     (selection: PricingSelection | undefined) => {
       if (!selection) return;
-      const side = nextSlot(slots);
-      setSlots(prev => ({ ...prev, [side]: selection }));
-      writeSide(side, selection);
+      applySlots({ ...slots, [nextSlot(slots)]: selection });
     },
-    [slots, writeSide]
+    [slots, applySlots]
   );
 
   const clearSlots = useCallback(
     (side?: CompareSide) => {
-      if (side) {
-        setSlots(prev => ({ ...prev, [side]: undefined }));
-        writeSide(side, undefined);
-        return;
-      }
-      setSlots({});
-      writeSide('a', undefined);
-      writeSide('b', undefined);
+      applySlots(side ? { ...slots, [side]: undefined } : {});
     },
-    [writeSide]
+    [slots, applySlots]
   );
 
+  // Computed before the setters run, never inside a state updater: React may call an updater
+  // during render, and navigating from there updates the router while this component renders.
   const swapSlots = useCallback(() => {
-    setSlots(prev => {
-      const next = { a: prev.b, b: prev.a };
-      writeSide('a', next.a);
-      writeSide('b', next.b);
-      return next;
-    });
-  }, [writeSide]);
+    applySlots({ a: slots.b, b: slots.a });
+  }, [slots, applySlots]);
 
   // A link someone was given: read both sides back once the pricing is known. A side with no keys
   // was never captured -- selectionFromSearchParams would otherwise return the schema defaults and
