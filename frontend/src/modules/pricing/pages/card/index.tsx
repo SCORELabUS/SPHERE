@@ -40,6 +40,9 @@ import GetPricingMenu from '../../components/get-pricing-menu';
 import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
+
+// Sections SPHERE's own page header already shows, so the renderer does not repeat them.
+const CARD_HIDDEN_SECTIONS = ['saasName', 'description', 'metadata'] as const;
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
@@ -626,6 +629,11 @@ export default function CardPage() {
 
   if (isLoading) return <PricingCardSkeleton />;
 
+  // The page header above already carries the name, the date and the Configurations / Min price /
+  // Max price / Versions tiles, and the renderer would draw its own hero and a "Pricing details"
+  // card repeating version, created, currency and URL -- pushing the first plan price past a second
+  // screen. Hide just those pieces; the eyebrow, tags, plans, comparison and add-ons stay. The
+  // source URL then lives only in the YAML panel, which is the one thing this drops.
   // The renderer parses the author's own document when it can (Pricing2Yaml 3.x) and falls back to
   // the version-upgraded pricing object for anything older. See core/components/pricing-renderer.
   const rendererSource = pricingRendererSource(yamlText, pricing);
@@ -902,7 +910,10 @@ export default function CardPage() {
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
                         </div>
                       ) : rendererSource ? (
-                        <SpherePricingRenderer source={rendererSource} />
+                        <SpherePricingRenderer
+                          source={rendererSource}
+                          hideSections={CARD_HIDDEN_SECTIONS}
+                        />
                       ) : (
                         <div className="flex h-64 flex-col items-center justify-center gap-1 px-4 text-center text-sm text-tp-steel">
                           <span>Could not load pricing preview</span>
@@ -941,7 +952,10 @@ export default function CardPage() {
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
                         </div>
                       ) : rendererSource ? (
-                        <SpherePricingRenderer source={rendererSource} />
+                        <SpherePricingRenderer
+                          source={rendererSource}
+                          hideSections={CARD_HIDDEN_SECTIONS}
+                        />
                       ) : (
                         <div className="flex h-64 flex-col items-center justify-center gap-1 px-4 text-center text-sm text-tp-steel">
                           <span>Could not load pricing preview</span>
@@ -1078,6 +1092,7 @@ export default function CardPage() {
                       organizationId={organizationId}
                       pricingSlug={slug!}
                       pricingVersion={currentVersion.version}
+                      source={rendererSource}
                     />
                   ) : null}
                 </>

@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePricingsApi } from '../../api/pricingsApi';
 import BanterLoader from '../../../core/components/loaders/banter-loader';
+import ConfigurationPicker from './configuration-picker';
+import type { SpherePricingSource } from '../../../core/components/pricing-renderer';
 
 export interface Configuration {
   selectedPlan?: string;
@@ -30,7 +32,7 @@ function compactList(v: string[], max = 7) { return v.length <= max ? v : v.slic
 const PAGE_SIZE = 200;
 const BATCH = 120;
 
-export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion }: { organizationId: string; pricingSlug: string; pricingVersion: string }) {
+export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion, source }: { organizationId: string; pricingSlug: string; pricingVersion: string; source?: SpherePricingSource }) {
   const [allConfigs, setAllConfigs] = useState<IndexedConfiguration[]>([]);
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -208,6 +210,33 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
           </div>
         </motion.div>
       </div>
+
+      {/* Picking a configuration in the pricing itself. Added below the grid rather than inside the
+          Current selection panel so the controls above keep working exactly as they did. */}
+      {source && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="rounded-xl border border-tp-hairline bg-tp-canvas p-4"
+        >
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold text-tp-ink">Pick a configuration</h2>
+            <p className="text-xs text-tp-steel">
+              Choose a plan and add-ons to move through the space. Prev, Next, Surprise me and Quick
+              Browse redraw the pricing here.
+            </p>
+          </div>
+          <ConfigurationPicker
+            source={source}
+            focused={focused}
+            configurations={filtered}
+            allConfigurations={allConfigs}
+            position={Math.max(activeIdx + 1, 0)}
+            onPick={setFocusedId}
+          />
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
+import { forwardRef } from 'react';
 import {
   PricingRenderer,
+  type PricingRendererElement,
   type PricingRendererProps,
   type PricingRendererStyle,
 } from 'pricing-renderer/react';
@@ -63,37 +65,36 @@ export interface SpherePricingRendererProps extends RendererOverrides {
  * toggle says. Under `"auto"` the renderer alone would go dark inside a light page. Uncomment that
  * block and this becomes a one-word change.
  */
-export function SpherePricingRenderer({
-  source,
-  preset = 'catalog',
-  style,
-  className,
-  ...overrides
-}: SpherePricingRendererProps) {
-  // `source` is already the package's own discriminated union, so this assembles a valid
-  // PricingRendererProps; TypeScript cannot see that through a spread of a union, hence the single
-  // assertion here rather than a branch that repeats every prop.
-  //
-  // A fresh object per render is deliberate: the element compares `yaml` and `src` by identity and
-  // `pricing`, `request` and `normalizeOptions` by content, so nothing here starts a reload as long
-  // as the caller holds its YAML string in state -- which every call site does.
-  const props = {
-    ...source,
-    ...PRESETS[preset],
-    theme: 'light',
-    locale: 'en-US',
-    ...overrides,
-    style: { ...SPHERE_PRICING_TOKENS, ...style },
-  } as PricingRendererProps;
+export const SpherePricingRenderer = forwardRef<PricingRendererElement, SpherePricingRendererProps>(
+  function SpherePricingRenderer(
+    { source, preset = 'catalog', style, className, ...overrides },
+    ref
+  ) {
+    // `source` is already the package's own discriminated union, so this assembles a valid
+    // PricingRendererProps; TypeScript cannot see that through a spread of a union, hence the single
+    // assertion here rather than a branch that repeats every prop.
+    //
+    // A fresh object per render is deliberate: the element compares `yaml` and `src` by identity and
+    // `pricing`, `request` and `normalizeOptions` by content, so nothing here starts a reload as long
+    // as the caller holds its YAML string in state -- which every call site does.
+    const props = {
+      ...source,
+      ...PRESETS[preset],
+      theme: 'light',
+      locale: 'en-US',
+      ...overrides,
+      style: { ...SPHERE_PRICING_TOKENS, ...style },
+    } as PricingRendererProps;
 
-  // The renderer is a CSS container and sizes itself from its own inline width, so it must not be
-  // given a fixed width. `min-w-0` keeps it from forcing a flex or grid parent wider than the
-  // track, which is what its docs ask of an embedding host.
-  return (
-    <div className={`w-full min-w-0 ${className ?? ''}`}>
-      <PricingRenderer {...props} />
-    </div>
-  );
-}
+    // The renderer is a CSS container and sizes itself from its own inline width, so it must not be
+    // given a fixed width. `min-w-0` keeps it from forcing a flex or grid parent wider than the
+    // track, which is what its docs ask of an embedding host.
+    return (
+      <div className={`w-full min-w-0 ${className ?? ''}`}>
+        <PricingRenderer ref={ref} {...props} />
+      </div>
+    );
+  }
+);
 
 export default SpherePricingRenderer;
