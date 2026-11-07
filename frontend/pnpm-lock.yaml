@@ -2061,7 +2061,7 @@ packages:
     hasBin: true
 
   pricing-renderer@file:vendor/pricing-renderer-0.1.0.tgz:
-    resolution: {integrity: sha512-meuYhMBYPlkLKpYNQcH1RulidTozu/OEhZgcbPpw1UEN7mZRoiVXH7huF3HAXSnxb8nINYlNDcgcpYaaiGfENQ==, tarball: file:vendor/pricing-renderer-0.1.0.tgz}
+    resolution: {integrity: sha512-ZAgCjYIPaM/7oOSxjJNA1Ep586GZRXhHQFrhnY8GN4v6YMm3T9ed2/3L/MtW0xw6m/A3IbmgxQ/GIRBB5a40LA==, tarball: file:vendor/pricing-renderer-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=22'}
     peerDependencies:
