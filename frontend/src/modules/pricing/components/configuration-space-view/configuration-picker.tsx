@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { resolvePricing } from 'pricing-renderer';
+import { useSearchParams } from 'react-router-dom';
+import {
+  resolvePricing,
+  selectionFromSearchParams,
+  selectionToSearchParams,
+} from 'pricing-renderer';
 import type { NormalizedPricing, PricingSelection, ResolvedPricing } from 'pricing-renderer';
 import type {
   PricingReadyEvent,
@@ -10,6 +15,7 @@ import type {
 import SpherePricingRenderer, {
   type SpherePricingSource,
 } from '../../../core/components/pricing-renderer';
+import ConfigurationComparison from './configuration-comparison';
 import type { Configuration } from './index';
 
 /**
@@ -40,6 +46,17 @@ const ANALYSIS_ADDON_QUANTITY = 1;
 
 /** How many one-add-on-away configurations to offer. */
 const NEIGHBOUR_LIMIT = 8;
+
+/** Query-string prefixes, so both captured configurations share one URL. */
+const SIDE_PREFIX = { a: 'cfgA.', b: 'cfgB.' } as const;
+
+/** A short label for a captured configuration: the plan, and how many add-ons with it. */
+function describeSelection(selection: PricingSelection): string {
+  const plan = selection.planId || 'No plan';
+  const count = selectedAddOnIds(selection).length;
+  if (count === 0) return plan;
+  return `${plan} + ${count} add-on${count === 1 ? '' : 's'}`;
+}
 
 /** Builds the selection for a configuration, naming every add-on so nothing is inherited. */
 function selectionForConfiguration(
@@ -128,6 +145,11 @@ export default function ConfigurationPicker({
   const [selection, setSelection] = useState<PricingSelection>();
   const [resolved, setResolved] = useState<ResolvedPricing>();
 
+  // The two configurations being compared, and the URL that makes the pair a link.
+  const [sides, setSides] = useState<{ a?: PricingSelection; b?: PricingSelection }>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const restoredRef = useRef(false);
+
   // The configuration last written into the renderer, so neither direction re-applies its own work.
   const syncedRef = useRef<string | null>(null);
 
@@ -185,6 +207,50 @@ export default function ConfigurationPicker({
     }
     return out.sort((a, b) => (a.delta ?? Infinity) - (b.delta ?? Infinity));
   }, [pricing, selection, selectedIds, configurations, resolved]);
+
+  const capture = useCallback(
+    (side: 'a' | 'b') => {
+      if (!selection) return;
+      setSides(prev => {
+        const next = { ...prev, [side]: selection };
+        const params = new URLSearchParams(searchParams);
+        for (const key of [...params.keys()]) {
+          if (key.startsWith(SIDE_PREFIX[side])) params.delete(key);
+        }
+        for (const [k, v] of selectionToSearchParams(selection, { prefix: SIDE_PREFIX[side] })) {
+          params.append(k, v);
+        }
+        setSearchParams(params, { replace: true });
+        return next;
+      });
+    },
+    [selection, searchParams, setSearchParams]
+  );
+
+  const clearSides = useCallback(() => {
+    setSides({});
+    const params = new URLSearchParams(searchParams);
+    for (const key of [...params.keys()]) {
+      if (key.startsWith(SIDE_PREFIX.a) || key.startsWith(SIDE_PREFIX.b)) params.delete(key);
+    }
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // A link someone was given: read both sides back once the pricing is known. Absent keys mean the
+  // side was never captured -- selectionFromSearchParams would otherwise hand back the defaults.
+  useEffect(() => {
+    if (!pricing || restoredRef.current) return;
+    restoredRef.current = true;
+    const entries = [...searchParams.entries()];
+    const restored: { a?: PricingSelection; b?: PricingSelection } = {};
+    for (const side of ['a', 'b'] as const) {
+      if (!entries.some(([key]) => key.startsWith(SIDE_PREFIX[side]))) continue;
+      restored[side] = selectionFromSearchParams(pricing, entries, {
+        prefix: SIDE_PREFIX[side],
+      }).selection;
+    }
+    if (restored.a || restored.b) setSides(restored);
+  }, [pricing, searchParams]);
 
   // The explorer moved: write that configuration into the renderer.
   useEffect(() => {
@@ -261,6 +327,54 @@ export default function ConfigurationPicker({
         onReady={handleReady}
         onSelectionChange={handleSelectionChange}
       />
+
+      {/* Capture two configurations and compare them. The renderer above is the only selection UI:
+          "Set as A" / "Set as B" take whatever is on screen, so there is no second pricing table. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-tp-hairline bg-tp-surface px-3 py-2">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-tp-steel">Compare</p>
+        <button
+          type="button"
+          disabled={!selection}
+          onClick={() => capture('a')}
+          className="cursor-pointer rounded-md border border-tp-hairline-strong bg-tp-canvas px-2.5 py-1 text-xs text-tp-slate transition-colors hover:bg-tp-surface disabled:opacity-40"
+        >
+          Set as A
+        </button>
+        <button
+          type="button"
+          disabled={!selection}
+          onClick={() => capture('b')}
+          className="cursor-pointer rounded-md border border-tp-hairline-strong bg-tp-canvas px-2.5 py-1 text-xs text-tp-slate transition-colors hover:bg-tp-surface disabled:opacity-40"
+        >
+          Set as B
+        </button>
+        {(['a', 'b'] as const).map(side =>
+          sides[side] ? (
+            <span
+              key={side}
+              className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[11px] text-tp-primary"
+            >
+              {side.toUpperCase()}: {describeSelection(sides[side]!)}
+            </span>
+          ) : null
+        )}
+        {(sides.a || sides.b) && (
+          <button
+            type="button"
+            onClick={clearSides}
+            className="ml-auto cursor-pointer text-[11px] text-tp-steel underline underline-offset-2 hover:text-tp-ink"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {pricing && sides.a && sides.b && (
+        <div className="rounded-lg border border-tp-hairline bg-tp-canvas p-3">
+          <h3 className="mb-2 text-sm font-semibold text-tp-ink">A compared with B</h3>
+          <ConfigurationComparison pricing={pricing} a={sides.a} b={sides.b} />
+        </div>
+      )}
 
       {neighbours.length > 0 && (
         <div className="rounded-lg border border-tp-hairline bg-tp-surface p-3">
