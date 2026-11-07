@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { SidePanel, Field } from './SidePanel';
 import { INPUT_CLS } from '../utils/constants';
-import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
+import { camelToTitle } from '../../../utils/stringUtils';
 
 export function UsageLimitSidePanel({ featureKeys, onClose, onSave }: {
   featureKeys: string[];

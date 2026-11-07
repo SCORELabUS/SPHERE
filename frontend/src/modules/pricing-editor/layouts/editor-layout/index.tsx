@@ -7,7 +7,7 @@ import CopyToClipboardIcon from '../../../core/components/copy-icon';
 import { EditorValueContext, EditorMode, EditorSourcePricing } from '../../contexts/editorValueContext';
 import FileUpload from '../../../core/components/file-upload-input';
 import customAlert from '../../../core/utils/custom-alert';
-import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
+import { useCacheApi } from '../../api/cacheApi';
 import { v4 as uuidv4 } from 'uuid';
 import { serializeDraftToYaml } from '../../services/pricing2yaml';
 import type { PricingDraft } from '../../services/pricing2yaml';

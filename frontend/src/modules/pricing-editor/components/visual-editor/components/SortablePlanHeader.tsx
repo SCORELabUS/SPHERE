@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import { FaTrash, FaPencil, FaGripVertical } from 'react-icons/fa6';
-import PALETTE from '../../pricing-renderer/shared/planPalette';
+import PALETTE from '../../../utils/planPalette';
 import { NameInlineEdit } from './NameInlineEdit';
 import { HeaderInlineEdit } from './HeaderInlineEdit';
 import type { DraftPlan } from '../../../services/pricing2yaml';

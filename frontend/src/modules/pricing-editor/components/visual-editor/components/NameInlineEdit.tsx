@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
+import { camelToTitle } from '../../../utils/stringUtils';
 import { toCamelCase } from '../utils/names';
 
 export function NameInlineEdit({

@@ -10,7 +10,10 @@ import {
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
-import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
+import {
+  SpherePricingRenderer,
+  pricingRendererSource,
+} from '../../../core/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -220,41 +223,6 @@ export default function CardPage() {
       })
       .finally(() => setIsLoadingYaml(false));
   }, [currentVersion, authUser?.token]);
-
-  const handleApplyVariables = async (variables: Record<string, unknown>) => {
-    if (!yamlText) return;
-    try {
-      const ser = (v: unknown) => {
-        if (typeof v === 'string') return JSON.stringify(v);
-        if (typeof v === 'boolean') return v ? 'true' : 'false';
-        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-        return JSON.stringify(v);
-      };
-      const lines = ['variables:'];
-      for (const k of Object.keys(variables)) lines.push(`  ${k}: ${ser(variables[k])}`);
-      const block = lines.join('\n');
-      const re = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-      const newYaml = re.test(yamlText)
-        ? yamlText.replace(re, block + '\n')
-        : yamlText + '\n' + block + '\n';
-      setYamlText(newYaml);
-      try {
-        setPricing(retrievePricingFromYaml(newYaml));
-        setErrors([]);
-      } catch {
-        const response = await fetch('/api/v1/pricings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pricing: newYaml }),
-        });
-        if (!response.ok) throw new Error('Failed to parse pricing');
-        setPricing(await response.json());
-        setErrors([]);
-      }
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    }
-  };
 
   const filteredVersions = useMemo(() => {
     let list = versions;
@@ -658,6 +626,10 @@ export default function CardPage() {
 
   if (isLoading) return <PricingCardSkeleton />;
 
+  // The renderer parses the author's own document when it can (Pricing2Yaml 3.x) and falls back to
+  // the version-upgraded pricing object for anything older. See core/components/pricing-renderer.
+  const rendererSource = pricingRendererSource(yamlText, pricing);
+
   return (
     <>
       <Helmet>
@@ -929,15 +901,12 @@ export default function CardPage() {
                         <div className="flex h-64 items-center justify-center">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
                         </div>
-                      ) : pricing ? (
-                        <PricingRenderer
-                          pricing={pricing}
-                          errors={errors}
-                          onApplyVariables={handleApplyVariables}
-                        />
+                      ) : rendererSource ? (
+                        <SpherePricingRenderer source={rendererSource} />
                       ) : (
-                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
-                          Could not load pricing preview
+                        <div className="flex h-64 flex-col items-center justify-center gap-1 px-4 text-center text-sm text-tp-steel">
+                          <span>Could not load pricing preview</span>
+                          {errors[0] && <span className="text-xs text-tp-muted">{errors[0]}</span>}
                         </div>
                       )}
                     </motion.div>
@@ -971,15 +940,12 @@ export default function CardPage() {
                         <div className="flex h-64 items-center justify-center">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
                         </div>
-                      ) : pricing ? (
-                        <PricingRenderer
-                          pricing={pricing}
-                          errors={errors}
-                          onApplyVariables={handleApplyVariables}
-                        />
+                      ) : rendererSource ? (
+                        <SpherePricingRenderer source={rendererSource} />
                       ) : (
-                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
-                          Could not load pricing preview
+                        <div className="flex h-64 flex-col items-center justify-center gap-1 px-4 text-center text-sm text-tp-steel">
+                          <span>Could not load pricing preview</span>
+                          {errors[0] && <span className="text-xs text-tp-muted">{errors[0]}</span>}
                         </div>
                       )}
                     </div>

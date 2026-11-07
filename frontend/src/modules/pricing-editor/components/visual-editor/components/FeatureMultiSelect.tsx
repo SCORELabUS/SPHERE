@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaXmark } from 'react-icons/fa6';
-import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
+import { camelToTitle } from '../../../utils/stringUtils';
 
 export function FeatureMultiSelect({ availableFeatures, selectedFeatures, onChange }: {
   availableFeatures: string[];

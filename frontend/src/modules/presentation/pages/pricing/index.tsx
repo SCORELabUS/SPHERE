@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
-import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
+import {
+  SpherePricingRenderer,
+  pricingRendererSource,
+} from '../../../core/components/pricing-renderer';
 import LoadingView from '../../../core/pages/loading';
 
 export default function PricingPage() {
   const [pricing, setPricing] = useState<Pricing | null>(null);
+  const [yaml, setYaml] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -15,9 +19,9 @@ export default function PricingPage() {
         if (!res.ok) throw new Error('Failed to load pricing');
         return res.text();
       })
-      .then(yaml => {
-        const parsed = retrievePricingFromYaml(yaml);
-        setPricing(parsed);
+      .then(text => {
+        setYaml(text);
+        setPricing(retrievePricingFromYaml(text));
         setIsLoading(false);
       })
       .catch(() => {
@@ -25,6 +29,8 @@ export default function PricingPage() {
         setIsLoading(false);
       });
   }, []);
+
+  const rendererSource = pricingRendererSource(yaml, pricing);
 
   if (isLoading) return <LoadingView />;
 
@@ -57,7 +63,7 @@ export default function PricingPage() {
           </div>
         )}
 
-        {pricing && <PricingRenderer pricing={pricing} errors={errors} />}
+        {rendererSource && <SpherePricingRenderer source={rendererSource} preset="commercial" />}
       </div>
     </>
   );

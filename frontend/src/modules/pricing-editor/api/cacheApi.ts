@@ -1,4 +1,4 @@
-import { useAuth } from '../../../../auth/hooks/useAuth';
+import { useAuth } from '../../auth/hooks/useAuth';
 
 export const CACHE_BASE_PATH = import.meta.env.VITE_API_URL + '/cache';
 
