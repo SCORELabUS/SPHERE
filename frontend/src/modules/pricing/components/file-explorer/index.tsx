@@ -40,7 +40,7 @@ import CopyToClipboardIcon from '../../../core/components/copy-icon';
 import { FileExplorerContext } from '../../contexts/fileExplorerContext';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { v4 as uuidv4 } from 'uuid';
-import { useCacheApi } from '../../../pricing-editor/components/pricing-renderer/api/cacheApi';
+import { useCacheApi } from '../../../pricing-editor/api/cacheApi';
 
 type FileType = 'image' | 'pdf' | 'doc' | 'video' | 'folder' | 'pinned' | 'trash';
 

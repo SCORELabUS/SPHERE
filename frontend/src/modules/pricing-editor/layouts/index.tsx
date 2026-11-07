@@ -8,7 +8,7 @@ import { EditorValueContext } from '../contexts/editorValueContext';
 import FileUpload from '../../core/components/file-upload-input';
 import { flex } from '../../core/theme/css';
 import customAlert from '../../core/utils/custom-alert';
-import { useCacheApi } from '../components/pricing-renderer/api/cacheApi';
+import { useCacheApi } from '../api/cacheApi';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function EditorLayout({ children }: { children?: React.ReactNode }) {

@@ -14,7 +14,10 @@ import {
 } from '@mui/material';
 import { Favorite, LibraryAdd, LibraryAddCheck, FavoriteBorder } from '@mui/icons-material';
 import PricingTree from '../../components/pricing-tree';
-import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
+import {
+  SpherePricingRenderer,
+  pricingRendererSource,
+} from '../../../core/components/pricing-renderer';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
 import FileExplorer from '../../components/file-explorer';
 import { AnalyticsDataEntry } from '../../../../assets/data/analytics';
@@ -117,55 +120,6 @@ export default function CardPage() {
     });
   }, [pricingData, currentPricing]);
 
-  // Handler to apply variables edits coming from the renderer's VariablesEditor
-  const handleApplyVariables = (variables: Record<string, string | number | boolean>) => {
-    // If we have the original YAML text, rebuild it with the new variables and re-parse so computed prices update
-    if (pricingYamlText) {
-      const newYaml = (function replaceVariablesInYaml(yaml: string, vars: Record<string, unknown>) {
-        const serializeVal = (v: unknown) => {
-          if (typeof v === 'string') return JSON.stringify(v);
-          if (typeof v === 'boolean') return v ? 'true' : 'false';
-          if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-          return JSON.stringify(v);
-        };
-
-        const varsLines = ['variables:'];
-        for (const k of Object.keys(vars)) {
-          varsLines.push(`  ${k}: ${serializeVal(vars[k])}`);
-        }
-        const varsBlock = varsLines.join('\n');
-
-        const variablesRegex = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-
-        if (variablesRegex.test(yaml)) {
-          return yaml.replace(variablesRegex, varsBlock + '\n');
-        } else {
-          const insertAfterRegex = /^(createdAt:.*|currency:.*)$/mi;
-          const m = insertAfterRegex.exec(yaml);
-          if (m) {
-            const idx = (m.index ?? 0) + (m[0]?.length ?? 0);
-            return yaml.slice(0, idx) + '\n' + varsBlock + yaml.slice(idx);
-          }
-          return yaml + '\n' + varsBlock + '\n';
-        }
-      })(pricingYamlText, variables);
-
-      try {
-        const parsedPricing = retrievePricingFromYaml(newYaml);
-        setPricing(parsedPricing);
-        setPricingYamlText(newYaml);
-        return;
-      } catch {
-        // fallback: update variables in-place on the object so at least variables reflect new values
-        setPricing((prev) => (prev ? { ...prev, variables } : prev));
-        return;
-      }
-    }
-
-    // if we don't have YAML text, fallback to in-memory update
-    setPricing((prev) => (prev ? { ...prev, variables } : prev));
-  };
-
   const toggleModal = () => {
     setModalOpen(!isModalOpen);
   };
@@ -198,6 +152,10 @@ export default function CardPage() {
       setCurrentPricing(newPricing);
     }
   };
+
+  // The renderer parses the author's own document when it can (Pricing2Yaml 3.x) and falls back to
+  // the version-upgraded pricing object for anything older. See core/components/pricing-renderer.
+  const rendererSource = pricingRendererSource(pricingYamlText, pricing);
 
   return (
     <>
@@ -346,13 +304,7 @@ export default function CardPage() {
                   . The prices are displayed with {pricing?.currency} currency. In future versions,
                   more data will be provided in this card.
                 </Typography>
-                {pricing && (
-                  <PricingRenderer
-                    pricing={pricing}
-                    errors={[]}
-                    onApplyVariables={handleApplyVariables}
-                  />
-                )}
+                {rendererSource && <SpherePricingRenderer source={rendererSource} />}
               </Box>
 
               <Box sx={{ minWidth: '33.3%' }}>

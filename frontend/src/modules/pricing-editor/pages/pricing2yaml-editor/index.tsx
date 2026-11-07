@@ -4,7 +4,10 @@ import { grey } from '../../../core/theme/palette';
 import { useState, useEffect, useRef } from 'react';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
 
-import { PricingRenderer } from '../../components/pricing-renderer';
+import {
+  SpherePricingRenderer,
+  pricingRendererSource,
+} from '../../../core/components/pricing-renderer';
 import LoadingView from '../../../core/pages/loading';
 import { flex } from '../../../core/theme/css';
 import { Box } from '@mui/material';
@@ -16,7 +19,7 @@ import TextmateTheme from '../../../core/theme/editor-themes/Textmate.json';
 import monaco from 'monaco-editor';
 import { useEditorValue } from '../../hooks/useEditorValue';
 import { parseEncodedYamlToStringYaml } from '../../services/export.service';
-import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
+import { useCacheApi } from '../../api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 
 export default function EditorPage() {
@@ -132,6 +135,10 @@ export default function EditorPage() {
     handleEditorChange(editorValue)
   }, [editorValue]);
 
+  // The editor is gated to Pricing2Yaml 3.0, so the renderer normally parses the buffer itself.
+  // A template loaded from an older document arrives as an upgraded pricing object instead.
+  const rendererSource = pricingRendererSource(editorValue, pricing);
+
   return (
     <>
       <Helmet>
@@ -175,43 +182,11 @@ export default function EditorPage() {
           }}
         >
           <Box sx={{ width: '100%' }}>
-            {pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={(variables) => {
-              // Update the YAML in the editorValue replacing or inserting the variables block
-              const newYaml = (function replaceVariablesInYaml(yaml: string, vars: Record<string, unknown>) {
-                // build variables block
-                const serializeVal = (v: unknown) => {
-                  if (typeof v === 'string') return JSON.stringify(v);
-                  if (typeof v === 'boolean') return v ? 'true' : 'false';
-                  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-                  // fallback
-                  return JSON.stringify(v);
-                };
-
-                const varsLines = ['variables:'];
-                for (const k of Object.keys(vars)) {
-                  varsLines.push(`  ${k}: ${serializeVal(vars[k])}`);
-                }
-                const varsBlock = varsLines.join('\n');
-
-                const variablesRegex = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-
-                if (variablesRegex.test(yaml)) {
-                  // replace existing variables block
-                  return yaml.replace(variablesRegex, varsBlock + '\n');
-                } else {
-                  // insert after top-level 'createdAt' or 'currency' if present, else append
-                  const insertAfterRegex = /^(createdAt:.*|currency:.*)$/mi;
-                  const m = insertAfterRegex.exec(yaml);
-                  if (m) {
-                    const idx = (m.index ?? 0) + (m[0]?.length ?? 0);
-                    return yaml.slice(0, idx) + '\n' + varsBlock + yaml.slice(idx);
-                  }
-                  return yaml + '\n' + varsBlock + '\n';
-                }
-              })(editorValue, variables);
-
-              setEditorValue(newYaml);
-            }} /> : <LoadingView />}
+            {rendererSource ? (
+              <SpherePricingRenderer source={rendererSource} />
+            ) : (
+              <LoadingView />
+            )}
           </Box>
         </Grid>
       </Grid>

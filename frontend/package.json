@@ -30,6 +30,7 @@
     "helmet": "^8.0.0",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.52.0",
+    "pricing-renderer": "file:vendor/pricing-renderer-0.1.0.tgz",
     "pricing4ts": "^0.10.4",
     "prop-types": "^15.8.1",
     "react": "^18.3.1",
