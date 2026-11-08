@@ -104,9 +104,18 @@ export function usePricingsApi() {
       // A link may name a private collection the visitor cannot see: the API
       // then answers 404 for it, while the pricing's public versions are still
       // there without the collection.
-      .then(response =>
-        withCollection && response.status === 404 ? fetch(url, { method: 'GET', headers: basicHeaders }) : response
-      )
+      .then(async response => {
+        if (!withCollection || response.status !== 404) return response;
+        const fallback = await fetch(url, { method: 'GET', headers: basicHeaders });
+        if (fallback.ok) {
+          const body = await fallback.clone().json();
+          // A hidden collection is stripped from the response. A visible, different
+          // collection instead identifies another pricing with the same slug: never
+          // display that family or use its ETag for changes to the requested one.
+          if (body.collection?.id) return response;
+        }
+        return fallback;
+      })
       .then(response => {
         if (!response.ok) {
           return Promise.reject(response);
@@ -343,9 +352,10 @@ export function usePricingsApi() {
 
   /** The pricing's lane and that of the pricing it was forked from. */
   const getPricingGraph = useCallback(
-    async (organizationId: string, pricingSlug: string, signal?: AbortSignal): Promise<PricingGraph> => {
+    async (organizationId: string, pricingSlug: string, signal?: AbortSignal, collectionSlug?: string | null): Promise<PricingGraph> => {
+      const query = collectionSlug ? `?collection=${encodeURIComponent(collectionSlug)}` : '';
       const response = await fetchWithInterceptor(
-        `${import.meta.env.VITE_API_URL}/pricing-graphs/${organizationId}/${pricingSlug}`,
+        `${import.meta.env.VITE_API_URL}/pricing-graphs/${organizationId}/${pricingSlug}${query}`,
         { method: 'GET', headers: basicHeaders, signal }
       );
       const body = await response.json().catch(() => ({}));

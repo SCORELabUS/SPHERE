@@ -4670,6 +4670,12 @@ paths:
     parameters:
       - $ref: '#/components/parameters/OrganizationId'
       - $ref: '#/components/parameters/PricingSlug'
+      - name: collection
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Collection slug selecting the pricing when the same slug exists in multiple collections. A hidden collection answers 404.
     get:
       summary: Get the version graph of a pricing
       description: |

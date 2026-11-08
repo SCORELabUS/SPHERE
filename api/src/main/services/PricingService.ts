@@ -182,6 +182,10 @@ class PricingService {
       versions: (PricingModel & { id?: string; private?: boolean; collectionName?: string | null; forkedFrom?: any })[];
     } | null = await this.pricingRepository.findOne(slug, organizationId, {
       ...lookup,
+      // A slug can belong to different pricing identities in different collections.
+      // Select the requested family before the repository chooses its first result.
+      collection: collectionFilter,
+      collectionId: collectionIdFilter,
       includePrivate: true,
     });
 
@@ -220,8 +224,8 @@ class PricingService {
    * forks made of it. A source the caller may not read keeps a lane with only the
    * label its fork already names, marked unavailable.
    */
-  async graph(slug: string, organizationId: string, reqUser?: LeanUser) {
-    const current = await this.show(slug, organizationId, reqUser);
+  async graph(slug: string, organizationId: string, reqUser?: LeanUser, queryParams: { collection?: string } = {}) {
+    const current = await this.show(slug, organizationId, reqUser, queryParams);
     const currentId = String(current.pricingId);
     const lanes: PricingGraphLane[] = [this._graphLane(current, 'current')];
 

@@ -19,6 +19,7 @@ import {
 interface PricingVersionGraphProps {
   organizationId: string;
   slug: string;
+  collectionSlug?: string | null;
   /** Changes whenever the pricing's versions do, to draw the graph again. */
   refreshKey: string;
   currentVersionId: string | null;
@@ -105,6 +106,7 @@ function laneHref(lane: PricingGraphLane, versionId?: string) {
 export default function PricingVersionGraph({
   organizationId,
   slug,
+  collectionSlug,
   refreshKey,
   currentVersionId,
   onSelectVersion,
@@ -127,13 +129,13 @@ export default function PricingVersionGraph({
   useEffect(() => {
     const controller = new AbortController();
     setError(null);
-    getPricingGraph(organizationId, slug, controller.signal)
+    getPricingGraph(organizationId, slug, controller.signal, collectionSlug)
       .then(setGraph)
       .catch(err => {
         if ((err as Error).name !== 'AbortError') setError((err as Error).message);
       });
     return () => controller.abort();
-  }, [getPricingGraph, organizationId, slug, refreshKey]);
+  }, [getPricingGraph, organizationId, slug, collectionSlug, refreshKey]);
 
   // The version on the page and the one picked always stay in view, never folded away.
   const currentPricing = graph?.lanes.find(lane => lane.role === 'current');
