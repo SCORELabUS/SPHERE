@@ -175,7 +175,8 @@ class PricingController {
 
   async graph(req: any, res: any) {
     try {
-      const graph = await this.pricingService.graph(req.params.pricingSlug, req.params.organizationId, req.user);
+      const graph = await this.pricingService.graph(req.params.pricingSlug, req.params.organizationId, req.user,
+        { collection: typeof req.query.collection === 'string' ? req.query.collection : undefined });
       // Depends on the caller, like the pricing itself.
       res.set('Cache-Control', 'no-store');
       res.json(graph);
