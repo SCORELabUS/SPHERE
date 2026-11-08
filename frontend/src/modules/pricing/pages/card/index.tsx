@@ -1136,6 +1136,7 @@ export default function CardPage() {
                   <PricingVersionGraph
                     organizationId={organizationId}
                     slug={slug}
+                    collectionSlug={collectionSlug}
                     refreshKey={versions.map(v => `${v.id}:${v.private}`).join(',')}
                     currentVersionId={currentVersion?.id ?? null}
                     onSelectVersion={id => {

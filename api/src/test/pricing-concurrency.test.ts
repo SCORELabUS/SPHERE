@@ -265,6 +265,63 @@ describe('Pricing ETag and If-Match', () => {
   });
 
   describe('PUT /api/v1/pricings/:organizationId/:pricingSlug', () => {
+    it('Reads the selected collection including private versions, then changes all its versions with its own ETag.', async () => {
+      const target = await ownedPricing();
+      const first = await createCollectionForOrganization(target.organizationId);
+      const second = await createCollectionForOrganization(target.organizationId);
+      const [original] = await storedVersions(target.organizationId, target.slug);
+      await PricingMongoose.findByIdAndUpdate(original._id, { _collectionId: first.id });
+      const identity = await PricingIdentityMongoose.create({
+        name: target.name, slug: target.slug, _organizationId: target.organizationId,
+        _collectionId: second.id, deleted: false, revision: 0,
+      });
+      for (let i = 0; i < 6; i++) {
+        const version = await PricingMongoose.create({
+          ...original, _id: undefined, pricingId: identity._id,
+          _collectionId: second.id, version: `second-${i}`, private: i < 2,
+        });
+        pricingsToDelete.add(String(version._id));
+      }
+
+      for (const [collection, count, privateCount] of [[first, 1, 0], [second, 6, 2]] as const) {
+        const read = await request(app).get(`${target.pricingUrl}?collection=${collection.slug}`)
+          .set('Authorization', `Bearer ${target.token}`);
+        expect(read.status).toBe(200);
+        expect(read.body.collection.id).toBe(collection.id);
+        expect(read.body.versions).toHaveLength(count);
+        expect(read.body.versions.filter((v: { private: boolean }) => v.private)).toHaveLength(privateCount);
+        const graph = await request(app)
+          .get(`${BASE_PATH}/pricing-graphs/${target.organizationId}/${target.slug}?collection=${collection.slug}`)
+          .set('Authorization', `Bearer ${target.token}`);
+        expect(graph.status).toBe(200);
+        expect(graph.body.pricingId).toBe(read.body.pricingId);
+        expect(graph.body.lanes[0].versions).toHaveLength(count);
+        expect(graph.body.lanes[0].versions.filter((v: { private: boolean }) => v.private)).toHaveLength(privateCount);
+      }
+
+      const url = `${target.pricingUrl}?collection=${second.slug}`;
+      const memberToken = await memberOf(target);
+      const memberRead = await request(app).get(url).set('Authorization', `Bearer ${memberToken}`);
+      expect(memberRead.status).toBe(200);
+      expect(memberRead.body.versions).toHaveLength(4);
+      expect(memberRead.body.versions.every((v: { private: boolean }) => !v.private)).toBe(true);
+      const tag = await currentEtag(url, target.token);
+      const changed = await request(app).put(url).set('Authorization', `Bearer ${target.token}`)
+        .set('If-Match', tag).send({ private: true });
+      expect(changed.status).toBe(200);
+      expect(changed.body.versions).toHaveLength(6);
+      expect(changed.body.versions.every((v: { private: boolean }) => v.private)).toBe(true);
+      expect(await currentEtag(url, target.token)).toBe(changed.headers.etag);
+      expect((await PricingMongoose.findById(original._id).lean())?.private).toBe(false);
+
+      const stale = await request(app).put(url).set('Authorization', `Bearer ${target.token}`)
+        .set('If-Match', tag).send({ private: false });
+      expect(stale.status).toBe(412);
+      expect(await PricingMongoose.countDocuments({ pricingId: identity._id, private: true })).toBe(6);
+      const hidden = await request(app).get(url).set('Authorization', `Bearer ${memberToken}`);
+      expect(hidden.status).toBe(404);
+    });
+
     it('Returns 200 and a new ETag, the one a later read returns, when If-Match is current.', async () => {
       const target = await ownedPricing();
       const etag = await currentEtag(target.pricingUrl, target.token);
