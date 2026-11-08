@@ -1,11 +1,12 @@
 import Editor, { Monaco } from '@monaco-editor/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
+import { Pricing } from 'pricing4ts';
 
 import {
   SpherePricingRenderer,
   pricingRendererSource,
+  retrieveUpgradedPricing,
 } from '../../../core/components/pricing-renderer';
 import VisualPricingEditor from '../../components/visual-editor';
 import { Helmet } from 'react-helmet-async';
@@ -163,25 +164,7 @@ export default function EditorPage() {
         try {
           setEditorValue(value);
 
-          const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
-          const syntaxVersion = value.match(regex)?.[1];
-          let parsedPricing: Pricing;
-
-          if (syntaxVersion !== '3.1') {
-            const response = await fetch('/api/v1/pricings', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pricing: value }),
-            });
-
-            if (!response.ok) {
-              throw new Error('Failed to parse pricing. Please check the YAML syntax.');
-            }
-
-            parsedPricing = await response.json();
-          } else {
-            parsedPricing = retrievePricingFromYaml(value);
-          }
+          const parsedPricing = await retrieveUpgradedPricing(value);
 
           if (currentRequestId !== requestIdRef.current) return;
 
@@ -258,24 +241,11 @@ export default function EditorPage() {
 
       const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
       const syntaxVersion = templatePricing.match(regex)?.[1];
-      let parsedPricing: Pricing;
       const normalizedVersion = normalizeSyntaxVersion(syntaxVersion);
 
       setSelectedSyntaxVersion(normalizedVersion);
 
-      if (syntaxVersion !== '3.1'){
-        const response = await fetch('/api/v1/pricings', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ pricing: templatePricing }),
-        })
-
-        parsedPricing = await response.json();
-      }else{
-        parsedPricing = retrievePricingFromYaml(templatePricing);
-      }
+      const parsedPricing = await retrieveUpgradedPricing(templatePricing);
 
       loadedYamlRef.current = templatePricing;
       setPricing(parsedPricing);
@@ -584,7 +554,7 @@ export default function EditorPage() {
                 onSelect={goToDiagnostic}
               />
             </div>
-            <div className="box-border flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-200 py-2">
+            <div className="box-border flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain bg-slate-200 py-2">
               <div className="w-full">
                 {rendererSource ? (
                   <SpherePricingRenderer source={rendererSource} />

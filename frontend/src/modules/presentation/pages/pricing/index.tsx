@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
+import { Pricing } from 'pricing4ts';
 import {
   SpherePricingRenderer,
   pricingRendererSource,
+  retrieveUpgradedPricing,
 } from '../../../core/components/pricing-renderer';
 import LoadingView from '../../../core/pages/loading';
 
@@ -19,9 +20,9 @@ export default function PricingPage() {
         if (!res.ok) throw new Error('Failed to load pricing');
         return res.text();
       })
-      .then(text => {
+      .then(async text => {
         setYaml(text);
-        setPricing(retrievePricingFromYaml(text));
+        setPricing(await retrieveUpgradedPricing(text));
         setIsLoading(false);
       })
       .catch(() => {

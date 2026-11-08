@@ -26,7 +26,7 @@ export default function YamlSourcePanel({ yamlText }: YamlSourcePanelProps) {
         </svg>
       </button>
       <div className={`${expanded ? 'block' : 'hidden'} mt-3 md:block`}>
-        <pre className="max-h-125 overflow-auto rounded-lg bg-tp-surface-code p-3 text-[11px] leading-relaxed text-tp-on-dark">{yamlText}</pre>
+        <pre className="max-h-125 overflow-auto overscroll-contain rounded-lg bg-tp-surface-code p-3 text-[11px] leading-relaxed text-tp-on-dark">{yamlText}</pre>
       </div>
     </div>
   );

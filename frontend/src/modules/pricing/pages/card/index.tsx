@@ -13,6 +13,7 @@ import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import {
   SpherePricingRenderer,
   pricingRendererSource,
+  retrieveUpgradedPricing,
 } from '../../../core/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
@@ -198,33 +199,36 @@ export default function CardPage() {
     const url = currentVersion.yaml.startsWith('http')
       ? currentVersion.yaml
       : `${import.meta.env.VITE_API_URL}${currentVersion.yaml}`;
-    fetch(url, pricingYamlRequestInit(url, authUser?.token))
+    // A document below 3.1 is upgraded by the API, so loading a version is now two round trips
+    // and a reader who switches version mid-flight could be served the previous one. The effect
+    // owns the request and drops whatever arrives after it was replaced.
+    const loading = new AbortController();
+    fetch(url, { ...pricingYamlRequestInit(url, authUser?.token), signal: loading.signal })
       .then(r => r.text())
       .then(async text => {
+        if (loading.signal.aborted) return;
         setYamlText(text);
         try {
-          setPricing(retrievePricingFromYaml(text));
-        } catch {
-          try {
-            const response = await fetch('/api/v1/pricings', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pricing: text }),
-            });
-            if (!response.ok) throw new Error('Failed to parse pricing');
-            setPricing(await response.json());
-            setErrors([]);
-          } catch (err) {
-            setErrors([(err as Error).message]);
-            setPricing(null);
-          }
+          const upgraded = await retrieveUpgradedPricing(text, loading.signal);
+          if (loading.signal.aborted) return;
+          setPricing(upgraded);
+          setErrors([]);
+        } catch (err) {
+          if (loading.signal.aborted) return;
+          setErrors([(err as Error).message]);
+          setPricing(null);
         }
       })
       .catch(() => {
+        if (loading.signal.aborted) return;
         setYamlText('');
         setPricing(null);
       })
-      .finally(() => setIsLoadingYaml(false));
+      .finally(() => {
+        if (!loading.signal.aborted) setIsLoadingYaml(false);
+      });
+
+    return () => loading.abort();
   }, [currentVersion, authUser?.token]);
 
   const filteredVersions = useMemo(() => {

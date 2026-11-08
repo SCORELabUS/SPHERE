@@ -294,7 +294,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
         <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
           <h3 className="text-xs font-medium text-tp-steel">Quick Browse</h3>
           <p className="mt-0.5 text-[11px] text-tp-muted">Scroll to load more configurations.</p>
-          <div className="mt-3 max-h-[66vh] overflow-y-auto pr-1">
+          <div className="mt-3 max-h-[66vh] overflow-y-auto overscroll-contain pr-1">
             <div className="space-y-1.5">
               {quickItems.map((c, i) => {
                 const s = summarizeConfiguration(c, i);

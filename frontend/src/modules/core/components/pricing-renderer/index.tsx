@@ -10,7 +10,13 @@ import { SPHERE_PRICING_TOKENS } from './tokens';
 import type { SpherePricingSource } from './source';
 
 export type { SpherePricingSource } from './source';
-export { pricingRendererSource, rendererCanParse, readSyntaxVersion } from './source';
+export {
+  pricingRendererSource,
+  rendererCanParse,
+  readSyntaxVersion,
+  retrieveUpgradedPricing,
+  LATEST_SYNTAX_VERSION,
+} from './source';
 
 /** Everything the package accepts except the source, which `source` carries instead. */
 type RendererOverrides = Omit<
