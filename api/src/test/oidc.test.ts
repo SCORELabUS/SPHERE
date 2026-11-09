@@ -143,6 +143,24 @@ describe('SPHERE identity provider, isolated from MCP', () => {
         vi.stubEnv('OIDC_SPACE_CLIENT_SECRET', 'space-test-secret'); vi.stubEnv('OIDC_ICAN_CLIENT_SECRET', 'ican-test-secret');
       }
     });
+    it('binds a code to its client even when two clients share a callback', async () => {
+      vi.stubEnv('OIDC_ICAN_REDIRECT_URI', callback);
+      try {
+        const body = await code();
+        await request(app).post(base + '/token').type('form').send({ ...body, client_id: 'ican-test', client_secret: 'ican-test-secret' }).expect(400);
+        await request(app).post(base + '/token').type('form').send(body).expect(200);
+      } finally { vi.stubEnv('OIDC_ICAN_REDIRECT_URI', icanCallback); }
+    });
+    it('leaves out a client with an invalid callback without stopping the others', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.stubEnv('OIDC_ICAN_REDIRECT_URI', 'http://ican.example.com/callback');
+      try {
+        await request(app).get('/.well-known/openid-configuration').expect(200);
+        expect((await authorize()).response.status).toBe(302);
+        expect((await authorize(ican)).response.status).toBe(400);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining('OIDC_ICAN_REDIRECT_URI'));
+      } finally { vi.stubEnv('OIDC_ICAN_REDIRECT_URI', icanCallback); errors.mockRestore(); }
+    });
     it('refuses two clients with the same client ID', async () => {
       vi.stubEnv('OIDC_ICAN_CLIENT_ID', 'space-test');
       try {

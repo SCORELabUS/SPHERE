@@ -43,10 +43,14 @@ export default class OidcService {
   }
   private clients(): Client[] {
     if (!this.available()) throw new OidcError(503, 'temporarily_unavailable', 'SPHERE sign-in is not configured');
-    const clients = this.configuredClients();
-    for (const client of clients) {
-      if (!validOAuthRedirect(client.redirectUri)) throw new Error(`Invalid OIDC_${client.key}_REDIRECT_URI`);
-    }
+    // A client with an invalid callback is left out (and logged), so it cannot take the
+    // other applications' sign-in down with it.
+    const clients = this.configuredClients().filter(client => {
+      if (validOAuthRedirect(client.redirectUri)) return true;
+      console.error(`OIDC client ${client.key} disabled: invalid OIDC_${client.key}_REDIRECT_URI`);
+      return false;
+    });
+    if (clients.length === 0) throw new OidcError(503, 'temporarily_unavailable', 'SPHERE sign-in is not configured');
     if (new Set(clients.map(client => client.clientId)).size !== clients.length) {
       throw new Error('Each OIDC client needs its own OIDC_<key>_CLIENT_ID');
     }
