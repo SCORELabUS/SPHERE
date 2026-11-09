@@ -28,6 +28,9 @@ const REGISTERED_CLIENTS = [
   { key: 'ICAN', name: 'ICAN' },
 ] as const;
 
+/** Invalid client callbacks already logged, so each one is reported once, not on every request. */
+const reportedInvalidClients = new Set<string>();
+
 /** A deliberately separate identity surface: MCP tokens, grants and DCR stay in OAuthService. */
 export default class OidcService {
   private get cache(): CacheService { return container.resolve('cacheService'); }
@@ -47,7 +50,11 @@ export default class OidcService {
     // other applications' sign-in down with it.
     const clients = this.configuredClients().filter(client => {
       if (validOAuthRedirect(client.redirectUri)) return true;
-      console.error(`OIDC client ${client.key} disabled: invalid OIDC_${client.key}_REDIRECT_URI`);
+      const report = `${client.key} ${client.redirectUri}`;
+      if (!reportedInvalidClients.has(report)) {
+        reportedInvalidClients.add(report);
+        console.error(`OIDC client ${client.key} disabled: invalid OIDC_${client.key}_REDIRECT_URI`);
+      }
       return false;
     });
     if (clients.length === 0) throw new OidcError(503, 'temporarily_unavailable', 'SPHERE sign-in is not configured');

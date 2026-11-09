@@ -158,6 +158,7 @@ describe('SPHERE identity provider, isolated from MCP', () => {
         await request(app).get('/.well-known/openid-configuration').expect(200);
         expect((await authorize()).response.status).toBe(302);
         expect((await authorize(ican)).response.status).toBe(400);
+        expect(errors).toHaveBeenCalledTimes(1);
         expect(errors).toHaveBeenCalledWith(expect.stringContaining('OIDC_ICAN_REDIRECT_URI'));
       } finally { vi.stubEnv('OIDC_ICAN_REDIRECT_URI', icanCallback); errors.mockRestore(); }
     });
