@@ -12,7 +12,7 @@ export async function up(db: mongoose.Connection) {
   );
   const unreadable = await pricings.countDocuments({ createdAt: { $not: { $type: 'date' } } });
   if (unreadable > 0) {
-    console.warn(`${unreadable} pricing version(s) keep a createdAt that is not a date; fix them by hand.`);
+    console.warn(`${unreadable} pricing version(s) have no createdAt or one that is not a date; fix them by hand.`);
   }
 }
 
