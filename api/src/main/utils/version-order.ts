@@ -19,7 +19,7 @@ const diff = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
 
 type Orderable = { createdAt?: unknown; addedAt?: unknown; _id?: unknown; id?: unknown };
 
-/** Sorts versions newest first, as `VERSION_ORDER` does in MongoDB (where `createdAt` is always a date). */
+/** Sorts versions newest first, as `VERSION_ORDER` does in MongoDB (where `createdAt` is a date after the migration). */
 export function compareVersionsNewestFirst(a: Orderable, b: Orderable): number {
   return (
     diff(time(b.createdAt), time(a.createdAt)) ||
