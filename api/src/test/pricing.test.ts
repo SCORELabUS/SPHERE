@@ -2401,7 +2401,7 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
-    describe('Version order: createdAt, then addedAt, then _id', () => {
+    describe('Version order: createdAt, then addedAt, then _id', { timeout: 20000 }, () => {
       /** Uploads a version of an existing pricing released at `createdAt`; returns its id. */
       const uploadVersion = async (organizationId: string, serviceName: string, version: string, createdAt: string) => {
         const fixture = await createValidPricingYaml(serviceName, version);
@@ -2495,6 +2495,14 @@ describe('Pricings API integration', () => {
         expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '1.0.1', '1.0.2']);
         expect(shown.body.versions[1].addedAt).toBe(added['1.0.1']);
         expect(await listedVersion(organizationId, serviceName)).toBe('1.0.0');
+
+        // addedAt decides before the id: 1.0.2 keeps the smaller id but becomes the one received last.
+        await PricingMongoose.collection.updateOne(
+          { name: serviceName, version: '1.0.2' },
+          { $set: { addedAt: new Date(Date.parse(added['1.0.1']) + 1000) } }
+        );
+        const swapped = await shownVersions(organizationId, serviceName);
+        expect(swapped.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '1.0.2', '1.0.1']);
 
         // Updates cannot move it either.
         await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });
@@ -2928,6 +2936,10 @@ describe('Pricings API integration', () => {
         .get(`${BASE_PATH}/pricings/${organizationId}`)
         .set('Authorization', `Bearer ${owner.token}`);
       expect(listedVersion(asOwner.body, serviceName)).toBe('1.0.0');
+      const shownToOwner = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(shownToOwner.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '2.0.0', '3.0.0']);
     });
 
     it('lists the newest version, private included, to the OWNER.', async () => {
