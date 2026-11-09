@@ -34,7 +34,7 @@ export default function PricingVersionsTab({
 }: PricingVersionsTabProps) {
   const [comparePair, setComparePair] = useState<{ from: string; to: string } | null>(null);
 
-  // Oldest insertion first, using the same order as the graph and API.
+  // Oldest release first (the reverse of the API's order), so a version's neighbour is the one released right before it.
   const byDate = useMemo(() => [...versions].sort(compareVersionsOldestFirst), [versions]);
   const pairFor = (target: VersionData) => {
     const index = byDate.findIndex(v => v.id === target.id);
