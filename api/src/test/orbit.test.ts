@@ -1332,6 +1332,26 @@ describe('ORBIT assistant API integration', () => {
       expect(again.result.errors.join(' ')).toContain('give it another name');
     });
 
+    it('lists versions and forks the latest one by release date, not by when they were added', async () => {
+      const { user: owner } = await newUser();
+      const source = await createTestOrganization(owner.token, { displayName: `Dated ${randomSuffix()}` });
+      const target = await createTestOrganization(owner.token, { displayName: `Dated target ${randomSuffix()}` });
+      const name = `Orbit_Dated_${randomSuffix()}`;
+      await createPricingForOrganization({ organizationId: source.id, serviceName: name, version: '1.0.0' });
+      await createPricingForOrganization({ organizationId: source.id, serviceName: name, version: '2.0.0' });
+      // 2.0.0 was added last but released years before 1.0.0.
+      await PricingMongoose.updateOne({ name, version: '1.0.0' }, { createdAt: new Date('2024-07-02T00:00:00.000Z') });
+      await PricingMongoose.updateOne({ name, version: '2.0.0' }, { createdAt: new Date('2019-11-29T00:00:00.000Z') });
+
+      const [pricing] = await ask(owner.token, [['get_pricing', { organizationId: source.id, pricing: name }]]);
+      expect(pricing.versions.map((version: any) => version.version)).toEqual(['1.0.0', '2.0.0']);
+
+      const { plan } = await propose(owner.token, {
+        forks: [{ sourceOrganizationId: source.id, pricing: name, targetOrganizationId: target.id }],
+      });
+      expect(plan.steps[0].operation).toMatchObject({ type: 'fork_pricing', name, source: { version: '1.0.0' } });
+    });
+
     it('creates a collection with pricings and moves pricings in and out of it', async () => {
       const { user: owner } = await newUser();
       const organization = await createTestOrganization(owner.token, { displayName: `Shelves ${randomSuffix()}` });

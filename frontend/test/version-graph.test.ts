@@ -166,13 +166,13 @@ test('compares a version with the one before it, or with the one it was forked f
   assert.equal(base('original', '1.0.0'), 'original 0.9.0');
   assert.equal(base('original', '0.9.0'), null);
 
-  // Insertion order wins even when release dates and ids say the reverse.
+  // The release date wins even when SPHERE received the versions, and made their ids, the other way round.
   const versions = graph.lanes[0].versions;
-  versions[0].createdAt = month(0);
-  versions[0].addedAt = '2026-11-06T10:00:03Z';
+  versions[0].createdAt = month(10);
+  versions[0].addedAt = '2026-11-06T10:00:01Z';
   versions[0].id = 'first-id';
-  versions[1].createdAt = month(10);
-  versions[1].addedAt = '2026-11-06T10:00:01Z';
+  versions[1].createdAt = month(3);
+  versions[1].addedAt = '2026-11-06T10:00:03Z';
   versions[1].id = 'last-id';
   assert.equal(base('personal', '1.2.0'), 'personal 1.1.0');
 
@@ -181,30 +181,31 @@ test('compares a version with the one before it, or with the one it was forked f
   assert.equal(baseVersionOf(hidden, 'personal', '1.1.0'), null);
 });
 
-test('orders versions by addedAt even when release dates disagree', () => {
-  const sameDay = '2026-03-01T00:00:00Z';
+test('orders versions by release date, and those released at the same instant by addedAt', () => {
+  const order = (current: PricingGraphLane) =>
+    layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] }).nodes.map(node => node.version.version);
   const current = lane('personal', 'current', [
-    // Listed newest first, as the API sends them; the dates tie.
-    ['b', sameDay],
-    ['a', sameDay],
+    ['b', '2025-01-01T00:00:00Z'],
+    ['a', '2026-02-01T00:00:00Z'],
     ['first', month(0)],
   ]);
+  // SPHERE received b last, but a was released later.
   current.versions[0].addedAt = '2026-11-06T10:00:05.000Z';
   current.versions[1].addedAt = '2026-11-06T10:00:01.000Z';
-  // The release dates disagree with insertion order and must not win.
-  current.versions[0].createdAt = '2025-01-01T00:00:00Z';
-  current.versions[1].createdAt = '2026-02-01T00:00:00Z';
-  const layout = layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] });
-  assert.deepEqual(
-    layout.nodes.map(node => node.version.version),
-    ['first', 'a', 'b']
-  );
+  assert.deepEqual(order(current), ['first', 'b', 'a']);
 
-  // Swapping when they were added swaps them, whatever order they arrive in.
+  // Released at the same instant: when they were added decides, whatever order they arrive in.
+  current.versions[0].createdAt = '2026-03-01T00:00:00Z';
+  current.versions[1].createdAt = '2026-03-01T00:00:00Z';
+  assert.deepEqual(order(current), ['first', 'a', 'b']);
   current.versions[0].addedAt = '2026-11-06T10:00:01.000Z';
   current.versions[1].addedAt = '2026-11-06T10:00:05.000Z';
-  assert.deepEqual(
-    layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] }).nodes.map(node => node.version.version),
-    ['first', 'b', 'a']
-  );
+  assert.deepEqual(order(current), ['first', 'b', 'a']);
+
+  // A day alone is midnight UTC, so a time later that day comes after it, though added first.
+  current.versions[0].createdAt = '2026-03-01';
+  current.versions[1].createdAt = '2026-03-01T10:00:00Z';
+  current.versions[0].addedAt = '2026-11-06T10:00:05.000Z';
+  current.versions[1].addedAt = '2026-11-06T10:00:01.000Z';
+  assert.deepEqual(order(current), ['first', 'b', 'a']);
 });

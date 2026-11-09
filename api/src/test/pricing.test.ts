@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import { PricingService as PricingAnalytics } from 'pricing4ts/server';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -23,6 +24,7 @@ import {
 import { randomSuffix } from './utils/helpers';
 import { createOrgScopedPermission, createMembership, createTestOrganizationDirect } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
+import { up as normalizePricingCreatedAt } from '../main/migrations/mongo/20261109120000-pricing-created-at-dates';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
@@ -2399,53 +2401,174 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
-    it.each([false, true])('orders versions by server addedAt, even with older release dates (%s).', async olderRelease => {
-      const { organizationId } = await createAndLoginUser('USER');
-      const { serviceName } = await createPricingForOrganization({
-        organizationId,
-        version: '1.0.0',
-        isPrivate: false,
-      });
-      const releasedAt = new Date(Date.now() - 60 * 60 * 1000);
-      const forgedAddedAt = '2000-01-01T00:00:00.000Z';
-
-      // Same instant for both; 1.0.2 is published before 1.0.1.
-      const added: Record<string, string> = {};
-      for (const version of ['1.0.2', '1.0.1']) {
+    describe('Version order: createdAt, then addedAt, then _id', () => {
+      /** Uploads a version of an existing pricing released at `createdAt`; returns its id. */
+      const uploadVersion = async (organizationId: string, serviceName: string, version: string, createdAt: string) => {
         const fixture = await createValidPricingYaml(serviceName, version);
         const response = await request(app)
           .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
           .set('Authorization', `Bearer ${adminUser.token}`)
           .field('private', 'false')
-          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 86400000 : 0)).toISOString())
-          .field('addedAt', forgedAddedAt)
+          .field('createdAt', createdAt)
           .attach('yaml', fixture.filePath);
         expect(response.status).toBe(200);
         pricingsToDelete.add(response.body.id);
-        const stored = await PricingMongoose.findById(response.body.id).lean();
-        expect(stored?.addedAt).toBeInstanceOf(Date);
-        expect(stored!.addedAt!.toISOString()).not.toBe(forgedAddedAt);
-        added[version] = stored!.addedAt!.toISOString();
-        // Two inserts in the same millisecond would still be ordered by _id; keep them apart.
-        await new Promise(resolve => setTimeout(resolve, 5));
-      }
-      expect(Date.parse(added['1.0.1'])).toBeGreaterThan(Date.parse(added['1.0.2']));
+        return response.body.id as string;
+      };
+      /** A first version whose release date is pinned, so "today" in the fixture never decides. */
+      const createPinnedPricing = async (organizationId: string, version: string, createdAt: string) => {
+        const created = await createPricingForOrganization({ organizationId, version, isPrivate: false });
+        await PricingMongoose.updateOne({ _id: created.id }, { createdAt: new Date(createdAt) });
+        return created;
+      };
+      const shownVersions = async (organizationId: string, serviceName: string) => {
+        const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
+        expect(shown.status).toBe(200);
+        return shown;
+      };
+      const listedVersion = async (organizationId: string, serviceName: string) => {
+        const listed = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+        return listed.body.pricings.find((pricing: any) => pricing.name === serviceName)?.version;
+      };
 
-      // Newest first: the tie goes to the version received last, not to its label.
-      const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
-      expect(shown.status).toBe(200);
-      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.1', '1.0.2', '1.0.0']);
-      expect(shown.body.versions[0].addedAt).toBe(added['1.0.1']);
+      it('orders versions newest first by createdAt, whatever order SPHERE received them in.', async () => {
+        const { organizationId } = await createAndLoginUser('USER');
+        // Uploaded in the order Buffer was seeded in, then all stamped with the same addedAt.
+        const { serviceName, id: firstId } = await createPinnedPricing(organizationId, '2019', '2019-11-29T00:00:00.000Z');
+        const ids = [firstId];
+        for (const [version, createdAt] of [
+          ['2024', '2024-07-02T00:00:00.000Z'],
+          ['2020', '2020-11-29T00:00:00.000Z'],
+          ['2021', '2021-11-29T00:00:00.000Z'],
+          ['2023', '2023-11-29T00:00:00.000Z'],
+          ['2022', '2022-11-29T00:00:00.000Z'],
+          // Released the same day as 2021 and added with it: the later _id goes first.
+          ['2021b', '2021-11-29T00:00:00.000Z'],
+        ]) {
+          ids.push(await uploadVersion(organizationId, serviceName, version, createdAt));
+        }
+        await PricingMongoose.collection.updateMany(
+          { _id: { $in: ids.map(id => new mongoose.Types.ObjectId(id)) } },
+          { $set: { addedAt: new Date('2025-07-21T13:12:04.000Z') } }
+        );
 
-      // The listing names the same latest version.
-      const listed = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
-      const row = listed.body.pricings.find((pricing: any) => pricing.name === serviceName);
-      expect(row?.version).toBe('1.0.1');
+        const shown = await shownVersions(organizationId, serviceName);
+        expect(shown.body.versions.map((v: any) => v.version)).toEqual(['2024', '2023', '2022', '2021b', '2021', '2020', '2019']);
 
-      // Updates cannot move it either.
-      await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });
-      const kept = await PricingMongoose.findOne({ name: serviceName, version: '1.0.1' }).lean();
-      expect(kept!.addedAt!.toISOString()).toBe(added['1.0.1']);
+        // The listing and the public manifest name the same latest version.
+        expect(await listedVersion(organizationId, serviceName)).toBe('2024');
+        const manifest = await request(app).get(`${BASE_PATH}/public/pricings/${shown.body.pricingId}`);
+        expect(manifest.status).toBe(200);
+        expect(manifest.body.latestVersionId).toBe(shown.body.versions[0].id);
+      });
+
+      it('orders versions with the same createdAt by addedAt, which no request can set.', async () => {
+        const { organizationId } = await createAndLoginUser('USER');
+        const { serviceName } = await createPinnedPricing(organizationId, '1.0.0', '2025-06-01T00:00:00.000Z');
+        const forgedAddedAt = '2000-01-01T00:00:00.000Z';
+        const releasedAt = '2025-03-01T12:00:00.000Z';
+
+        // Same release instant for both; 1.0.2 is published before 1.0.1.
+        const added: Record<string, string> = {};
+        for (const version of ['1.0.2', '1.0.1']) {
+          const fixture = await createValidPricingYaml(serviceName, version);
+          const response = await request(app)
+            .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
+            .set('Authorization', `Bearer ${adminUser.token}`)
+            .field('private', 'false')
+            .field('createdAt', releasedAt)
+            .field('addedAt', forgedAddedAt)
+            .attach('yaml', fixture.filePath);
+          expect(response.status).toBe(200);
+          pricingsToDelete.add(response.body.id);
+          const stored = await PricingMongoose.findById(response.body.id).lean();
+          expect(stored?.addedAt).toBeInstanceOf(Date);
+          expect(stored!.addedAt!.toISOString()).not.toBe(forgedAddedAt);
+          added[version] = stored!.addedAt!.toISOString();
+          // Two inserts in the same millisecond would still be ordered by _id; keep them apart.
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        expect(Date.parse(added['1.0.1'])).toBeGreaterThan(Date.parse(added['1.0.2']));
+
+        // 1.0.0 was released last, though received first; the tie goes to the version received last.
+        const shown = await shownVersions(organizationId, serviceName);
+        expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '1.0.1', '1.0.2']);
+        expect(shown.body.versions[1].addedAt).toBe(added['1.0.1']);
+        expect(await listedVersion(organizationId, serviceName)).toBe('1.0.0');
+
+        // Updates cannot move it either.
+        await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });
+        const kept = await PricingMongoose.findOne({ name: serviceName, version: '1.0.1' }).lean();
+        expect(kept!.addedAt!.toISOString()).toBe(added['1.0.1']);
+      });
+
+      it('compares createdAt as instants: a time on a day goes before the day alone.', async () => {
+        const { organizationId } = await createAndLoginUser('USER');
+        const { serviceName } = await createPinnedPricing(organizationId, '1.0.0', '2020-01-01T00:00:00.000Z');
+        await uploadVersion(organizationId, serviceName, 'with-time', '2026-03-01T10:00:00.000Z');
+        await uploadVersion(organizationId, serviceName, 'day-only', '2026-03-01');
+
+        const shown = await shownVersions(organizationId, serviceName);
+        expect(shown.body.versions.map((v: any) => v.version)).toEqual(['with-time', 'day-only', '1.0.0']);
+      });
+
+      it('keeps the latest version when an older-dated version is uploaded later.', async () => {
+        const { organizationId } = await createAndLoginUser('USER');
+        const { serviceName } = await createPinnedPricing(organizationId, '1.0.0', '2024-07-02T00:00:00.000Z');
+        await uploadVersion(organizationId, serviceName, '2.0.0', '2023-11-19T00:00:00.000Z');
+        await uploadVersion(organizationId, serviceName, '3.0.0', '2022-11-28T00:00:00.000Z');
+
+        const shown = await shownVersions(organizationId, serviceName);
+        expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '2.0.0', '3.0.0']);
+        expect(await listedVersion(organizationId, serviceName)).toBe('1.0.0');
+        const manifest = await request(app).get(`${BASE_PATH}/public/pricings/${shown.body.pricingId}`);
+        expect(manifest.body.latestVersionId).toBe(shown.body.versions[0].id);
+      });
+
+      it('turns createdAt stored as text into dates, so seeded versions sort with new ones.', async () => {
+        const { organizationId } = await createAndLoginUser('USER');
+        const { serviceName, id: firstId } = await createPinnedPricing(organizationId, '1.0.0', '2024-07-02T00:00:00.000Z');
+        const secondId = await uploadVersion(organizationId, serviceName, '2.0.0', '2023-11-19T00:00:00.000Z');
+        const thirdId = await uploadVersion(organizationId, serviceName, '3.0.0', '2022-11-28T00:00:00.000Z');
+        // Seeded versions keep their release date as text; the one uploaded last is a date.
+        await PricingMongoose.collection.updateOne(
+          { _id: new mongoose.Types.ObjectId(firstId) },
+          { $set: { createdAt: '2024-07-02T00:00:00.000Z' } }
+        );
+        await PricingMongoose.collection.updateOne(
+          { _id: new mongoose.Types.ObjectId(secondId) },
+          { $set: { createdAt: '2023-11-19T00:00:00.000Z' } }
+        );
+        const { id: unreadableId } = await createPricingForOrganization({ organizationId, isPrivate: false });
+        await PricingMongoose.collection.updateOne(
+          { _id: new mongoose.Types.ObjectId(unreadableId) },
+          { $set: { createdAt: 'not-a-date' } }
+        );
+
+        // MongoDB sorts every date ahead of every string: the 2022 version would come first.
+        const before = await shownVersions(organizationId, serviceName);
+        expect(before.body.versions[0].version).toBe('3.0.0');
+
+        await normalizePricingCreatedAt(mongoose.connection);
+        await normalizePricingCreatedAt(mongoose.connection);
+
+        const raw = await PricingMongoose.collection
+          .find({ _id: { $in: [firstId, secondId, thirdId, unreadableId].map(id => new mongoose.Types.ObjectId(id)) } })
+          .toArray();
+        const byId = new Map(raw.map(doc => [doc._id.toString(), doc.createdAt]));
+        expect(byId.get(firstId)).toEqual(new Date('2024-07-02T00:00:00.000Z'));
+        expect(byId.get(secondId)).toEqual(new Date('2023-11-19T00:00:00.000Z'));
+        expect(byId.get(thirdId)).toEqual(new Date('2022-11-28T00:00:00.000Z'));
+        // Text that is not a date stays as it is, to be fixed by hand.
+        expect(byId.get(unreadableId)).toBe('not-a-date');
+        await PricingMongoose.collection.updateOne(
+          { _id: new mongoose.Types.ObjectId(unreadableId) },
+          { $set: { createdAt: new Date('2020-01-01T00:00:00.000Z') } }
+        );
+
+        const after = await shownVersions(organizationId, serviceName);
+        expect(after.body.versions.map((v: any) => v.version)).toEqual(['1.0.0', '2.0.0', '3.0.0']);
+      });
     });
 
     it('Return 422 when the createdAt sent with a new version is invalid or in the future.', async () => {
@@ -2783,6 +2906,28 @@ describe('Pricings API integration', () => {
 
       expect(response.status).toBe(200);
       expect(listedVersion(response.body, serviceName)).toBe('1.0.0');
+    });
+
+    it('picks the newest version by createdAt, not by when it was added, for each reader.', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createMixedPricing(organizationId, [true, false, false]);
+      // Released newest first, though SPHERE received them oldest first.
+      for (const [version, createdAt] of [['1.0.0', '2024-01-01'], ['2.0.0', '2023-01-01'], ['3.0.0', '2020-01-01']]) {
+        await PricingMongoose.updateOne(
+          { name: serviceName, _organizationId: organizationId, version },
+          { createdAt: new Date(`${createdAt}T00:00:00.000Z`) }
+        );
+      }
+
+      const anonymous = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
+      expect(listedVersion(anonymous.body, serviceName)).toBe('2.0.0');
+      const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
+      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['2.0.0', '3.0.0']);
+
+      const asOwner = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(listedVersion(asOwner.body, serviceName)).toBe('1.0.0');
     });
 
     it('lists the newest version, private included, to the OWNER.', async () => {
