@@ -3,6 +3,7 @@ import { up as initializeOAuth } from '../../../migrations/mongo/20261024120000-
 import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092005000-pricing-identities';
 import { up as initializeServiceTrees } from '../../../migrations/mongo/20261104120000-create-service-trees';
 import { up as stampPricingAddedAt } from '../../../migrations/mongo/20261106120000-pricing-added-at';
+import { up as normalizePricingCreatedAt } from '../../../migrations/mongo/20261109120000-pricing-created-at-dates';
 import { Seeder } from 'mongo-seeding';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,6 +36,8 @@ export const seedDatabase = async () => {
     await initializeServiceTrees(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     await stampPricingAddedAt(mongoose.connection);
+    // The seed data stores most release dates as text; MongoDB must sort them as dates.
+    await normalizePricingCreatedAt(mongoose.connection);
     console.log('==== Mongo seeding successfull ====');
   } catch (err) {
     console.error(`Seeding error: ${err}`);
