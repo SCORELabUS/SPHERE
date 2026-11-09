@@ -15,7 +15,7 @@ SPACE asks for `openid profile`; it does not receive SPHERE organization access.
 
 ## Registered applications
 
-`REGISTERED_CLIENTS` in `api/src/main/services/OidcService.ts` lists the applications that may use SPHERE to sign in, and the name its consent page shows for each. The deployment turns each one on with three variables, `OIDC_<KEY>_CLIENT_ID`, `OIDC_<KEY>_CLIENT_SECRET` and `OIDC_<KEY>_REDIRECT_URI`; one left without them is not offered. Every client has its own ID, secret and callback: a code is only exchanged by the client it was issued to, at the callback that client registered, and its ID token names that client as audience. Two clients with the same ID stop the provider (503) until fixed. Adding another application is one entry in that list plus its three variables.
+`REGISTERED_CLIENTS` in `api/src/main/services/OidcService.ts` lists the applications that may use SPHERE to sign in, and the name its consent page shows for each. The deployment turns each one on with three variables, `OIDC_<KEY>_CLIENT_ID`, `OIDC_<KEY>_CLIENT_SECRET` and `OIDC_<KEY>_REDIRECT_URI`; one left without them is not offered. Every client has its own ID, secret and callback: a code is only exchanged by the client it was issued to, at the callback that client registered, and its ID token names that client as audience. Two clients with the same ID stop the provider (503) until fixed; a client whose callback is not a valid HTTPS URL (HTTP only on loopback) is left out and logged, and the others keep working. Adding another application is one entry in that list plus its three variables.
 
 | Key | Consent name | Scopes it asks for | Callback in production |
 |-----|--------------|--------------------|------------------------|
