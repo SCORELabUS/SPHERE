@@ -63,3 +63,35 @@ test('reads a first version as everything it starts with, and equal versions as 
   assert.equal(same.isEmpty, true);
   assert.deepEqual(same.sections, []);
 });
+
+test('lists features first, then usage limits, plans and add-ons', () => {
+  const withLimits = (limit: number, seats: number, price: number) => ({
+    features: { sso: { valueType: 'BOOLEAN' } },
+    usageLimits: { users: { valueType: 'NUMERIC', defaultValue: limit } },
+    plans: { PRO: { price } },
+    addOns: { extraSeats: { price: seats } },
+  });
+  const changed = summarizeChanges(
+    diffPricings(withLimits(5, 3, 20), {
+      ...withLimits(10, 4, 25),
+      features: { sso: { valueType: 'BOOLEAN' }, audit: { valueType: 'BOOLEAN' } },
+    })
+  );
+  assert.deepEqual(
+    changed.sections.map(section => section.key),
+    ['features', 'usageLimits', 'plans', 'addOns']
+  );
+
+  // A first version is read in the same order.
+  const first = summarizeChanges(diffPricings({}, withLimits(5, 3, 20)));
+  assert.deepEqual(
+    first.sections.map(section => section.key),
+    ['features', 'usageLimits', 'plans', 'addOns']
+  );
+
+  // Only the summary is reordered: the side-by-side comparison keeps the diff's order.
+  assert.deepEqual(
+    diffPricings({}, withLimits(5, 3, 20)).sections.map(section => section.key),
+    ['plans', 'features', 'addOns', 'usageLimits']
+  );
+});
