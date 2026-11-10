@@ -1,6 +1,6 @@
-# Sign in to SPACE with SPHERE
+# Sign in to SPACE and ICAN with SPHERE
 
-SPHERE exposes a separate, deliberately small OIDC authorization-code provider for the registered SPACE backend. The existing `/oauth/**` provider, `orbit` scope, OAuth grant records, DCR, refresh rotation and MCP credentials are unchanged. OIDC uses `/oidc/**`, its own Redis namespace, signing key, codes and userinfo-only `sph_oid_` access tokens. It issues no refresh token and asks for consent on each sign-in. This is the supported SPACE flow, not a claim of full OIDC provider certification or support for arbitrary clients.
+SPHERE exposes a separate, deliberately small OIDC authorization-code provider for registered backends: SPACE and ICAN. The existing `/oauth/**` provider, `orbit` scope, OAuth grant records, DCR, refresh rotation and MCP credentials are unchanged. OIDC uses `/oidc/**`, its own Redis namespace, signing key, codes and userinfo-only `sph_oid_` access tokens. It issues no refresh token and asks for consent on each sign-in. These are the supported SPACE and ICAN flows, not a claim of full OIDC provider certification or support for arbitrary clients.
 
 SPACE asks for `openid profile`; it does not receive SPHERE organization access. Optional `email` support discloses the stored verification state but is not needed by SPACE. Identity tokens expire after five minutes, use RS256 and contain a stable SPHERE account ID as `sub`. SPACE verifies issuer, audience, signature, algorithm, nonce, issuance and expiry. Identity tokens cannot authenticate requests to MCP or general SPHERE APIs, and MCP tokens cannot authenticate userinfo.
 
@@ -13,6 +13,17 @@ SPACE asks for `openid profile`; it does not receive SPHERE organization access.
 - Existing users sign in using their current SPACE method, go to **Settings → Connect SPHERE**, authorize in SPHERE and confirm in SPACE. Both the start and confirmation require that same SPACE account. A provider identity owned by another SPACE account cannot be claimed. Existing local passwords continue to work.
 - This version does not expose disconnect, automatic merges, shared logout, SPHERE token refresh or organization synchronization. Signing out clears the existing SPACE browser session. Revoking SPHERE access does not revoke an already issued local SPACE API key.
 
+## Registered applications
+
+`REGISTERED_CLIENTS` in `api/src/main/services/OidcService.ts` lists the applications that may use SPHERE to sign in, and the name its consent page shows for each. The deployment turns each one on with three variables, `OIDC_<KEY>_CLIENT_ID`, `OIDC_<KEY>_CLIENT_SECRET` and `OIDC_<KEY>_REDIRECT_URI`; one left without them is not offered. Every client has its own ID, secret and callback: a code is only exchanged by the client it was issued to, at the callback that client registered, and its ID token names that client as audience. Two clients with the same ID stop the provider (503) until fixed; a client whose callback is not a valid HTTPS URL (HTTP only on loopback) is left out and logged, and the others keep working. Adding another application is one entry in that list plus its three variables.
+
+| Key | Consent name | Scopes it asks for | Callback in production |
+|-----|--------------|--------------------|------------------------|
+| `SPACE` | SPACE | `openid profile` | `https://<space-host>/api/v1/auth/sphere/callback` |
+| `ICAN` | ICAN | `openid profile email` | `https://ican.score.us.es/api/v1/users/auth/sso/sphere/callback` |
+
+The `profile` scope carries `preferred_username`, `name`, `given_name` and `family_name`. ICAN asks for `email` because its accounts need one, but it never links accounts by email: SPHERE does not verify an email again after a user changes it, so `email_verified` only says how the account started. ICAN identifies the account by `sub`, creates a new ICAN account on the first sign-in (with the SPHERE username if it is free) and lets existing users connect SPHERE from **Settings → Sign-in methods**. Its own guide is `api/docs/sso-sphere.md` in the ICAN repository.
+
 ## Server configuration
 
 SPHERE:
@@ -23,6 +34,14 @@ OIDC_SPACE_CLIENT_ID=space
 OIDC_SPACE_CLIENT_SECRET=<random-shared-secret>
 OIDC_SPACE_REDIRECT_URI=https://space.example.com/api/v1/auth/sphere/callback
 OIDC_SIGNING_PRIVATE_KEY=<PKCS8 RSA PEM, at least 2048 bits; literal \\n or real newlines>
+```
+
+ICAN on SPHERE (only the variables it adds):
+
+```dotenv
+OIDC_ICAN_CLIENT_ID=ican
+OIDC_ICAN_CLIENT_SECRET=<another random shared secret>
+OIDC_ICAN_REDIRECT_URI=https://ican.score.us.es/api/v1/users/auth/sso/sphere/callback
 ```
 
 SPACE:

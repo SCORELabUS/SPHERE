@@ -244,8 +244,8 @@ paths:
         '200': {description: JSON Web Key Set}
   /oidc/authorize:
     get:
-      summary: Request identity consent for the configured SPACE client
-      description: Requires exact registered redirect_uri, response_type=code, scope=openid profile, state, nonce and S256 code_challenge. Does not grant MCP or organization access.
+      summary: Request identity consent for a registered client (SPACE, ICAN)
+      description: Requires a registered client_id with its exact redirect_uri, response_type=code, a scope with openid (profile and email optional), state, nonce and S256 code_challenge. Does not grant MCP or organization access.
       security: []
       parameters:
         - {name: client_id, in: query, required: true, schema: {type: string}}
@@ -266,7 +266,7 @@ paths:
       summary: Read identity consent using a SPHERE web session
       security: [{BearerAuth: []}]
       responses:
-        '200': {description: Client name and exact callback domain}
+        '200': {description: 'Client name (e.g. SPACE or ICAN), exact callback domain and requested scopes: {clientName, redirectDomain, scopes}'}
         '401': {description: Web session required}
     post:
       summary: Approve or deny identity disclosure using a SPHERE web session
@@ -6908,8 +6908,10 @@ components:
         sub: {type: string, description: Stable SPHERE account ID}
         preferred_username: {type: string}
         name: {type: string}
+        given_name: {type: string}
+        family_name: {type: string}
         email: {type: string, format: email}
-        email_verified: {type: boolean}
+        email_verified: {type: boolean, description: 'How the account started, not proof of ownership: an email changed later is not verified again'}
     IdentityTokens:
       type: object
       required: [access_token, token_type, expires_in, scope, id_token]

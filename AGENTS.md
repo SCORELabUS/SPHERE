@@ -69,6 +69,11 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 - No clients, grants or tokens are seeded; the seeder initializes the empty indexed OAuth collections. Run migration `20261024120000-create-oauth-collections` for existing databases.
 - `/api/src/test/oauth.test.ts` covers discovery, DCR, PKCE, audience binding, single-use codes, refresh replay, consent ownership, grant revocation and MCP credential isolation. Run integration tests only against `DATABASE_NAME=sphere_scratch`, Mongo 27018 and Redis 6378: the shared test harness drops its selected database.
 
+## Sign in with SPHERE (OIDC)
+
+- `OidcService` (`/api/v1/oidc/**`, discovery at `/.well-known/openid-configuration`) is an identity provider for the applications in its `REGISTERED_CLIENTS` list, today SPACE and ICAN, kept apart from the MCP OAuth above. Each is turned on with `OIDC_<KEY>_CLIENT_ID`, `OIDC_<KEY>_CLIENT_SECRET` and `OIDC_<KEY>_REDIRECT_URI`, plus the shared `OIDC_SIGNING_PRIVATE_KEY`; codes and ID tokens are bound to the client that asked. The consent page (`IdentityConsentPage`) names the client the server reports. Deployment and per-client details: `docs/sphere-space-sign-in.md`; tests: `api/src/test/oidc.test.ts`.
+- `email_verified` is true for legacy and SSO accounts and is not set again when a user changes their email, so clients must not link accounts by email.
+
 ## Beta features
 
 - Users opt in from Settings → Beta features, stored as `settings.betaFeatures` (default `false`) and changed with `PUT /users/me/settings/beta-features` (`{ enabled }`). It is one switch for every beta feature.

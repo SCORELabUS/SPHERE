@@ -8,7 +8,7 @@ export default function IdentityConsentPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const request = params.get('request') || '';
-  const [client, setClient] = useState<{ redirectDomain: string; scopes: string[] } | null>(null);
+  const [client, setClient] = useState<{ clientName: string; redirectDomain: string; scopes: string[] } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const token = authUser.token;
@@ -23,7 +23,7 @@ export default function IdentityConsentPage() {
   }
   useEffect(() => {
     if (authUser.isLoading) return;
-    if (!/^[a-f0-9]{64}$/.test(request)) { setError('Invalid sign-in request. Start again from SPACE.'); return; }
+    if (!/^[a-f0-9]{64}$/.test(request)) { setError('Invalid sign-in request. Start again from the application you were signing in to.'); return; }
     if (!authUser.isAuthenticated || !token) {
       rememberConsent(request, 'oidc');
       navigate('/authentication', { replace: true });
@@ -41,19 +41,21 @@ export default function IdentityConsentPage() {
     try { const result = await api('POST', approve); window.location.assign(result.redirectUrl); }
     catch (err) { setError(err instanceof Error ? err.message : 'Unable to sign in'); setBusy(false); }
   }
+  // Each registered application (SPACE, ICAN, ...) is named by the server; until then, a neutral title.
+  const app = client?.clientName;
   return <div className="mx-auto w-full max-w-[36rem] px-5 py-12 sm:py-20">
     <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-tp-primary">SPHERE / Sign in</p>
-    <h1 className="font-display text-4xl tracking-tight text-tp-ink">Continue to SPACE</h1>
-    <p className="mt-3 text-sm leading-relaxed text-tp-steel">Use your SPHERE account to sign in to SPACE.</p>
+    <h1 className="font-display text-4xl tracking-tight text-tp-ink">{app ? `Continue to ${app}` : 'Sign in with SPHERE'}</h1>
+    <p className="mt-3 text-sm leading-relaxed text-tp-steel">Use your SPHERE account to sign in to {app ?? 'another application'}.</p>
     {error && <p role="alert" className="my-5 rounded-lg border border-tp-hairline bg-tp-surface p-4 text-sm text-tp-ink">{error}</p>}
     {client ? <section aria-label="Identity access" className="mt-8 rounded-xl border border-tp-hairline bg-tp-canvas p-6 shadow-elevation-1">
-      <h2 className="text-lg font-semibold text-tp-ink">Share your identity with SPACE</h2>
-      <p className="mt-3 text-sm text-tp-slate">Signed in as <strong>{authUser.user?.username}</strong>. SPACE will receive your account identifier{client.scopes.includes('profile') ? ', username and name' : ''}{client.scopes.includes('email') ? ', and email with its verification status' : ''}.</p>
-      <p className="mt-3 text-sm text-tp-steel">Your SPACE username is chosen in SPACE and stays independent of your SPHERE username.</p>
+      <h2 className="text-lg font-semibold text-tp-ink">Share your identity with {app}</h2>
+      <p className="mt-3 text-sm text-tp-slate">Signed in as <strong>{authUser.user?.username}</strong>. {app} will receive your account identifier{client.scopes.includes('profile') ? ', username and name' : ''}{client.scopes.includes('email') ? ', and email with its verification status' : ''}.</p>
+      <p className="mt-3 text-sm text-tp-steel">Your {app} account keeps its own username, independent of your SPHERE username.</p>
       <p className="mt-4 break-words text-sm text-tp-ink">Return to <strong>{client.redirectDomain}</strong></p>
       <div className="mt-6 flex justify-end gap-3">
         <button disabled={busy} onClick={() => decide(false)} className="cursor-pointer rounded-lg border border-tp-hairline px-5 py-2.5 text-sm text-tp-ink focus-visible:outline-2 focus-visible:outline-tp-primary disabled:opacity-50">Cancel</button>
-        <button disabled={busy} onClick={() => decide(true)} className="cursor-pointer rounded-lg bg-tp-primary px-5 py-2.5 text-sm font-medium text-tp-on-primary focus-visible:outline-2 focus-visible:outline-tp-primary disabled:opacity-50">{busy ? 'Continuing…' : 'Continue to SPACE'}</button>
+        <button disabled={busy} onClick={() => decide(true)} className="cursor-pointer rounded-lg bg-tp-primary px-5 py-2.5 text-sm font-medium text-tp-on-primary focus-visible:outline-2 focus-visible:outline-tp-primary disabled:opacity-50">{busy ? 'Continuing…' : `Continue to ${app}`}</button>
       </div>
     </section> : !error ? <p role="status" className="mt-8 text-sm text-tp-steel">Loading sign-in request…</p> : null}
     <Link to="/" className="mt-6 inline-block cursor-pointer text-sm text-tp-steel underline">Back to SPHERE</Link>
