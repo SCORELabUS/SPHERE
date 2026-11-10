@@ -4472,10 +4472,12 @@ paths:
                   format: date-time
                   description: |
                     Optional release timestamp of the version (ISO 8601, not in the future).
-                    Defaults to the `createdAt` date of the uploaded YAML. This is release metadata.
-                    Versions are ordered by `addedAt`, the instant SPHERE received them,
-                    with the version ID as a deterministic tie-breaker. The server sets
-                    `addedAt` and no request can change it.
+                    Defaults to the `createdAt` date of the uploaded YAML. Versions are ordered
+                    newest first by this value, so a version dated before the pricing's latest one
+                    does not become its latest version, and several versions can be published on
+                    the same day. Versions with the same `createdAt` are ordered by `addedAt`, the
+                    instant SPHERE received them, which the server sets and no request can change,
+                    and then by their ID.
                 collectionId:
                   type: string
                   description: Optional collection ID to associate this version with
@@ -6623,8 +6625,8 @@ paths:
         only sees private versions where the user holds GET on the pricing or its collection),
         and a key scoped to another organization grants nothing.
 
-        **Versions**: sorted newest first by when SPHERE received each version (`addedAt`),
-        independently of its release date (`createdAt`), with the version ID as the last
+        **Versions**: sorted newest first by their release date (`createdAt`), then by when
+        SPHERE received each version (`addedAt`), with the version ID as the last
         tie-breaker; `latestVersionId` is the first of them,
         so for an authorized caller it can be a private version. A deleted family is answered
         with 404; so is a family whose versions are all private, unless the caller may read
@@ -6889,7 +6891,7 @@ components:
                       nullable: true
                       description: |
                         When SPHERE received the version, set by the server. Orders versions
-                        when their release dates differ too. Null for a source the caller may not read.
+                        with the same `createdAt`. Null for a source the caller may not read.
                     private:
                       type: boolean
                     forkedFrom:
@@ -8011,7 +8013,7 @@ components:
           description: |
             When SPHERE received this version (created in the editor, uploaded, forked...),
             set by the server and never changed. Versions are listed newest first by
-            `addedAt`, then by their ID, independently of the release date (`createdAt`).
+            `createdAt`, those with the same `createdAt` by `addedAt`, and then by their ID.
           example: "2026-11-06T10:15:30.123Z"
         url:
           type: string

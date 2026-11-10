@@ -583,7 +583,8 @@ export default function CardPage() {
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
         if (vers.length > 0) {
-          setCurrentVersion(vers[0]);
+          // The version just uploaded, which is not the newest one when it is dated earlier.
+          setCurrentVersion(pickRequestedVersion(vers, version));
         }
       });
     } catch (error) {

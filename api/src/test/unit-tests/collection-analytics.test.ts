@@ -394,6 +394,33 @@ describe('calculateAnalyticsForPricings', () => {
     expect(result.evolutionOfPlans.values.every((value: number) => value === 4)).toBe(true);
   });
 
+  it('should use, at each date, the version of each pricing released last, not the one added last', () => {
+    const analytics = (numberOfPlans: number) => ({
+      numberOfPlans,
+      numberOfAddOns: 0,
+      numberOfFeatures: 1,
+      configurationSpaceSize: 1,
+    });
+    const result = calculateAnalyticsForPricings([
+      makePricingDoc({
+        version: '2022',
+        createdAt: new Date('2022-01-01T00:00:00.000Z'),
+        addedAt: new Date('2026-11-06T10:00:00.000Z'),
+        analytics: analytics(2),
+      }),
+      // Added after the 2022 version, but released before it.
+      makePricingDoc({
+        version: '2020',
+        createdAt: new Date('2020-01-01T00:00:00.000Z'),
+        addedAt: new Date('2026-11-06T10:00:05.000Z'),
+        analytics: analytics(9),
+      }),
+    ]);
+
+    expect(result.evolutionOfPlans.dates).toEqual(['2020-01-01', '2021-01-01', '2022-01-01', '2023-01-01']);
+    expect(result.evolutionOfPlans.values).toEqual([9, 9, 2, 2]);
+  });
+
   it('should return empty series when no pricing version has analytics', () => {
     const result = calculateAnalyticsForPricings([makePricingDoc({ analytics: undefined })]);
 
