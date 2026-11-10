@@ -7,6 +7,8 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import request from 'supertest';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 if (
   process.env.DATABASE_NAME !== 'sphere_scratch' ||
   process.env.MONGO_PORT !== '27018' ||
@@ -21,6 +23,10 @@ const clientId = 'e2e-sphere-' + run;
 const email = `identity_e2e_${run}@example.com`;
 const identityRoot = new URL('../../../../../SCORETech-identity/', import.meta.url).pathname;
 const screenshots = 'test-results/scoretech-identity';
+const spaceClientId = 'fixture-space-' + run;
+const spaceSecret = 'fixture-space-secret-' + run;
+const spaceCallback = origin + '/fixture-space/callback';
+const oidcSigning = generateKeyPairSync('rsa', { modulusLength: 2048 });
 Object.assign(process.env, {
   AUTH_PROVIDER: 'local',
   FRONTEND_URL: origin,
@@ -28,6 +34,11 @@ Object.assign(process.env, {
   SCORETECH_IDENTITY_ISSUER: 'http://localhost:18000/identity/auth/realms/score',
   SCORETECH_IDENTITY_CLIENT_ID: clientId,
   SCORETECH_IDENTITY_CLIENT_SECRET: 'fixture-sphere-only-' + run,
+  OAUTH_ISSUER_URL: origin,
+  OIDC_SPACE_CLIENT_ID: spaceClientId,
+  OIDC_SPACE_CLIENT_SECRET: spaceSecret,
+  OIDC_SPACE_REDIRECT_URI: spaceCallback,
+  OIDC_SIGNING_PRIVATE_KEY: oidcSigning.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
 });
 delete process.env.SCORETECH_IDENTITY_TRANSPORT_URL;
 delete process.env.SCORETECH_IDENTITY_CALLBACK_URL;
@@ -175,6 +186,53 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     });
     expect(verifyJwtToken(token).id).toBe(originalId);
     expect(await User.countDocuments({ email })).toBe(beforeCount);
+    // A downstream app still trusts SPHERE. Give a new browser only the native
+    // Identity cookies, so the complete SPHERE -> Identity -> consent chain runs.
+    const downstream = await browser.newContext();
+    try {
+      await downstream.addCookies((await page.context().cookies()).filter(cookie =>
+        cookie.path.startsWith('/identity/auth/')));
+      const consumer = await downstream.newPage();
+      await consumer.route(spaceCallback + '?*', route => route.fulfill({ status: 200, body: 'SPACE callback fixture' }));
+      let centralAuthorizations = 0;
+      consumer.on('request', incoming => {
+        if (incoming.url().startsWith('http://localhost:18000/identity/auth/realms/score/protocol/openid-connect/auth?')) centralAuthorizations++;
+      });
+      const verifier = randomBytes(32).toString('base64url');
+      const state = randomBytes(24).toString('hex');
+      const nonce = randomBytes(24).toString('hex');
+      const parameters = new URLSearchParams({ client_id: spaceClientId, redirect_uri: spaceCallback,
+        response_type: 'code', scope: 'openid profile email', state, nonce,
+        code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
+      await consumer.goto(origin + '/api/v1/oidc/authorize?' + parameters);
+      await browserExpect(consumer.getByRole('heading', { name: 'Continue to SPACE', exact: true })).toBeVisible({ timeout: 30000 });
+      await browserExpect(consumer.getByRole('button', { name: 'Continue to SPACE', exact: true })).toBeVisible();
+      expect(centralAuthorizations).toBeGreaterThan(0);
+      await consumer.getByRole('button', { name: 'Continue to SPACE', exact: true }).click();
+      await consumer.waitForURL(spaceCallback + '?**');
+      const returned = new URL(consumer.url());
+      expect(returned.searchParams.get('state')).toBe(state);
+      const exchanged = await request(app).post('/api/v1/oidc/token').type('form').send({
+        grant_type: 'authorization_code', client_id: spaceClientId, client_secret: spaceSecret,
+        redirect_uri: spaceCallback, code_verifier: verifier, code: returned.searchParams.get('code'),
+      }).expect(200);
+      const claims = jwt.verify(exchanged.body.id_token, oidcSigning.publicKey,
+        { algorithms: ['RS256'], issuer: origin, audience: spaceClientId }) as jwt.JwtPayload;
+      expect(claims.sub).toBe(originalId);
+      expect(claims.nonce).toBe(nonce);
+      const info = await request(app).get('/api/v1/oidc/userinfo')
+        .set('Authorization', 'Bearer ' + exchanged.body.access_token).expect(200);
+      expect(info.body.sub).toBe(originalId);
+    } catch (error) {
+      for (const consumer of downstream.pages()) {
+        const location = new URL(consumer.url());
+        console.error('Downstream OIDC flow:', location.origin + location.pathname, (await consumer.locator('body').innerText()).slice(0, 1800));
+        await consumer.screenshot({ path: screenshots + '/downstream-failure.png', fullPage: true });
+      }
+      throw error;
+    } finally {
+      await downstream.close();
+    }
     await request(app)
       .get('/api/v1/users/me')
       .set('Authorization', 'Bearer ' + legacyToken)

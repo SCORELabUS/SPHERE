@@ -1,9 +1,8 @@
-import { useEffect } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthConfig } from '../contexts/authConfig';
 import { consumeConsentReturn } from '../../oauth/utils/consentReturn';
 import { useAuth } from '../hooks/useAuth';
-import { Navigate } from 'react-router-dom';
 export function IdentityRedirect({ register = false }: { register?: boolean }) {
   const config = useAuthConfig();
   const location = useLocation();
@@ -42,15 +41,25 @@ export function IdentityRedirect({ register = false }: { register?: boolean }) {
 export function IdentityCallback() {
   const { authUser } = useAuth();
   const [params] = useSearchParams();
-  if (authUser.isLoading) return <p className="p-8 text-tp-steel">Signing you in…</p>;
-  if (!authUser.isAuthenticated)
-    return <Navigate to="/authentication?identity_error=signin_failed" replace />;
+  const navigate = useNavigate();
+  const destination = useRef<string | null>(null);
   const requested = params.get('returnTo') || '/';
   const safe =
     requested.startsWith('/') && !requested.startsWith('//') && !/[\\\r\n]/.test(requested)
       ? requested
       : '/';
-  return <Navigate to={consumeConsentReturn() || safe} replace />;
+  useEffect(() => {
+    if (authUser.isLoading) return;
+    if (!authUser.isAuthenticated) {
+      navigate('/authentication?identity_error=signin_failed', { replace: true });
+      return;
+    }
+    // Consume one-use consent state only after commit. StrictMode/concurrent
+    // rendering may discard a render, and repeated effects must reuse its target.
+    destination.current ??= consumeConsentReturn() || safe;
+    navigate(destination.current, { replace: true });
+  }, [authUser.isLoading, authUser.isAuthenticated, navigate, safe]);
+  return <p className="p-8 text-tp-steel">Signing you in…</p>;
 }
 export function IdentityAwareLocalPage({ children }: { children: React.ReactNode }) {
   return useAuthConfig().provider === 'scoretech' ? <IdentityRedirect /> : <>{children}</>;

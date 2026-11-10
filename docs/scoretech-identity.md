@@ -161,6 +161,24 @@ Zone deletes SPHERE's service account/data, not the central identity. Direct API
 writes to shared identity settings and local credentials are blocked in Identity
 mode too. SPHERE global-role-only administration and API keys remain available.
 
+## Applications that already use SPHERE sign-in
+
+Browser-based OAuth/OIDC consumers continue using SPHERE as their provider. A
+request follows consumer → SPHERE consent → SCORETech Identity authentication →
+SPHERE consent → consumer callback. Pending consent survives the external redirect.
+SPHERE still signs its own OIDC tokens and preserves its issuer and the linked
+SPHERE user ID as `sub`; consumer Client IDs, secrets and callbacks stay unchanged.
+Existing accounts must be linked before switching the authentication mode.
+
+This does not apply to integrations that post username/password directly to
+`/users/login`: Identity mode rejects those local credential endpoints. Such
+consumers need the browser authorization-code flow. Application/resource roles,
+MCP scopes and the downstream tokens remain owned by SPHERE.
+
+The Identity browser regression includes a SPACE-like confidential consumer with
+PKCE and verifies the actual central redirect, resumed consent, callback state,
+SPHERE signature/issuer/subject, nonce and userinfo.
+
 ## Sessions and security
 
 Authorization uses a one-use Redis state, an independent browser-bound HttpOnly
