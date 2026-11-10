@@ -27,6 +27,7 @@ import UserSettingsService from '../services/UserSettingsService';
 import NotificationService from '../services/NotificationService';
 import PricingFollowService from '../services/PricingFollowService';
 import ApiKeyService from '../services/ApiKeyService';
+import ScoretechIdentityService from '../services/ScoretechIdentityService';
 import AuthProviderService from '../services/AuthProviderService';
 import BrevoEmailService from '../services/email/BrevoEmailService';
 import EmailVerificationService from '../services/EmailVerificationService';
@@ -97,6 +98,7 @@ function initContainer(databaseType: string): AwilixContainer {
     pricingFollowService: asClass(PricingFollowService).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
+    scoretechIdentityService: asClass(ScoretechIdentityService).singleton(),
     emailService: asClass(BrevoEmailService).singleton(),
     emailVerificationService: asClass(EmailVerificationService).singleton(),
     passwordResetService: asClass(PasswordResetService).singleton(),

@@ -1,3 +1,4 @@
+import { useAuthConfig } from '../../auth/contexts/authConfig';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -8,6 +9,7 @@ import { useUserSettingsApi } from '../api/userSettingsApi';
 
 export default function DangerZoneSection() {
   const { authUser, logout } = useAuth();
+  const centralized = useAuthConfig().provider === 'scoretech';
   const router = useRouter();
   const api = useUserSettingsApi();
   const [showConfirm, setShowConfirm] = useState(false);
@@ -55,11 +57,10 @@ export default function DangerZoneSection() {
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-medium text-tp-ink">
-              Delete Account
+              {centralized ? 'Delete SPHERE account' : 'Delete Account'}
             </h3>
             <p className="mt-1 text-sm text-tp-steel">
-              Permanently delete your account. This action is irreversible and
-              you will lose all your data, history, and subscription.
+              {centralized ? 'Delete your SPHERE account and its service data. Your SCORETech Identity account and access to other SCORE services remain separate.' : 'Permanently delete your account. This action is irreversible and you will lose all your data, history, and subscription.'}
             </p>
             <motion.button
               whileHover={{ scale: 1.02 }}

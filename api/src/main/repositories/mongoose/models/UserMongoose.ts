@@ -25,7 +25,7 @@ const ApiKeySchema = new Schema(
 
 const IdentitySchema = new Schema(
   {
-    provider: { type: String, enum: ['us-sso', 'google'], required: true },
+    provider: { type: String, enum: ['us-sso', 'google', 'scoretech'], required: true },
     providerId: { type: String, required: true },
     email: { type: String, lowercase: true, trim: true },
     emailVerified: { type: Boolean, required: true, default: false },
@@ -204,7 +204,7 @@ export interface UserDocument extends Document {
   passwordResetExpiresAt?: Date;
   passwordResetSentAt?: Date;
   identities: {
-    provider: 'us-sso' | 'google';
+    provider: 'us-sso' | 'google' | 'scoretech';
     providerId: string;
     email?: string;
     emailVerified: boolean;
