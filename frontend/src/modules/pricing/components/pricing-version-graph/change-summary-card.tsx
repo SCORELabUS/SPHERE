@@ -89,7 +89,7 @@ function SectionRow({ section, firstVersion }: { section: SectionChanges; firstV
 
 /**
  * What a version of the graph changed, shown while the viewer points at its dot:
- * plans, features, add-ons and usage limits added (+), removed (−) or changed (~),
+ * features, usage limits, plans and add-ons added (+), removed (−) or changed (~),
  * the plans and add-ons whose price moved, and other fields. A first version
  * says what it starts with.
  */
