@@ -178,6 +178,8 @@ services:
       - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
       - ORBIT_OPENAI_MODEL=gpt-5-nano
       - ORBIT_MAX_MESSAGES_PER_MINUTE=20
+      # Single deployment switch shared with the API gateway.
+      - AUTH_PROVIDER=${AUTH_PROVIDER:-local}
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml
@@ -210,6 +212,10 @@ services:
     build:
         context: ../../nginx/production
         dockerfile: ./Dockerfile
+    environment:
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      SCORETECH_IDENTITY_UPSTREAM: ${SCORETECH_IDENTITY_UPSTREAM:-scoretech-identity-gateway:8080}
+      SCORETECH_IDENTITY_PREVIEW: ${SCORETECH_IDENTITY_PREVIEW:-false}
     ports:
       - 80:80
       - 443:443
