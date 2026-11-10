@@ -77,6 +77,13 @@ class CacheService {
     });
   }
 
+  /** Server-owned mutable session state, never exposed through the public cache API. */
+  async replacePrivate(key: string, value: unknown, seconds: number, onlyIfPresent = false) {
+    if (!this.redisClient || !isServerCacheKey(key)) throw new Error('Invalid private cache write');
+    const result = await this.redisClient.set(this.key(key), JSON.stringify(value), onlyIfPresent ? { EX: seconds, XX: true } : { EX: seconds });
+    return result === 'OK';
+  }
+
   /**
    * Adds one to a counter that disappears after `ttlSeconds`, and returns the
    * new count. The expiry is only set by the first increment, so the counter

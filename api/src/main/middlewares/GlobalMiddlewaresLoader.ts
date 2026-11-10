@@ -1,3 +1,4 @@
+import { identityModePolicy } from '../controllers/ScoretechIdentityController';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -15,7 +16,12 @@ const loadGlobalMiddlewares = (app: express.Application) => {
   // 100kb default would turn away files sent to ORBIT long before 2mb.
   app.use(express.json({ limit: '2mb' }));
   // Expose pricing revisions alongside the OAuth challenge and MCP session headers.
-  app.use(cors({ exposedHeaders: ['ETag', 'WWW-Authenticate', 'Mcp-Session-Id'] }));
+  app.use((request, response, next) => {
+    if (request.path.startsWith((process.env.BASE_URL_PATH || '') + '/api/v1/auth/identity/')) {
+      return cors({ origin: new URL(process.env.FRONTEND_URL || 'http://localhost:5173').origin, credentials: true })(request, response, next);
+    }
+    return cors({ exposedHeaders: ['ETag', 'WWW-Authenticate', 'Mcp-Session-Id'] })(request, response, next);
+  });
   app.use(
     helmet({
       crossOriginResourcePolicy: false,
@@ -30,6 +36,7 @@ const loadGlobalMiddlewares = (app: express.Application) => {
   // rather than as its network address.
   app.use(authRateLimiter);
   app.use(apiRateLimiter);
+  app.use(identityModePolicy);
   app.use(authorizationMiddleware);
 };
 
