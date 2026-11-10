@@ -36,8 +36,8 @@ test('says what each section gained, lost and changed, and which prices moved', 
   assert.deepEqual(
     summary.sections.map(section => [section.key, section.added, section.removed, section.changed]),
     [
-      ['plans', ['ENTERPRISE'], ['LEGACY'], ['BASIC', 'PRO']],
       ['features', ['audit', 'exports'], ['api'], []],
+      ['plans', ['ENTERPRISE'], ['LEGACY'], ['BASIC', 'PRO']],
       ['addOns', [], [], ['extraSeats']],
     ]
   );
@@ -51,8 +51,8 @@ test('reads a first version as everything it starts with, and equal versions as 
   assert.deepEqual(
     first.sections.map(section => [section.key, section.added.length]),
     [
-      ['plans', 3],
       ['features', 2],
+      ['plans', 3],
       ['addOns', 1],
     ]
   );
