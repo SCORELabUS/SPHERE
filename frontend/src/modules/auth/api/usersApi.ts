@@ -128,7 +128,7 @@ export function getCurrentUser(token: string): Promise<any> {
     }).then(async (response) => {
         const parsedResponse = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(parsedResponse.error || "Could not retrieve session user");
+            throw Object.assign(new Error(parsedResponse.error || "Could not retrieve session user"), { status: response.status });
         }
         return parsedResponse;
     });

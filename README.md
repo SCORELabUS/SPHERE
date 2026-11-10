@@ -188,3 +188,12 @@ The software is provided "as is", without warranty of any kind. SPHERE is a rese
 ## Acknowledgements
 
 SPHERE is developed by the [SCORE Lab](https://github.com/SCORELabUS) within the research activities of the [ISA Group](https://www.isa.us.es/3.0/) at the University of Seville.
+
+## SCORETech Identity
+
+SPHERE can switch between its current sign-in and centralized SCORETech Identity
+using `AUTH_PROVIDER=local|scoretech` (API environment during development, shared
+API/gateway switch in `docker/production/.env` for Docker). See
+[configuration, account linking and rollback](docs/scoretech-identity.md) and the
+sanitized [API environment example](api/.env.scoretech.example). The frontend reads
+the selected mode at runtime and adapts authentication and Settings accordingly.

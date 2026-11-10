@@ -145,6 +145,90 @@ tags:
       follow a pricing family by its immutable `pricingId`. See `docs/permanent-links.md`.
 
 paths:
+  /auth/config:
+    get:
+      summary: Read the selected runtime authentication provider
+      description: AUTH_PROVIDER defaults to local. scoretech redirects login and registration to SCORETech Identity. Contains public URLs only, never client secrets.
+      security: []
+      responses:
+        '200':
+          description: Public authentication configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string, enum: [local, scoretech] }
+                  identityAvailable: { type: boolean }
+                  loginUrl: { type: string }
+                  registerUrl: { type: string }
+                  accountUrl: { type: string }
+  /auth/identity/login:
+    get:
+      summary: Start SCORETech OpenID Connect sign-in
+      description: Identity mode only. Uses authorization code, S256 PKCE, nonce and a browser-bound one-use state. Registration uses the native registration endpoint.
+      security: []
+      parameters:
+        - { name: screen, in: query, schema: { type: string, enum: [register] } }
+        - { name: returnTo, in: query, schema: { type: string }, description: Relative SPHERE path only. }
+      responses:
+        '302': { description: Redirect to the configured provider; HttpOnly SameSite=Lax flow cookie set. }
+        '404': { description: Local mode is selected. }
+        '503': { description: Identity provider unavailable. }
+  /auth/identity/callback:
+    get:
+      summary: Complete browser-bound SCORETech authentication
+      description: Verifies one-use state, browser cookie, nonce, issuer, signature, audience and authorized party. Existing accounts require explicit subject linking; there is no automatic email merge. No provider token is placed in the redirect URL.
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        '302': { description: Return to SPHERE with an HttpOnly session cookie, or a safe sign-in error. }
+  /auth/identity/session:
+    post:
+      summary: Restore or renew the browser's Identity-backed SPHERE session
+      description: Requires the HttpOnly sphere_identity_session cookie and an exact allowed Origin. Provider refresh tokens remain in private Redis entries. Returns a five-minute SPHERE bearer bound to that active bridge; SPHERE permissions remain local.
+      security: []
+      responses:
+        '200':
+          description: Renewed SPHERE bearer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  tokenExpiration: { type: string, format: date-time }
+        '401': { description: Missing, expired or revoked session. }
+        '403': { description: Origin not allowed. }
+        '404': { description: Local mode is selected. }
+        '503': { description: Temporary provider failure; existing session retained. }
+  /auth/identity/logout:
+    post:
+      summary: End the Identity-backed browser session
+      description: Requires the exact public SPHERE Origin. Removes the local bridge, clears its cookie and requests native provider logout. Does not revoke independent SPHERE API keys or MCP grants.
+      security: []
+      responses:
+        '204': { description: Browser bridge removed and cookie cleared. }
+        '403': { description: Origin not allowed. }
+  /auth/identity/link:
+    post:
+      summary: Connect an existing local SPHERE account before switching providers
+      description: Available while AUTH_PROVIDER=local and OIDC credentials are configured. Requires the caller's SPHERE web bearer and exact Origin. The native provider requires fresh authentication; callback links only that signed-in SPHERE user. Roles and organization membership are preserved.
+      responses:
+        '200':
+          description: Provider authorization URL and browser-bound flow cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+        '401': { description: SPHERE web session required. }
+        '403': { description: Wrong mode, origin or credential type. }
+        '503': { description: Provider unavailable. }
   /.well-known/openid-configuration:
     get:
       summary: Discover SPHERE's identity provider (separate from ORBIT MCP OAuth)

@@ -21,6 +21,12 @@ import { RoutePermission } from "../types/permissions";
  * If no rule matches, access is denied by default.
  */
 export const ROUTE_PERMISSIONS: RoutePermission[] = [
+  { path: '/auth/config', methods: ['GET'], isPublic: true },
+  { path: '/auth/identity/login', methods: ['GET'], isPublic: true },
+  { path: '/auth/identity/callback', methods: ['GET'], isPublic: true },
+  { path: '/auth/identity/session', methods: ['POST'], isPublic: true },
+  { path: '/auth/identity/logout', methods: ['POST'], isPublic: true },
+  { path: '/auth/identity/link', methods: ['POST'], allowedUserRoles: ['USER', 'ADMIN'] },
   { path: '/.well-known/**', methods: ['GET'], isPublic: true },
   { path: '/oidc/requests/*', methods: ['GET', 'POST'], allowedUserRoles: ['USER', 'ADMIN'] },
   { path: '/oidc/authorize', methods: ['GET'], isPublic: true },

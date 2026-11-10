@@ -1,3 +1,5 @@
+import { useAuthConfig } from '../../auth/contexts/authConfig';
+import IdentityAccountSection from '../components/IdentityAccountSection';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -17,7 +19,7 @@ import BetaFeaturesSection from '../components/BetaFeaturesSection';
 import ConnectedApplications from '../../oauth/components/ConnectedApplications';
 import { fadeInUp, transitionDefault } from '../../core/utils/motion-variants';
 
-const SECTIONS = [
+const ALL_SECTIONS = [
   { id: 'account', label: 'Account', icon: FiUser },
   { id: 'profile', label: 'Public Profile', icon: FiGlobe },
   { id: 'social', label: 'Social Links', icon: FiLink2 },
@@ -29,7 +31,7 @@ const SECTIONS = [
   { id: 'danger', label: 'Danger Zone', icon: FiAlertTriangle },
 ] as const;
 
-type SectionId = (typeof SECTIONS)[number]['id'];
+type SectionId = (typeof ALL_SECTIONS)[number]['id'];
 
 function buildUserSettings(authUser: any): UserSettings | null {
   if (!authUser?.user) return null;
@@ -47,6 +49,9 @@ function buildUserSettings(authUser: any): UserSettings | null {
 
 export default function SettingsPage() {
   const [searchParams] = useSearchParams();
+  const authConfig = useAuthConfig();
+  const centralized = authConfig.provider === 'scoretech';
+  const SECTIONS = ALL_SECTIONS.filter(section => !centralized || !['profile', 'social', 'integrations'].includes(section.id));
   const { authUser, updateUser, updateUserSettings } = useAuth();
   const requestedSection = searchParams.get('section');
   const initialSection = SECTIONS.some(section => section.id === requestedSection)
@@ -244,7 +249,7 @@ export default function SettingsPage() {
                 transition={{ duration: 0.2, ease: 'easeOut' }}
               >
                 {activeSection === 'account' && (
-                  <AccountSection settings={settings} onUpdate={updateSettings} onDirtyChange={accountDirtyChange} />
+                  centralized ? <IdentityAccountSection /> : <><AccountSection settings={settings} onUpdate={updateSettings} onDirtyChange={accountDirtyChange} />{authConfig.identityAvailable && <IdentityAccountSection linking />}</>
                 )}
                 {activeSection === 'profile' && (
                   <PublicProfileSection settings={settings} onUpdate={updateSettings} onDirtyChange={profileDirtyChange} />

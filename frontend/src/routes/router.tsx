@@ -48,6 +48,7 @@ import OrganizationsListPage from '../modules/organization/pages/organizations-l
 import CreateOrganizationPage from '../modules/organization/pages/create-organization';
 import OrganizationDetailPage from '../modules/organization/pages/organization-detail';
 import OrganizationJoinPage from '../modules/organization/pages/organization-join';
+import { IdentityCallback, IdentityAwareLocalPage } from '../modules/auth/components/identity-redirect';
 import SettingsPage from '../modules/settings/pages/SettingsPage';
 import ApiKeysPage from '../modules/api-keys/pages/ApiKeysPage';
 import PublicOrganizationsPage from '../modules/organization/pages/public-organizations-list';
@@ -104,9 +105,10 @@ export default function Router() {
         { element: <ConsentPage />, path: '/oauth/consent' },
         { element: <IdentityConsentPage />, path: '/oidc/consent' },
         { element: <SsoCallbackPage />, path: '/sso/callback' },
-        { element: <EmailVerificationPage />, path: '/verify-email' },
-        { element: <ForgotPasswordPage />, path: '/forgot-password' },
-        { element: <ResetPasswordPage />, path: '/reset-password' },
+        { element: <IdentityCallback />, path: '/sso/identity/callback' },
+        { element: <IdentityAwareLocalPage><EmailVerificationPage /></IdentityAwareLocalPage>, path: '/verify-email' },
+        { element: <IdentityAwareLocalPage><ForgotPasswordPage /></IdentityAwareLocalPage>, path: '/forgot-password' },
+        { element: <IdentityAwareLocalPage><ResetPasswordPage /></IdentityAwareLocalPage>, path: '/reset-password' },
         {
           path: '/organizations',
           element: <PublicOrganizationsPage />,

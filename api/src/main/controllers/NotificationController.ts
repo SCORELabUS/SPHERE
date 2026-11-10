@@ -1,3 +1,4 @@
+import { authenticateUserToken } from '../middlewares/AuthenticationMiddleware';
 import container from '../config/container';
 import NotificationService from '../services/NotificationService';
 import sseManager from '../services/SseManager';
@@ -26,17 +27,14 @@ class NotificationController {
         return res.status(401).json({ error: 'Token required for SSE connection' });
       }
 
-      let decoded: { id: string; username: string; role: string };
+      let expiration: number | undefined;
       try {
-        decoded = verifyJwtToken(token);
+        await authenticateUserToken(req, token);
+        expiration = (verifyJwtToken(token) as { exp?: number }).exp;
       } catch {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
-
-      const user = await this.userRepository.findById(decoded.id);
-      if (!user) {
-        return res.status(401).json({ error: 'User not found' });
-      }
+      const user = req.user;
 
       // Set SSE headers
       res.writeHead(200, {
@@ -57,7 +55,9 @@ class NotificationController {
       res.write(`event: unread-count\ndata: ${JSON.stringify({ count: unreadCount })}\n\n`);
 
       // Handle client disconnect
+      const expires = expiration ? setTimeout(() => res.end(), Math.max(0, expiration * 1000 - Date.now())) : undefined;
       req.on('close', () => {
+        if (expires) clearTimeout(expires);
         sseManager.removeClient(user.id);
       });
     } catch (err: any) {

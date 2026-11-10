@@ -9,11 +9,12 @@ interface JwtPayload {
   id: string;
   username: string;
   role: string;
+  identitySessionId?: string;
 }
 
-function generateJwtToken(user: { id: string; username: string; role: string }): string {
-  const payload: JwtPayload = { id: user.id, username: user.username, role: user.role };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRATION } as any);
+function generateJwtToken(user: { id: string; username: string; role: string }, identitySessionId?: string): string {
+  const payload: JwtPayload = { id: user.id, username: user.username, role: user.role, ...(identitySessionId ? { identitySessionId } : {}) };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: identitySessionId ? '5m' : JWT_EXPIRATION } as any);
 }
 
 function verifyJwtToken(token: string): JwtPayload {
@@ -41,7 +42,7 @@ function handleError(err: any): {status: number, message: string} {
   const normalized = message.toLowerCase();
   // Checked first: the model's own error text, quoted inside, could otherwise
   // match one of the phrases below.
-  if (normalized.startsWith('orbit unavailable')) {
+  if (normalized.startsWith('orbit unavailable') || normalized.startsWith('identity unavailable')) {
     return { status: 503, message };
   } else if (normalized.startsWith('precondition failed')) {
     return { status: 412, message };
