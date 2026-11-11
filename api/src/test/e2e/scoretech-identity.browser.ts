@@ -237,13 +237,14 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
       .get('/api/v1/users/me')
       .set('Authorization', 'Bearer ' + legacyToken)
       .expect(401);
-    await page.goto(origin + '/me/settings?section=profile');
+    await page.goto(origin + '/me/settings?section=account');
     await browserExpect(
       page.getByRole('heading', { name: 'Your SCORETech account', exact: true })
     ).toBeVisible();
-    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security'])
-      await browserExpect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    await browserExpect(page.getByRole('button', { name: 'Sign-in & Security', exact: true })).toHaveCount(0);
     for (const name of [
+      'Public Profile',
+      'Social Links',
       'Connected applications',
       'Notifications',
       'Payments',
@@ -264,11 +265,12 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     await page.evaluate('scrollTo(0, 0)');
     await page.waitForFunction("Array.from(document.querySelectorAll('[style*=\"opacity\"]')).every(element => getComputedStyle(element).opacity === '1')");
     await page.screenshot({ path: screenshots + '/identity-account.png', fullPage: true });
-    await request(app)
+    const profileUpdate = await request(app)
       .put('/api/v1/users/me/settings/profile')
       .set('Authorization', 'Bearer ' + token)
-      .send({ bio: 'Local override' })
-      .expect(409);
+      .send({ bio: 'Local profile' })
+      .expect(200);
+    expect(profileUpdate.body.settings.profile.bio).toBe('Local profile');
     const sessionId = verifyJwtToken(token).identitySessionId!;
     const cache = services.resolve('cacheService');
     const key = 'sso:scoretech:session:' + sessionId;
