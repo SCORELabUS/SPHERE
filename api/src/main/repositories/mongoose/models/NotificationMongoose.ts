@@ -21,7 +21,7 @@ const notificationSchema = new Schema(
     kind: {
       type: String,
       required: true,
-      enum: ['OrganizationInvitation', 'System', 'CollectionShared', 'PricingUpdated'],
+      enum: ['OrganizationInvitation', 'System', 'CollectionShared', 'PricingUpdated', 'PricingPullRequest'],
     },
     title: {
       type: String,

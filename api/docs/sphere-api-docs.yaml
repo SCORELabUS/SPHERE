@@ -1356,6 +1356,7 @@ paths:
                 System: { email: true, inbox: false }
                 CollectionShared: { email: false, inbox: true }
                 PricingUpdated: { email: false, inbox: false }
+                PricingPullRequest: { email: true, inbox: true }
       responses:
         '200':
           description: Notification preferences updated successfully
@@ -6900,6 +6901,42 @@ components:
                           type: string
                         version:
                           type: string
+                    mergedFrom:
+                      type: object
+                      description: |
+                        Only on a version published by merging a pull request (absent otherwise). It is a
+                        mark on the version: the fork a proposal came from never gets a lane.
+                      required: [number, prId, from]
+                      properties:
+                        number:
+                          type: integer
+                          description: Number of the pull request within the pricing
+                        prId:
+                          type: string
+                        from:
+                          type: object
+                          nullable: true
+                          description: |
+                            The fork the pull request was proposed from. Null when it was not proposed from a
+                            fork, when its author edited the proposal by hand, and when the fork is gone or the
+                            caller may not read it.
+                          required: [pricingId, name, slug, organization]
+                          properties:
+                            pricingId:
+                              type: string
+                            name:
+                              type: string
+                            slug:
+                              type: string
+                            organization:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                displayName:
+                                  type: string
 
     IdentityProfile:
       type: object
@@ -7916,6 +7953,21 @@ components:
               type: string
               description: Version of the origin pricing that was copied, as labelled there
               example: "2024"
+        mergedFrom:
+          type: object
+          description: |
+            The pull request whose merge published this version, set only by the server. Absent on
+            versions that were not merged from a pull request.
+          required: [number, prId]
+          properties:
+            number:
+              type: integer
+              description: Number of the pull request within the pricing
+              example: 3
+            prId:
+              type: string
+              description: Id of the pull request
+              example: "68050bd09890322c57842f80"
         analytics:
           type: object
           nullable: true
@@ -8633,7 +8685,7 @@ components:
           example: "68050bd09890322c57842f80"
         kind:
           type: string
-          enum: [OrganizationInvitation, System, CollectionShared, PricingUpdated]
+          enum: [OrganizationInvitation, System, CollectionShared, PricingUpdated, PricingPullRequest]
           description: The type of notification
           example: "OrganizationInvitation"
         title:

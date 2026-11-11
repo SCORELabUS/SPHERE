@@ -37,6 +37,20 @@ const pricingSchema = new Schema(
       },
       required: false,
     },
+    // The pull request whose merge published this version. Set only by the server
+    // when it merges one, and only by number and id: where a fork proposal came
+    // from is resolved for each caller, so it never leaks to who cannot read it.
+    mergedFrom: {
+      type: new Schema(
+        {
+          number: { type: Number, required: true },
+          prId: { type: Schema.Types.ObjectId, ref: 'PricingPullRequest', required: true },
+        },
+        { _id: false }
+      ),
+      required: false,
+      immutable: true,
+    },
     analytics: {
       numberOfFeatures: { type: Number, required: false },
       numberOfInformationFeatures: { type: Number, required: false },

@@ -67,6 +67,7 @@ const UserSettingsSchema = new Schema(
         System: { email: true, inbox: true },
         CollectionShared: { email: true, inbox: true },
         PricingUpdated: { email: true, inbox: true },
+        PricingPullRequest: { email: true, inbox: true },
       }),
     },
     // Opt-in to unfinished features (see `requireBetaFeatures`).
