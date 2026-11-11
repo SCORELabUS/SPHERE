@@ -196,12 +196,14 @@ IMPORTANT RULE: EVERY CLICKABLE COMPONENT IN THE UI MUST HAVE A "cursor-pointer"
   enforce the live bridge. Preserve native refresh rotation, same-user renewal,
   outage recovery and logout-versus-refresh exclusion. Reject legacy local web
   tokens in this mode; keep API-key/MCP scopes independent.
-- Existing accounts link explicitly from local Settings → Account before the
-  switch. Never auto-merge SCORETech identities by email or copy central roles
-  into SPHERE's ADMIN. Preserve account IDs, local credentials and memberships.
-- Hide shared profile/social/security settings in Identity mode, expose the
-  central profile in a new tab, and keep service-specific settings and SPHERE-only
-  deletion. Direct API writes enforce the same ownership boundary.
+- Run `bash docker/migrate-scoretech-users <Identity checkout>` for a read-only
+  preflight before switching a production installation. With `--apply` it provisions
+  Keycloak users and legacy Google/CAS links, then writes the issuer/subject link
+  on the original MongoDB user. Preserve local credentials, IDs and memberships.
+  Runtime login never auto-merges by email or copies central roles into SPHERE's ADMIN.
+- In Identity mode, send login email and credential changes to Account in a new
+  tab. Keep the SPHERE profile, avatar, social links and service settings editable.
+  Direct API writes enforce the same ownership boundary.
 - `docs/scoretech-identity.md` and `api/.env.scoretech.example` describe setup and
   rollback. `pnpm --dir api run test:e2e:identity` is separate from the ordinary
   browser suite; it needs the sibling Identity lab and the isolated scratch DB.

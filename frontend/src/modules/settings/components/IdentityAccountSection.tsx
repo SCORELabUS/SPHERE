@@ -34,7 +34,7 @@ export default function IdentityAccountSection({ linking = false }: { linking?: 
         <p className="mt-1 text-sm text-tp-steel">
           {linking
             ? 'Keep this SPHERE account and its existing organizations and permissions when centralized sign-in is enabled.'
-            : 'Your personal profile and sign-in security are managed centrally in SCORETech Identity.'}
+            : 'Manage how you sign in to SPHERE and other SCORE services.'}
         </p>
       </div>
       {linking && parameters.get('identity_linked') === 'scoretech' && (
@@ -58,8 +58,7 @@ export default function IdentityAccountSection({ linking = false }: { linking?: 
         </div>
         <h3 className="text-xl font-semibold text-tp-ink">SCORETech Identity</h3>
         <p className="mt-3 max-w-[36rem] text-sm leading-relaxed text-tp-steel">
-          Manage your name, email, avatar, social profiles and connected sign-in methods in one
-          place. Your SPHERE settings stay here.
+          Manage your sign-in email, passkeys and connected providers in SCORETech Identity.
         </p>
         {error && (
           <p role="alert" className="mt-3 text-sm text-tp-severity-error">

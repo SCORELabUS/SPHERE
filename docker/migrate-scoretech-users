@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 2 || ( $# -eq 2 && $2 != --apply ) ]]; then
+  printf 'Usage: bash docker/migrate-scoretech-users <SCORETech-identity checkout> [--apply]\n' >&2
+  exit 2
+fi
+
+sphere_docker=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+identity_docker=$(cd -- "$1/docker/production" && pwd -P)
+migration=$(cat -- "$sphere_docker/../api/scripts/migrate-scoretech-users.cjs")
+
+sphere() (
+  cd -- "$sphere_docker/production"
+  docker compose exec -T server node --input-type=commonjs -e "$migration" -- --scoretech-migration "$1"
+)
+
+identity() (
+  cd -- "$identity_docker"
+  docker compose exec -T admin-api node --input-type=commonjs -e "$migration" -- --scoretech-migration "$1"
+)
+
+if [[ $# -eq 2 ]]; then
+  sphere export | identity provision | sphere link
+else
+  sphere export | identity plan
+fi

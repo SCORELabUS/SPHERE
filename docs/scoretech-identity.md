@@ -116,28 +116,66 @@ and the actual gateway configurations from both repositories:
 node nginx/production/test-gateway.mjs
 ```
 
-## Preserve existing accounts before enabling the switch
+## Migrate existing SPHERE accounts in one cutover
 
-1. Configure the OIDC application and credentials while keeping
-   `AUTH_PROVIDER=local`.
-2. Existing users sign in to their current SPHERE accounts and open Settings →
-   Account → **Connect SCORETech Identity**. They authenticate freshly with the
-   provider. This links the central issuer and subject to that exact SPHERE user;
-   existing user IDs, passwords, organizations and permissions are retained.
-3. Confirm the connection in Settings. Then set `AUTH_PROVIDER=scoretech`, restart
-   the API and reload browser tabs.
+1. Keep SPHERE on `AUTH_PROVIDER=local` with `SCORETECH_IDENTITY_PREVIEW=true`.
+   Start both stacks and verify the public OIDC issuer and SPHERE client are
+   configured in the running SPHERE API. In Identity, enable Google (`google`)
+   and the University of Seville (`us-sso`) for any corresponding accounts in
+   the migration. Use the same Google and CAS configurations as SPHERE so the
+   original Google subjects and UVUS identifiers still match. Verify email code
+   delivery. Check in **Applications** that the SPHERE client is enabled and in
+   **Roles** that its required permissions (for example `sphere:access`) are
+   granted by the default registration role. Back up both databases.
+2. From the SPHERE checkout, simulate the migration. Replace the path with the
+   Identity checkout on the same machine.
 
-There is no automatic merge by email, including verified email. A central identity
-whose email collides with an unlinked SPHERE account receives an actionable error;
-the existing account is not overwritten. Completely new identities can create
-ordinary SPHERE users and their personal organizations after the provider admits
-them to the application. Identity roles are never copied into SPHERE's global
-ADMIN role.
+   ```bash
+   bash docker/migrate-scoretech-users ../SCORETech-identity
+   ```
 
-The schema change only extends the existing identities provider enum. It reuses
-the existing unique identity index and creates no collection or destructive data
-migration. The provider ID is a deterministic hash of `[issuer, subject]`, so the
-same subject from a different issuer cannot claim an existing link.
+   The command reports new and reusable accounts, Google and US counts, and
+   conflicts by SPHERE user ID. The entire preflight is read-only. If a central
+   account is already present, the migration can reuse the exact existing link,
+   the same upstream provider ID, or a verified matching mailbox. An unverified
+   collision, conflicting provider IDs, or a missing legacy provider on an
+   existing central account needs review. Resolve it in the source or destination
+   and rerun. Settings → Account → **Connect SCORETech Identity** remains
+   available in local mode for an explicit link to an existing account.
+3. During a short change window, avoid creating accounts or changing email or
+   provider links. Run the same command with `--apply`.
+
+   ```bash
+   bash docker/migrate-scoretech-users ../SCORETech-identity --apply
+   ```
+
+   It rechecks conflicts, creates the missing Identity users and broker links,
+   assigns the configured registration role where needed, then records each
+   issuer/subject link on the original SPHERE user. It does not email users or
+   switch the running login mode. The same command safely resumes a partial run.
+4. After all links are recorded, set `AUTH_PROVIDER=scoretech` and
+   `SCORETECH_IDENTITY_PREVIEW=false` in `docker/production/.env`. From that
+   directory, apply the configuration and build the updated SPHERE services.
+
+   ```bash
+   docker compose up -d --build server client nginx
+   ```
+
+   Sign in with an existing email, a Google account and a US account. Confirm
+   each lands in the original SPHERE account with its expected organizations
+   and permissions. The public US callback switches to Identity in this step.
+
+Email users sign in with a one-time code sent to their registered mailbox. SPHERE
+password hashes remain in MongoDB for rollback. Google and US users choose their
+usual provider on the SCORETech sign-in screen. For legacy CAS addresses generated
+from the UVUS with no mailbox verification, the migration preserves CAS sign-in
+and uses an undeliverable placeholder until the user sets a real email in Identity.
+SPHERE usernames, user IDs, roles, memberships and application data stay in MongoDB.
+
+At runtime SPHERE resolves the signed OIDC subject using the stored link and never
+auto-merges by email. An unmigrated collision is rejected. New identities can
+create ordinary SPHERE users and their personal organizations after Identity
+admits them to the application. Identity roles do not grant SPHERE's global ADMIN.
 
 To roll back, set `AUTH_PROVIDER=local` and restart/reload. Original local
 credentials and data remain intact; Identity-backed SPHERE bearers cease to work.
@@ -153,13 +191,13 @@ pages also hand off to Identity. Sign-in errors offer an explicit retry without
 redirect loops. Protected-page and OAuth/MCP consent return destinations survive
 the redirect.
 
-Settings retains Account as a central-account card with **Open my SCORETech
-profile**, opened in a separate tab with `noopener noreferrer`. Public Profile,
-Social Links and Sign-in & Security disappear. Connected applications (SPHERE MCP
-grants), Notifications, Payments, Beta features and Danger Zone remain. Danger
-Zone deletes SPHERE's service account/data, not the central identity. Direct API
-writes to shared identity settings and local credentials are blocked in Identity
-mode too. SPHERE global-role-only administration and API keys remain available.
+Settings → Account includes **Open my SCORETech profile**, opened in a separate
+tab with `noopener noreferrer`, for the sign-in email and credentials. The local
+Sign-in & Security tab is hidden. Name, phone, Public Profile, avatar, Social
+Links, Connected applications (SPHERE MCP grants), Notifications, Payments, Beta
+features and Danger Zone remain in SPHERE. Danger Zone deletes the SPHERE account
+and service data. Direct API writes to the SPHERE login email and local credentials
+are blocked in Identity mode. SPHERE role administration and API keys remain available.
 
 ## Applications that already use SPHERE sign-in
 
