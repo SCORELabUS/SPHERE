@@ -152,6 +152,10 @@ async function refreshIdentities(ids: any[], pricingModel: any) {
       name: current.name, slug: current.slug, _organizationId: current._organizationId,
       _collectionId: current._collectionId ?? null, deleted: false,
     }, $inc: { revision: 1 } } : { $set: { deleted: true }, $inc: { revision: 1 } });
+    // A pricing left without versions takes its pull requests with it, whichever
+    // path deleted them (the pricing, its last version, its collection or its
+    // organization). A migration's connection may not know the model: then nothing goes.
+    if (!current) await connection.models.PricingPullRequest?.deleteMany({ pricingId: id });
   }
 }
 pricingSchema.post('save', async function(doc) { await refreshIdentities([doc.pricingId], doc.constructor); });

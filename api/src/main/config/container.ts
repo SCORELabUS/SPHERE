@@ -43,6 +43,7 @@ import OAuthService from '../services/OAuthService';
 import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
 import ServiceTreeService from '../services/ServiceTreeService';
+import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
 
 dotenv.config();
 
@@ -83,6 +84,7 @@ function initContainer(databaseType: string): AwilixContainer {
     entityPermissionRepository: asValue(entityPermissionRepository),
     notificationRepository: asValue(notificationRepository),
     pricingFollowRepository: asValue(pricingFollowRepository),
+    pricingPullRequestRepository: asValue(new PricingPullRequestRepository()),
     orbitConversationRepository: asValue(orbitConversationRepository),
     orbitPlanRepository: asValue(orbitPlanRepository),
     orbitAuditLogRepository: asValue(orbitAuditLogRepository),
