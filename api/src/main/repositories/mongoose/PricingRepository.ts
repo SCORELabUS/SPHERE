@@ -273,6 +273,18 @@ class PricingRepository extends RepositoryBase {
     return Boolean(await PricingMongoose.exists({ pricingId: new mongoose.Types.ObjectId(pricingId), version: label }));
   }
 
+  /** The version of a pricing that the merge of a pull request published, if any. */
+  async findMergedVersion(pricingId: string, pullRequestId: string): Promise<StoredVersion | null> {
+    if (!mongoose.isValidObjectId(pricingId) || !mongoose.isValidObjectId(pullRequestId)) return null;
+    const version = await PricingMongoose.findOne({
+      pricingId: new mongoose.Types.ObjectId(pricingId),
+      'mergedFrom.prId': new mongoose.Types.ObjectId(pullRequestId),
+    })
+      .select('version private yaml')
+      .lean();
+    return version ? toStoredVersion(version) : null;
+  }
+
   /** Whether a pricing has at least one private version. */
   async hasPrivateVersion(pricingId: string): Promise<boolean> {
     if (!mongoose.isValidObjectId(pricingId)) return false;

@@ -45,6 +45,7 @@ import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepositor
 import ServiceTreeService from '../services/ServiceTreeService';
 import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
 import PricingPullRequestService from '../services/PricingPullRequestService';
+import PricingPullRequestNotifier from '../services/PricingPullRequestNotifier';
 
 dotenv.config();
 
@@ -100,6 +101,7 @@ function initContainer(databaseType: string): AwilixContainer {
     notificationService: asClass(NotificationService).singleton(),
     pricingFollowService: asClass(PricingFollowService).singleton(),
     pricingPullRequestService: asClass(PricingPullRequestService).singleton(),
+    pricingPullRequestNotifier: asClass(PricingPullRequestNotifier).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
     scoretechIdentityService: asClass(ScoretechIdentityService).singleton(),

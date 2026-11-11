@@ -17,6 +17,7 @@ import {
   PullRequestDetailDTO,
   PullRequestError,
   PullRequestListDTO,
+  PullRequestMergeDTO,
   PullRequestOriginDTO,
   PullRequestPermissions,
   PullRequestPreviewDTO,
@@ -26,7 +27,8 @@ import {
   PullRequestWarning,
 } from '../types/models/PricingPullRequest';
 import { LeanUser } from '../types/models/User';
-import { requirePricingFile } from '../utils/pricing-files';
+import { formatPricingEtag, PreconditionFailedError, PricingPrecondition, PricingRevisionContext } from '../utils/pricing-etag';
+import { requirePricingFile, writeUploadedPricingFile } from '../utils/pricing-files';
 import { applyResolutions, MergeOutcome, MergeOutput, mergePricingDocs } from '../utils/pricing-merge';
 import { withPricingRevisionLock } from '../utils/pricing-revision-lock';
 import {
@@ -39,6 +41,7 @@ import {
 import { stampTopLevel } from '../utils/pricing-top-level';
 import { serverHmac } from '../utils/users/helpers';
 import PermissionService from './PermissionService';
+import PricingPullRequestNotifier, { RoundKind } from './PricingPullRequestNotifier';
 import PricingService from './PricingService';
 
 const PAGE_SIZE = 20;
@@ -133,6 +136,20 @@ export interface PullRequestUpdate {
 }
 
 export type MergePreviewPurpose = 'update' | 'merge';
+
+/** Merging as the merge preview showed it: the label and visibility of the new version, and the choices made. */
+export interface PullRequestMergeBody {
+  version: string;
+  private: boolean;
+  resolutions?: Record<string, unknown>;
+  manualYaml?: string;
+  previewToken: string;
+}
+
+/** A merge's answer, and the pricing's new ETag only for who may read its private versions. */
+export interface MergeResult extends PullRequestMergeDTO {
+  etag?: string;
+}
 
 /** A pricing text in the latest syntax and its document. `regenerated` when it was in an older one. */
 interface LoadedText {
@@ -248,7 +265,34 @@ function readPreview(token: unknown): PreviewPayload | null {
 const previewStale = () =>
   new PullRequestError(409, 'PREVIEW_STALE', 'What you reviewed changed meanwhile; look at the preview again');
 
+const notOpen = () => new PullRequestError(409, 'PULL_REQUEST_NOT_OPEN', 'The pull request is no longer open');
+
+const changedDuringMerge = () =>
+  new PullRequestError(409, 'PRICING_CHANGED_DURING_MERGE', 'The pricing changed while merging; look at the merge again');
+
+/**
+ * What a failed publish of a merge is answered: a pricing that changed after the
+ * merge was checked, a label taken meanwhile, or permissions lost. Told apart by
+ * the start of the message only: a feature named "Unauthorized" must not turn
+ * into a 401 (`handleError` looks for words anywhere).
+ */
+function publishRefusal(error: unknown): PullRequestError {
+  if (error instanceof PreconditionFailedError) return changedDuringMerge();
+  const message = String((error as Error)?.message ?? error);
+  if (message.startsWith('CONFLICT:')) return new PullRequestError(409, 'VERSION_TAKEN', message.slice('CONFLICT:'.length).trim());
+  if (message.startsWith('PERMISSION ERROR')) {
+    return new PullRequestError(403, 'FORBIDDEN', 'You may no longer publish versions of this pricing');
+  }
+  console.error('[Pricing pull request] Could not publish a merge:', error);
+  return new PullRequestError(500, 'MERGE_FAILED', 'The merged version could not be published');
+}
+
 const versionRef = (version: StoredVersion) => ({ id: version.id, version: version.version });
+
+const baseNotLatest = (latest: StoredVersion) =>
+  new PullRequestError(409, 'BASE_NOT_LATEST', 'There is a newer public version than the one you reviewed', {
+    latest: versionRef(latest),
+  });
 
 /** The parser's verdict on a result, with the line of a YAML error. */
 function validate(text: string): { validation: PreviewValidation; version?: string } {
@@ -284,6 +328,7 @@ class PricingPullRequestService {
   private userRepository: UserRepository;
   private permissionService: PermissionService;
   private pricingService: PricingService;
+  private notifier: PricingPullRequestNotifier;
   private permissionEngine = new PermissionEngine();
   private states = new StateCache();
 
@@ -294,6 +339,7 @@ class PricingPullRequestService {
     this.userRepository = container.resolve('userRepository');
     this.permissionService = container.resolve('permissionService');
     this.pricingService = container.resolve('pricingService');
+    this.notifier = container.resolve('pricingPullRequestNotifier');
   }
 
   /**
@@ -374,6 +420,7 @@ class PricingPullRequestService {
       base: { versionId: latestPublic.id, version: latestPublic.version, yaml: baseText.raw },
       proposed: { yaml: proposal.text, suggestedVersion: proposal.suggestedVersion },
     });
+    await this.announce('opened', created, pricing, user);
     return { ...(await this.detailOf({ pullRequest: created, pricing, viewer })), warnings: proposal.warnings };
   }
 
@@ -429,6 +476,7 @@ class PricingPullRequestService {
       ...(reason ? { reason } : {}),
     });
     if (!closed) throw await this.refusalOf(id);
+    if (kind === 'rejected') this.inBackground(this.notifier.notifyClosed(closed, loaded.pricing, user));
     return this.detailOf({ ...loaded, pullRequest: closed });
   }
 
@@ -553,7 +601,7 @@ class PricingPullRequestService {
         baseRef: sides.base.id,
         targetVersionId: latestPublic.id,
         proposalRef: proposalRef(own),
-      }, latestPublic);
+      }, () => baseNotLatest(latestPublic));
 
       const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, manual, true);
       this.requireValid(result);
@@ -579,6 +627,7 @@ class PricingPullRequestService {
           origin,
         });
         if (!updated) throw await this.refusalOf(target.id, true);
+        await this.announce('updated', updated, pricing, user);
         return updated;
       };
       const answer = async (created: boolean, pullRequest: PricingPullRequest) => ({
@@ -597,6 +646,7 @@ class PricingPullRequestService {
           proposed,
           origin,
         });
+        await this.announce('opened', created, pricing, user);
         return answer(true, created);
       } catch (error) {
         // Another request opened the pull request from F first (the unique index on open pull requests per fork).
@@ -677,7 +727,7 @@ class PricingPullRequestService {
       baseRef: pullRequest.base.versionId,
       targetVersionId: target.id,
       proposalRef: String(pullRequest.proposalRevision),
-    }, target);
+    }, () => baseNotLatest(target));
     const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, manual, true);
     this.requireValid(result);
 
@@ -689,6 +739,168 @@ class PricingPullRequestService {
     });
     if (!updated) throw await this.refusalOf(id, true);
     return { ...(await this.detailOf({ ...loaded, pullRequest: updated })), warnings: result.warnings };
+  }
+
+  /**
+   * A maintainer merges an open pull request into the latest version of P, as
+   * its merge preview showed it: the result is published as a new version
+   * through `PricingService.createVersion` (its permission, label, analytics,
+   * followers and revision checks), stamped with the label, P's name and the
+   * current instant, and recording the pull request it came from.
+   *
+   * The latest version and the pricing's revision are read together; the
+   * publish claims that revision, so a version published meanwhile by anyone
+   * makes this merge fail rather than merge into what was not reviewed. The pull
+   * request is reserved first, at the proposal that was reviewed, so it cannot
+   * change or close while it is merged, nor be merged twice.
+   */
+  async merge(user: LeanUser, id: string, body: PullRequestMergeBody, precondition?: PricingPrecondition): Promise<MergeResult> {
+    const loaded = await this.loadPullRequest(user, id);
+    const { pullRequest, pricing, viewer } = loaded;
+    if (!viewer.maintainer) {
+      throw new PullRequestError(403, 'FORBIDDEN', 'Only a maintainer of the pricing can merge a pull request');
+    }
+    if (pullRequest.status !== 'open') throw notOpen();
+
+    // Read like a revision-bearing read: never between another write's claim and its content.
+    const { revision, latest } = await withPricingRevisionLock(pricing.pricingId, async () => ({
+      revision: await this.pricingRepository.findRevision(pricing.pricingId),
+      latest: await this.pricingRepository.findLatestVersion(pricing.pricingId),
+    }));
+    if (revision === null || !latest) throw notFound();
+    const proposalRevision = pullRequest.proposalRevision;
+    this.checkPreview(body.previewToken, {
+      purpose: 'merge',
+      subjectId: pullRequest.id,
+      viewerId: user.id,
+      baseRef: pullRequest.base.versionId,
+      targetVersionId: latest.id,
+      proposalRef: String(proposalRevision),
+    }, () => new PullRequestError(409, 'PREVIEW_STALE', 'There is a newer version than the one you reviewed'));
+    if (precondition && !this.preconditionHolds(precondition, pricing.pricingId, revision, viewer)) {
+      throw new PreconditionFailedError(viewer.readsPrivate ? formatPricingEtag(pricing.pricingId, revision) : undefined);
+    }
+
+    const current = await this.readStored(latest);
+    const inputs = { base: this.loadStored(pullRequest.base.yaml), current, proposal: this.loadStored(pullRequest.proposed.yaml) };
+    const manual = body.manualYaml === undefined ? undefined : this.loadManual(body.manualYaml);
+    const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, manual, true);
+    this.requireValid(result);
+    if (result.outcome === 'no-changes') {
+      throw new PullRequestError(400, 'NO_CHANGES', 'Merging the pull request adds nothing to the latest version');
+    }
+
+    const label = body.version;
+    if (await this.pricingRepository.hasVersionLabel(pricing.pricingId, label)) {
+      throw new PullRequestError(409, 'VERSION_TAKEN', `Version ${label} of ${pricing.name} already exists`);
+    }
+    // createVersion finds the pricing to add the version to by slug: it must be P.
+    const target = await this.pricingRepository.findOne(pricing.slug, pricing.organizationId, {
+      includePrivate: true,
+      collectionId: pricing.collectionId ?? undefined,
+    });
+    if (!target || String(target.pricingId) !== pricing.pricingId) throw changedDuringMerge();
+    const now = new Date();
+    const stamped = stampTopLevel(result.text, { version: label, saasName: pricing.name, createdAt: now });
+
+    const lock = await this.pricingPullRequestRepository.reserveForMerge(id, proposalRevision, user.id, now);
+    if (!lock) throw await this.refusalOf(id, true);
+    const file = writeUploadedPricingFile(pricing.organizationId, pricing.slug, label, stamped.text, 'pr');
+    // The revision read with the latest version, which the caller may read: they maintain P.
+    const context: PricingRevisionContext = {
+      precondition: { kind: 'tags', tags: [{ pricingId: String(pricing.pricingId), revision }] },
+      mayRead: true,
+    };
+    let published;
+    try {
+      published = await this.pricingService.createVersion(
+        { path: file },
+        pricing.organizationId,
+        pricing.slug,
+        body.private,
+        user,
+        pricing.collectionId ?? undefined,
+        now,
+        context,
+        { number: pullRequest.number, prId: pullRequest.id }
+      );
+    } catch (error) {
+      // A failure once the version was stored leaves it published: its file stays,
+      // and the reservation lets the next load mark the pull request merged.
+      if (!(await this.pricingRepository.findMergedVersion(pricing.pricingId, id))) {
+        await Promise.allSettled([this.pricingPullRequestRepository.releaseMerge(id, lock.id), fs.rm(file, { force: true })]);
+      }
+      throw publishRefusal(error);
+    }
+
+    // From here on the file belongs to the published version and is never removed.
+    const version = { id: String(published[0]._id), version: label, private: body.private };
+    const merged =
+      (await this.pricingPullRequestRepository.markMerged(id, lock.id, {
+        byId: user.id,
+        at: now,
+        versionId: version.id,
+        version: label,
+        proposalRevision,
+      })) ??
+      (await this.pricingPullRequestRepository.findById(id)) ??
+      pullRequest;
+    this.inBackground(this.notifier.notifyMerged(merged, pricing, user, version));
+    return {
+      pullRequest: await this.detailOf({ ...loaded, pullRequest: merged }),
+      version,
+      ...(viewer.readsPrivate && context.etag ? { etag: context.etag } : {}),
+    };
+  }
+
+  /**
+   * Whether an If-Match names P at `revision`. Who may not read P's private
+   * versions never gets its tag, so no tag of theirs matches (only `*`).
+   */
+  private preconditionHolds(precondition: PricingPrecondition, pricingId: string, revision: number, viewer: Viewer) {
+    if (precondition.kind === 'any') return true;
+    return viewer.readsPrivate && precondition.tags.some(tag => tag.pricingId === pricingId && tag.revision === revision);
+  }
+
+  /**
+   * A merge that published its version but stopped before marking the pull
+   * request merged (the process went down, or marking it failed) still holds its
+   * reservation: the version that records the pull request is the proof, and the
+   * pull request is marked merged with it. Without one, the reservation lapses.
+   */
+  private async reconcileMerge(pullRequest: PricingPullRequest): Promise<PricingPullRequest> {
+    const lock = pullRequest.mergeLock;
+    if (!lock || pullRequest.status !== 'open') return pullRequest;
+    const published = await this.pricingRepository.findMergedVersion(pullRequest.pricingId, pullRequest.id);
+    if (!published) return pullRequest;
+    const merged = await this.pricingPullRequestRepository.markMerged(pullRequest.id, lock.id, {
+      byId: lock.byId,
+      at: new Date(),
+      versionId: published.id,
+      version: published.version,
+      proposalRevision: lock.revision,
+    });
+    return merged ?? (await this.pricingPullRequestRepository.findById(pullRequest.id)) ?? pullRequest;
+  }
+
+  /**
+   * Tells the maintainers of P about a pull request that was opened, or whose
+   * proposal its fork replaced (at most once a day). The round is claimed before
+   * answering, so the requests that follow see it; it is delivered in the background.
+   */
+  private async announce(kind: RoundKind, pullRequest: PricingPullRequest, pricing: TargetPricing, author: LeanUser) {
+    try {
+      if (!(await this.notifier.claimRound(pullRequest.id, kind))) return;
+      const isMaintainer = async (candidate: LeanUser) => (await this.viewerOf(candidate, pricing)).maintainer;
+      this.inBackground(this.notifier.notifyMaintainers(kind, pullRequest, pricing, author, isMaintainer));
+    } catch (error) {
+      console.error('[Pricing pull request] Could not notify the maintainers:', error);
+    }
+  }
+
+  /** Notifications never delay or fail the action that started them. */
+  private inBackground(task: Promise<unknown>) {
+    void task.catch(error => console.error('[Pricing pull request] Could not notify:', error));
   }
 
   /**
@@ -873,18 +1085,15 @@ class PricingPullRequestService {
 
   /**
    * Checks that a preview token is this server's, for this caller and subject,
-   * and computed from the same inputs. When only the target moved on (a newer
-   * public version), the caller is told which one is the latest now.
+   * and computed from the same inputs. When only the target moved on, the
+   * caller gets `targetMoved`: which public version is the latest now, or for a
+   * merge that there is a newer version than the one reviewed.
    */
-  private checkPreview(token: unknown, expected: PreviewPayload, latest: StoredVersion) {
+  private checkPreview(token: unknown, expected: PreviewPayload, targetMoved: () => PullRequestError) {
     const given = readPreview(token);
     const same = (key: keyof PreviewPayload) => given?.[key] === expected[key];
     if (!given || !(['purpose', 'subjectId', 'viewerId', 'baseRef', 'proposalRef'] as const).every(same)) throw previewStale();
-    if (!same('targetVersionId')) {
-      throw new PullRequestError(409, 'BASE_NOT_LATEST', 'There is a newer public version than the one you reviewed', {
-        latest: versionRef(latest),
-      });
-    }
+    if (!same('targetVersionId')) throw targetMoved();
   }
 
   private requireValid(result: ComputedResult) {
@@ -904,9 +1113,10 @@ class PricingPullRequestService {
 
   /** A pull request the caller may see: its author while they read P, or a maintainer of P. */
   private async loadPullRequest(user: LeanUser, id: string): Promise<LoadedPullRequest> {
-    const pullRequest = await this.pricingPullRequestRepository.findById(id);
-    const pricing = pullRequest && (await this.findPricing(pullRequest.pricingId));
-    if (!pullRequest || !pricing) throw notFound();
+    const stored = await this.pricingPullRequestRepository.findById(id);
+    const pricing = stored && (await this.findPricing(stored.pricingId));
+    if (!stored || !pricing) throw notFound();
+    const pullRequest = await this.reconcileMerge(stored);
     const viewer = await this.viewerOf(user, pricing);
     const visible = (pullRequest.authorId === user.id && viewer.reader) || viewer.maintainer;
     if (!visible) throw notFound();
@@ -980,9 +1190,7 @@ class PricingPullRequestService {
   }
 
   private assertOpen(pullRequest: PricingPullRequest) {
-    if (pullRequest.status !== 'open') {
-      throw new PullRequestError(409, 'PULL_REQUEST_NOT_OPEN', 'The pull request is no longer open');
-    }
+    if (pullRequest.status !== 'open') throw notOpen();
     if (lockIsLive(pullRequest)) {
       throw new PullRequestError(409, 'PULL_REQUEST_MERGING', 'The pull request is being merged');
     }
@@ -994,9 +1202,7 @@ class PricingPullRequestService {
    */
   private async refusalOf(id: string, fromPreview = false): Promise<PullRequestError> {
     const current = await this.pricingPullRequestRepository.findById(id);
-    if (!current || current.status !== 'open') {
-      return new PullRequestError(409, 'PULL_REQUEST_NOT_OPEN', 'The pull request is no longer open');
-    }
+    if (!current || current.status !== 'open') return notOpen();
     if (lockIsLive(current)) return new PullRequestError(409, 'PULL_REQUEST_MERGING', 'The pull request is being merged');
     if (fromPreview) return previewStale();
     return new PullRequestError(409, 'PULL_REQUEST_CHANGED', 'The pull request changed meanwhile; reload it and try again');

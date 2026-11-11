@@ -2190,4 +2190,619 @@ describe('Pricing pull requests', () => {
       expect(withoutAuthor.body.author).toBeNull();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Merging: helpers
+  // ---------------------------------------------------------------------------
+
+  /** The tag of a pricing's revision (Express gives other answers a weak tag of their body). */
+  const PRICING_ETAG = /^"[0-9a-f]{24}\.\d+"$/;
+
+  const mergeOf = (token: string, id: string, body: Record<string, unknown>, ifMatch?: string) => {
+    const call = request(app()).post(`${PULL_REQUESTS}/${id}/merge`).set(bearer(token));
+    if (ifMatch !== undefined) call.set('If-Match', ifMatch);
+    return call.send(body);
+  };
+
+  /** Removes what a merge published once the tests end. */
+  async function trackMerge(response: { status: number; body: any }) {
+    if (response.status !== 200) return;
+    const id = response.body.version.id;
+    pricingsToDelete.add(id);
+    const stored = await PricingMongoose.findById(id).lean();
+    if (stored) generatedFilesToDelete.add(requirePricingFile(String(stored.yaml)));
+  }
+
+  /** The `merge` preview as `token`'s user sees it. */
+  async function mergePreviewOf(token: string, id: string, resolutions?: Record<string, string>) {
+    const preview = await mergePreview(token, id, { purpose: 'merge', ...(resolutions ? { resolutions } : {}) });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    return preview.body;
+  }
+
+  /** Merges as the merge preview `preview` showed it, with `extra` over its defaults. */
+  async function mergeAs(token: string, id: string, preview: any, extra: Record<string, unknown> = {}, ifMatch?: string) {
+    const response = await mergeOf(token, id, {
+      version: preview.suggestedVersion, private: preview.defaults.private, previewToken: preview.previewToken, ...extra,
+    }, ifMatch);
+    await trackMerge(response);
+    return response;
+  }
+
+  /** Previews the merge and merges it as shown. */
+  async function mergeAsShown(token: string, id: string, extra: Record<string, unknown> = {}) {
+    const preview = await mergePreviewOf(token, id, extra.resolutions as Record<string, string> | undefined);
+    return { preview, response: await mergeAs(token, id, preview, extra) };
+  }
+
+  /** P in a team organization of a new owner, with v1 and v2 public. */
+  async function publicScene() {
+    const { user: owner } = await createAndLoginUser('USER');
+    const organization = await createTestOrganization(owner.token);
+    const name = `pr_${randomSuffix()}`;
+    const v1 = await publish(owner.token, organization.id, { name, version: '1.0.0' });
+    const v2 = await publish(owner.token, organization.id, { name, slug: v1.slug, version: '2.0.0', change: V2 });
+    return { owner, organizationId: organization.id, name, slug: v1.slug, pricingId: v1.pricingId, v1, v2 };
+  }
+
+  const pricingUrlOf = (scene: { organizationId: string; slug: string }) => `${BASE_PATH}/pricings/${scene.organizationId}/${scene.slug}`;
+  const etagOf = async (scene: { organizationId: string; slug: string }, token: string) =>
+    (await request(app()).get(pricingUrlOf(scene)).set(bearer(token))).headers.etag as string | undefined;
+  const hashText = (text: string) => createHash('sha256').update(text).digest('hex');
+
+  /** Records the hash of every file `createVersion` publishes, before and after it runs. */
+  function watchPublishedFiles() {
+    const pricingService = appContainer.resolve('pricingService');
+    const createVersion = pricingService.createVersion.bind(pricingService);
+    const hashes: Array<{ before: string; after: string }> = [];
+    const spy = vi.spyOn(pricingService, 'createVersion').mockImplementation(async (file: any, ...rest: any[]) => {
+      const before = hashText(readFileSync(file.path, 'utf8'));
+      const result = await (createVersion as any)(file, ...rest);
+      hashes.push({ before, after: hashText(readFileSync(file.path, 'utf8')) });
+      return result;
+    });
+    return { hashes, restore: () => spy.mockRestore() };
+  }
+
+  /** The lines of `published` that differ from `proposed`, which have as many. */
+  const changedLines = (proposed: string, published: string) => {
+    const before = proposed.split('\n');
+    const after = published.split('\n');
+    expect(after).toHaveLength(before.length);
+    return after.filter((line, index) => line !== before[index]);
+  };
+
+  const pullRequestNotices = async (token: string, pullRequestId?: string) => {
+    const response = await request(app()).get(`${BASE_PATH}/notifications`).set(bearer(token));
+    return (response.body as any[]).filter(notice =>
+      notice.kind === 'PricingPullRequest' && (pullRequestId === undefined || notice.data?.pullRequestId === pullRequestId));
+  };
+  /** Notifications are sent without awaiting the request that caused them. */
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  /** Runs `check` until it passes, for at most five seconds. */
+  async function eventually(check: () => Promise<unknown>, timeoutMs = 5000) {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        return await check();
+      } catch (error) {
+        if (Date.now() > until) throw error;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Merging
+  // ---------------------------------------------------------------------------
+
+  describe('Merging a pull request', { timeout: 30000 }, () => {
+    it('Publishes an up-to-date proposal as written but for its name, version and date, in a file of its own (CA-38).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const proposal = `# Proposed by an outsider\n${pricingYaml(scene.name, '2.1.0', both(V2, goldAt(7.5)))}# Kept as written\n`;
+      const created = await open(author.token, { title: 'Raise GOLD', source: textSource(scene.pricingId, scene.v2.id, proposal) });
+      expect(created.status).toBe(201);
+      const watched = watchPublishedFiles();
+      const startedAt = Date.now();
+
+      let merged;
+      try {
+        merged = await mergeAsShown(scene.owner.token, created.body.id);
+      } finally {
+        watched.restore();
+      }
+
+      expect(merged.preview).toMatchObject({ outcome: 'proposal-only', suggestedVersion: '2.1.0', versionTaken: false, defaults: { private: false } });
+      const { response } = merged;
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.version).toEqual({ id: expect.any(String), version: '2.1.0', private: false });
+      expect(response.body.pullRequest).toMatchObject({
+        status: 'merged', state: { kind: 'merged' }, merged: { versionId: response.body.version.id, version: '2.1.0' },
+        permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
+      });
+      const stored: any = await PricingMongoose.findById(response.body.version.id).lean();
+      expect({ number: stored.mergedFrom.number, prId: String(stored.mergedFrom.prId) }).toEqual({ number: created.body.number, prId: created.body.id });
+      expect(stored.forkedFrom).toBeUndefined();
+      expect(stored.pricingId.toString()).toBe(scene.pricingId);
+      expect(stored.createdAt.getTime()).toBeGreaterThanOrEqual(startedAt - 1000);
+      expect(stored.createdAt.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(stored.yaml).toMatch(new RegExp(`^static/pricings/uploaded/${scene.organizationId}/${scene.slug}/2\\.1\\.0-pr-\\d+-[0-9a-f-]{36}\\.yml$`));
+      // Written once by the merge: publishing it did not rewrite it.
+      expect(watched.hashes).toHaveLength(1);
+      expect(watched.hashes[0].after).toBe(watched.hashes[0].before);
+      const published = readFileSync(requirePricingFile(String(stored.yaml)), 'utf8');
+      const changed = changedLines(created.body.proposed.yaml, published).map(line => line.split(':')[0]);
+      expect(changed).toContain('version');
+      expect(changed).toContain('createdAt');
+      expect(changed.every(key => ['createdAt', 'saasName', 'version'].includes(key)), changed.join()).toBe(true);
+      expect(published.startsWith('# Proposed by an outsider\n')).toBe(true);
+      expect(published.endsWith('# Kept as written\n')).toBe(true);
+      expect(new Date(docOf(published).createdAt).getTime()).toBe(stored.createdAt.getTime());
+    });
+
+    it('Publishes proposals written in older syntaxes in the latest one, which publishing does not rewrite (CA-95).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const raw: any = yaml.load(readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'));
+      // Syntax 2.1, with TIME_DRIVEN usage limits; and 2.0, which has no syntaxVersion and a version that is the syntax's.
+      const older = { ...structuredClone(raw), saasName: scene.name, version: '2.1.0', syntaxVersion: '2.1' };
+      older.plans.BASIC.price = 1;
+      older.plans.GOLD.price = 7.5;
+      older.usageLimits.maxVisitsPerMonthAndPet = { ...older.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete older.usageLimits.maxVisitsPerMonthAndPet.period;
+      const oldest = { ...structuredClone(older), version: '2.0' };
+      delete oldest.syntaxVersion;
+      oldest.plans.GOLD.price = raw.plans.GOLD.price;
+      oldest.plans.PLATINUM.price = 99;
+
+      const opened = [];
+      for (const [index, text] of [yaml.dump(older), yaml.dump(oldest)].entries()) {
+        const created = await open(author.token, { title: `Old syntax ${index}`, source: textSource(scene.pricingId, scene.v2.id, text) });
+        expect(created.status, JSON.stringify(created.body)).toBe(201);
+        expect(created.body.warnings).toEqual([{ code: 'SYNTAX_UPGRADED' }]);
+        expect(docOf(created.body.proposed.yaml).syntaxVersion).toBe('3.1');
+        opened.push(created);
+      }
+      // The first one is up to date; the second is merged with it.
+      for (const [index, created] of opened.entries()) {
+        const watched = watchPublishedFiles();
+        try {
+          const preview = await mergePreviewOf(scene.owner.token, created.body.id);
+          const response = await mergeAs(scene.owner.token, created.body.id, preview, { version: `2.${index + 1}.5` });
+          expect(response.status, JSON.stringify(response.body)).toBe(200);
+        } finally {
+          watched.restore();
+        }
+        expect(watched.hashes).toHaveLength(1);
+        expect(watched.hashes[0].after).toBe(watched.hashes[0].before);
+      }
+      const latest = docOf(readFileSync(await fileOf((await list(scene.owner.token, scene.pricingId)).body.proposals.latest.id), 'utf8'));
+      expect(latest).toMatchObject({ syntaxVersion: '3.1', version: '2.2.5', plans: { GOLD: { price: 7.5 }, PLATINUM: { price: 99 } } });
+    });
+
+    it('Merges into a newer private version privately by default, combining both (CA-39, CA-40).', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, platinumAt(12));
+
+      const preview = await mergePreviewOf(scene.owner.token, created.id);
+      expect(preview).toMatchObject({ target: { id: scene.v3.id, private: true }, defaults: { private: true }, outcome: 'merged' });
+      expect(preview.warnings).toContainEqual({ code: 'FORMAT_REGENERATED' });
+      const response = await mergeAs(scene.owner.token, created.id, preview);
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.version).toMatchObject({ version: '9.0.0', private: true });
+      const stored: any = await PricingMongoose.findById(response.body.version.id).lean();
+      expect(stored.private).toBe(true);
+      expect(docOf(readFileSync(requirePricingFile(String(stored.yaml)), 'utf8')).plans).toMatchObject({
+        GOLD: { price: 987.65 }, PLATINUM: { price: 12 },
+      });
+    });
+
+    it('Refuses a label the pricing already has, publishing nothing and leaving the pull request open (CA-41).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const preview = await mergePreviewOf(scene.owner.token, created.id);
+      const files = await uploadedFiles([scene.organizationId]);
+      const before = await versionCount(scene.pricingId);
+
+      const taken = await mergeAs(scene.owner.token, created.id, preview, { version: '2.0.0' });
+      expect(taken.status).toBe(409);
+      expect(taken.body.code).toBe('VERSION_TAKEN');
+
+      // The label is checked before the reservation: also while another merge holds it.
+      const lock = await repository.reserveForMerge(created.id, 1, scene.owner.id);
+      const whileHeld = await mergeAs(scene.owner.token, created.id, preview, { version: '1.0.0' });
+      expect(whileHeld.body.code).toBe('VERSION_TAKEN');
+      const held = await mergeAs(scene.owner.token, created.id, preview);
+      expect(held.status).toBe(409);
+      expect(held.body.code).toBe('PULL_REQUEST_MERGING');
+      await repository.releaseMerge(created.id, lock!.id);
+
+      // A label taken between the check and the publish is refused by the publish itself.
+      const pricingRepository = appContainer.resolve('pricingRepository');
+      const spy = vi.spyOn(pricingRepository, 'hasVersionLabel').mockResolvedValueOnce(false);
+      try {
+        const raced = await mergeAs(scene.owner.token, created.id, preview, { version: '2.0.0' });
+        expect(raced.status).toBe(409);
+        expect(raced.body.code).toBe('VERSION_TAKEN');
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(await versionCount(scene.pricingId)).toBe(before);
+      const stored = await PricingPullRequestMongoose.findById(created.id).lean();
+      expect(stored!.status).toBe('open');
+      expect(stored!.mergeLock).toBeUndefined();
+      expect(await uploadedFiles([scene.organizationId])).toEqual(files);
+      expect((await mergeAs(scene.owner.token, created.id, preview)).status).toBe(200);
+    });
+
+    it('Leaves the other pull requests behind, or with nothing left to merge (CA-42).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const a = await openOn(author, scene, scene.v2, goldAt(7.5), 'A');
+      const b = await openOn(author, scene, scene.v2, platinumAt(12), 'B');
+      const c = await openOn(author, scene, scene.v2, goldAt(7.5), 'C');
+
+      expect((await mergeAsShown(scene.owner.token, a.id)).response.status).toBe(200);
+
+      const states = (await list(scene.owner.token, scene.pricingId)).body;
+      expect(stateIn(states, a.id)).toEqual({ kind: 'merged' });
+      expect(stateIn(states, b.id)).toEqual({ kind: 'behind', conflicts: 0 });
+      expect(stateIn(states, c.id)).toEqual({ kind: 'no-changes' });
+      const nothing = await mergePreviewOf(scene.owner.token, c.id);
+      expect(nothing.outcome).toBe('no-changes');
+      const refused = await mergeAs(scene.owner.token, c.id, nothing, { version: '9.9.9' });
+      expect(refused.status).toBe(400);
+      expect(refused.body.code).toBe('NO_CHANGES');
+    });
+
+    it('Lets every maintainer merge, refuses the author who is not one, and hides it from anyone else (CA-43, CA-82).', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const admin = (await createAndLoginUser('USER')).user;
+      await createMembership(admin.id, scene.organizationId, 'ADMIN');
+      const creator = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: true });
+      const globalAdmin = testContainer.resolve('adminUser');
+      const author = await outsider();
+
+      for (const [index, maintainer] of [scene.owner, admin, creator, globalAdmin].entries()) {
+        const created = await openOn(author, scene, scene.v2, withFeature(`x-maintainer-${index}`));
+        const preview = await mergePreviewOf(maintainer.token, created.id);
+        const response = await mergeAs(maintainer.token, created.id, preview, { version: `9.${index}.0` });
+        expect(response.status, `${maintainer.username}: ${JSON.stringify(response.body)}`).toBe(200);
+        // They may read the private versions: the new ETag is theirs.
+        expect(response.headers.etag).toMatch(PRICING_ETAG);
+        expect(response.headers.etag).toBe(await etagOf(scene, scene.owner.token));
+      }
+
+      // Who may not publish versions, or not read the private ones: 403 for their own, 404 for another's.
+      const editor = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: true, DELETE: false, CREATE: false });
+      const reader = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: false });
+      const blindCreator = await memberOf(scene.organizationId, scene.slug, { GET: false, PUT: false, DELETE: false, CREATE: true });
+      const collectionEditor = (await createAndLoginUser('USER')).user;
+      await createMembership(collectionEditor.id, scene.organizationId, 'MEMBER');
+      const collection = await request(app())
+        .post(`${BASE_PATH}/collections/${scene.organizationId}`)
+        .set(bearer(scene.owner.token))
+        .send({ name: `collection_${randomSuffix()}`, description: 'With P', private: false, pricings: [scene.slug] });
+      expect(collection.status, JSON.stringify(collection.body)).toBe(201);
+      const permission = await createEntityPermission(collectionEditor.id, scene.organizationId, 'collection', collection.body.slug, {
+        GET: true, PUT: true, DELETE: false, CREATE: false,
+      });
+      permissionsToDelete.add(String(permission._id ?? permission.id));
+      const others = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const before = await versionCount(scene.pricingId);
+      for (const user of [editor, reader, collectionEditor]) {
+        const own = await openOn(user, scene, scene.v2, goldAt(7.5));
+        expect(own.permissions.merge).toBe(false);
+        const refused = await mergeOf(user.token, own.id, { version: '9.9.0', private: false, previewToken: 'x.y' });
+        expect(refused.status, user.username).toBe(403);
+        expect(refused.body.code).toBe('FORBIDDEN');
+        expect(leaks(refused, scene.markers)).toEqual([]);
+        expect((await mergeOf(user.token, others.id, { version: '9.9.0', private: false, previewToken: 'x.y' })).status).toBe(404);
+      }
+      expect((await mergeOf(blindCreator.token, others.id, { version: '9.9.0', private: false, previewToken: 'x.y' })).status).toBe(404);
+      expect((await mergeOf((await outsider()).token, others.id, { version: '9.9.0', private: false, previewToken: 'x.y' })).status).toBe(404);
+      expect(await versionCount(scene.pricingId)).toBe(before);
+    });
+
+    it('Lets a member who may publish but not read private versions merge into a pricing without them, never giving them its ETag (CA-43).', async () => {
+      const scene = await publicScene();
+      const blindCreator = await memberOf(scene.organizationId, scene.slug, { GET: false, PUT: false, DELETE: false, CREATE: true });
+      const author = await outsider();
+      const first = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const second = await openOn(author, scene, scene.v2, platinumAt(12));
+      const owners = await etagOf(scene, scene.owner.token);
+
+      // A version published by someone else between the preview and the publish (simulated by moving the revision on).
+      const preview = await mergePreviewOf(blindCreator.token, second.id);
+      const pricingRepository = appContainer.resolve('pricingRepository');
+      const hasVersionLabel = pricingRepository.hasVersionLabel.bind(pricingRepository);
+      const spy = vi.spyOn(pricingRepository, 'hasVersionLabel').mockImplementationOnce(async (...args: any[]) => {
+        await PricingIdentityMongoose.updateOne({ _id: scene.pricingId }, { $inc: { revision: 1 } });
+        return hasVersionLabel(args[0], args[1]);
+      });
+      let changed;
+      try {
+        changed = await mergeAs(blindCreator.token, second.id, preview);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(changed.status).toBe(409);
+      expect(changed.body.code).toBe('PRICING_CHANGED_DURING_MERGE');
+      expect(changed.headers.etag ?? '').not.toMatch(PRICING_ETAG);
+      expect(await etagOf(scene, scene.owner.token)).not.toBe(owners);
+
+      const merged = await mergeAsShown(blindCreator.token, first.id);
+      expect(merged.response.status, JSON.stringify(merged.response.body)).toBe(200);
+      expect(merged.response.headers.etag ?? '').not.toMatch(PRICING_ETAG);
+      // Their own If-Match never matches: they were never given the tag.
+      const refused = await mergeAs(blindCreator.token, second.id, await mergePreviewOf(blindCreator.token, second.id), {}, await etagOf(scene, scene.owner.token));
+      expect(refused.status).toBe(412);
+      expect(refused.headers.etag ?? '').not.toMatch(PRICING_ETAG);
+    });
+
+    it('Publishes one version when two pull requests are merged at once (CA-48).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const a = await openOn(author, scene, scene.v2, goldAt(7.5), 'A');
+      const b = await openOn(author, scene, scene.v2, platinumAt(12), 'B');
+      const previews = [await mergePreviewOf(scene.owner.token, a.id), await mergePreviewOf(scene.owner.token, b.id)];
+      const before = await versionCount(scene.pricingId);
+
+      const responses = await Promise.all([
+        mergeAs(scene.owner.token, a.id, previews[0], { version: '3.0.0' }),
+        mergeAs(scene.owner.token, b.id, previews[1], { version: '3.1.0' }),
+      ]);
+
+      expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+      const refused = responses.find(response => response.status === 409)!;
+      expect(['PREVIEW_STALE', 'PRICING_CHANGED_DURING_MERGE']).toContain(refused.body.code);
+      expect(await versionCount(scene.pricingId)).toBe(before + 1);
+    });
+
+    it('Refuses a preview older than a version published after it, public or private (CA-49).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+
+      for (const [index, isPrivate] of [false, true].entries()) {
+        const preview = await mergePreviewOf(scene.owner.token, created.id);
+        await publish(scene.owner.token, scene.organizationId, {
+          name: scene.name, slug: scene.slug, version: `3.${index}.0`, isPrivate, change: both(V2, platinumAt(30 + index)),
+        });
+        const before = await versionCount(scene.pricingId);
+
+        const response = await mergeAs(scene.owner.token, created.id, preview);
+
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({ error: 'There is a newer version than the one you reviewed', code: 'PREVIEW_STALE' });
+        expect(await versionCount(scene.pricingId)).toBe(before);
+      }
+      // A stale preview wins over a stale If-Match.
+      const preview = await mergePreviewOf(scene.owner.token, created.id);
+      const stale = await etagOf(scene, scene.owner.token);
+      await publish(scene.owner.token, scene.organizationId, { name: scene.name, slug: scene.slug, version: '3.5.0', change: V2 });
+      expect((await mergeAs(scene.owner.token, created.id, preview, {}, stale)).body.code).toBe('PREVIEW_STALE');
+    });
+
+    it('Answers 412 to an If-Match older than a rename, whose preview still holds (CA-50).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const preview = await mergePreviewOf(scene.owner.token, created.id);
+      const stale = await etagOf(scene, scene.owner.token);
+      const renamed = `renamed_${randomSuffix()}`;
+      const rename = await request(app()).put(pricingUrlOf(scene)).set(bearer(scene.owner.token)).send({ name: renamed });
+      expect(rename.status, JSON.stringify(rename.body)).toBe(200);
+      const moved = { ...scene, slug: (await PricingIdentityMongoose.findById(scene.pricingId).lean())!.slug };
+      const current = await etagOf(moved, scene.owner.token);
+      expect(current).not.toBe(stale);
+
+      // 412 before a result that cannot be published.
+      const refused = await mergeAs(scene.owner.token, created.id, preview, { manualYaml: 'saasName: [' }, stale);
+      expect(refused.status).toBe(412);
+      expect(refused.body.code).toBe('PRECONDITION_FAILED');
+      expect(refused.headers.etag).toBe(current);
+
+      const merged = await mergeAs(scene.owner.token, created.id, preview, {}, current);
+      expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+      expect(merged.headers.etag).not.toBe(current);
+      expect(merged.headers.etag).toBe(await etagOf(moved, scene.owner.token));
+      const stored: any = await PricingMongoose.findById(merged.body.version.id).lean();
+      expect(stored.name).toBe(renamed);
+      expect(docOf(readFileSync(requirePricingFile(String(stored.yaml)), 'utf8')).saasName).toBe(renamed);
+    });
+
+    it('Publishes one version when the same pull request is merged twice (CA-51).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const preview = await mergePreviewOf(scene.owner.token, created.id);
+      const before = await versionCount(scene.pricingId);
+
+      const responses = await Promise.all([1, 2].map(() => mergeAs(scene.owner.token, created.id, preview)));
+
+      expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+      const refused = responses.find(response => response.status === 409)!;
+      expect(['PULL_REQUEST_MERGING', 'PULL_REQUEST_NOT_OPEN', 'PREVIEW_STALE', 'PRICING_CHANGED_DURING_MERGE']).toContain(refused.body.code);
+      expect(await versionCount(scene.pricingId)).toBe(before + 1);
+      const again = await mergeAs(scene.owner.token, created.id, preview);
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('PULL_REQUEST_NOT_OPEN');
+    });
+
+    it('Merges a pull request whose fork or author is gone (CA-70).', async () => {
+      const scene = await forkScene();
+      const fromFork = await proposeFromScene(scene);
+      expect(fromFork.status).toBe(201);
+      const gone = await outsider();
+      const byGone = await openOn(gone, scene, scene.v2, platinumAt(12));
+      expect((await request(app()).delete(`${BASE_PATH}/pricings/${scene.forkOrganizationId}/${scene.fork.slug}`).set(bearer(scene.forker.token))).status).toBe(200);
+
+      const withoutFork = await mergeAsShown(scene.owner.token, fromFork.body.id);
+      expect(withoutFork.response.status, JSON.stringify(withoutFork.response.body)).toBe(200);
+      expect(withoutFork.response.body.pullRequest.origin).toBeUndefined();
+
+      await deleteTestUser(gone.username);
+      const withoutAuthor = await mergeAsShown(scene.owner.token, byGone.id, { version: '7.0.0' });
+      expect(withoutAuthor.response.status, JSON.stringify(withoutAuthor.response.body)).toBe(200);
+      expect(withoutAuthor.response.body.pullRequest.author).toBeNull();
+    });
+
+    it('Marks merged a pull request whose merge published its version but stopped before saying so (CA-92).', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const lock = await repository.reserveForMerge(created.id, 1, scene.owner.id);
+      // The version the interrupted merge published.
+      const published = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '9.0.0', change: both(V2, goldAt(7.5)),
+      });
+      await PricingMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(published.id) },
+        { $set: { mergedFrom: { number: created.number, prId: new mongoose.Types.ObjectId(created.id) } } }
+      );
+
+      const shown = await detail(author.token, created.id);
+
+      expect(shown.body).toMatchObject({ status: 'merged', merged: { versionId: published.id, version: '9.0.0' } });
+      const stored = await PricingPullRequestMongoose.findById(created.id).lean();
+      expect(stored!.mergeLock).toBeUndefined();
+      expect(lock).not.toBeNull();
+      expect(stored!.merged).toMatchObject({ proposalRevision: 1, version: '9.0.0' });
+      expect(String(stored!.merged!.byId)).toBe(scene.owner.id);
+      expect(String(stored!.merged!.versionId)).toBe(published.id);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Notifications
+  // ---------------------------------------------------------------------------
+
+  describe('Notifications', { timeout: 30000 }, () => {
+    it('Tells the maintainers who are members, by inbox and email as each one chose, and never the author (CA-56).', async () => {
+      const scene = await publicScene();
+      const admin = (await createAndLoginUser('USER')).user;
+      await createMembership(admin.id, scene.organizationId, 'ADMIN');
+      const muted = (await createAndLoginUser('USER')).user;
+      await createMembership(muted.id, scene.organizationId, 'ADMIN');
+      const preferences = await request(app())
+        .put(`${BASE_PATH}/users/me/settings/notifications`)
+        .set(bearer(muted.token))
+        .send({ PricingPullRequest: { email: false, inbox: false } });
+      expect(preferences.status).toBe(200);
+      const reader = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: false });
+      const globalAdmin = testContainer.resolve('adminUser');
+      const author = await outsider();
+      const emails = vi.spyOn(appContainer.resolve('emailService'), 'sendNotificationEmail');
+
+      let created: any;
+      let recipients: string[];
+      try {
+        created = await openOn(author, scene, scene.v2, goldAt(7.5));
+        await eventually(async () => {
+          expect(await pullRequestNotices(scene.owner.token, created.id)).toHaveLength(1);
+          expect(await pullRequestNotices(admin.token, created.id)).toHaveLength(1);
+        });
+        await settle();
+        recipients = emails.mock.calls.map(([email]: any[]) => email.recipientEmail);
+      } finally {
+        emails.mockRestore();
+      }
+
+      const [notice] = await pullRequestNotices(scene.owner.token, created.id);
+      expect(notice).toMatchObject({
+        title: `New pull request #${created.number} on ${scene.name}`,
+        message: expect.stringContaining(created.title),
+        data: { pricingId: scene.pricingId, pullRequestId: created.id, number: created.number, organizationId: scene.organizationId, pricingSlug: scene.slug },
+      });
+      expect(notice.title).not.toContain(created.title);
+      for (const user of [muted, reader, globalAdmin, author]) {
+        expect(await pullRequestNotices(user.token, created.id), user.username).toEqual([]);
+      }
+      expect(recipients).toContain(scene.owner.email);
+      expect(recipients).toContain(admin.email);
+      expect(recipients).not.toContain(muted.email);
+      expect(recipients).not.toContain(author.email);
+    });
+
+    it('Tells the author when someone else merges or rejects their pull request, naming the version only if they may read it (CA-57, CA-46).', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const merged = await openOn(author, scene, scene.v2, platinumAt(12));
+      const rejected = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const withdrawn = await openOn(author, scene, scene.v2, platinumAt(13));
+      const own = await openOn(scene.owner, scene, scene.v2, withFeature('x-own'));
+      const secret = `9.0.0-secret-${randomSuffix()}`;
+
+      const preview = await mergePreviewOf(scene.owner.token, merged.id);
+      expect((await mergeAs(scene.owner.token, merged.id, preview, { version: secret, private: true })).status).toBe(200);
+      expect((await close(scene.owner.token, rejected.id, { reason: 'Not now' })).status).toBe(200);
+      const withdrawal = await close(author.token, withdrawn.id);
+      expect(withdrawal.status, JSON.stringify(withdrawal.body)).toBe(200);
+      const ownPreview = await mergePreviewOf(scene.owner.token, own.id);
+      expect((await mergeAs(scene.owner.token, own.id, ownPreview, { version: '9.1.0' })).status).toBe(200);
+
+      await eventually(async () => {
+        expect(await pullRequestNotices(author.token, merged.id)).toHaveLength(1);
+        expect(await pullRequestNotices(author.token, rejected.id)).toHaveLength(1);
+      });
+      await settle();
+      const [mergedNotice] = await pullRequestNotices(author.token, merged.id);
+      expect(mergedNotice.title).toBe(`Pull request #${merged.number} on ${scene.name} was merged`);
+      expect(leaks({ body: mergedNotice, headers: {} }, [...scene.markers, secret])).toEqual([]);
+      expect(Object.keys(mergedNotice.data).sort()).toEqual(['number', 'organizationId', 'pricingId', 'pricingSlug', 'pullRequestId']);
+      const [rejectedNotice] = await pullRequestNotices(author.token, rejected.id);
+      expect(rejectedNotice).toMatchObject({ title: `Pull request #${rejected.number} on ${scene.name} was closed`, message: expect.stringContaining('Not now') });
+      expect(await pullRequestNotices(author.token, withdrawn.id)).toEqual([]);
+      expect(await pullRequestNotices(scene.owner.token, own.id)).toEqual([]);
+      // Who may read the private version is told which one it became.
+      const reader = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: false });
+      const readers = await openOn(reader, scene, scene.v2, withFeature('x-reader'));
+      const readerPreview = await mergePreviewOf(scene.owner.token, readers.id);
+      expect((await mergeAs(scene.owner.token, readers.id, readerPreview, { version: secret + '-2', private: true })).status).toBe(200);
+      await eventually(async () => expect(await pullRequestNotices(reader.token, readers.id)).toHaveLength(1));
+      expect((await pullRequestNotices(reader.token, readers.id))[0].message).toContain(`${secret}-2`);
+    });
+
+    it('Tells the followers of the pricing about the merged version (CA-58).', async () => {
+      const scene = await publicScene();
+      const follower = await outsider();
+      expect((await request(app()).put(`${BASE_PATH}/pricing-follows/${scene.organizationId}/${scene.slug}`).set(bearer(follower.token))).status).toBe(200);
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+
+      expect((await mergeAsShown(scene.owner.token, created.id)).response.status).toBe(200);
+
+      await eventually(async () => {
+        const response = await request(app()).get(`${BASE_PATH}/notifications`).set(bearer(follower.token));
+        const updates = (response.body as any[]).filter(notice => notice.kind === 'PricingUpdated');
+        expect(updates).toHaveLength(1);
+        expect(updates[0].data).toMatchObject({ pricingSlug: scene.slug, version: '9.0.0' });
+      });
+    });
+
+    it('Tells the maintainers about new proposals from the fork at most once a day (CA-104).', async () => {
+      const scene = await forkScene();
+      const first = await proposeFromScene(scene);
+      expect(first.status).toBe(201);
+      await eventually(async () => expect(await pullRequestNotices(scene.owner.token, first.body.id)).toHaveLength(1));
+
+      for (let round = 0; round < 3; round++) expect((await proposeFromScene(scene)).status).toBe(200);
+      await settle();
+      expect(await pullRequestNotices(scene.owner.token, first.body.id)).toHaveLength(1);
+
+      await PricingPullRequestMongoose.updateOne({ _id: first.body.id }, { $set: { lastNotifiedAt: new Date(Date.now() - 25 * HOUR) } });
+      expect((await proposeFromScene(scene)).status).toBe(200);
+      await eventually(async () => {
+        const notices = await pullRequestNotices(scene.owner.token, first.body.id);
+        expect(notices).toHaveLength(2);
+        expect(notices.map(notice => notice.title)).toContain(`Pull request #${first.body.number} on ${scene.name} was updated`);
+      });
+    });
+  });
 });

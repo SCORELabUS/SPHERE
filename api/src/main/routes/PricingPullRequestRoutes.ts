@@ -66,6 +66,16 @@ const loadFileRoutes = function (app: express.Application) {
     );
 
   app
+    .route(baseUrl + '/:pullRequestId/merge')
+    .post(
+      webSession,
+      pricingPullRequestRateLimiter,
+      PricingPullRequestValidator.merge,
+      handleValidation,
+      pricingPullRequestController.merge
+    );
+
+  app
     .route(baseUrl + '/:pullRequestId/close')
     .post(webSession, PricingPullRequestValidator.close, handleValidation, pricingPullRequestController.close);
 };

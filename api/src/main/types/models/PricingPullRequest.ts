@@ -269,6 +269,12 @@ export interface PullRequestPreviewDTO {
   defaults?: { private: boolean };
 }
 
+/** A merged pull request and the version it published. */
+export interface PullRequestMergeDTO {
+  pullRequest: PullRequestDetailDTO;
+  version: { id: string; version: string; private: boolean };
+}
+
 export type PullRequestErrorCode =
   | 'WEB_SESSION_REQUIRED'
   | 'NOT_FOUND'
@@ -286,7 +292,10 @@ export type PullRequestErrorCode =
   | 'PULL_REQUEST_EXISTS'
   | 'PREVIEW_STALE'
   | 'NOT_A_FORK'
-  | 'PARENT_UNAVAILABLE';
+  | 'PARENT_UNAVAILABLE'
+  | 'VERSION_TAKEN'
+  | 'PRICING_CHANGED_DURING_MERGE'
+  | 'MERGE_FAILED';
 
 /**
  * A refusal of the pull request routes, answered as `{ error, code, ...details }`.

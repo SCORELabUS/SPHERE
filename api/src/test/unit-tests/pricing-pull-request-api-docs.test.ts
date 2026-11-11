@@ -51,6 +51,7 @@ describe('OpenAPI specification of the pricing pull requests', () => {
       'post /pricing-pull-requests',
       'post /pricing-pull-requests/previews',
       'post /pricing-pull-requests/{pullRequestId}/close',
+      'post /pricing-pull-requests/{pullRequestId}/merge',
       'post /pricing-pull-requests/{pullRequestId}/merge-preview',
       'post /pricing-pull-requests/{pullRequestId}/update',
       'put /pricing-pull-requests/{pullRequestId}',

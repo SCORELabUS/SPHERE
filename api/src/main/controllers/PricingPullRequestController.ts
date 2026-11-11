@@ -1,6 +1,7 @@
 import container from '../config/container';
 import PricingPullRequestService from '../services/PricingPullRequestService';
 import { PullRequestError } from '../types/models/PricingPullRequest';
+import { parseIfMatch, PreconditionFailedError } from '../utils/pricing-etag';
 import { PricingMergeError } from '../utils/pricing-merge';
 import { PricingYamlError } from '../utils/pricing-syntax';
 import { handleError } from '../utils/users/helpers';
@@ -12,6 +13,11 @@ function sendError(res: any, err: unknown) {
   }
   if (err instanceof PricingYamlError) {
     return res.status(err.status).json({ error: err.message, code: err.code, ...(err.line !== undefined ? { line: err.line } : {}) });
+  }
+  if (err instanceof PreconditionFailedError) {
+    // The pricing's current tag, only when the caller may read it.
+    if (err.currentEtag) res.set('ETag', err.currentEtag);
+    return res.status(412).json({ error: err.message, code: 'PRECONDITION_FAILED' });
   }
   if (err instanceof PricingMergeError) {
     return res.status(err.status).json({ error: err.message, code: err.code, conflictIds: err.conflictIds });
@@ -35,6 +41,7 @@ class PricingPullRequestController {
     this.mergePreview = this.mergePreview.bind(this);
     this.updateToLatest = this.updateToLatest.bind(this);
     this.close = this.close.bind(this);
+    this.merge = this.merge.bind(this);
   }
 
   /**
@@ -123,6 +130,23 @@ class PricingPullRequestController {
     try {
       const { resolutions, manualYaml, previewToken } = req.body;
       res.json(await this.pricingPullRequestService.update(req.user, req.params.pullRequestId, { resolutions, manualYaml, previewToken }));
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+
+  async merge(req: any, res: any) {
+    try {
+      const { version, resolutions, manualYaml, previewToken } = req.body;
+      const result = await this.pricingPullRequestService.merge(
+        req.user,
+        req.params.pullRequestId,
+        { version, private: req.body.private, resolutions, manualYaml, previewToken },
+        parseIfMatch(req.headers['if-match'])
+      );
+      // Only set for who may read the pricing's private versions.
+      if (result.etag) res.set('ETag', result.etag);
+      res.json({ pullRequest: result.pullRequest, version: result.version });
     } catch (err) {
       sendError(res, err);
     }

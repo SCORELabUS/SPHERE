@@ -4948,6 +4948,12 @@ paths:
         the latest version of a fork to the pricing it was forked from (`source.kind: fork`).
         Nothing is published: the pricing keeps its versions and its ETag.
 
+        The maintainers of the pricing who are members of its organization or of one of its
+        ancestors (at most 50, owners first; never the author, nor global administrators who are
+        not members) get a `PricingPullRequest` notification, in the inbox and by email as each
+        one chose. A fork's new proposal for its open pull request tells them again at most once
+        a day.
+
         **Text.** Errors come in this order: 404 (the pricing or `baseVersionId` cannot be read,
         or the version belongs to another pricing), 429 `LIMIT_REACHED` (before anything is
         parsed: 5 open pull requests per author and pricing, 50 per pricing, 20 created per
@@ -5396,6 +5402,136 @@ paths:
         '429':
           description: The rate limit was reached
 
+  /pricing-pull-requests/{pullRequestId}/merge:
+    parameters:
+      - $ref: '#/components/parameters/PullRequestId'
+    post:
+      summary: Merge a pull request
+      description: |
+        A maintainer of the pricing (who may publish versions of it and read all of them)
+        publishes what the `merge` merge preview showed as a new version of the pricing: the
+        merge of the pull request with the latest version, private or not, with every conflict
+        resolved (`resolutions`) or a result typed by hand (`manualYaml`, warning
+        `MANUAL_OVERRIDE`). The version is published as `POST /pricings/{organizationId}/{pricingSlug}/{pricingVersion}`
+        does (the same permission, unique label, analytics and notice to followers), with `version`
+        as its label, the pricing's name and the current instant as `createdAt`, and records the
+        pull request it came from (`mergedFrom`). The text of a pull request that is up to date
+        is published as it is apart from those three lines; a merge with changes on both sides is
+        written again (`FORMAT_REGENERATED`).
+
+        The pull request is reserved while it is merged: editing, updating or closing it meanwhile
+        answers 409 `PULL_REQUEST_MERGING`, and a second merge `PULL_REQUEST_MERGING` (or
+        `PULL_REQUEST_NOT_OPEN` once the first one finished). The merge claims the revision of the
+        pricing it read, so a version published meanwhile by anyone makes it fail with 409
+        `PRICING_CHANGED_DURING_MERGE` and publishes nothing. Its author is told, unless they
+        merged it themselves; the version is only named to them if they may read it.
+
+        `If-Match` is optional: a tag that is not the pricing's current one gets 412, with the
+        current `ETag` only for who may read the private versions. The answer carries the new
+        `ETag` only for them as well.
+
+        Errors, in this order: 403 for the author who is not a maintainer and 404 for anyone else;
+        409 `PULL_REQUEST_NOT_OPEN`; 409 `PREVIEW_STALE` (a newer version than the one reviewed,
+        the proposal changed, or a token that is not this server's, this caller's or this pull
+        request's `merge` preview); 412; 413/422/400 for `manualYaml`, 409
+        `UNRESOLVED_CONFLICTS`, 422 `UNKNOWN_RESOLUTION`, 400 `INVALID_PRICING` for a result the
+        parser refuses and 400 `NO_CHANGES` when merging adds nothing; 409 `VERSION_TAKEN`; 409
+        `PULL_REQUEST_MERGING`; 409 `PRICING_CHANGED_DURING_MERGE`.
+
+        **Authentication**: SPHERE web session only.
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: The pricing's `ETag`, as `GET /pricings/{organizationId}/{pricingSlug}` gave it.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, private, previewToken]
+              properties:
+                version:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: The label of the new version (the preview's `suggestedVersion` by default)
+                private:
+                  type: boolean
+                  description: Whether the new version is private (the preview's `defaults.private` by default)
+                resolutions:
+                  $ref: '#/components/schemas/PricingPullRequestResolutions'
+                manualYaml:
+                  type: string
+                previewToken:
+                  type: string
+      responses:
+        '200':
+          description: The merged pull request and the version it published
+          headers:
+            ETag:
+              description: The pricing's new tag, only for who may read its private versions
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pullRequest, version]
+                properties:
+                  pullRequest:
+                    $ref: '#/components/schemas/PricingPullRequestDetail'
+                  version:
+                    type: object
+                    required: [id, version, private]
+                    properties:
+                      id:
+                        type: string
+                      version:
+                        type: string
+                      private:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '401':
+          $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: The author who is not a maintainer, or a maintainer who lost the permission (`FORBIDDEN`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestError'
+        '404':
+          $ref: '#/components/responses/PricingPullRequestNotFound'
+        '409':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '412':
+          description: The `If-Match` is not the pricing's current tag (`PRECONDITION_FAILED`)
+          headers:
+            ETag:
+              description: The pricing's current tag, only for who may read its private versions
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestError'
+        '413':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '422':
+          description: Invalid fields, a result too complex or with forbidden keys, or `UNKNOWN_RESOLUTION`
+        '429':
+          description: The rate limit was reached
+        '500':
+          description: The version could not be published (`MERGE_FAILED`)
+
   /pricing-pull-requests/{pullRequestId}/close:
     parameters:
       - $ref: '#/components/parameters/PullRequestId'
@@ -5404,7 +5540,7 @@ paths:
       description: |
         Its author withdraws it (`withdrawn`), or a maintainer of the pricing rejects it
         (`rejected`), with an optional reason shown as plain text. Closing does not touch the
-        pricing.
+        pricing. The author of a rejected pull request is told.
 
         **Authentication**: SPHERE web session only.
       tags:
@@ -7734,6 +7870,10 @@ components:
             - PARENT_UNAVAILABLE
             - UNRESOLVED_CONFLICTS
             - UNKNOWN_RESOLUTION
+            - VERSION_TAKEN
+            - PRICING_CHANGED_DURING_MERGE
+            - PRECONDITION_FAILED
+            - MERGE_FAILED
         line:
           type: integer
           description: The line of a YAML error

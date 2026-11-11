@@ -99,4 +99,22 @@ const close = [
     .withMessage('The reason may have at most 500 characters'),
 ];
 
-export { list, create, forkTarget, preview, show, update, mergePreview, updateToLatest, close };
+/** The label of the version a merge publishes: 1-100 characters, without control characters. */
+const merge = [
+  pullRequestId,
+  check('version')
+    .isString()
+    .withMessage('The version must be a text')
+    .bail()
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('The version must have between 1 and 100 characters')
+    .matches(NO_CONTROL_CHARACTERS)
+    .withMessage('The version cannot contain control characters'),
+  check('private').isBoolean({ strict: true }).withMessage('private must be true or false').toBoolean(true),
+  resolutions(),
+  manualYaml(),
+  previewToken(),
+];
+
+export { list, create, forkTarget, preview, show, update, mergePreview, updateToLatest, close, merge };
