@@ -4944,18 +4944,35 @@ paths:
     post:
       summary: Open a pull request on a pricing
       description: |
-        Proposes a YAML written by hand (the editor or an uploaded file). Nothing is published:
-        the pricing keeps its versions and its ETag.
+        Proposes a YAML written by hand (the editor or an uploaded file, `source.kind: text`), or
+        the latest version of a fork to the pricing it was forked from (`source.kind: fork`).
+        Nothing is published: the pricing keeps its versions and its ETag.
 
-        Errors come in this order: 404 (the pricing or `baseVersionId` cannot be read, or the
-        version belongs to another pricing), 429 `LIMIT_REACHED` (before anything is parsed:
-        5 open pull requests per author and pricing, 50 per pricing, 20 created per author a
-        day; `PRICING_PR_MAX_OPEN_PER_AUTHOR`, `PRICING_PR_MAX_OPEN_PER_PRICING`,
+        **Text.** Errors come in this order: 404 (the pricing or `baseVersionId` cannot be read,
+        or the version belongs to another pricing), 429 `LIMIT_REACHED` (before anything is
+        parsed: 5 open pull requests per author and pricing, 50 per pricing, 20 created per
+        author a day; `PRICING_PR_MAX_OPEN_PER_AUTHOR`, `PRICING_PR_MAX_OPEN_PER_PRICING`,
         `PRICING_PR_MAX_CREATED_PER_DAY`), 409 `NO_PUBLIC_VERSION`, 409 `BASE_NOT_LATEST` (with
         `latest`, the latest public version), 413 `PRICING_TOO_LARGE` (1 MiB,
         `PRICING_PR_MAX_YAML_BYTES`; a body over 2 MB gets Express's own 413), 422
         `PRICING_TOO_COMPLEX` or `INVALID_PRICING` (forbidden keys), 400 `INVALID_PRICING` (with
         the parser's message and, for YAML errors, its `line`) and 400 `NO_CHANGES`.
+
+        **Fork.** Sends what `POST /pricing-pull-requests/previews` showed: its `previewToken`, the
+        side chosen for each conflict (`resolutions`) or a result typed by hand (`manualYaml`,
+        which takes precedence, warning `MANUAL_OVERRIDE`). It needs `CREATE` on the fork, and
+        only the fork's versions the caller may read count. At most one pull request from a fork
+        to its parent is open: if it is the caller's, it takes the new proposal and the answer is
+        200 with `updated: true` (same number, `proposalRevision` moved on, base set to the latest
+        public version); this does not count as opening one. Errors: 404 (the fork cannot be
+        read), 403 `FORBIDDEN` (no `CREATE` on the fork), 422 `NOT_A_FORK`, 404
+        `PARENT_UNAVAILABLE` (the parent is gone or cannot be read), 429 `LIMIT_REACHED`, 409
+        `NO_PUBLIC_VERSION`, 409 `PULL_REQUEST_EXISTS` (with the `number` of another author's
+        open pull request), 413/422/400 for `manualYaml`, 409 `BASE_NOT_LATEST` (a newer public
+        version, with `latest`) or `PREVIEW_STALE` (anything else the preview was computed from
+        changed, or a token that is not this server's, this caller's or this fork's), 409
+        `UNRESOLVED_CONFLICTS` and 422 `UNKNOWN_RESOLUTION` (with `conflictIds`), 400
+        `INVALID_PRICING` for a result the parser refuses and 400 `NO_CHANGES`.
 
         The proposal is stored in the latest Pricing2Yaml syntax with the pricing's name as
         `saasName`: one in an older syntax is upgraded and written again (warning
@@ -4987,20 +5004,32 @@ paths:
                   maxLength: 10000
                   description: Plain text
                 source:
-                  type: object
-                  required: [kind, pricingId, baseVersionId, proposedYaml]
-                  properties:
-                    kind:
-                      type: string
-                      enum: [text]
-                    pricingId:
-                      type: string
-                    baseVersionId:
-                      type: string
-                      description: The latest public version of the pricing
-                    proposedYaml:
-                      type: string
+                  $ref: '#/components/schemas/PricingPullRequestSource'
+                resolutions:
+                  $ref: '#/components/schemas/PricingPullRequestResolutions'
+                manualYaml:
+                  type: string
+                  description: Fork only. A result typed by hand, used instead of the computed one
+                previewToken:
+                  type: string
+                  description: Fork only (required). The `previewToken` of the preview the caller reviewed
       responses:
+        '200':
+          description: Fork only. The caller's open pull request from the fork took the new proposal
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PricingPullRequestDetail'
+                  - type: object
+                    properties:
+                      updated:
+                        type: boolean
+                        enum: [true]
+                      warnings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PricingPullRequestWarning'
         '201':
           description: The pull request was opened
           content:
@@ -5018,6 +5047,8 @@ paths:
           $ref: '#/components/responses/PricingPullRequestRefused'
         '401':
           $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: Fork only. The caller may read the fork but not publish versions of it (`FORBIDDEN`)
         '404':
           $ref: '#/components/responses/PricingPullRequestNotFound'
         '409':
@@ -5025,9 +5056,123 @@ paths:
         '413':
           $ref: '#/components/responses/PricingPullRequestRefused'
         '422':
-          description: Invalid fields, or a proposal too complex or with forbidden keys
+          description: |
+            Invalid fields, a proposal too complex or with forbidden keys, a fork that names no pricing
+            it was forked from (`NOT_A_FORK`), or resolutions of conflicts the merge does not have
+            (`UNKNOWN_RESOLUTION`)
         '429':
           description: A pull request limit (`code` `LIMIT_REACHED`) or the rate limit was reached
+
+  /pricing-pull-requests/fork-target:
+    get:
+      summary: Whether a fork can propose to the pricing it was forked from
+      description: |
+        Computed only on the versions of the fork (F) the caller may read. The parent (P) is the
+        pricing the newest of them that names where it was forked from was forked from. In this
+        order: 404 when the caller may not read F, 403 when they may not publish versions of it
+        (`CREATE`), and then 200 with `canPropose: false` and `reason` `NOT_A_FORK`,
+        `PARENT_UNAVAILABLE` (P is gone or the caller may not read it: the same answer),
+        `NO_PUBLIC_VERSION` or `PULL_REQUEST_EXISTS` (another author's pull request from F is
+        open: only its `number` is given). The author of the open pull request from F gets its
+        `id`, `number` and `proposalRevision`: proposing again replaces its proposal.
+
+        **Authentication**: SPHERE web session only.
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: forkPricingId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identity of the fork (`pricingId` of its versions)
+      responses:
+        '200':
+          description: Whether the caller can propose from the fork now
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestForkTarget'
+        '401':
+          $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: The caller may read the fork but not publish versions of it (`FORBIDDEN`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestError'
+        '404':
+          $ref: '#/components/responses/PricingPullRequestNotFound'
+        '422':
+          description: Invalid query parameters
+
+  /pricing-pull-requests/previews:
+    post:
+      summary: Preview the merge of a proposal
+      description: |
+        Computes, without writing anything, the three-way merge a proposal would make with the
+        latest public version of the pricing (the target):
+
+        - `text`: from `baseVersionId` (any version of the pricing the caller may read) to
+          `proposedYaml`. With an older base this is "apply my changes on top of the latest":
+          submit `resultYaml` on the latest public version.
+        - `fork`: from the version of the fork its parent last took in (the one the latest merged
+          pull request from the fork proposed, while the fork keeps it; otherwise the newest
+          version of the fork copied from the parent) to the newest version of the fork the
+          caller may read. Needs `CREATE` on the fork, as opening the pull request does.
+
+        `version`, `createdAt` and `saasName` are never compared, and the result always carries the
+        pricing's name. `conflicts` lists every conflict; `resolutions` (conflict id → `current` or
+        `proposal`) are applied to `resultYaml`, and an unresolved conflict keeps the current value.
+        `validation` is the pricing parser's verdict on `resultYaml`. `previewToken` signs what the
+        preview was computed from: send it when opening the pull request. Warnings:
+        `SYNTAX_UPGRADED`, `FORMAT_REGENERATED` (the result was written again, without its
+        comments and layout), `GLOBAL_FIELD_CHANGED` and `PREVIOUSLY_MERGED` (a pull request from
+        the fork was merged before, with its `number`).
+
+        Errors as when opening the pull request, up to the parsing of the inputs. Rate limited
+        like opening one.
+
+        **Authentication**: SPHERE web session only.
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source:
+                  $ref: '#/components/schemas/PricingPullRequestSource'
+                resolutions:
+                  $ref: '#/components/schemas/PricingPullRequestResolutions'
+      responses:
+        '200':
+          description: The merge the proposal would make
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestPreview'
+        '401':
+          $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: Fork only. The caller may read the fork but not publish versions of it (`FORBIDDEN`)
+        '404':
+          $ref: '#/components/responses/PricingPullRequestNotFound'
+        '409':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '413':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '422':
+          description: Invalid fields, a proposal too complex, `NOT_A_FORK` or `UNKNOWN_RESOLUTION`
+        '429':
+          description: The rate limit was reached
 
   /pricing-pull-requests/{pullRequestId}:
     parameters:
@@ -5122,6 +5267,134 @@ paths:
           $ref: '#/components/responses/PricingPullRequestRefused'
         '422':
           description: Invalid fields, or a proposal too complex or with forbidden keys
+
+  /pricing-pull-requests/{pullRequestId}/merge-preview:
+    parameters:
+      - $ref: '#/components/parameters/PullRequestId'
+    post:
+      summary: Preview the merge of an open pull request
+      description: |
+        Computes, without writing anything, the three-way merge of the pull request's base, its
+        proposal and a target:
+
+        - `update`: for its author, the latest public version, to bring the pull request up to
+          date (`POST /pricing-pull-requests/{pullRequestId}/update`). 409
+          `PULL_REQUEST_UP_TO_DATE` when it already starts from it, and `NO_PUBLIC_VERSION` when
+          there is none. A maintainer who is not the author gets 403.
+        - `merge`: for a maintainer, the latest version, private or not. It adds `target.private`,
+          `versionTaken` (the suggested label is already a version of the pricing) and
+          `defaults.private` (a merge into a private latest version is private by default). The
+          author who is not a maintainer gets 403.
+
+        Anyone else gets 404. 409 `PULL_REQUEST_NOT_OPEN` or `PULL_REQUEST_MERGING` when the pull
+        request is not open or is being merged. The answer is as `POST /pricing-pull-requests/previews`.
+
+        **Authentication**: SPHERE web session only.
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose]
+              properties:
+                purpose:
+                  type: string
+                  enum: [update, merge]
+                resolutions:
+                  $ref: '#/components/schemas/PricingPullRequestResolutions'
+      responses:
+        '200':
+          description: The merge the pull request would make
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPullRequestPreview'
+        '401':
+          $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: Not the author (`update`) or not a maintainer (`merge`) (`FORBIDDEN`)
+        '404':
+          $ref: '#/components/responses/PricingPullRequestNotFound'
+        '409':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '422':
+          description: Invalid fields or `UNKNOWN_RESOLUTION`
+        '429':
+          description: The rate limit was reached
+
+  /pricing-pull-requests/{pullRequestId}/update:
+    parameters:
+      - $ref: '#/components/parameters/PullRequestId'
+    post:
+      summary: Bring a pull request up to the latest public version
+      description: |
+        Its author applies what the `update` merge preview showed: the base becomes the latest
+        public version and the proposal the merge, with every conflict resolved (`resolutions`) or
+        a result typed by hand (`manualYaml`, warning `MANUAL_OVERRIDE`; on a pull request made
+        from a fork it marks the proposal as edited). `proposalRevision` moves on. A merge that
+        adds nothing leaves the pull request with state `no-changes`.
+
+        Errors: 403 for a maintainer who is not the author, 404 for anyone else, 409
+        `PULL_REQUEST_NOT_OPEN`, `PULL_REQUEST_MERGING`, `NO_PUBLIC_VERSION` or
+        `PULL_REQUEST_UP_TO_DATE`, 413/422/400 for `manualYaml`, 409 `BASE_NOT_LATEST` (a newer
+        public version, with `latest`) or `PREVIEW_STALE` (the proposal changed, or a token that is
+        not this server's, this caller's or this pull request's), 409 `UNRESOLVED_CONFLICTS`, 422
+        `UNKNOWN_RESOLUTION` and 400 `INVALID_PRICING` for a result the parser refuses.
+
+        **Authentication**: SPHERE web session only.
+      tags:
+        - Pricings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [previewToken]
+              properties:
+                resolutions:
+                  $ref: '#/components/schemas/PricingPullRequestResolutions'
+                manualYaml:
+                  type: string
+                previewToken:
+                  type: string
+      responses:
+        '200':
+          description: The updated pull request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PricingPullRequestDetail'
+                  - type: object
+                    properties:
+                      warnings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PricingPullRequestWarning'
+        '400':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '401':
+          $ref: '#/components/responses/PricingPullRequestWebSessionRequired'
+        '403':
+          description: A maintainer who is not the author (`FORBIDDEN`)
+        '404':
+          $ref: '#/components/responses/PricingPullRequestNotFound'
+        '409':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '413':
+          $ref: '#/components/responses/PricingPullRequestRefused'
+        '422':
+          description: Invalid fields, a result too complex or with forbidden keys, or `UNKNOWN_RESOLUTION`
+        '429':
+          description: The rate limit was reached
 
   /pricing-pull-requests/{pullRequestId}/close:
     parameters:
@@ -7454,11 +7727,184 @@ components:
             - PULL_REQUEST_MERGING
             - PULL_REQUEST_BEHIND
             - PULL_REQUEST_CHANGED
+            - PULL_REQUEST_UP_TO_DATE
+            - PULL_REQUEST_EXISTS
+            - PREVIEW_STALE
+            - NOT_A_FORK
+            - PARENT_UNAVAILABLE
+            - UNRESOLVED_CONFLICTS
+            - UNKNOWN_RESOLUTION
         line:
           type: integer
           description: The line of a YAML error
         latest:
           $ref: '#/components/schemas/PricingPullRequestVersionRef'
+        number:
+          type: integer
+          description: '`PULL_REQUEST_EXISTS`: the number of the open pull request from the fork'
+        conflictIds:
+          type: array
+          items:
+            type: string
+          description: '`UNRESOLVED_CONFLICTS` and `UNKNOWN_RESOLUTION`: the conflicts concerned'
+
+    PricingPullRequestSource:
+      type: object
+      required: [kind]
+      description: |
+        `text`: a YAML written on a version of the pricing (`pricingId`, `baseVersionId`,
+        `proposedYaml`). `fork`: the latest version of the fork `forkPricingId`.
+      properties:
+        kind:
+          type: string
+          enum: [text, fork]
+        pricingId:
+          type: string
+        baseVersionId:
+          type: string
+        proposedYaml:
+          type: string
+        forkPricingId:
+          type: string
+
+    PricingPullRequestResolutions:
+      type: object
+      description: The side chosen for each conflict, by conflict `id`
+      additionalProperties:
+        type: string
+        enum: [current, proposal]
+
+    PricingPullRequestConflictSide:
+      type: object
+      description: Absent, or the value written as YAML (so null, `.inf` and dates keep apart)
+      required: [present]
+      properties:
+        present:
+          type: boolean
+        yaml:
+          type: string
+
+    PricingPullRequestConflict:
+      type: object
+      properties:
+        id:
+          type: string
+          description: '`JSON.stringify(path)`'
+        path:
+          type: array
+          items:
+            type: string
+        label:
+          type: string
+          description: The path as people read it, e.g. `plans["PRO.v2"].price`
+        section:
+          type: string
+          enum: [plans, features, addOns, usageLimits, general]
+        entry:
+          type: string
+        scope:
+          type: string
+          enum: [value, entry, list, order]
+        base:
+          $ref: '#/components/schemas/PricingPullRequestConflictSide'
+        current:
+          $ref: '#/components/schemas/PricingPullRequestConflictSide'
+        proposal:
+          $ref: '#/components/schemas/PricingPullRequestConflictSide'
+
+    PricingPullRequestPreview:
+      type: object
+      properties:
+        base:
+          $ref: '#/components/schemas/PricingPullRequestVersionRef'
+        target:
+          allOf:
+            - $ref: '#/components/schemas/PricingPullRequestVersionRef'
+            - type: object
+              properties:
+                private:
+                  type: boolean
+                  description: Merge previews only
+        outcome:
+          type: string
+          enum: [no-changes, proposal-only, merged, conflicts]
+          description: Of the result, once the resolutions are applied
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingPullRequestConflict'
+        resultYaml:
+          type: string
+        regenerated:
+          type: boolean
+          description: The result is not the text of the proposal or of the target as written
+        validation:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            error:
+              type: string
+            line:
+              type: integer
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingPullRequestWarning'
+        previewToken:
+          type: string
+        suggestedVersion:
+          type: string
+        existingPullRequest:
+          type: object
+          description: Fork previews only. The caller's open pull request from the fork, which submitting replaces
+          properties:
+            id:
+              type: string
+            number:
+              type: integer
+            proposalRevision:
+              type: integer
+        versionTaken:
+          type: boolean
+          description: Merge previews only
+        defaults:
+          type: object
+          description: Merge previews only
+          properties:
+            private:
+              type: boolean
+
+    PricingPullRequestForkTarget:
+      type: object
+      required: [canPropose]
+      properties:
+        canPropose:
+          type: boolean
+        reason:
+          type: string
+          enum: [NOT_A_FORK, PARENT_UNAVAILABLE, NO_PUBLIC_VERSION, PULL_REQUEST_EXISTS]
+        parent:
+          type: object
+          properties:
+            pricingId:
+              type: string
+            name:
+              type: string
+            slug:
+              type: string
+            organizationId:
+              type: string
+        openPullRequest:
+          type: object
+          description: '`id` and `proposalRevision` only for its author'
+          properties:
+            id:
+              type: string
+            number:
+              type: integer
+            proposalRevision:
+              type: integer
 
     PricingPullRequestVersionRef:
       type: object
@@ -7473,11 +7919,20 @@ components:
       properties:
         code:
           type: string
-          enum: [SYNTAX_UPGRADED, FORMAT_REGENERATED]
+          enum: [SYNTAX_UPGRADED, FORMAT_REGENERATED, MANUAL_OVERRIDE, GLOBAL_FIELD_CHANGED, PREVIOUSLY_MERGED]
           description: |
-            `SYNTAX_UPGRADED`: the proposal was in an older Pricing2Yaml syntax and was written again
-            in the latest one. `FORMAT_REGENERATED`: setting the pricing's name needed writing it again
-            (comments and layout lost).
+            `SYNTAX_UPGRADED`: a text was in an older Pricing2Yaml syntax and was written again in
+            the latest one. `FORMAT_REGENERATED`: combining both sides, or setting the pricing's name,
+            needed writing the result again (comments and layout lost). `MANUAL_OVERRIDE`: the result
+            is the text typed by hand. `GLOBAL_FIELD_CHANGED`: the latest version changed `fields`
+            (currency, billing or variables) and the proposal changes a price. `PREVIOUSLY_MERGED`: a
+            pull request from the same fork was merged before (`number`).
+        fields:
+          type: array
+          items:
+            type: string
+        number:
+          type: integer
 
     PricingPullRequestState:
       type: object

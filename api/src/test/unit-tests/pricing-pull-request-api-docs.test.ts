@@ -46,9 +46,13 @@ describe('OpenAPI specification of the pricing pull requests', () => {
   it('documents every route and method', () => {
     expect(operations.map(({ route, method }) => `${method} ${route}`).sort()).toEqual([
       'get /pricing-pull-requests',
+      'get /pricing-pull-requests/fork-target',
       'get /pricing-pull-requests/{pullRequestId}',
       'post /pricing-pull-requests',
+      'post /pricing-pull-requests/previews',
       'post /pricing-pull-requests/{pullRequestId}/close',
+      'post /pricing-pull-requests/{pullRequestId}/merge-preview',
+      'post /pricing-pull-requests/{pullRequestId}/update',
       'put /pricing-pull-requests/{pullRequestId}',
     ]);
     for (const { route, method } of operations) {

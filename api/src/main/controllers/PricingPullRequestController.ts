@@ -1,6 +1,7 @@
 import container from '../config/container';
 import PricingPullRequestService from '../services/PricingPullRequestService';
 import { PullRequestError } from '../types/models/PricingPullRequest';
+import { PricingMergeError } from '../utils/pricing-merge';
 import { PricingYamlError } from '../utils/pricing-syntax';
 import { handleError } from '../utils/users/helpers';
 
@@ -11,6 +12,9 @@ function sendError(res: any, err: unknown) {
   }
   if (err instanceof PricingYamlError) {
     return res.status(err.status).json({ error: err.message, code: err.code, ...(err.line !== undefined ? { line: err.line } : {}) });
+  }
+  if (err instanceof PricingMergeError) {
+    return res.status(err.status).json({ error: err.message, code: err.code, conflictIds: err.conflictIds });
   }
   const { status, message } = handleError(err);
   return res.status(status).json({ error: message });
@@ -24,8 +28,12 @@ class PricingPullRequestController {
     this.requireWebSession = this.requireWebSession.bind(this);
     this.index = this.index.bind(this);
     this.create = this.create.bind(this);
+    this.forkTarget = this.forkTarget.bind(this);
+    this.preview = this.preview.bind(this);
     this.show = this.show.bind(this);
     this.update = this.update.bind(this);
+    this.mergePreview = this.mergePreview.bind(this);
+    this.updateToLatest = this.updateToLatest.bind(this);
     this.close = this.close.bind(this);
   }
 
@@ -57,8 +65,64 @@ class PricingPullRequestController {
   async create(req: any, res: any) {
     try {
       const { title, description, source } = req.body;
-      const result = await this.pricingPullRequestService.create(req.user, { title, description, source });
+      if (source.kind === 'fork') {
+        const { resolutions, manualYaml, previewToken } = req.body;
+        const result = await this.pricingPullRequestService.proposeFromFork(req.user, {
+          title,
+          description,
+          source: { kind: 'fork', forkPricingId: source.forkPricingId },
+          resolutions,
+          manualYaml,
+          previewToken,
+        });
+        // The author's open pull request from the fork took the new proposal.
+        if (!result.created) return res.json({ updated: true, ...result.pullRequest });
+        return res.status(201).json(result.pullRequest);
+      }
+      const result = await this.pricingPullRequestService.create(req.user, {
+        title,
+        description,
+        source: { kind: 'text', pricingId: source.pricingId, baseVersionId: source.baseVersionId, proposedYaml: source.proposedYaml },
+      });
       res.status(201).json(result);
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+
+  async forkTarget(req: any, res: any) {
+    try {
+      res.json(await this.pricingPullRequestService.forkTarget(req.user, String(req.query.forkPricingId)));
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+
+  async preview(req: any, res: any) {
+    try {
+      const { source, resolutions } = req.body;
+      const normalized = source.kind === 'fork'
+        ? { kind: 'fork' as const, forkPricingId: source.forkPricingId }
+        : { kind: 'text' as const, pricingId: source.pricingId, baseVersionId: source.baseVersionId, proposedYaml: source.proposedYaml };
+      res.json(await this.pricingPullRequestService.preview(req.user, { source: normalized, resolutions }));
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+
+  async mergePreview(req: any, res: any) {
+    try {
+      const { purpose, resolutions } = req.body;
+      res.json(await this.pricingPullRequestService.mergePreview(req.user, req.params.pullRequestId, { purpose, resolutions }));
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+
+  async updateToLatest(req: any, res: any) {
+    try {
+      const { resolutions, manualYaml, previewToken } = req.body;
+      res.json(await this.pricingPullRequestService.update(req.user, req.params.pullRequestId, { resolutions, manualYaml, previewToken }));
     } catch (err) {
       sendError(res, err);
     }

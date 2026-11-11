@@ -25,10 +25,45 @@ const loadFileRoutes = function (app: express.Application) {
       pricingPullRequestController.create
     );
 
+  // Static routes before /:pullRequestId.
+  app
+    .route(baseUrl + '/fork-target')
+    .get(webSession, PricingPullRequestValidator.forkTarget, handleValidation, pricingPullRequestController.forkTarget);
+
+  app
+    .route(baseUrl + '/previews')
+    .post(
+      webSession,
+      pricingPullRequestRateLimiter,
+      PricingPullRequestValidator.preview,
+      handleValidation,
+      pricingPullRequestController.preview
+    );
+
   app
     .route(baseUrl + '/:pullRequestId')
     .get(webSession, PricingPullRequestValidator.show, handleValidation, pricingPullRequestController.show)
     .put(webSession, PricingPullRequestValidator.update, handleValidation, pricingPullRequestController.update);
+
+  app
+    .route(baseUrl + '/:pullRequestId/merge-preview')
+    .post(
+      webSession,
+      pricingPullRequestRateLimiter,
+      PricingPullRequestValidator.mergePreview,
+      handleValidation,
+      pricingPullRequestController.mergePreview
+    );
+
+  app
+    .route(baseUrl + '/:pullRequestId/update')
+    .post(
+      webSession,
+      pricingPullRequestRateLimiter,
+      PricingPullRequestValidator.updateToLatest,
+      handleValidation,
+      pricingPullRequestController.updateToLatest
+    );
 
   app
     .route(baseUrl + '/:pullRequestId/close')

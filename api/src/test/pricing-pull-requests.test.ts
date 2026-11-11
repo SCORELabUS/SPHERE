@@ -1,5 +1,7 @@
+import { createHash } from 'crypto';
 import dotenv from 'dotenv';
 import { promises as fsp, readFileSync } from 'fs';
+import yaml from 'js-yaml';
 import os from 'os';
 import path from 'path';
 import mongoose from 'mongoose';
@@ -10,9 +12,10 @@ import testContainer from './utils/config/testContainer';
 import { BASE_PATH } from './utils/config/variables';
 import { randomSuffix } from './utils/helpers';
 import { createAndLoginUser, deleteTestUser } from './utils/users/userTestUtils';
-import { createMembership } from './utils/organizations';
+import { createMembership, createTestOrganization } from './utils/organizations';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
 import { forkPricingIntoOrganization } from './utils/pricings/pricingTestUtils';
+import appContainer from '../main/config/container';
 import { getMongoDBConnectionURI } from '../main/config/mongoose';
 import { seedDatabase } from '../main/database/seeders/mongo/seeder';
 import { up } from '../main/migrations/mongo/20261111120000-create-pricing-pull-requests';
@@ -26,6 +29,7 @@ import PricingPullRequestRepository, {
   duplicateKeyFields,
 } from '../main/repositories/mongoose/PricingPullRequestRepository';
 import { NewPricingPullRequest } from '../main/types/models/PricingPullRequest';
+import { requirePricingFile } from '../main/utils/pricing-files';
 import { mergePricingDocs } from '../main/utils/pricing-merge';
 import { dumpPricingDoc, loadPricingDoc, STORED_PRICING_MAX_BYTES, upgradeToLatestSyntax } from '../main/utils/pricing-syntax';
 
@@ -848,11 +852,14 @@ describe('Pricing pull requests', () => {
       expect(retitled.status).toBe(200);
       expect(retitled.body).toMatchObject({ title: 'Renamed', description: 'Now with a description', proposalRevision: 1 });
 
-      // Brought up to date (the route that does it comes with the previews), its proposal can change again.
-      await repository.updateOpen(behind.id, 1, {
-        base: { versionId: v4.id, version: v4.version, yaml: v4.text },
-        proposed: { yaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7.5), platinumAt(20))), suggestedVersion: '9.0.0' },
+      // Brought up to date, its proposal can change again.
+      const preview = await request(app()).post(`${PULL_REQUESTS}/${behind.id}/merge-preview`).set(bearer(external.token)).send({ purpose: 'update' });
+      expect(preview.body.target).toEqual({ id: v4.id, version: v4.version });
+      const updated = await request(app()).post(`${PULL_REQUESTS}/${behind.id}/update`).set(bearer(external.token)).send({
+        resolutions: { [JSON.stringify(['plans', 'GOLD', 'price'])]: 'proposal' }, previewToken: preview.body.previewToken,
       });
+      expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+      expect(updated.body).toMatchObject({ base: { versionId: v4.id }, proposalRevision: 2 });
       const afterUpdate = await edit(external.token, behind.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7), platinumAt(20))) });
       expect(afterUpdate.status).toBe(200);
       expect(afterUpdate.body).toMatchObject({ proposalRevision: 3, state: { kind: 'up-to-date' } });
@@ -1282,6 +1289,905 @@ describe('Pricing pull requests', () => {
       await repository.updateOpen(changed.id, 1, { proposed: { yaml: pricingYaml(name, '9.0.0', platinumAt(99)), suggestedVersion: '9.0.0' } });
       await list(owner.token, v1.pricingId);
       expect(mergePricingDocs).toHaveBeenCalledTimes(21);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Previews, proposals from forks and updates: helpers
+  // ---------------------------------------------------------------------------
+
+  const GOLD_PRICE = JSON.stringify(['plans', 'GOLD', 'price']);
+  const UPLOADED = path.resolve(process.cwd(), 'public', 'static', 'pricings', 'uploaded');
+  /** GOLD's price in the template, as a conflict side writes it. */
+  const TEMPLATE_GOLD_PRICE = yaml.dump((TEMPLATE as any).plans.GOLD.price);
+
+  const previews = (token: string, body: Record<string, unknown>) =>
+    request(app()).post(`${PULL_REQUESTS}/previews`).set(bearer(token)).send(body);
+  const forkTarget = (token: string, forkPricingId: string) =>
+    request(app()).get(`${PULL_REQUESTS}/fork-target?forkPricingId=${forkPricingId}`).set(bearer(token));
+  const mergePreview = (token: string, id: string, body: Record<string, unknown>) =>
+    request(app()).post(`${PULL_REQUESTS}/${id}/merge-preview`).set(bearer(token)).send(body);
+  const updateToLatest = (token: string, id: string, body: Record<string, unknown>) =>
+    request(app()).post(`${PULL_REQUESTS}/${id}/update`).set(bearer(token)).send(body);
+  const forkSource = (forkPricingId: string) => ({ kind: 'fork', forkPricingId });
+  const previewFork = (token: string, forkPricingId: string, resolutions?: Record<string, string>) =>
+    previews(token, { source: forkSource(forkPricingId), ...(resolutions ? { resolutions } : {}) });
+  /** Proposes the fork as `preview` showed it. */
+  const proposeFork = (token: string, forkPricingId: string, preview: { previewToken: string }, extra: Record<string, unknown> = {}) =>
+    open(token, { title: 'From the fork', source: forkSource(forkPricingId), previewToken: preview.previewToken, ...extra });
+  const docOf = (text: string): any => loadPricingDoc(text, STORED_PRICING_MAX_BYTES);
+  const reorderPlans = (...names: string[]): PricingChange => doc => {
+    doc.plans = Object.fromEntries(names.map(name => [name, doc.plans[name]]));
+  };
+  const withFeature = (feature: string): PricingChange => doc => {
+    doc.features[feature] = {
+      description: 'Added', valueType: 'BOOLEAN', defaultValue: false, type: 'DOMAIN',
+      expression: `pricingContext['features']['${feature}']`,
+    };
+  };
+  const fileOf = async (versionId: string) => requirePricingFile(String((await PricingMongoose.findById(versionId).lean())!.yaml));
+  const hashOf = async (versionId: string) => createHash('sha256').update(readFileSync(await fileOf(versionId))).digest('hex');
+  /**
+   * What `uploaded/` holds: its top-level folders, and every file inside those
+   * named after `folders` (the scene's pricings and organizations). The whole
+   * tree is too large to list on every run.
+   */
+  const uploadedFiles = async (folders: string[]) => {
+    const top = (await fsp.readdir(UPLOADED)).sort();
+    const inside = [];
+    for (const folder of folders.filter(name => top.includes(name))) {
+      inside.push(...(await fsp.readdir(path.join(UPLOADED, folder), { recursive: true })).map(file => `${folder}/${file}`));
+    }
+    return { top, inside: inside.sort() };
+  };
+
+  /** A new version of the fork, published through the API by its owner. */
+  const publishFork = (scene: { forker: User; forkOrganizationId: string; fork: { name: string; slug: string } }, version: string, change: PricingChange, isPrivate = false) =>
+    publish(scene.forker.token, scene.forkOrganizationId, { name: scene.fork.name, slug: scene.fork.slug, version, change, isPrivate });
+
+  /**
+   * P (v1 with `initial`, then v2 with `current` on top) owned by one user, and a
+   * fork F of P@v1 owned by another, whose latest version F2 makes `proposal` on
+   * top of v1.
+   */
+  async function forkScene(params: { initial?: PricingChange; current?: PricingChange; proposal?: PricingChange } = {}) {
+    const initial = params.initial ?? (() => undefined);
+    const { user: owner, organizationId } = await createAndLoginUser('USER');
+    const name = `pr_${randomSuffix()}`;
+    const v1 = await publish(owner.token, organizationId, { name, version: '1.0.0', change: initial });
+    const { user: forker, organizationId: forkOrganizationId } = await createAndLoginUser('USER');
+    const fork = await forkPricingIntoOrganization({
+      token: forker.token, sourceOrganizationId: organizationId, sourceSlug: v1.slug, sourceVersion: '1.0.0',
+      targetOrganizationId: forkOrganizationId, name: `fork_${randomSuffix()}`,
+    });
+    const forkId = String((await PricingMongoose.findById(fork.id).lean())!.pricingId);
+    const v2 = await publish(owner.token, organizationId, { name, slug: v1.slug, version: '2.0.0', change: both(initial, params.current ?? V2) });
+    const scene = { owner, organizationId, name, slug: v1.slug, pricingId: v1.pricingId, v1, v2, forker, forkOrganizationId, fork, forkId };
+    const f2 = await publishFork(scene, '1.1.0', both(initial, params.proposal ?? goldAt(30)));
+    return { ...scene, f2 };
+  }
+  type ForkScene = Awaited<ReturnType<typeof forkScene>>;
+
+  /** Previews the fork, expects it to be fine, and proposes it with `resolutions`. */
+  async function proposeFromScene(scene: Pick<ForkScene, 'forker' | 'forkId'>, resolutions?: Record<string, string>) {
+    const preview = await previewFork(scene.forker.token, scene.forkId, resolutions);
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    return proposeFork(scene.forker.token, scene.forkId, preview.body, resolutions ? { resolutions } : {});
+  }
+
+  // ---------------------------------------------------------------------------
+  // Proposing from a fork
+  // ---------------------------------------------------------------------------
+
+  describe('Proposing the latest version of a fork to its parent', { timeout: 30000 }, () => {
+    it('Combines the fork\'s changes with the latest public version, without conflicts and without publishing (CA-11, CA-12, CA-89).', async () => {
+      const scene = await forkScene({ proposal: both(goldAt(30), withFeature('x-from-fork')) });
+      const before = await versionCount(scene.pricingId);
+
+      const target = await forkTarget(scene.forker.token, scene.forkId);
+      expect(target.body).toEqual({
+        canPropose: true,
+        parent: { pricingId: scene.pricingId, name: scene.name, slug: scene.slug, organizationId: scene.organizationId },
+      });
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({
+        base: { id: scene.fork.id }, target: { id: scene.v2.id, version: '2.0.0' },
+        outcome: 'merged', conflicts: [], regenerated: true, validation: { ok: true }, suggestedVersion: '1.1.0',
+      });
+      // Both sides changed, so the result is written again (CA-89).
+      expect(preview.body.warnings).toContainEqual({ code: 'FORMAT_REGENERATED' });
+      const result = docOf(preview.body.resultYaml);
+      expect(result.plans.BASIC.price).toBe(1);
+      expect(result.plans.GOLD.price).toBe(30);
+      expect(result.features['x-from-fork']).toBeDefined();
+      // The fork's version, date and name are not changes; the result keeps P's name (CA-12).
+      expect(result.saasName).toBe(scene.name);
+
+      const created = await proposeFork(scene.forker.token, scene.forkId, preview.body);
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      expect(created.body).toMatchObject({
+        base: { versionId: scene.v2.id, version: '2.0.0' },
+        proposed: { suggestedVersion: '1.1.0' },
+        origin: { pricingId: scene.forkId, versionId: scene.f2.id, version: '1.1.0', editedAfterProposal: false },
+        state: { kind: 'up-to-date' },
+      });
+      expect(created.body.base.yaml).toBe(scene.v2.text);
+      expect(created.body.proposed.yaml).toBe(preview.body.resultYaml);
+      expect(await versionCount(scene.pricingId)).toBe(before);
+    });
+
+    it('Shows a conflict with its three values and refuses it unresolved (CA-13).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: both(goldAt(30), platinumAt(50)) });
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+      expect(preview.body.outcome).toBe('conflicts');
+      expect(preview.body.conflicts).toEqual([expect.objectContaining({
+        id: GOLD_PRICE, label: 'plans.GOLD.price', section: 'plans', entry: 'GOLD', scope: 'value',
+        base: { present: true, yaml: TEMPLATE_GOLD_PRICE },
+        current: { present: true, yaml: '20\n' },
+        proposal: { present: true, yaml: '30\n' },
+      })]);
+
+      const unresolved = await proposeFork(scene.forker.token, scene.forkId, preview.body);
+      expect(unresolved.status).toBe(409);
+      expect(unresolved.body).toMatchObject({ code: 'UNRESOLVED_CONFLICTS', conflictIds: [GOLD_PRICE] });
+      expect(await pullRequestCount(scene.pricingId)).toBe(0);
+    });
+
+    it('Keeps the current value of a conflict resolved with "Keep current" (CA-13).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: both(goldAt(30), platinumAt(50)) });
+
+      const created = await proposeFromScene(scene, { [GOLD_PRICE]: 'current' });
+
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      expect(docOf(created.body.proposed.yaml).plans).toMatchObject({ GOLD: { price: 20 }, PLATINUM: { price: 50 } });
+    });
+
+    it('Takes the fork\'s value of a conflict resolved with "Use proposal" (CA-13).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: both(goldAt(30), platinumAt(50)) });
+
+      const created = await proposeFromScene(scene, { [GOLD_PRICE]: 'proposal' });
+
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      expect(docOf(created.body.proposed.yaml).plans).toMatchObject({ GOLD: { price: 30 }, PLATINUM: { price: 50 } });
+    });
+
+    it('Refuses a preview older than a new public version, naming it, and not one older than a private version (CA-14).', async () => {
+      const scene = await forkScene();
+      const stale = await previewFork(scene.forker.token, scene.forkId);
+      await publish(scene.owner.token, scene.organizationId, { name: scene.name, slug: scene.slug, version: '3.0.0-private', isPrivate: true, change: both(V2, platinumAt(40)) });
+
+      const overPrivate = await proposeFork(scene.forker.token, scene.forkId, stale.body);
+      expect(overPrivate.status, JSON.stringify(overPrivate.body)).toBe(201);
+      expect(overPrivate.body.base.versionId).toBe(scene.v2.id);
+
+      const other = await forkScene();
+      const old = await previewFork(other.forker.token, other.forkId);
+      const v3 = await publish(other.owner.token, other.organizationId, { name: other.name, slug: other.slug, version: '3.0.0', change: both(V2, platinumAt(40)) });
+      const refused = await proposeFork(other.forker.token, other.forkId, old.body);
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({ code: 'BASE_NOT_LATEST', latest: { id: v3.id, version: '3.0.0' } });
+      expect(await pullRequestCount(other.pricingId)).toBe(0);
+    });
+
+    it('Has nothing to propose when the parent already has the fork\'s changes (CA-15).', async () => {
+      const scene = await forkScene({ current: goldAt(30), proposal: goldAt(30) });
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+      expect(preview.body.outcome).toBe('no-changes');
+      const refused = await proposeFork(scene.forker.token, scene.forkId, preview.body);
+
+      expect(refused.status).toBe(400);
+      expect(refused.body.code).toBe('NO_CHANGES');
+      expect(await pullRequestCount(scene.pricingId)).toBe(0);
+    });
+
+    it('Proposes a fork of a fork to the fork it was made from (CA-16).', async () => {
+      const scene = await forkScene();
+      const { user: third, organizationId: thirdOrganizationId } = await createAndLoginUser('USER');
+      const grandchild = await forkPricingIntoOrganization({
+        token: third.token, sourceOrganizationId: scene.forkOrganizationId, sourceSlug: scene.fork.slug, sourceVersion: '1.1.0',
+        targetOrganizationId: thirdOrganizationId, name: `grandchild_${randomSuffix()}`,
+      });
+      const grandchildId = String((await PricingMongoose.findById(grandchild.id).lean())!.pricingId);
+
+      const target = await forkTarget(third.token, grandchildId);
+
+      expect(target.body).toMatchObject({ canPropose: true, parent: { pricingId: scene.forkId } });
+    });
+
+    it('Answers the same whether the parent is gone or cannot be read (CA-17).', async () => {
+      const gone = await forkScene();
+      await PricingMongoose.deleteMany({ pricingId: new mongoose.Types.ObjectId(gone.pricingId) });
+      const hidden = await forkScene();
+      await PricingMongoose.updateMany({ pricingId: new mongoose.Types.ObjectId(hidden.pricingId) }, { $set: { private: true } });
+
+      const answers = [];
+      for (const scene of [gone, hidden]) {
+        const target = await forkTarget(scene.forker.token, scene.forkId);
+        const preview = await previewFork(scene.forker.token, scene.forkId);
+        const proposed = await proposeFork(scene.forker.token, scene.forkId, { previewToken: 'x.y' });
+        expect([target.status, preview.status, proposed.status]).toEqual([200, 404, 404]);
+        answers.push([target.body, preview.body, proposed.body]);
+      }
+
+      expect(answers[0]).toEqual(answers[1]);
+      expect(answers[0][0]).toEqual({ canPropose: false, reason: 'PARENT_UNAVAILABLE' });
+      expect(answers[0][2]).toEqual({ error: expect.any(String), code: 'PARENT_UNAVAILABLE' });
+    });
+
+    it('Refuses who may read the fork but not publish versions of it (CA-18).', async () => {
+      const scene = await forkScene();
+      const reader = await outsider();
+
+      const responses = [
+        await forkTarget(reader.token, scene.forkId),
+        await previewFork(reader.token, scene.forkId),
+        await proposeFork(reader.token, scene.forkId, { previewToken: 'x.y' }),
+      ];
+
+      for (const response of responses) {
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('FORBIDDEN');
+      }
+      // Who may not even read the fork is told it does not exist.
+      await PricingMongoose.updateMany({ pricingId: new mongoose.Types.ObjectId(scene.forkId) }, { $set: { private: true } });
+      expect((await forkTarget(reader.token, scene.forkId)).status).toBe(404);
+    });
+
+    it('Shows the maintainers a proposal made from private versions of a fork without naming them (CA-19).', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const forker = await memberOf(scene.organizationId, scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: false });
+      const forkOrganization = await createTestOrganization(forker.token);
+      const fork = await forkPricingIntoOrganization({
+        token: forker.token, sourceOrganizationId: scene.organizationId, sourceSlug: scene.slug, sourceVersion: scene.v3.version,
+        targetOrganizationId: forkOrganization.id, name: `fork_${randomSuffix()}`,
+      });
+      const forkBase = (await PricingMongoose.findById(fork.id).lean())!;
+      expect(forkBase.private).toBe(true);
+      const forkId = String(forkBase.pricingId);
+      const f2 = await publish(forker.token, forkOrganization.id, {
+        name: fork.name, slug: fork.slug, version: '3.5.0', isPrivate: true, change: both(V2, V3_ONLY, platinumAt(55)),
+      });
+
+      const created = await proposeFromScene({ forker, forkId });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+      const answers = [await list(scene.owner.token, scene.pricingId), await detail(scene.owner.token, created.body.id)];
+      expect(docOf(answers[1].body.proposed.yaml).plans.PLATINUM.price).toBe(55);
+      expect(answers[1].body.origin).toBeUndefined();
+      expect(answers.map(answer => leaks(answer, [fork.id, f2.id])).flat()).toEqual([]);
+    });
+
+    it('Reads the base from the fork\'s own copy, and changes no file of either pricing (CA-20).', async () => {
+      const scene = await forkScene();
+      // v1 deleted from P and published again with the same label and other content.
+      const deleted = await request(app()).delete(`${BASE_PATH}/pricings/${scene.organizationId}/${scene.slug}/1.0.0`).set(bearer(scene.owner.token));
+      expect(deleted.status).toBe(200);
+      const recreated = await publish(scene.owner.token, scene.organizationId, { name: scene.name, slug: scene.slug, version: '1.0.0', change: both(V2, platinumAt(70)) });
+      const versionIds = [scene.v2.id, recreated.id, scene.fork.id, scene.f2.id];
+      const hashes = await Promise.all(versionIds.map(hashOf));
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+      expect(preview.body).toMatchObject({ base: { id: scene.fork.id }, target: { id: recreated.id }, conflicts: [] });
+      expect(docOf(preview.body.resultYaml).plans).toMatchObject({ GOLD: { price: 30 }, PLATINUM: { price: 70 } });
+      expect((await proposeFork(scene.forker.token, scene.forkId, preview.body)).status).toBe(201);
+
+      expect(await Promise.all(versionIds.map(hashOf))).toEqual(hashes);
+    });
+
+    it('Refuses an invalid combination with the parser\'s own words, never as 401 or 404 (CA-28).', async () => {
+      const feature = 'Unauthorized not found';
+      const scene = await forkScene({
+        initial: withFeature(feature),
+        current: doc => {
+          delete doc.features[feature];
+        },
+        proposal: doc => {
+          doc.usageLimits.maxPets.linkedFeatures = [...(doc.usageLimits.maxPets.linkedFeatures ?? []), feature];
+        },
+      });
+      const linked = JSON.stringify(['usageLimits', 'maxPets', 'linkedFeatures']);
+
+      const preview = await previewFork(scene.forker.token, scene.forkId, { [linked]: 'proposal' });
+      expect(preview.body.conflicts.map((conflict: any) => conflict.id)).toEqual([linked]);
+      expect(preview.body.validation).toMatchObject({ ok: false, error: expect.stringContaining(feature) });
+
+      const refused = await proposeFork(scene.forker.token, scene.forkId, preview.body, { resolutions: { [linked]: 'proposal' } });
+      expect(refused.status).toBe(400);
+      expect(refused.body).toMatchObject({ code: 'INVALID_PRICING', error: expect.stringContaining(feature) });
+      expect(await pullRequestCount(scene.pricingId)).toBe(0);
+    });
+
+    it('Takes a result typed by hand over the resolutions, and refuses unknown ones (CA-29).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: both(goldAt(30), platinumAt(50)) });
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+
+      const unknown = await proposeFork(scene.forker.token, scene.forkId, preview.body, {
+        resolutions: { [GOLD_PRICE]: 'current', '["plans","NOPE"]': 'proposal' },
+      });
+      expect(unknown.status).toBe(422);
+      expect(unknown.body).toMatchObject({ code: 'UNKNOWN_RESOLUTION', conflictIds: ['["plans","NOPE"]'] });
+      expect(await pullRequestCount(scene.pricingId)).toBe(0);
+
+      const manualYaml = pricingYaml('Typed by hand', '1.2.0', both(goldAt(25), platinumAt(50)));
+      const manual = await proposeFork(scene.forker.token, scene.forkId, preview.body, { resolutions: { [GOLD_PRICE]: 'proposal' }, manualYaml });
+      expect(manual.status, JSON.stringify(manual.body)).toBe(201);
+      expect(manual.body.warnings).toContainEqual({ code: 'MANUAL_OVERRIDE' });
+      expect(docOf(manual.body.proposed.yaml)).toMatchObject({ saasName: scene.name, plans: { GOLD: { price: 25 } } });
+      // A result typed by hand is not what the fork had.
+      expect(manual.body.origin.editedAfterProposal).toBe(true);
+    });
+
+    it('Compares a fork in older syntaxes once upgraded, and writes the result in the latest one (CA-69).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: V2 });
+      const raw: any = yaml.load(readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'));
+      // The same pricing as P@v1 plus v2's change, in syntax 2.1 (with TIME_DRIVEN usage limits).
+      const old = { ...raw, saasName: scene.fork.name, version: '1.1.0', syntaxVersion: '2.1' };
+      old.plans.BASIC.price = 1;
+      old.usageLimits.maxVisitsPerMonthAndPet = { ...old.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete old.usageLimits.maxVisitsPerMonthAndPet.period;
+      await fsp.writeFile(await fileOf(scene.f2.id), yaml.dump(old), 'utf8');
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({ outcome: 'merged', conflicts: [], validation: { ok: true } });
+      expect(preview.body.warnings).toContainEqual({ code: 'SYNTAX_UPGRADED' });
+      const result = docOf(preview.body.resultYaml);
+      expect(result).toMatchObject({ syntaxVersion: '3.1', plans: { BASIC: { price: 1 }, GOLD: { price: 20 } } });
+      expect(result.usageLimits.maxVisitsPerMonthAndPet).toMatchObject({ type: 'RENEWABLE', period: { value: 1, unit: 'MONTH' } });
+    });
+
+    it('Refuses a pricing that names no pricing it was forked from (CA-71).', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const plain = await publish(owner.token, organizationId, { name: `pr_${randomSuffix()}`, version: '1.0.0' });
+
+      expect((await forkTarget(owner.token, plain.pricingId)).body).toEqual({ canPropose: false, reason: 'NOT_A_FORK' });
+      for (const response of [await previewFork(owner.token, plain.pricingId), await proposeFork(owner.token, plain.pricingId, { previewToken: 'x.y' })]) {
+        expect(response.status).toBe(422);
+        expect(response.body.code).toBe('NOT_A_FORK');
+      }
+    });
+
+    it('Has no public version of the parent to propose to: 409 for who reads its private ones, unavailable for anyone else (CA-72).', async () => {
+      const scene = await forkScene();
+      await PricingMongoose.updateMany({ pricingId: new mongoose.Types.ObjectId(scene.pricingId) }, { $set: { private: true } });
+      await createMembership(scene.forker.id, scene.organizationId, 'MEMBER');
+      const reader = await createEntityPermission(scene.forker.id, scene.organizationId, 'pricing', scene.slug, { GET: true, PUT: false, DELETE: false, CREATE: false });
+      permissionsToDelete.add(String(reader._id ?? reader.id));
+
+      expect((await forkTarget(scene.forker.token, scene.forkId)).body).toMatchObject({ canPropose: false, reason: 'NO_PUBLIC_VERSION' });
+      const refused = await proposeFork(scene.forker.token, scene.forkId, { previewToken: 'x.y' });
+      expect(refused.status).toBe(409);
+      expect(refused.body.code).toBe('NO_PUBLIC_VERSION');
+
+      await EntityPermissionMongoose.deleteOne({ _id: reader._id ?? reader.id });
+      await OrganizationMembershipMongoose.deleteMany({ _userId: new mongoose.Types.ObjectId(scene.forker.id), _organizationId: new mongoose.Types.ObjectId(scene.organizationId) });
+      expect((await forkTarget(scene.forker.token, scene.forkId)).body).toEqual({ canPropose: false, reason: 'PARENT_UNAVAILABLE' });
+      const unavailable = await proposeFork(scene.forker.token, scene.forkId, { previewToken: 'x.y' });
+      expect(unavailable.status).toBe(404);
+      expect(unavailable.body.code).toBe('PARENT_UNAVAILABLE');
+    });
+
+    it('Takes a proposal that only reorders plans, and a conflict when both sides reorder them differently (CA-94).', async () => {
+      const reordered = await forkScene({ current: reorderPlans('PLATINUM', 'GOLD', 'BASIC'), proposal: reorderPlans('GOLD', 'BASIC', 'PLATINUM') });
+      const preview = await previewFork(reordered.forker.token, reordered.forkId);
+      expect(preview.body.conflicts).toEqual([expect.objectContaining({ id: JSON.stringify(['plans']), scope: 'order' })]);
+
+      // One side reorders and the other changes a price: the new order stays.
+      const combined = await forkScene({ current: reorderPlans('PLATINUM', 'GOLD', 'BASIC'), proposal: goldAt(30) });
+      const merged = await previewFork(combined.forker.token, combined.forkId);
+      expect(merged.body.conflicts).toEqual([]);
+      expect(Object.keys(docOf(merged.body.resultYaml).plans)).toEqual(['PLATINUM', 'GOLD', 'BASIC']);
+
+      // A text that only reorders the plans is a proposal.
+      const external = await outsider();
+      const onlyOrder = await open(external.token, {
+        title: 'Order', source: textSource(combined.pricingId, combined.v2.id, pricingYaml(combined.name, '3.0.0', reorderPlans('GOLD', 'PLATINUM', 'BASIC'))),
+      });
+      expect(onlyOrder.status, JSON.stringify(onlyOrder.body)).toBe(201);
+    });
+  });
+
+  describe('Proposing again from the same fork', { timeout: 30000 }, () => {
+    it('Replaces the proposal of its author\'s open pull request (CA-76).', async () => {
+      const scene = await forkScene();
+      const first = await proposeFromScene(scene);
+      expect(first.status).toBe(201);
+      await publish(scene.owner.token, scene.organizationId, { name: scene.name, slug: scene.slug, version: '3.0.0', change: both(V2, platinumAt(40)) });
+      const f3 = await publishFork(scene, '1.2.0', both(goldAt(30), platinumAt(60)));
+      const latest = await PricingMongoose.findOne({ pricingId: new mongoose.Types.ObjectId(scene.pricingId), version: '3.0.0' }).lean();
+
+      const target = await forkTarget(scene.forker.token, scene.forkId);
+      expect(target.body.openPullRequest).toEqual({ id: first.body.id, number: first.body.number, proposalRevision: 1 });
+      const preview = await previewFork(scene.forker.token, scene.forkId, { [JSON.stringify(['plans', 'PLATINUM', 'price'])]: 'proposal' });
+      expect(preview.body.existingPullRequest).toEqual({ id: first.body.id, number: first.body.number, proposalRevision: 1 });
+      const again = await proposeFork(scene.forker.token, scene.forkId, preview.body, {
+        title: 'Again', resolutions: { [JSON.stringify(['plans', 'PLATINUM', 'price'])]: 'proposal' },
+      });
+
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(again.body).toMatchObject({
+        updated: true, id: first.body.id, number: first.body.number, title: 'Again', proposalRevision: 2,
+        base: { versionId: String(latest!._id), version: '3.0.0' },
+        origin: { versionId: f3.id, version: '1.2.0' },
+      });
+      expect(docOf(again.body.proposed.yaml).plans).toMatchObject({ GOLD: { price: 30 }, PLATINUM: { price: 60 } });
+      expect(await pullRequestCount(scene.pricingId)).toBe(1);
+    });
+
+    it('Opens one pull request for two proposals sent at once, with and without the unique index (CA-96).', async () => {
+      const proposeTwice = async () => {
+        const scene = await forkScene();
+        const preview = await previewFork(scene.forker.token, scene.forkId);
+        const responses = await Promise.all([1, 2].map(() => proposeFork(scene.forker.token, scene.forkId, preview.body)));
+        expect(responses.map(response => response.status).sort()).toEqual([200, 201]);
+        expect(await pullRequestCount(scene.pricingId)).toBe(1);
+      };
+
+      await proposeTwice();
+      const indexes = await mongoose.connection.db!.collection(COLLECTION).indexes();
+      const perFork = indexes.find(index => 'origin.pricingId' in index.key)!;
+      await mongoose.connection.db!.collection(COLLECTION).dropIndex(perFork.name!);
+      try {
+        await proposeTwice();
+      } finally {
+        await up(mongoose.connection);
+      }
+    });
+
+    it('Replaces, rather than numbers again, the pull request another request opened from the fork first (CA-96).', async () => {
+      const scene = await forkScene();
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+      const pullRequests: PricingPullRequestRepository = appContainer.resolve('pricingPullRequestRepository');
+      const create = pullRequests.create.bind(pullRequests);
+      // Another request opens it between the look-up and the creation.
+      const spy = vi.spyOn(pullRequests, 'create').mockImplementationOnce(async data => {
+        await create(data);
+        return create(data);
+      });
+
+      try {
+        const response = await proposeFork(scene.forker.token, scene.forkId, preview.body);
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+        expect(response.body).toMatchObject({ updated: true, number: 1 });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await pullRequestCount(scene.pricingId)).toBe(1);
+    });
+
+    it('Lets only the author replace the open pull request from the fork, from a preview of its current proposal (CA-100).', async () => {
+      const scene = await forkScene();
+      const first = await proposeFromScene(scene);
+      const colleague = await memberOf(scene.forkOrganizationId, scene.fork.slug, { GET: true, PUT: false, DELETE: false, CREATE: true });
+
+      const target = await forkTarget(colleague.token, scene.forkId);
+      expect(target.body).toMatchObject({ canPropose: false, reason: 'PULL_REQUEST_EXISTS', openPullRequest: { number: first.body.number } });
+      expect(target.body.openPullRequest).toEqual({ number: first.body.number });
+      const refused = await proposeFork(colleague.token, scene.forkId, { previewToken: 'x.y' });
+      expect(refused.status).toBe(409);
+      expect(refused.body).toEqual({ error: expect.any(String), code: 'PULL_REQUEST_EXISTS', number: first.body.number });
+      expect(JSON.stringify([target.body, refused.body])).not.toContain(first.body.id);
+
+      // The author edits the proposal by hand: an older preview of the fork may not overwrite it.
+      const old = await previewFork(scene.forker.token, scene.forkId);
+      const edited = await edit(scene.forker.token, first.body.id, { proposedYaml: pricingYaml(scene.name, '1.1.0', both(V2, goldAt(31))) });
+      expect(edited.body.proposalRevision).toBe(2);
+      const stale = await proposeFork(scene.forker.token, scene.forkId, old.body);
+      expect(stale.status).toBe(409);
+      expect(stale.body.code).toBe('PREVIEW_STALE');
+      expect(docOf((await detail(scene.forker.token, first.body.id)).body.proposed.yaml).plans.GOLD.price).toBe(31);
+
+      const fresh = await previewFork(scene.forker.token, scene.forkId);
+      const replaced = await proposeFork(scene.forker.token, scene.forkId, fresh.body);
+      expect(replaced.status).toBe(200);
+      expect(replaced.body).toMatchObject({ proposalRevision: 3, origin: { editedAfterProposal: false } });
+    });
+  });
+
+  describe('Where the fork\'s changes are counted from', { timeout: 30000 }, () => {
+    it('Proposes to the pricing the newest readable version was forked from (CA-77, F-parent).', async () => {
+      const scene = await forkScene();
+      const other = await forkScene();
+      // The fork's latest version names another pricing (inserted as a later sync would).
+      await PricingMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(scene.f2.id) },
+        { $set: { forkedFrom: { pricingId: new mongoose.Types.ObjectId(other.pricingId), version: '2.0.0', name: other.name, slug: other.slug } } }
+      );
+
+      expect((await forkTarget(scene.forker.token, scene.forkId)).body.parent.pricingId).toBe(other.pricingId);
+    });
+
+    it('Starts from the newest version of the fork copied from the parent (CA-77, F-base).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: goldAt(20) });
+      // v_b: a later copy of P, with P@v2's change.
+      await PricingMongoose.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(scene.f2.id) },
+        { $set: { forkedFrom: { pricingId: new mongoose.Types.ObjectId(scene.pricingId), version: '2.0.0', name: scene.name, slug: scene.slug } } }
+      );
+      await publishFork(scene, '1.2.0', goldAt(25));
+
+      const preview = await previewFork(scene.forker.token, scene.forkId);
+
+      // From the first copy (P@v1), GOLD would clash: 20 against 25.
+      expect(preview.body.base.id).toBe(scene.f2.id);
+      expect(preview.body.conflicts).toEqual([]);
+      expect(docOf(preview.body.resultYaml).plans.GOLD.price).toBe(25);
+    });
+
+    it('Only counts the versions of the fork the caller may read (CA-77, F-readable).', async () => {
+      const scene = await forkScene();
+      const hiddenLabel = `1.9.0-hidden-${randomSuffix()}`;
+      const hidden = await publishFork(scene, hiddenLabel, both(goldAt(30), platinumAt(99)), true);
+      const colleague = await memberOf(scene.forkOrganizationId, scene.fork.slug, { GET: false, PUT: false, DELETE: false, CREATE: true });
+
+      const answers = [await forkTarget(colleague.token, scene.forkId), await previewFork(colleague.token, scene.forkId)];
+      expect(docOf(answers[1].body.resultYaml).plans.PLATINUM.price).not.toBe(99);
+      answers.push(await proposeFork(colleague.token, scene.forkId, answers[1].body));
+      expect(answers[2].status, JSON.stringify(answers[2].body)).toBe(201);
+      answers.push(await detail(colleague.token, answers[2].body.id));
+
+      expect(answers[2].body.origin.versionId).toBe(scene.f2.id);
+      expect(answers.map(answer => leaks(answer, [hidden.id, hiddenLabel])).flat()).toEqual([]);
+    });
+
+    it('Starts from what the parent last took in from the fork, and says it was merged before (CA-77, CA-97).', async () => {
+      const scene = await forkScene({ current: goldAt(20), proposal: both(goldAt(30), platinumAt(50)) });
+      /** Proposes the fork and records it as merged into a new public version of P with the proposal. */
+      const proposeAndMerge = async (resolutions: Record<string, string>, version: string) => {
+        const created = await proposeFromScene(scene, resolutions);
+        expect(created.status, JSON.stringify(created.body)).toBe(201);
+        const published = await publish(scene.owner.token, scene.organizationId, { name: scene.name, slug: scene.slug, version, change: doc => {
+          Object.assign(doc, docOf(created.body.proposed.yaml), { saasName: scene.name, version });
+        } });
+        const lock = await repository.reserveForMerge(created.body.id, 1, scene.owner.id);
+        await repository.markMerged(created.body.id, lock!.id, {
+          byId: scene.owner.id, at: new Date(), versionId: published.id, version, proposalRevision: 1,
+        });
+        return created.body;
+      };
+
+      // GOLD clashes; the maintainer keeps 20.
+      const first = await proposeAndMerge({ [GOLD_PRICE]: 'current' }, '3.0.0');
+      const f3 = await publishFork(scene, '1.2.0', both(goldAt(30), platinumAt(50), doc => {
+        doc.plans.BASIC.price = 3;
+      }));
+      const fromMerged = await previewFork(scene.forker.token, scene.forkId);
+      expect(fromMerged.body.base.id).toBe(scene.f2.id);
+      expect(fromMerged.body.conflicts).toEqual([]);
+      expect(docOf(fromMerged.body.resultYaml).plans).toMatchObject({ BASIC: { price: 3 }, GOLD: { price: 20 }, PLATINUM: { price: 50 } });
+      expect(fromMerged.body.warnings).toContainEqual({ code: 'PREVIOUSLY_MERGED', number: first.number });
+
+      // A second merge: the newest merged proposal is the base, and the older one while the newer's version is gone.
+      const second = await proposeAndMerge({}, '4.0.0');
+      await publishFork(scene, '1.3.0', both(goldAt(30), platinumAt(50), doc => {
+        doc.plans.BASIC.price = 3;
+      }));
+      const fromNewest = await previewFork(scene.forker.token, scene.forkId);
+      expect(fromNewest.body.base.id).toBe(f3.id);
+      expect(fromNewest.body.warnings).toContainEqual({ code: 'PREVIOUSLY_MERGED', number: second.number });
+      await PricingMongoose.deleteOne({ _id: f3.id });
+      expect((await previewFork(scene.forker.token, scene.forkId)).body.base.id).toBe(scene.f2.id);
+
+      // Once no merged version is left in the fork, the first copy of P is the base and the conflict comes back.
+      await PricingMongoose.deleteOne({ _id: scene.f2.id });
+      const fromCopy = await previewFork(scene.forker.token, scene.forkId);
+      expect(fromCopy.body.base.id).toBe(scene.fork.id);
+      expect(fromCopy.body.conflicts.map((conflict: any) => conflict.id)).toEqual([GOLD_PRICE]);
+      expect(fromCopy.body.warnings).toContainEqual({ code: 'PREVIOUSLY_MERGED', number: second.number });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Previews of texts
+  // ---------------------------------------------------------------------------
+
+  describe('Previewing a text written on an older version', { timeout: 30000 }, () => {
+    it('Merges it with the latest public version, which it can then be proposed on (CA-23).', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const external = await outsider();
+      const written = pricingYaml(scene.name, '9.0.0', goldAt(7));
+      const refused = await open(external.token, { title: 'Old', source: textSource(scene.pricingId, scene.v1.id, written) });
+      expect(refused.body.code).toBe('BASE_NOT_LATEST');
+
+      const preview = await previews(external.token, { source: textSource(scene.pricingId, scene.v1.id, written) });
+
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({
+        base: { id: scene.v1.id, version: '1.0.0' }, target: { id: scene.v2.id, version: '2.0.0' },
+        outcome: 'merged', conflicts: [], validation: { ok: true }, suggestedVersion: '9.0.0',
+      });
+      expect(docOf(preview.body.resultYaml).plans).toMatchObject({ BASIC: { price: 1 }, GOLD: { price: 7 } });
+      expect(leaks(preview, scene.markers)).toEqual([]);
+      const created = await open(external.token, { title: 'On top', source: textSource(scene.pricingId, scene.v2.id, preview.body.resultYaml) });
+      expect(created.status).toBe(201);
+      expect(docOf(created.body.proposed.yaml).plans.GOLD.price).toBe(7);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Updating to the latest public version
+  // ---------------------------------------------------------------------------
+
+  describe('Bringing a pull request up to the latest public version', { timeout: 30000 }, () => {
+    /** An external author's pull request on v2 (GOLD at 7.5), behind v4 (GOLD at 8, PLATINUM at 20), with the private v3 in between. */
+    async function behindScene() {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, goldAt(7.5));
+      const second = await openOn(author, scene, scene.v2, platinumAt(12));
+      const v4 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '4.0.0', change: both(V2, goldAt(8), platinumAt(20)),
+      });
+      return { ...scene, author, created, second, v4 };
+    }
+
+    it('Merges the latest public version into it, as its preview showed (CA-29).', async () => {
+      const scene = await behindScene();
+      const answers = [];
+
+      const preview = await mergePreview(scene.author.token, scene.created.id, { purpose: 'update' });
+      answers.push(preview);
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({
+        base: { id: scene.v2.id }, target: { id: scene.v4.id, version: '4.0.0' }, outcome: 'conflicts',
+        conflicts: [expect.objectContaining({ id: GOLD_PRICE, current: { present: true, yaml: '8\n' }, proposal: { present: true, yaml: '7.5\n' } })],
+      });
+
+      const unresolved = await updateToLatest(scene.author.token, scene.created.id, { previewToken: preview.body.previewToken });
+      expect(unresolved.status).toBe(409);
+      expect(unresolved.body).toMatchObject({ code: 'UNRESOLVED_CONFLICTS', conflictIds: [GOLD_PRICE] });
+      const unknown = await updateToLatest(scene.author.token, scene.created.id, {
+        previewToken: preview.body.previewToken, resolutions: { [GOLD_PRICE]: 'proposal', '["other"]': 'current' },
+      });
+      expect(unknown.status).toBe(422);
+      expect(unknown.body.code).toBe('UNKNOWN_RESOLUTION');
+      answers.push(unresolved, unknown);
+
+      const updated = await updateToLatest(scene.author.token, scene.created.id, {
+        previewToken: preview.body.previewToken, resolutions: { [GOLD_PRICE]: 'proposal' },
+      });
+      answers.push(updated);
+      expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+      expect(updated.body).toMatchObject({
+        base: { versionId: scene.v4.id, version: '4.0.0' }, proposalRevision: 2, state: { kind: 'up-to-date' },
+      });
+      expect(updated.body.base.yaml).toBe(scene.v4.text);
+      expect(docOf(updated.body.proposed.yaml).plans).toMatchObject({ GOLD: { price: 7.5 }, PLATINUM: { price: 20 } });
+
+      const again = await updateToLatest(scene.author.token, scene.created.id, {
+        previewToken: preview.body.previewToken, resolutions: { [GOLD_PRICE]: 'proposal' },
+      });
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('PULL_REQUEST_UP_TO_DATE');
+      answers.push(again);
+      // Nothing about the private v3 reaches the author (CA-46).
+      expect(answers.map(answer => leaks(answer, scene.markers)).flat()).toEqual([]);
+    });
+
+    it('Takes a result typed by hand, and tells who is not the author or a maintainer nothing.', async () => {
+      const scene = await behindScene();
+      const preview = await mergePreview(scene.author.token, scene.created.id, { purpose: 'update' });
+      const manualYaml = pricingYaml('By hand', '9.1.0', both(V2, goldAt(9), platinumAt(20)));
+
+      expect((await mergePreview(scene.owner.token, scene.created.id, { purpose: 'update' })).status).toBe(403);
+      expect((await updateToLatest(scene.owner.token, scene.created.id, { previewToken: preview.body.previewToken })).status).toBe(403);
+      const stranger = await outsider();
+      expect((await mergePreview(stranger.token, scene.created.id, { purpose: 'update' })).status).toBe(404);
+      expect((await updateToLatest(stranger.token, scene.created.id, { previewToken: preview.body.previewToken })).status).toBe(404);
+
+      const updated = await updateToLatest(scene.author.token, scene.created.id, { previewToken: preview.body.previewToken, manualYaml });
+      expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+      expect(updated.body.warnings).toContainEqual({ code: 'MANUAL_OVERRIDE' });
+      expect(docOf(updated.body.proposed.yaml)).toMatchObject({ saasName: scene.name, version: '9.1.0', plans: { GOLD: { price: 9 } } });
+    });
+
+    it('Refuses a preview token of another pull request, purpose or user, or altered in any way (CA-29, CA-81).', async () => {
+      const scene = await behindScene();
+      const other = scene.second;
+      const resolutions = { [GOLD_PRICE]: 'proposal' };
+      const own = (await mergePreview(scene.author.token, scene.created.id, { purpose: 'update' })).body.previewToken;
+      const [body, mac] = own.split('.');
+      const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+      const tokens = [
+        // Another pull request's, and another user's for another purpose.
+        (await mergePreview(scene.author.token, other.id, { purpose: 'update' })).body.previewToken,
+        (await mergePreview(scene.owner.token, scene.created.id, { purpose: 'merge' })).body.previewToken,
+        // A forged signature, and a payload changed under the real one.
+        `${body}.${Buffer.alloc(32).toString('base64url')}`,
+        `${Buffer.from(JSON.stringify({ ...payload, viewerId: scene.owner.id })).toString('base64url')}.${mac}`,
+        'not a token',
+      ];
+
+      for (const previewToken of tokens) {
+        const response = await updateToLatest(scene.author.token, scene.created.id, { previewToken, resolutions });
+        expect(response.status, previewToken).toBe(409);
+        expect(response.body.code).toBe('PREVIEW_STALE');
+      }
+      expect((await PricingPullRequestMongoose.findById(scene.created.id).lean())!.proposalRevision).toBe(1);
+    });
+
+    it('Refuses a preview older than a newer public version, naming it; a new title leaves it valid (CA-14).', async () => {
+      const scene = await behindScene();
+      const resolutions = { [GOLD_PRICE]: 'proposal' };
+      const preview = await mergePreview(scene.author.token, scene.created.id, { purpose: 'update' });
+      const v5 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '5.0.0', change: both(V2, goldAt(8), platinumAt(21)),
+      });
+
+      const newer = await updateToLatest(scene.author.token, scene.created.id, { previewToken: preview.body.previewToken, resolutions });
+      expect(newer.status).toBe(409);
+      expect(newer.body).toMatchObject({ code: 'BASE_NOT_LATEST', latest: { id: v5.id, version: '5.0.0' } });
+
+      const fresh = await mergePreview(scene.author.token, scene.created.id, { purpose: 'update' });
+      await edit(scene.author.token, scene.created.id, { title: 'Only the title' });
+      expect((await updateToLatest(scene.author.token, scene.created.id, { previewToken: fresh.body.previewToken, resolutions })).status).toBe(200);
+    });
+
+    it('Gives a maintainer the merge with the latest version, private or not.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const created = await open(author.token, {
+        title: 'Same label', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, scene.v3.version, both(V2, platinumAt(12)))),
+      });
+
+      const preview = await mergePreview(scene.owner.token, created.body.id, { purpose: 'merge' });
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({
+        target: { id: scene.v3.id, version: scene.v3.version, private: true },
+        outcome: 'merged', conflicts: [], versionTaken: true, defaults: { private: true },
+      });
+      expect(docOf(preview.body.resultYaml).plans).toMatchObject({ GOLD: { price: 987.65 }, PLATINUM: { price: 12 } });
+
+      const refused = await mergePreview(author.token, created.body.id, { purpose: 'merge' });
+      expect(refused.status).toBe(403);
+      expect(leaks(refused, scene.markers)).toEqual([]);
+      expect((await mergePreview((await outsider()).token, created.body.id, { purpose: 'merge' })).status).toBe(404);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Limits of the inputs and what is written
+  // ---------------------------------------------------------------------------
+
+  describe('Proposals that are too large or too complex', { timeout: 30000 }, () => {
+    it('Refuses them in every text a user sends, writing nothing (CA-79).', async () => {
+      const scene = await behindScene2();
+      const valid = pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7)));
+      const aliases = [
+        'l0: &l0 [x, x, x, x, x, x, x, x, x]',
+        ...Array.from({ length: 8 }, (_, i) => `l${i + 1}: &l${i + 1} [${Array(9).fill(`*l${i}`).join(', ')}]`),
+      ].join('\n');
+      const bad = [
+        { text: `${valid}\n# ${'x'.repeat(1024 * 1024)}\n`, status: 413, code: 'PRICING_TOO_LARGE' },
+        { text: aliases, status: 422, code: 'PRICING_TOO_COMPLEX' },
+        { text: `${valid}__proto__:\n  polluted: true\n`, status: 422, code: 'INVALID_PRICING' },
+      ];
+      const sends = [
+        (text: string) => open(scene.author.token, { title: 'Bad', source: textSource(scene.pricingId, scene.v2.id, text) }),
+        (text: string) => edit(scene.author.token, scene.onLatest.id, { proposedYaml: text }),
+        (text: string) => proposeFork(scene.fork.forker.token, scene.fork.forkId, { previewToken: 'x.y' }, { manualYaml: text }),
+        (text: string) => updateToLatest(scene.author.token, scene.behind.id, { previewToken: 'x.y', manualYaml: text }),
+      ];
+      const before = { count: await pullRequestCount(scene.pricingId), forkCount: await pullRequestCount(scene.fork.pricingId) };
+
+      for (const { text, status, code } of bad) {
+        for (const [index, send] of sends.entries()) {
+          const started = Date.now();
+          const response = await send(text);
+          expect(response.status, `${code} on send ${index}`).toBe(status);
+          expect(response.body.code).toBe(code);
+          // Measured before anything expands the aliases.
+          if (code === 'PRICING_TOO_COMPLEX') expect(Date.now() - started).toBeLessThan(1000);
+        }
+      }
+
+      expect(await pullRequestCount(scene.pricingId)).toBe(before.count);
+      expect(await pullRequestCount(scene.fork.pricingId)).toBe(before.forkCount);
+      const stored = await PricingPullRequestMongoose.find({ _id: { $in: [scene.onLatest.id, scene.behind.id] } }).lean();
+      expect(stored.map(pullRequest => pullRequest.proposalRevision)).toEqual([1, 1]);
+    });
+
+    it('Writes no file for previews, pull requests, edits or updates (CA-79b).', async () => {
+      const scene = await behindScene2();
+      const folders = [scene.name, scene.organizationId, scene.fork.name, scene.fork.fork.name, scene.fork.organizationId, scene.fork.forkOrganizationId];
+      const files = await uploadedFiles(folders);
+      expect(files.inside.length).toBeGreaterThan(0);
+
+      const preview = await previewFork(scene.fork.forker.token, scene.fork.forkId);
+      expect((await proposeFork(scene.fork.forker.token, scene.fork.forkId, preview.body)).status).toBe(201);
+      expect((await previews(scene.author.token, { source: textSource(scene.pricingId, scene.v1.id, pricingYaml(scene.name, '9.0.0', goldAt(6))) })).status).toBe(200);
+      expect((await open(scene.author.token, { title: 'Text', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '9.0.0', both(V2, goldAt(6)))) })).status).toBe(201);
+      expect((await edit(scene.author.token, scene.onLatest.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(5))) })).status).toBe(200);
+      const update = await mergePreview(scene.author.token, scene.behind.id, { purpose: 'update' });
+      expect((await updateToLatest(scene.author.token, scene.behind.id, { previewToken: update.body.previewToken })).status).toBe(200);
+
+      expect(await uploadedFiles(folders)).toEqual(files);
+    });
+
+    /** P with an author's pull request on its latest public version v2, another one behind it, and a fork of another pricing. */
+    async function behindScene2() {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const name = `pr_${randomSuffix()}`;
+      const v1 = await publish(owner.token, organizationId, { name, version: '1.0.0' });
+      const author = await outsider();
+      const pricing = { name, pricingId: v1.pricingId };
+      const behind = await openOn(author, pricing, v1, platinumAt(12));
+      const v2 = await publish(owner.token, organizationId, { name, slug: v1.slug, version: '2.0.0', change: V2 });
+      const onLatest = await openOn(author, pricing, v2, goldAt(7.5));
+      const fork = await forkScene();
+      return { owner, organizationId, name, pricingId: v1.pricingId, v1, v2, author, behind, onLatest, fork };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Deleting what a pull request points at
+  // ---------------------------------------------------------------------------
+
+  describe('Deleting the pricing, the fork or the author of a pull request', { timeout: 30000 }, () => {
+    /** P in a team organization of a new owner, with an outsider's pull request on its latest public version. */
+    async function pricingWithPullRequest(versions = 1) {
+      const { user: owner } = await createAndLoginUser('USER');
+      const organization = await createTestOrganization(owner.token);
+      const name = `pr_${randomSuffix()}`;
+      let latest = await publish(owner.token, organization.id, { name, version: '1.0.0' });
+      for (let index = 2; index <= versions; index++) {
+        latest = await publish(owner.token, organization.id, { name, slug: latest.slug, version: `${index}.0.0` });
+      }
+      const author = await outsider();
+      const pullRequest = await openOn(author, { name, pricingId: latest.pricingId }, latest, goldAt(7.5));
+      return { owner, organizationId: organization.id, slug: latest.slug, pricingId: latest.pricingId, author, pullRequest };
+    }
+
+    const expectGone = async (scene: Awaited<ReturnType<typeof pricingWithPullRequest>>) => {
+      expect(await pullRequestCount(scene.pricingId)).toBe(0);
+      expect((await detail(scene.author.token, scene.pullRequest.id)).status).toBe(404);
+    };
+
+    it('Deletes its pull requests with the pricing, its last version, its collection or its organization (CA-70).', async () => {
+      const destroyed = await pricingWithPullRequest(2);
+      expect((await request(app()).delete(`${BASE_PATH}/pricings/${destroyed.organizationId}/${destroyed.slug}`).set(bearer(destroyed.owner.token))).status).toBe(200);
+      await expectGone(destroyed);
+
+      const lastVersion = await pricingWithPullRequest();
+      expect((await request(app()).delete(`${BASE_PATH}/pricings/${lastVersion.organizationId}/${lastVersion.slug}/1.0.0`).set(bearer(lastVersion.owner.token))).status).toBe(200);
+      await expectGone(lastVersion);
+
+      const inCollection = await pricingWithPullRequest();
+      const collection = await request(app())
+        .post(`${BASE_PATH}/collections/${inCollection.organizationId}`)
+        .set(bearer(inCollection.owner.token))
+        .send({ name: `collection_${randomSuffix()}`, description: 'With the pricing', private: false, pricings: [inCollection.slug] });
+      expect(collection.status, JSON.stringify(collection.body)).toBe(201);
+      const deletedCollection = await request(app())
+        .delete(`${BASE_PATH}/collections/${inCollection.organizationId}/${collection.body.slug}?cascade=true`)
+        .set(bearer(inCollection.owner.token));
+      expect(deletedCollection.status).toBe(200);
+      await expectGone(inCollection);
+
+      const inOrganization = await pricingWithPullRequest();
+      expect((await request(app()).delete(`${BASE_PATH}/orgs/${inOrganization.organizationId}`).set(bearer(inOrganization.owner.token))).status).toBe(200);
+      await expectGone(inOrganization);
+    });
+
+    it('Keeps a pull request whose fork or author is gone, without naming them (CA-70).', async () => {
+      const scene = await forkScene();
+      const created = await proposeFromScene(scene);
+      expect((await detail(scene.owner.token, created.body.id)).body.origin).toMatchObject({ pricingId: scene.forkId });
+
+      expect((await request(app()).delete(`${BASE_PATH}/pricings/${scene.forkOrganizationId}/${scene.fork.slug}`).set(bearer(scene.forker.token))).status).toBe(200);
+      const withoutFork = await detail(scene.owner.token, created.body.id);
+      expect(withoutFork.body).toMatchObject({ status: 'open', author: { id: scene.forker.id } });
+      expect(withoutFork.body.origin).toBeUndefined();
+
+      await deleteTestUser(scene.forker.username);
+      const withoutAuthor = await detail(scene.owner.token, created.body.id);
+      expect(withoutAuthor.status).toBe(200);
+      expect(withoutAuthor.body.author).toBeNull();
     });
   });
 });

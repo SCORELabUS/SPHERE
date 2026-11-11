@@ -49,7 +49,11 @@ describe('Rate limit of the pricing pull requests', { timeout: 30000 }, () => {
     }
     for (let i = 0; i < 3; i++) expect((await propose(user.token)).status).toBe(404);
 
-    const fourth = await propose(user.token);
+    // Previews share the budget.
+    const fourth = await request(app)
+      .post(`${BASE_PATH}/pricing-pull-requests/previews`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ source: { kind: 'text', pricingId, baseVersionId: pricingId, proposedYaml: 'saasName: x' } });
     expect(fourth.status).toBe(429);
     expect(fourth.headers['ratelimit-limit']).toBe('3');
     expect(fourth.body.error).toMatch(/^TOO MANY REQUESTS/);

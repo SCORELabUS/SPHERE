@@ -1,3 +1,5 @@
+import type { MergeConflict, MergeOutcome } from '../../utils/pricing-merge';
+
 /**
  * A pull request proposes a new version of a pricing (P). It always targets the
  * latest public version of P, and merging it publishes that version through
@@ -200,8 +202,72 @@ export interface PullRequestListDTO {
   viewer: { isMaintainer: boolean };
 }
 
-/** Notices about what SPHERE did to a proposal when it stored it. */
-export type PullRequestWarning = { code: 'SYNTAX_UPGRADED' } | { code: 'FORMAT_REGENERATED' };
+/**
+ * Notices about what SPHERE did to a proposal or a merge result: an input in an
+ * older syntax (`SYNTAX_UPGRADED`), a result written again without its comments
+ * and layout (`FORMAT_REGENERATED`), a result typed by hand (`MANUAL_OVERRIDE`),
+ * a current version that changed what prices mean (`GLOBAL_FIELD_CHANGED`), and
+ * an earlier proposal of the same fork that was merged (`PREVIOUSLY_MERGED`).
+ */
+export type PullRequestWarning =
+  | { code: 'SYNTAX_UPGRADED' }
+  | { code: 'FORMAT_REGENERATED' }
+  | { code: 'MANUAL_OVERRIDE' }
+  | { code: 'GLOBAL_FIELD_CHANGED'; fields: string[] }
+  | { code: 'PREVIOUSLY_MERGED'; number: number };
+
+/** Why a fork cannot propose to the pricing it was forked from now. */
+export type ForkProposalBlock = 'NOT_A_FORK' | 'PARENT_UNAVAILABLE' | 'NO_PUBLIC_VERSION' | 'PULL_REQUEST_EXISTS';
+
+/** The pricing a fork proposes to. */
+export interface ForkParentDTO {
+  pricingId: string;
+  name: string;
+  slug: string;
+  organizationId: string;
+}
+
+/**
+ * Whether the caller may propose the fork's latest version to its parent. The
+ * open pull request from the fork is named in full only to its author; anyone
+ * else only learns its number.
+ */
+export interface ForkTargetDTO {
+  canPropose: boolean;
+  reason?: ForkProposalBlock;
+  parent?: ForkParentDTO;
+  openPullRequest?: { id?: string; number: number; proposalRevision?: number };
+}
+
+/** Whether the result the server computed passes the pricing parser. */
+export interface PreviewValidation {
+  ok: boolean;
+  error?: string;
+  line?: number;
+}
+
+/**
+ * A three-way merge computed without side effects: of a text proposal or a
+ * fork's latest version with the latest public version of P, or of an open
+ * pull request with its target. `previewToken` signs what it was computed from.
+ */
+export interface PullRequestPreviewDTO {
+  base: PullRequestVersionRef;
+  target: PullRequestVersionRef & { private?: boolean };
+  outcome: MergeOutcome;
+  conflicts: MergeConflict[];
+  resultYaml: string;
+  regenerated: boolean;
+  validation: PreviewValidation;
+  warnings: PullRequestWarning[];
+  previewToken: string;
+  suggestedVersion: string;
+  /** The caller's own open pull request from the fork, which submitting replaces. */
+  existingPullRequest?: { id: string; number: number; proposalRevision: number };
+  /** Merge previews only: the suggested label is already a version of P. */
+  versionTaken?: boolean;
+  defaults?: { private: boolean };
+}
 
 export type PullRequestErrorCode =
   | 'WEB_SESSION_REQUIRED'
@@ -215,7 +281,12 @@ export type PullRequestErrorCode =
   | 'PULL_REQUEST_NOT_OPEN'
   | 'PULL_REQUEST_MERGING'
   | 'PULL_REQUEST_BEHIND'
-  | 'PULL_REQUEST_CHANGED';
+  | 'PULL_REQUEST_CHANGED'
+  | 'PULL_REQUEST_UP_TO_DATE'
+  | 'PULL_REQUEST_EXISTS'
+  | 'PREVIEW_STALE'
+  | 'NOT_A_FORK'
+  | 'PARENT_UNAVAILABLE';
 
 /**
  * A refusal of the pull request routes, answered as `{ error, code, ...details }`.

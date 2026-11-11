@@ -1,20 +1,25 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import fs from 'fs/promises';
 import { retrievePricingFromText } from 'pricing4ts/server';
 import container from '../config/container';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import PricingCollectionRepository from '../repositories/mongoose/PricingCollectionRepository';
-import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
+import PricingPullRequestRepository, { duplicateKeyFields } from '../repositories/mongoose/PricingPullRequestRepository';
 import PricingRepository, { PricingIdentityRef, StoredVersion } from '../repositories/mongoose/PricingRepository';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import {
+  ForkTargetDTO,
+  PreviewValidation,
   PricingPullRequest,
   ProposalBlock,
+  PullRequestBase,
   PullRequestChanges,
   PullRequestDetailDTO,
   PullRequestError,
   PullRequestListDTO,
   PullRequestOriginDTO,
   PullRequestPermissions,
+  PullRequestPreviewDTO,
   PullRequestState,
   PullRequestStatus,
   PullRequestSummaryDTO,
@@ -22,16 +27,17 @@ import {
 } from '../types/models/PricingPullRequest';
 import { LeanUser } from '../types/models/User';
 import { requirePricingFile } from '../utils/pricing-files';
-import { MergeOutcome, mergePricingDocs } from '../utils/pricing-merge';
+import { applyResolutions, MergeOutcome, MergeOutput, mergePricingDocs } from '../utils/pricing-merge';
+import { withPricingRevisionLock } from '../utils/pricing-revision-lock';
 import {
-  loadPricingDoc,
+  dumpPricingDoc,
   normalizeProposalText,
   PricingDoc,
   PricingYamlError,
   STORED_PRICING_MAX_BYTES,
-  upgradeToLatestSyntax,
 } from '../utils/pricing-syntax';
 import { stampTopLevel } from '../utils/pricing-top-level';
+import { serverHmac } from '../utils/users/helpers';
 import PermissionService from './PermissionService';
 import PricingService from './PricingService';
 
@@ -85,10 +91,32 @@ interface MergeSummary {
   conflicts: number;
 }
 
+export interface TextSource {
+  kind: 'text';
+  pricingId: string;
+  baseVersionId: string;
+  proposedYaml: string;
+}
+
+export interface ForkSource {
+  kind: 'fork';
+  forkPricingId: string;
+}
+
 export interface NewPullRequestBody {
   title: string;
   description?: string;
-  source: { kind: 'text'; pricingId: string; baseVersionId: string; proposedYaml: string };
+  source: TextSource;
+}
+
+/** Proposing a fork's latest version: the choices made on its preview, or a result typed by hand. */
+export interface ForkPullRequestBody {
+  title: string;
+  description?: string;
+  source: ForkSource;
+  resolutions?: Record<string, unknown>;
+  manualYaml?: string;
+  previewToken: string;
 }
 
 export interface PullRequestEdit {
@@ -96,6 +124,71 @@ export interface PullRequestEdit {
   description?: string;
   proposedYaml?: string;
 }
+
+/** Bringing a pull request up to the latest public version, as its preview showed. */
+export interface PullRequestUpdate {
+  resolutions?: Record<string, unknown>;
+  manualYaml?: string;
+  previewToken: string;
+}
+
+export type MergePreviewPurpose = 'update' | 'merge';
+
+/** A pricing text in the latest syntax and its document. `regenerated` when it was in an older one. */
+interface LoadedText {
+  text: string;
+  doc: PricingDoc;
+  regenerated: boolean;
+}
+
+/** A stored version's file as read from disk (`raw`), and in the latest syntax. */
+interface StoredText extends LoadedText {
+  raw: string;
+}
+
+/** The three sides of a merge: where the proposal started, what it is merged into, and the proposal. */
+interface MergeInputs {
+  base: LoadedText;
+  current: LoadedText;
+  proposal: LoadedText;
+}
+
+/** What a merge gives once the caller's choices (or their own text) are applied. */
+interface ComputedResult {
+  output: MergeOutput;
+  outcome: MergeOutcome;
+  text: string;
+  regenerated: boolean;
+  validation: PreviewValidation;
+  suggestedVersion: string;
+  warnings: PullRequestWarning[];
+}
+
+/**
+ * What a preview token signs: who asked for it, about what (`subjectId`: P for a
+ * text, the fork, or the pull request) and the inputs it was computed from.
+ * Only ids the caller already received.
+ */
+interface PreviewPayload {
+  purpose: 'text' | 'fork' | MergePreviewPurpose;
+  subjectId: string;
+  viewerId: string;
+  baseRef: string;
+  targetVersionId: string;
+  proposalRef: string;
+}
+
+type ForkVersion = StoredVersion & { forkedFromPricingId: string | null };
+
+/** A fork the caller may propose from, the versions of it they may read (newest first) and its parent P. */
+interface ForkContext {
+  fork: PricingIdentityRef;
+  versions: ForkVersion[];
+  pricing: TargetPricing;
+  viewer: Viewer;
+}
+
+const PREVIEW_TOKEN_PURPOSE = 'pricing-pr-preview';
 
 /** A small least-recently-used map. */
 class StateCache {
@@ -126,6 +219,51 @@ const lockIsLive = (pullRequest: PricingPullRequest, now = new Date()) =>
 function once<T>(load: () => Promise<T>): () => Promise<T> {
   let value: Promise<T> | undefined;
   return () => (value ??= load());
+}
+
+const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+
+/** `base64url(JSON payload).base64url(MAC)`: the client can read it, only the server can make it. */
+function signPreview(payload: PreviewPayload): string {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return `${body}.${serverHmac(PREVIEW_TOKEN_PURPOSE, body).toString('base64url')}`;
+}
+
+/** The payload of a token this server signed, or null for anything else. */
+function readPreview(token: unknown): PreviewPayload | null {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, mac] = parts;
+  const expected = serverHmac(PREVIEW_TOKEN_PURPOSE, body);
+  const given = Buffer.from(mac, 'base64url');
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+  try {
+    return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as PreviewPayload;
+  } catch {
+    return null;
+  }
+}
+
+const previewStale = () =>
+  new PullRequestError(409, 'PREVIEW_STALE', 'What you reviewed changed meanwhile; look at the preview again');
+
+const versionRef = (version: StoredVersion) => ({ id: version.id, version: version.version });
+
+/** The parser's verdict on a result, with the line of a YAML error. */
+function validate(text: string): { validation: PreviewValidation; version?: string } {
+  try {
+    return { validation: { ok: true }, version: String(retrievePricingFromText(text).version) };
+  } catch (error) {
+    const line = (error as { mark?: { line?: number } })?.mark?.line;
+    return {
+      validation: {
+        ok: false,
+        error: (error as Error)?.message ?? String(error),
+        ...(typeof line === 'number' ? { line: line + 1 } : {}),
+      },
+    };
+  }
 }
 
 /**
@@ -233,7 +371,7 @@ class PricingPullRequestService {
       description: body.description ?? '',
       // Always the caller: no field of the request names the author.
       authorId: user.id,
-      base: { versionId: latestPublic.id, version: latestPublic.version, yaml: baseText.text },
+      base: { versionId: latestPublic.id, version: latestPublic.version, yaml: baseText.raw },
       proposed: { yaml: proposal.text, suggestedVersion: proposal.suggestedVersion },
     });
     return { ...(await this.detailOf({ pullRequest: created, pricing, viewer })), warnings: proposal.warnings };
@@ -294,6 +432,476 @@ class PricingPullRequestService {
     return this.detailOf({ ...loaded, pullRequest: closed });
   }
 
+  /**
+   * Whether the caller may propose the latest version of the fork F they may read
+   * to the pricing it was forked from, and why not. Computed only on the versions
+   * of F the caller may read: who may not read F is told it does not exist, and
+   * who may read it but not publish versions of it is refused.
+   */
+  async forkTarget(user: LeanUser, forkPricingId: string): Promise<ForkTargetDTO> {
+    const context = await this.forkContext(user, forkPricingId);
+    if (typeof context === 'string') return { canPropose: false, reason: context };
+    const { pricing } = context;
+    const parent = { pricingId: pricing.pricingId, name: pricing.name, slug: pricing.slug, organizationId: pricing.organizationId };
+    if (!pricing.latestPublic) return { canPropose: false, reason: 'NO_PUBLIC_VERSION', parent };
+    const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, context.fork.pricingId);
+    if (open && open.authorId !== user.id) {
+      return { canPropose: false, reason: 'PULL_REQUEST_EXISTS', parent, openPullRequest: { number: open.number } };
+    }
+    return {
+      canPropose: true,
+      parent,
+      ...(open ? { openPullRequest: { id: open.id, number: open.number, proposalRevision: open.proposalRevision } } : {}),
+    };
+  }
+
+  /**
+   * The three-way merge a proposal would make, without writing anything: a text
+   * against the latest public version of P from the version it was written on,
+   * or the latest version of a fork from the version of it that P last contained.
+   */
+  async preview(
+    user: LeanUser,
+    body: { source: TextSource | ForkSource; resolutions?: Record<string, unknown> }
+  ): Promise<PullRequestPreviewDTO> {
+    const resolutions = body.resolutions ?? {};
+    if (body.source.kind === 'fork') {
+      const context = await this.requireForkContext(user, body.source.forkPricingId);
+      return this.inForkQueue(context, async () => {
+        const { pricing } = context;
+        const latestPublic = this.requireLatestPublic(pricing);
+        const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, context.fork.pricingId);
+        if (open && open.authorId !== user.id) throw this.pullRequestExists(open);
+        const sides = await this.forkSides(context);
+        const inputs = await this.inputsOf(sides.base, latestPublic, sides.proposal);
+        const result = this.computeResult(pricing, inputs.inputs, resolutions, undefined, false);
+        return {
+          ...this.previewOf(result, versionRef(sides.base), versionRef(latestPublic), {
+            purpose: 'fork',
+            subjectId: context.fork.pricingId,
+            viewerId: user.id,
+            baseRef: sides.base.id,
+            targetVersionId: latestPublic.id,
+            proposalRef: `${sides.proposal.id}:${open ? open.proposalRevision : 'none'}`,
+          }, sides.previouslyMerged),
+          ...(open ? { existingPullRequest: { id: open.id, number: open.number, proposalRevision: open.proposalRevision } } : {}),
+        };
+      });
+    }
+
+    const { source } = body;
+    const pricing = await this.findPricing(source.pricingId);
+    const viewer = pricing && (await this.viewerOf(user, pricing));
+    if (!pricing || !viewer?.reader) throw notFound('Pricing');
+    const base = await this.pricingRepository.findVersionOf(pricing.pricingId, source.baseVersionId);
+    if (!base || (base.private && !viewer.readsPrivate)) throw notFound('Version');
+    const latestPublic = this.requireLatestPublic(pricing);
+    const proposal = normalizeProposalText(source.proposedYaml, limits().proposalBytes);
+    const baseText = await this.readStored(base);
+    const current = base.id === latestPublic.id ? baseText : await this.readStored(latestPublic);
+    const result = this.computeResult(pricing, { base: baseText, current, proposal }, resolutions, undefined, false);
+    return this.previewOf(result, versionRef(base), versionRef(latestPublic), {
+      purpose: 'text',
+      subjectId: pricing.pricingId,
+      viewerId: user.id,
+      baseRef: base.id,
+      targetVersionId: latestPublic.id,
+      proposalRef: sha256(source.proposedYaml),
+    });
+  }
+
+  /**
+   * Proposes the latest version of a fork F (that the caller may read) to its
+   * parent P, as its preview showed it, with the conflicts resolved or a result
+   * typed by hand. At most one pull request from F to P is open: its author's
+   * new proposal replaces the one it has (`created: false`), anyone else's is
+   * refused. Requests for the same fork and parent run one after the other.
+   */
+  async proposeFromFork(
+    user: LeanUser,
+    body: ForkPullRequestBody
+  ): Promise<{ created: boolean; pullRequest: PullRequestDetailDTO & { warnings: PullRequestWarning[] } }> {
+    const context = await this.requireForkContext(user, body.source.forkPricingId);
+    return this.inForkQueue(context, async () => {
+      const { pricing, viewer, fork } = context;
+      const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, fork.pricingId);
+      const own = open?.authorId === user.id ? open : null;
+      // Replacing one's own proposal is not opening a new pull request.
+      if (!own && (await this.limitReached(user, pricing.pricingId))) {
+        throw new PullRequestError(429, 'LIMIT_REACHED', 'You cannot open more pull requests for now');
+      }
+      const latestPublic = this.requireLatestPublic(pricing);
+      if (open && !own) throw this.pullRequestExists(open);
+
+      const sides = await this.forkSides(context);
+      const { inputs, currentRaw } = await this.inputsOf(sides.base, latestPublic, sides.proposal);
+      const manual = body.manualYaml === undefined ? undefined : this.loadManual(body.manualYaml);
+      const token = readPreview(body.previewToken);
+      // An open pull request created from this same preview (by a request sent at the same time) is the one to replace.
+      const createdMeanwhile = (candidate: PricingPullRequest | null) =>
+        candidate !== null &&
+        token?.proposalRef === `${sides.proposal.id}:none` &&
+        candidate.proposalRevision === 1 &&
+        candidate.origin?.versionId === sides.proposal.id &&
+        !candidate.origin.edited;
+      const proposalRef = (candidate: PricingPullRequest | null) =>
+        `${sides.proposal.id}:${candidate && !createdMeanwhile(candidate) ? candidate.proposalRevision : 'none'}`;
+      this.checkPreview(body.previewToken, {
+        purpose: 'fork',
+        subjectId: fork.pricingId,
+        viewerId: user.id,
+        baseRef: sides.base.id,
+        targetVersionId: latestPublic.id,
+        proposalRef: proposalRef(own),
+      }, latestPublic);
+
+      const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, manual, true);
+      this.requireValid(result);
+      if (result.outcome === 'no-changes') {
+        throw new PullRequestError(400, 'NO_CHANGES', 'The fork has nothing the latest public version does not already have');
+      }
+
+      const base: PullRequestBase = { versionId: latestPublic.id, version: latestPublic.version, yaml: currentRaw };
+      const proposed = { yaml: result.text, suggestedVersion: result.suggestedVersion };
+      const origin = {
+        pricingId: fork.pricingId,
+        versionId: sides.proposal.id,
+        version: sides.proposal.version,
+        baseVersionId: sides.base.id,
+        edited: manual !== undefined,
+      };
+      const replace = async (target: PricingPullRequest) => {
+        const updated = await this.pricingPullRequestRepository.updateOpen(target.id, target.proposalRevision, {
+          title: body.title,
+          ...(body.description !== undefined ? { description: body.description } : {}),
+          base,
+          proposed,
+          origin,
+        });
+        if (!updated) throw await this.refusalOf(target.id, true);
+        return updated;
+      };
+      const answer = async (created: boolean, pullRequest: PricingPullRequest) => ({
+        created,
+        pullRequest: { ...(await this.detailOf({ pullRequest, pricing, viewer })), warnings: result.warnings },
+      });
+
+      if (own) return answer(false, await replace(own));
+      try {
+        const created = await this.pricingPullRequestRepository.create({
+          pricingId: pricing.pricingId,
+          title: body.title,
+          description: body.description ?? '',
+          authorId: user.id,
+          base,
+          proposed,
+          origin,
+        });
+        return answer(true, created);
+      } catch (error) {
+        // Another request opened the pull request from F first (the unique index on open pull requests per fork).
+        const fields = duplicateKeyFields(error);
+        if (!fields || fields.join() !== 'pricingId,origin.pricingId') throw error;
+        const winner = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, fork.pricingId);
+        if (!winner) throw previewStale();
+        if (winner.authorId !== user.id) throw this.pullRequestExists(winner);
+        if (!createdMeanwhile(winner)) throw previewStale();
+        return answer(false, await replace(winner));
+      }
+    });
+  }
+
+  /**
+   * The merge an open pull request would make with its target, without writing
+   * anything: for its author bringing it up to the latest public version
+   * (`update`), or for a maintainer merging it into the latest version (`merge`).
+   */
+  async mergePreview(
+    user: LeanUser,
+    id: string,
+    body: { purpose: MergePreviewPurpose; resolutions?: Record<string, unknown> }
+  ): Promise<PullRequestPreviewDTO> {
+    const loaded = await this.loadPullRequest(user, id);
+    const { pullRequest, pricing, viewer } = loaded;
+    if (body.purpose === 'update' && pullRequest.authorId !== user.id) {
+      throw new PullRequestError(403, 'FORBIDDEN', 'Only the author can update a pull request');
+    }
+    if (body.purpose === 'merge' && !viewer.maintainer) {
+      throw new PullRequestError(403, 'FORBIDDEN', 'Only a maintainer of the pricing can merge a pull request');
+    }
+    this.assertOpen(pullRequest);
+    const target = body.purpose === 'update' ? this.requireBehind(pullRequest, pricing) : pricing.latest;
+
+    const current = await this.readStored(target);
+    const inputs = { base: this.loadStored(pullRequest.base.yaml), current, proposal: this.loadStored(pullRequest.proposed.yaml) };
+    const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, undefined, false);
+    const preview = this.previewOf(result, { id: pullRequest.base.versionId, version: pullRequest.base.version }, versionRef(target), {
+      purpose: body.purpose,
+      subjectId: pullRequest.id,
+      viewerId: user.id,
+      baseRef: pullRequest.base.versionId,
+      targetVersionId: target.id,
+      proposalRef: String(pullRequest.proposalRevision),
+    });
+    if (body.purpose === 'update') return preview;
+    return {
+      ...preview,
+      target: { ...preview.target, private: target.private },
+      versionTaken: await this.pricingRepository.hasVersionLabel(pricing.pricingId, preview.suggestedVersion),
+      defaults: { private: target.private },
+    };
+  }
+
+  /**
+   * The author brings their pull request up to the latest public version, as
+   * its update preview showed it: its base becomes that version and its
+   * proposal the merge, with the conflicts resolved or a result typed by hand.
+   * A merge that adds nothing leaves it with no changes.
+   */
+  async update(user: LeanUser, id: string, body: PullRequestUpdate): Promise<PullRequestDetailDTO & { warnings: PullRequestWarning[] }> {
+    const loaded = await this.loadPullRequest(user, id);
+    const { pullRequest, pricing } = loaded;
+    if (pullRequest.authorId !== user.id) {
+      throw new PullRequestError(403, 'FORBIDDEN', 'Only the author can update a pull request');
+    }
+    this.assertOpen(pullRequest);
+    const target = this.requireBehind(pullRequest, pricing);
+
+    const current = await this.readStored(target);
+    const inputs = { base: this.loadStored(pullRequest.base.yaml), current, proposal: this.loadStored(pullRequest.proposed.yaml) };
+    const manual = body.manualYaml === undefined ? undefined : this.loadManual(body.manualYaml);
+    this.checkPreview(body.previewToken, {
+      purpose: 'update',
+      subjectId: pullRequest.id,
+      viewerId: user.id,
+      baseRef: pullRequest.base.versionId,
+      targetVersionId: target.id,
+      proposalRef: String(pullRequest.proposalRevision),
+    }, target);
+    const result = this.computeResult(pricing, inputs, body.resolutions ?? {}, manual, true);
+    this.requireValid(result);
+
+    const updated = await this.pricingPullRequestRepository.updateOpen(id, pullRequest.proposalRevision, {
+      base: { versionId: target.id, version: target.version, yaml: current.raw },
+      proposed: { yaml: result.text, suggestedVersion: result.suggestedVersion },
+      // A result typed by hand is no longer what the fork had.
+      ...(manual && pullRequest.origin ? { originEdited: true } : {}),
+    });
+    if (!updated) throw await this.refusalOf(id, true);
+    return { ...(await this.detailOf({ ...loaded, pullRequest: updated })), warnings: result.warnings };
+  }
+
+  /**
+   * The fork F and its parent P as the caller sees them. Who may not read F gets
+   * 404 and who may not publish versions of it 403; a fork none of whose readable
+   * versions names where it came from is `NOT_A_FORK`, and a parent that is gone
+   * or that the caller may not read is `PARENT_UNAVAILABLE` (the same answer).
+   */
+  private async forkContext(user: LeanUser, forkPricingId: string): Promise<ForkContext | 'NOT_A_FORK' | 'PARENT_UNAVAILABLE'> {
+    const fork = await this.pricingRepository.findIdentity(forkPricingId);
+    const readable = fork && (await this.readableVersionIds(user, fork));
+    if (!fork || !readable) throw notFound('Pricing');
+    if (!(await this.mayPublishVersions(user, fork))) {
+      throw new PullRequestError(403, 'FORBIDDEN', 'Proposing from a fork takes being able to publish versions of it');
+    }
+    const versions = (await this.pricingRepository.findForkVersions(fork.pricingId)).filter(version => readable.has(version.id));
+    // The newest readable version that names where it was forked from.
+    const parentId = versions.find(version => version.forkedFromPricingId !== null)?.forkedFromPricingId;
+    if (!parentId) return 'NOT_A_FORK';
+    const pricing = await this.findPricing(parentId);
+    const viewer = pricing && (await this.viewerOf(user, pricing));
+    if (!pricing || !viewer?.reader) return 'PARENT_UNAVAILABLE';
+    return { fork, versions, pricing, viewer };
+  }
+
+  private async requireForkContext(user: LeanUser, forkPricingId: string): Promise<ForkContext> {
+    const context = await this.forkContext(user, forkPricingId);
+    if (context === 'NOT_A_FORK') {
+      throw new PullRequestError(422, 'NOT_A_FORK', 'This pricing was not forked from another one');
+    }
+    if (context === 'PARENT_UNAVAILABLE') {
+      throw new PullRequestError(404, 'PARENT_UNAVAILABLE', 'The pricing this fork was made from is not available');
+    }
+    return context;
+  }
+
+  /** The ids of the versions of a pricing the caller may read, as `show()` decides; null if none. */
+  private async readableVersionIds(user: LeanUser, identity: PricingIdentityRef): Promise<Set<string> | null> {
+    let shown;
+    try {
+      shown = await this.pricingService.show(identity.slug, identity.organizationId, user);
+    } catch (error) {
+      if ((error as Error).message.startsWith('NOT FOUND')) return null;
+      throw error;
+    }
+    // A slug can name another pricing of the organization in another collection.
+    if (String(shown.pricingId) !== identity.pricingId) return null;
+    return new Set(shown.versions.map(version => String(version.id)));
+  }
+
+  /** Proposals from one fork to one parent run one after the other (in this API process). */
+  private inForkQueue<T>(context: ForkContext, operation: () => Promise<T>): Promise<T> {
+    // Prefixed, so it can never be the queue of a pricing's own revision.
+    return withPricingRevisionLock(`pr-fork:${context.fork.pricingId}:${context.pricing.pricingId}`, operation);
+  }
+
+  private pullRequestExists(open: PricingPullRequest) {
+    return new PullRequestError(409, 'PULL_REQUEST_EXISTS', `Pull request #${open.number} from this fork is already open`, {
+      number: open.number,
+    });
+  }
+
+  /**
+   * The versions of F a proposal merges: the newest one the caller may read is
+   * the proposal; the base is the version of F the parent last took in (the one
+   * the latest merged pull request from F proposed, while F keeps it), or else
+   * the newest version of F copied from P. `previouslyMerged` names the latest
+   * pull request from F that was merged.
+   */
+  private async forkSides(context: ForkContext): Promise<{ base: ForkVersion; proposal: ForkVersion; previouslyMerged?: number }> {
+    const { fork, versions, pricing } = context;
+    const proposal = versions[0];
+    const merged = await this.pricingPullRequestRepository.findMergedFromFork(pricing.pricingId, fork.pricingId);
+    const previouslyMerged = merged[0]?.number;
+    for (const pullRequest of merged) {
+      const taken = versions.find(version => version.id === pullRequest.origin?.versionId);
+      if (taken) return { base: taken, proposal, previouslyMerged };
+    }
+    const copied = versions.find(version => version.forkedFromPricingId === pricing.pricingId)!;
+    return { base: copied, proposal, previouslyMerged };
+  }
+
+  /** Reads the files of a merge's three versions, each once. */
+  private async inputsOf(base: StoredVersion, current: StoredVersion, proposal: StoredVersion) {
+    const read = new Map<string, Promise<StoredText>>();
+    const text = (version: StoredVersion) => {
+      if (!read.has(version.id)) read.set(version.id, this.readStored(version));
+      return read.get(version.id)!;
+    };
+    const [baseText, currentText, proposalText] = await Promise.all([text(base), text(current), text(proposal)]);
+    return { inputs: { base: baseText, current: currentText, proposal: proposalText }, currentRaw: currentText.raw };
+  }
+
+  /** A result typed by hand: within the limits, in the latest syntax and accepted by the parser. */
+  private loadManual(text: string): LoadedText {
+    const manual = normalizeProposalText(text, limits().proposalBytes);
+    const { validation } = validate(manual.text);
+    if (!validation.ok) throw new PullRequestError(400, 'INVALID_PRICING', validation.error!, validation.line !== undefined ? { line: validation.line } : {});
+    return manual;
+  }
+
+  /**
+   * Merges the inputs and applies the caller's choices (`manual` over
+   * `resolutions` over the computed merge). The result keeps the proposal's
+   * text when it is the proposal, and the target's when it adds nothing;
+   * anything else is written again. It always carries P's name.
+   */
+  private computeResult(
+    pricing: TargetPricing,
+    inputs: MergeInputs,
+    resolutions: Record<string, unknown>,
+    manual: LoadedText | undefined,
+    requireAll: boolean
+  ): ComputedResult {
+    const output = mergePricingDocs(inputs.base.doc, inputs.current.doc, inputs.proposal.doc);
+    const resolved = applyResolutions(output, resolutions, { requireAll, manual: manual?.doc });
+    const proposalVersion = inputs.proposal.doc.version;
+
+    let source: LoadedText;
+    if (manual) source = manual;
+    else if (resolved.outcome === 'proposal-only') source = inputs.proposal;
+    else if (resolved.outcome === 'no-changes') source = inputs.current;
+    else {
+      // The merge keeps the current version's label; the proposal names its own.
+      const doc = proposalVersion === undefined ? resolved.doc : { ...resolved.doc, version: proposalVersion };
+      source = { text: dumpPricingDoc(doc), doc, regenerated: true };
+    }
+    const stamped = this.withName(source, pricing.name);
+    const { validation, version } = validate(stamped.text);
+
+    const warnings: PullRequestWarning[] = [];
+    if ([inputs.base, inputs.current, inputs.proposal, manual].some(text => text?.regenerated)) warnings.push({ code: 'SYNTAX_UPGRADED' });
+    warnings.push(...resolved.warnings);
+    if (stamped.regenerated && !warnings.some(warning => warning.code === 'FORMAT_REGENERATED')) {
+      warnings.push({ code: 'FORMAT_REGENERATED' });
+    }
+    return {
+      output,
+      outcome: resolved.outcome,
+      text: stamped.text,
+      regenerated: source.regenerated || stamped.regenerated,
+      validation,
+      suggestedVersion: version ?? String(proposalVersion ?? ''),
+      warnings,
+    };
+  }
+
+  /**
+   * The result with P's name. Stamping verifies the text with the parser; a
+   * result the parser refuses is still shown (written again with the name), so
+   * the caller sees why it cannot be submitted.
+   */
+  private withName(source: LoadedText, name: string): { text: string; regenerated: boolean } {
+    try {
+      return stampTopLevel(source.text, { saasName: name });
+    } catch (error) {
+      if (!(error instanceof PricingYamlError) || error.code !== 'INVALID_PRICING') throw error;
+      return { text: dumpPricingDoc({ ...source.doc, saasName: name }), regenerated: true };
+    }
+  }
+
+  private previewOf(
+    result: ComputedResult,
+    base: { id: string; version: string },
+    target: { id: string; version: string },
+    payload: PreviewPayload,
+    previouslyMerged?: number
+  ): PullRequestPreviewDTO {
+    return {
+      base,
+      target,
+      outcome: result.outcome,
+      conflicts: result.output.conflicts,
+      resultYaml: result.text,
+      regenerated: result.regenerated,
+      validation: result.validation,
+      warnings: previouslyMerged === undefined ? result.warnings : [...result.warnings, { code: 'PREVIOUSLY_MERGED', number: previouslyMerged }],
+      previewToken: signPreview(payload),
+      suggestedVersion: result.suggestedVersion,
+    };
+  }
+
+  /**
+   * Checks that a preview token is this server's, for this caller and subject,
+   * and computed from the same inputs. When only the target moved on (a newer
+   * public version), the caller is told which one is the latest now.
+   */
+  private checkPreview(token: unknown, expected: PreviewPayload, latest: StoredVersion) {
+    const given = readPreview(token);
+    const same = (key: keyof PreviewPayload) => given?.[key] === expected[key];
+    if (!given || !(['purpose', 'subjectId', 'viewerId', 'baseRef', 'proposalRef'] as const).every(same)) throw previewStale();
+    if (!same('targetVersionId')) {
+      throw new PullRequestError(409, 'BASE_NOT_LATEST', 'There is a newer public version than the one you reviewed', {
+        latest: versionRef(latest),
+      });
+    }
+  }
+
+  private requireValid(result: ComputedResult) {
+    if (!result.validation.ok) {
+      throw new PullRequestError(400, 'INVALID_PRICING', result.validation.error!, result.validation.line !== undefined ? { line: result.validation.line } : {});
+    }
+  }
+
+  /** The latest public version, which a pull request that is not up to date is brought to. */
+  private requireBehind(pullRequest: PricingPullRequest, pricing: TargetPricing): StoredVersion {
+    const latestPublic = this.requireLatestPublic(pricing);
+    if (pullRequest.base.versionId === latestPublic.id) {
+      throw new PullRequestError(409, 'PULL_REQUEST_UP_TO_DATE', 'The pull request already starts from the latest public version');
+    }
+    return latestPublic;
+  }
+
   /** A pull request the caller may see: its author while they read P, or a maintainer of P. */
   private async loadPullRequest(user: LeanUser, id: string): Promise<LoadedPullRequest> {
     const pullRequest = await this.pricingPullRequestRepository.findById(id);
@@ -333,7 +941,7 @@ class PricingPullRequestService {
   }
 
   /** CREATE on P, evaluated as publishing a version does (`PricingService._createPricingVersion`). */
-  private async mayPublishVersions(user: LeanUser, pricing: TargetPricing): Promise<boolean> {
+  private async mayPublishVersions(user: LeanUser, pricing: { organizationId: string; slug: string }): Promise<boolean> {
     const isGlobalAdmin = user.role === 'ADMIN';
     const orgRole = await this.permissionService.resolveOrgRole(user.id, pricing.organizationId);
     const batch = await this.permissionService.buildBatchContext(user.id, pricing.organizationId, orgRole, isGlobalAdmin);
@@ -380,13 +988,17 @@ class PricingPullRequestService {
     }
   }
 
-  /** Why a conditional change of a pull request found nothing to change. */
-  private async refusalOf(id: string): Promise<PullRequestError> {
+  /**
+   * Why a conditional change of a pull request found nothing to change. A change
+   * made from a preview is told its preview is stale when the proposal moved on.
+   */
+  private async refusalOf(id: string, fromPreview = false): Promise<PullRequestError> {
     const current = await this.pricingPullRequestRepository.findById(id);
     if (!current || current.status !== 'open') {
       return new PullRequestError(409, 'PULL_REQUEST_NOT_OPEN', 'The pull request is no longer open');
     }
     if (lockIsLive(current)) return new PullRequestError(409, 'PULL_REQUEST_MERGING', 'The pull request is being merged');
+    if (fromPreview) return previewStale();
     return new PullRequestError(409, 'PULL_REQUEST_CHANGED', 'The pull request changed meanwhile; reload it and try again');
   }
 
@@ -414,23 +1026,28 @@ class PricingPullRequestService {
    * file in an older syntax elsewhere rewrites it (pricing4ts), so a read that
    * does not load is tried once more.
    */
-  private async readStored(version: StoredVersion): Promise<{ text: string; doc: PricingDoc }> {
+  private async readStored(version: StoredVersion): Promise<StoredText> {
     const file = requirePricingFile(version.yaml);
     for (let attempt = 0; ; attempt++) {
       if ((await fs.stat(file)).size > STORED_PRICING_MAX_BYTES) {
         throw new PricingYamlError(413, 'PRICING_TOO_LARGE', `The pricing may take at most ${STORED_PRICING_MAX_BYTES} bytes`);
       }
-      const text = await fs.readFile(file, 'utf8');
+      const raw = await fs.readFile(file, 'utf8');
       try {
-        return { text, doc: this.storedDoc(text) };
+        return { raw, ...this.loadStored(raw) };
       } catch (error) {
         if (attempt >= 1) throw error;
       }
     }
   }
 
+  /** A text SPHERE stored (a version's file, or a pull request's base or proposal), in the latest syntax. */
+  private loadStored(text: string): LoadedText {
+    return normalizeProposalText(text, STORED_PRICING_MAX_BYTES);
+  }
+
   private storedDoc(text: string): PricingDoc {
-    return upgradeToLatestSyntax(loadPricingDoc(text, STORED_PRICING_MAX_BYTES)).doc;
+    return this.loadStored(text).doc;
   }
 
   /** What a pull request is compared with: the latest version for a maintainer, the latest public one for anyone else. */

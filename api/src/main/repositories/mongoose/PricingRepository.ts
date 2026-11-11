@@ -251,6 +251,28 @@ class PricingRepository extends RepositoryBase {
     return version ? toStoredVersion(version) : null;
   }
 
+  /**
+   * Every version of a pricing, newest first (`VERSION_ORDER`), with the pricing
+   * each one was forked from, if any. Proposals from a fork are computed on them.
+   */
+  async findForkVersions(pricingId: string): Promise<Array<StoredVersion & { forkedFromPricingId: string | null }>> {
+    if (!mongoose.isValidObjectId(pricingId)) return [];
+    const versions = await PricingMongoose.find({ pricingId: new mongoose.Types.ObjectId(pricingId) })
+      .sort(VERSION_ORDER)
+      .select('version private yaml forkedFrom.pricingId')
+      .lean();
+    return versions.map(version => ({
+      ...toStoredVersion(version),
+      forkedFromPricingId: version.forkedFrom?.pricingId ? String(version.forkedFrom.pricingId) : null,
+    }));
+  }
+
+  /** Whether a pricing already has a version with this label, private or not. */
+  async hasVersionLabel(pricingId: string, label: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(pricingId)) return false;
+    return Boolean(await PricingMongoose.exists({ pricingId: new mongoose.Types.ObjectId(pricingId), version: label }));
+  }
+
   /** Whether a pricing has at least one private version. */
   async hasPrivateVersion(pricingId: string): Promise<boolean> {
     if (!mongoose.isValidObjectId(pricingId)) return false;

@@ -184,6 +184,18 @@ class PricingPullRequestRepository extends RepositoryBase {
     return doc ? toPricingPullRequest(doc) : null;
   }
 
+  /** The merged pull requests from the fork `forkPricingId` to `pricingId`, the most recently merged first. */
+  async findMergedFromFork(pricingId: string, forkPricingId: string): Promise<PricingPullRequest[]> {
+    const docs = await PricingPullRequestMongoose.find({
+      pricingId: objectId(pricingId),
+      'origin.pricingId': objectId(forkPricingId),
+      status: 'merged',
+    })
+      .sort({ 'merged.at': -1, _id: -1 })
+      .lean();
+    return docs.map(toPricingPullRequest);
+  }
+
   /**
    * Applies `changes` only if the pull request is open, its proposal is still at
    * `expectedRevision` and no merge holds a live reservation. A new proposal
