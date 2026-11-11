@@ -176,6 +176,19 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // Pull requests of pricings. PricingPullRequestService checks who may read the pricing,
+  // propose to it and maintain it, and only web sessions are served; this only requires login.
+  {
+    path: '/pricing-pull-requests',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/pricing-pull-requests/**',
+    methods: ['GET', 'POST', 'PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
   // Collection Management Routes
   // ============================================

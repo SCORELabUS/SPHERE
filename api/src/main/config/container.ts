@@ -44,6 +44,7 @@ import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
 import ServiceTreeService from '../services/ServiceTreeService';
 import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
+import PricingPullRequestService from '../services/PricingPullRequestService';
 
 dotenv.config();
 
@@ -98,6 +99,7 @@ function initContainer(databaseType: string): AwilixContainer {
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
     pricingFollowService: asClass(PricingFollowService).singleton(),
+    pricingPullRequestService: asClass(PricingPullRequestService).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
     scoretechIdentityService: asClass(ScoretechIdentityService).singleton(),

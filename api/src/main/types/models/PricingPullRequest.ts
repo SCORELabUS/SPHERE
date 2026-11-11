@@ -124,3 +124,112 @@ export interface PullRequestPage {
   /** How many there are of each status, with the same pricing and author but any status. */
   counts: Record<PullRequestStatus, number>;
 }
+
+/**
+ * Where a pull request stands for whoever looks at it, computed on every read:
+ * a maintainer compares it with the latest version of the pricing, anyone else
+ * with the latest public one. `behind` carries how many conflicts merging it
+ * would have (0: it can merge).
+ */
+export type PullRequestState =
+  | { kind: 'merged' | 'closed' | 'no-public-version' | 'up-to-date' | 'no-changes' }
+  | { kind: 'behind'; conflicts: number };
+
+/** Why a caller cannot open a pull request now. Who is not a maintainer only ever gets `LIMIT_REACHED`. */
+export type ProposalBlock = 'NO_PUBLIC_VERSION' | 'LIMIT_REACHED' | 'AUTHOR_LIMIT' | 'PRICING_LIMIT' | 'DAILY_LIMIT';
+
+export interface PullRequestVersionRef {
+  id: string;
+  version: string;
+}
+
+/** The fork a proposal came from, only for who may read it (`show()`'s rules). */
+export interface PullRequestOriginDTO {
+  pricingId: string;
+  name: string;
+  slug: string;
+  organization: { id: string; name: string; displayName: string };
+  /** Only when the caller may also read that version of the fork. */
+  versionId?: string;
+  version?: string;
+  /** The author changed the proposal by hand after it was made from the fork. */
+  editedAfterProposal: boolean;
+}
+
+/** What a caller may do with a pull request now. */
+export interface PullRequestPermissions {
+  edit: boolean;
+  editProposal: boolean;
+  update: boolean;
+  close: boolean;
+  merge: boolean;
+}
+
+export interface PullRequestSummaryDTO {
+  id: string;
+  pricingId: string;
+  number: number;
+  title: string;
+  status: PullRequestStatus;
+  /** Null once the author's account is gone. */
+  author: { id: string; username: string } | null;
+  base: { versionId: string; version: string };
+  proposed: { suggestedVersion: string };
+  proposalRevision: number;
+  state: PullRequestState;
+  /** The merged version only for who may read it. */
+  merged?: { at: Date; versionId?: string; version?: string };
+  closed?: { kind: PullRequestCloseKind; at: Date; reason?: string };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PullRequestDetailDTO extends Omit<PullRequestSummaryDTO, 'base' | 'proposed'> {
+  description: string;
+  base: { versionId: string; version: string; yaml: string };
+  proposed: { suggestedVersion: string; yaml: string };
+  origin?: PullRequestOriginDTO;
+  permissions: PullRequestPermissions;
+}
+
+export interface PullRequestListDTO {
+  items: PullRequestSummaryDTO[];
+  total: number;
+  counts: Record<PullRequestStatus, number>;
+  proposals: { canOpen: boolean; reason: ProposalBlock | null; latest: PullRequestVersionRef | null };
+  viewer: { isMaintainer: boolean };
+}
+
+/** Notices about what SPHERE did to a proposal when it stored it. */
+export type PullRequestWarning = { code: 'SYNTAX_UPGRADED' } | { code: 'FORMAT_REGENERATED' };
+
+export type PullRequestErrorCode =
+  | 'WEB_SESSION_REQUIRED'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'LIMIT_REACHED'
+  | 'NO_PUBLIC_VERSION'
+  | 'BASE_NOT_LATEST'
+  | 'NO_CHANGES'
+  | 'INVALID_PRICING'
+  | 'PULL_REQUEST_NOT_OPEN'
+  | 'PULL_REQUEST_MERGING'
+  | 'PULL_REQUEST_BEHIND'
+  | 'PULL_REQUEST_CHANGED';
+
+/**
+ * A refusal of the pull request routes, answered as `{ error, code, ...details }`.
+ * Typed so its status never depends on words of the message (`handleError`
+ * would answer 401 to a feature named "Unauthorized").
+ */
+export class PullRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: PullRequestErrorCode,
+    message: string,
+    readonly details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'PullRequestError';
+  }
+}

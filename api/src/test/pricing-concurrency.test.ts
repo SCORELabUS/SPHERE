@@ -642,4 +642,42 @@ describe('Pricing ETag and If-Match', () => {
       expect(await currentEtag(target.pricingUrl, target.token)).not.toBe(before);
     });
   });
+
+  describe('Pull requests', { timeout: 30000 }, () => {
+    it('Opening, editing and closing pull requests leave the ETag alone (CA-64).', async () => {
+      const target = await ownedPricing();
+      const { user: author } = await createAndLoginUser('USER');
+      const latest = (await PricingMongoose.findOne({ _organizationId: target.organizationId, slug: target.slug }).lean())!;
+      const proposal = (await fs.readFile(
+        path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'
+      ))
+        .replace(/^saasName:.*$/m, `saasName: ${target.name}`)
+        .replace(/price: 5\.0$/m, 'price: 7.5');
+      const before = await currentEtag(target.pricingUrl, target.token);
+      const pullRequests = `${BASE_PATH}/pricing-pull-requests`;
+
+      const created = await request(app)
+        .post(pullRequests)
+        .set('Authorization', `Bearer ${author.token}`)
+        .send({
+          title: 'Raise GOLD',
+          source: { kind: 'text', pricingId: String(latest.pricingId), baseVersionId: String(latest._id), proposedYaml: proposal },
+        });
+      expect(created.status).toBe(201);
+      const id = created.body.id;
+      const steps = [
+        request(app).get(`${pullRequests}?pricingId=${latest.pricingId}`).set('Authorization', `Bearer ${target.token}`),
+        request(app).get(`${pullRequests}/${id}`).set('Authorization', `Bearer ${author.token}`),
+        request(app).put(`${pullRequests}/${id}`).set('Authorization', `Bearer ${author.token}`).send({ title: 'Raise GOLD more' }),
+        request(app)
+          .put(`${pullRequests}/${id}`)
+          .set('Authorization', `Bearer ${author.token}`)
+          .send({ proposedYaml: proposal.replace('price: 7.5', 'price: 8.5') }),
+        request(app).post(`${pullRequests}/${id}/close`).set('Authorization', `Bearer ${target.token}`).send({ reason: 'No' }),
+      ];
+      for (const step of steps) expect((await step).status).toBe(200);
+
+      expect(await currentEtag(target.pricingUrl, target.token)).toBe(before);
+    });
+  });
 });
