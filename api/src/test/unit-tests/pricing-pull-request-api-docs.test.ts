@@ -85,3 +85,27 @@ describe('OpenAPI specification of the pricing pull requests', () => {
     }
   });
 });
+
+describe('AGENTS.md on the pricing pull requests', () => {
+  const agents = fs.readFileSync(path.resolve(__dirname, '../../../../AGENTS.md'), 'utf8');
+
+  it('no longer says SPHERE has no pull requests', () => {
+    expect(agents).not.toMatch(/SPHERE does not have/);
+  });
+
+  it('documents the routes, the variables and the tests', () => {
+    expect(agents).toContain('## Pricing pull requests');
+    expect(agents).toContain('/api/v1/pricing-pull-requests');
+    for (const variable of [
+      'PRICING_PR_MAX_OPEN_PER_AUTHOR',
+      'PRICING_PR_MAX_OPEN_PER_PRICING',
+      'PRICING_PR_MAX_CREATED_PER_DAY',
+      'PRICING_PR_MAX_YAML_BYTES',
+      'PRICING_PR_RATE_LIMIT_MAX_REQUESTS',
+      'PRICING_PR_RATE_LIMIT_WINDOW_SECONDS',
+    ]) {
+      expect(agents, variable).toContain(variable);
+    }
+    expect(agents).toContain('/api/src/test/pricing-pull-requests.test.ts');
+  });
+});
