@@ -109,16 +109,25 @@ function diffEntries(before: unknown, after: unknown): EntryDiff[] {
   return entries;
 }
 
+export interface DiffOptions {
+  /**
+   * More top-level fields to leave out, e.g. `saasName` when comparing a pull
+   * request's proposal, whose name SPHERE sets on merging.
+   */
+  ignoreKeys?: readonly string[];
+}
+
 /** Structured comparison of two parsed pricing YAMLs, `before` being the older one. */
-export function diffPricings(before: unknown, after: unknown): PricingDiff {
+export function diffPricings(before: unknown, after: unknown, options: DiffOptions = {}): PricingDiff {
   const previous = isDictionary(before) ? before : {};
   const next = isDictionary(after) ? after : {};
+  const ignored = new Set([...IGNORED_GENERAL_KEYS, ...(options.ignoreKeys ?? [])]);
 
   const generalBefore = Object.fromEntries(
-    Object.entries(previous).filter(([key]) => !IGNORED_GENERAL_KEYS.has(key))
+    Object.entries(previous).filter(([key]) => !ignored.has(key))
   );
   const generalAfter = Object.fromEntries(
-    Object.entries(next).filter(([key]) => !IGNORED_GENERAL_KEYS.has(key))
+    Object.entries(next).filter(([key]) => !ignored.has(key))
   );
 
   const general = diffFields(generalBefore, generalAfter);

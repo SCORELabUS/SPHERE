@@ -63,3 +63,13 @@ test('reads a first version as everything it starts with, and equal versions as 
   assert.equal(same.isEmpty, true);
   assert.deepEqual(same.sections, []);
 });
+
+test('leaves out the top-level fields it is told to ignore, and only those', () => {
+  const renamed = { ...before, saasName: 'Demo Pro', url: 'https://demo.example' };
+  // A pull request's proposal names the pricing as SPHERE will on merging, so its name is no change.
+  const proposal = diffPricings(before, renamed, { ignoreKeys: ['saasName'] });
+  assert.deepEqual(proposal.general.map(change => change.path), ['url']);
+  // Without options the name still shows, as it always did.
+  const plain = diffPricings(before, renamed);
+  assert.deepEqual(plain.general.map(change => change.path).sort(), ['saasName', 'url']);
+});
