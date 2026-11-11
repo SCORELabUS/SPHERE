@@ -201,9 +201,9 @@ IMPORTANT RULE: EVERY CLICKABLE COMPONENT IN THE UI MUST HAVE A "cursor-pointer"
   Keycloak users and legacy Google/CAS links, then writes the issuer/subject link
   on the original MongoDB user. Preserve local credentials, IDs and memberships.
   Runtime login never auto-merges by email or copies central roles into SPHERE's ADMIN.
-- In Identity mode, send login email and credential changes to Account in a new
-  tab. Keep the SPHERE profile, avatar, social links and service settings editable.
-  Direct API writes enforce the same ownership boundary.
+- In Identity mode, Settings → Account links to SCORETech Account in a new tab.
+  Hide Account Details, Public Profile, Social Links and Sign-in & Security in
+  SPHERE settings. Keep SPHERE service settings and MCP grants available there.
 - `docs/scoretech-identity.md` and `api/.env.scoretech.example` describe setup and
   rollback. `pnpm --dir api run test:e2e:identity` is separate from the ordinary
   browser suite; it needs the sibling Identity lab and the isolated scratch DB.

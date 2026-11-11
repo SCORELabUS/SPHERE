@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 || $# -gt 2 || ( $# -eq 2 && $2 != --apply ) ]]; then
-  printf 'Usage: bash docker/migrate-scoretech-users <SCORETech-identity checkout> [--apply]\n' >&2
+if [[ $# -lt 1 || $# -gt 3 || ( $# -eq 2 && $2 != --apply && $2 != --profiles ) ||
+  ( $# -eq 3 && ( $2 != --profiles || $3 != --apply ) ) ]]; then
+  printf 'Usage: bash docker/migrate-scoretech-users <SCORETech-identity checkout> [--profiles] [--apply]\n' >&2
   exit 2
 fi
 
@@ -20,7 +21,16 @@ identity() (
   docker compose exec -T admin-api node --input-type=commonjs -e "$migration" -- --scoretech-migration "$1"
 )
 
-if [[ $# -eq 2 ]]; then
+if [[ ${2:-} == --profiles ]]; then
+  (
+    cd -- "$identity_docker"
+    docker compose exec -T account-api test -f apps/account-api/dist/main/import-sphere-profiles.js
+  ) || { printf 'Deploy the Identity version with profile import support first.\n' >&2; exit 1; }
+  sphere export-profiles | (
+    cd -- "$identity_docker"
+    docker compose exec -T account-api node apps/account-api/dist/main/import-sphere-profiles.js "${3:---plan}"
+  )
+elif [[ ${2:-} == --apply ]]; then
   sphere export | identity provision | sphere link
 else
   sphere export | identity plan

@@ -7,10 +7,9 @@ interface Props {
   settings: UserSettings;
   onUpdate: (partial: Partial<UserSettings>) => void;
   onDirtyChange?: (dirty: boolean) => void;
-  centralized?: boolean;
 }
 
-export default function AccountSection({ settings, onUpdate, onDirtyChange, centralized = false }: Props) {
+export default function AccountSection({ settings, onUpdate, onDirtyChange }: Props) {
   const api = useUserSettingsApi();
   const [email, setEmail] = useState(settings.email);
   const [firstName, setFirstName] = useState(settings.firstName);
@@ -20,7 +19,7 @@ export default function AccountSection({ settings, onUpdate, onDirtyChange, cent
   const [saved, setSaved] = useState(false);
 
   const hasChanges =
-    (!centralized && email !== settings.email) ||
+    email !== settings.email ||
     firstName !== settings.firstName ||
     lastName !== settings.lastName ||
     phone !== (settings.settings?.phone || '');
@@ -33,7 +32,7 @@ export default function AccountSection({ settings, onUpdate, onDirtyChange, cent
     setSaving(true);
     try {
       const result = await api.updateAccount({
-        ...(centralized ? {} : { email }),
+        email,
         firstName,
         lastName,
         phone: phone || undefined,
@@ -53,7 +52,7 @@ export default function AccountSection({ settings, onUpdate, onDirtyChange, cent
       <div>
         <h2 className="text-lg font-medium text-tp-ink">Account Details</h2>
         <p className="mt-0.5 text-sm text-tp-steel">
-          {centralized ? 'Manage your name and phone number in SPHERE' : 'Manage your personal information and contact details'}
+          Manage your personal information and contact details
         </p>
       </div>
 
@@ -61,7 +60,7 @@ export default function AccountSection({ settings, onUpdate, onDirtyChange, cent
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First Name" value={firstName} onChange={setFirstName} placeholder="Your first name" />
           <Field label="Last Name" value={lastName} onChange={setLastName} placeholder="Your last name" />
-          {!centralized && <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" type="email" />}
+          <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" type="email" />
           <Field label="Phone (optional)" value={phone} onChange={setPhone} placeholder="+34 600 000 000" type="tel" />
         </div>
 

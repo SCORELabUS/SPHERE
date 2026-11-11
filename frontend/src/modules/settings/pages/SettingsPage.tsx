@@ -51,7 +51,9 @@ export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const authConfig = useAuthConfig();
   const centralized = authConfig.provider === 'scoretech';
-  const SECTIONS = ALL_SECTIONS.filter(section => !centralized || section.id !== 'integrations');
+  const SECTIONS = ALL_SECTIONS.filter(
+    ({ id }) => !centralized || !['profile', 'social', 'integrations'].includes(id)
+  );
   const { authUser, updateUser, updateUserSettings } = useAuth();
   const requestedSection = searchParams.get('section');
   const initialSection = SECTIONS.some(section => section.id === requestedSection)
@@ -249,11 +251,12 @@ export default function SettingsPage() {
                 transition={{ duration: 0.2, ease: 'easeOut' }}
               >
                 {activeSection === 'account' && (
-                  <>
-                    {centralized && <IdentityAccountSection />}
-                    <AccountSection settings={settings} onUpdate={updateSettings} onDirtyChange={accountDirtyChange} centralized={centralized} />
-                    {!centralized && authConfig.identityAvailable && <IdentityAccountSection linking />}
-                  </>
+                  centralized ? <IdentityAccountSection /> : (
+                    <>
+                      <AccountSection settings={settings} onUpdate={updateSettings} onDirtyChange={accountDirtyChange} />
+                      {authConfig.identityAvailable && <IdentityAccountSection linking />}
+                    </>
+                  )
                 )}
                 {activeSection === 'profile' && (
                   <PublicProfileSection settings={settings} onUpdate={updateSettings} onDirtyChange={profileDirtyChange} />
