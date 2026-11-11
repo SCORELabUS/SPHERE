@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { plan, providerId, sourceRecord, validateSources } = require('./migrate-scoretech-users.cjs');
+const { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+const { plan, providerId, sourceAvatar, sourceRecord, validateSources } = require('./migrate-scoretech-users.cjs');
 
 const issuer = 'https://identity.example.invalid/realms/score';
 const email = 'member@example.invalid';
@@ -59,4 +62,29 @@ test('flags generated CAS addresses and refuses duplicate source identities', ()
   assert.equal(sourceRecord({ _id: source.id, email: us.email, identities: [us] }).guessedEmail, true);
   assert.equal(sourceRecord({ _id: source.id, email: us.email, emailVerifiedAt: new Date(), identities: [us] }).guessedEmail, false);
   assert.throws(() => validateSources([source, { ...source, id: '100000000000000000000002', email: 'other@example.invalid' }]), /Duplicate sign-in identity/);
+});
+
+test('exports an owned photo and never follows remote, cross-user or symlink avatar paths', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'sphere-avatar-test-'));
+  const previous = process.env.SERVER_STATICS_FOLDER;
+  process.env.SERVER_STATICS_FOLDER = directory;
+  const origin = 'https://sphere.example.invalid';
+  const folder = 'static/avatars/users';
+  const image = `${folder}/${source.id}-123.webp`;
+  try {
+    mkdirSync(join(directory, folder), { recursive: true });
+    writeFileSync(join(directory, image), 'fixture-bytes');
+    assert.deepEqual(sourceAvatar(source.id, { avatar: image }, origin), {
+      kind: 'photo', bytes: Buffer.from('fixture-bytes').toString('base64'),
+    });
+    assert.throws(() => sourceAvatar(source.id, { avatar: `https://untrusted.example.invalid/${image}` }, origin));
+    assert.throws(() => sourceAvatar('100000000000000000000002', { avatar: image }, origin));
+    const symlink = `${folder}/${source.id}-456.webp`;
+    symlinkSync(join(directory, image), join(directory, symlink));
+    assert.throws(() => sourceAvatar(source.id, { avatar: symlink }, origin));
+  } finally {
+    if (previous === undefined) delete process.env.SERVER_STATICS_FOLDER;
+    else process.env.SERVER_STATICS_FOLDER = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -191,13 +191,36 @@ pages also hand off to Identity. Sign-in errors offer an explicit retry without
 redirect loops. Protected-page and OAuth/MCP consent return destinations survive
 the redirect.
 
-Settings → Account includes **Open my SCORETech profile**, opened in a separate
-tab with `noopener noreferrer`, for the sign-in email and credentials. The local
-Sign-in & Security tab is hidden. Name, phone, Public Profile, avatar, Social
-Links, Connected applications (SPHERE MCP grants), Notifications, Payments, Beta
-features and Danger Zone remain in SPHERE. Danger Zone deletes the SPHERE account
-and service data. Direct API writes to the SPHERE login email and local credentials
-are blocked in Identity mode. SPHERE role administration and API keys remain available.
+In Identity mode, Settings → Account shows only **Open my SCORETech profile**,
+which opens Account in a separate tab with `noopener noreferrer`. Account Details,
+Public Profile, Social Links and Sign-in & Security are managed through that link.
+Connected applications (SPHERE MCP grants), Notifications, Payments, Beta features
+and Danger Zone stay in SPHERE. Danger Zone deletes the SPHERE account and service
+data. Direct API writes to the SPHERE login email and local credentials are blocked
+in Identity mode. SPHERE role administration and API keys remain available.
+
+### Copy profiles after linking accounts
+
+Deploy the SCORETech Identity version with profile import support first. From
+the SPHERE checkout, preview and apply the profile import:
+
+```bash
+bash docker/migrate-scoretech-users ../SCORETech-identity --profiles
+bash docker/migrate-scoretech-users ../SCORETech-identity --profiles --apply
+```
+
+This can run with `AUTH_PROVIDER=scoretech`. It reads only linked SPHERE users
+and matches their stored issuer/subject binding. It fills missing profile,
+social links, phone and avatar groups in Account, preserving groups already
+saved there. Uploaded images are read from SPHERE storage and copied to
+Identity's private avatar storage. The preview reports missing links and
+unsupported or unavailable images without changing either database. Rerun
+the same command to resume a partial import. SPHERE keeps its original data.
+
+The Account link includes the originating Settings URL so Account can show
+**Back to application**. Same-origin SPHERE works automatically. If Identity
+and SPHERE use different origins, include the SPHERE origin in Identity's
+`IDENTITY_ACCOUNT_RETURN_ORIGINS` and rerender its public configuration.
 
 ## Applications that already use SPHERE sign-in
 

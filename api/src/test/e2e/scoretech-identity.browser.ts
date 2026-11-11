@@ -150,9 +150,9 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     await browserExpect(
       page.getByRole('heading', { name: 'Account Details', exact: true })
     ).toBeVisible();
-    await browserExpect(
-      page.getByRole('button', { name: 'Sign-in & Security', exact: true })
-    ).toBeVisible();
+    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security']) {
+      await browserExpect(page.getByRole('button', { name, exact: true })).toBeVisible();
+    }
     await page.getByRole('button', { name: 'Connect SCORETech Identity', exact: true }).click();
     await page.locator('#email').fill(email);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
@@ -237,14 +237,15 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
       .get('/api/v1/users/me')
       .set('Authorization', 'Bearer ' + legacyToken)
       .expect(401);
-    await page.goto(origin + '/me/settings?section=account');
+    await page.goto(origin + '/me/settings?section=profile');
     await browserExpect(
       page.getByRole('heading', { name: 'Your SCORETech account', exact: true })
     ).toBeVisible();
-    await browserExpect(page.getByRole('button', { name: 'Sign-in & Security', exact: true })).toHaveCount(0);
+    await browserExpect(page.getByRole('heading', { name: 'Account Details', exact: true })).toHaveCount(0);
+    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security']) {
+      await browserExpect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
     for (const name of [
-      'Public Profile',
-      'Social Links',
       'Connected applications',
       'Notifications',
       'Payments',
@@ -260,7 +261,11 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     const opened = page.waitForEvent('popup');
     await profile.click();
     const popup = await opened;
-    await popup.waitForURL('http://localhost:18000/identity/account/#public-profile');
+    await popup.waitForURL((url) =>
+      url.origin === 'http://localhost:18000' && url.pathname === '/identity/account/' &&
+      url.hash === '#public-profile' &&
+      url.searchParams.get('return_to') === origin + '/me/settings?section=account'
+    );
     await popup.close();
     await page.evaluate('scrollTo(0, 0)');
     await page.waitForFunction("Array.from(document.querySelectorAll('[style*=\"opacity\"]')).every(element => getComputedStyle(element).opacity === '1')");

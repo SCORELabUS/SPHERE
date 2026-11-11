@@ -6,6 +6,12 @@ import { useAuth } from '../../auth/hooks/useAuth';
 export default function IdentityAccountSection({ linking = false }: { linking?: boolean }) {
   const [parameters] = useSearchParams();
   const config = useAuthConfig();
+  const accountUrl = config.accountUrl ? new URL(config.accountUrl) : undefined;
+  if (accountUrl && !linking) {
+    const returnTo = new URL(window.location.pathname, window.location.origin);
+    returnTo.searchParams.set('section', 'account');
+    accountUrl.searchParams.set('return_to', returnTo.href);
+  }
   const { fetchWithInterceptor } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +40,7 @@ export default function IdentityAccountSection({ linking = false }: { linking?: 
         <p className="mt-1 text-sm text-tp-steel">
           {linking
             ? 'Keep this SPHERE account and its existing organizations and permissions when centralized sign-in is enabled.'
-            : 'Manage how you sign in to SPHERE and other SCORE services.'}
+            : 'Manage the profile you use across SCORE services.'}
         </p>
       </div>
       {linking && parameters.get('identity_linked') === 'scoretech' && (
@@ -58,7 +64,7 @@ export default function IdentityAccountSection({ linking = false }: { linking?: 
         </div>
         <h3 className="text-xl font-semibold text-tp-ink">SCORETech Identity</h3>
         <p className="mt-3 max-w-[36rem] text-sm leading-relaxed text-tp-steel">
-          Manage your sign-in email, passkeys and connected providers in SCORETech Identity.
+          Update your personal details, avatar and social links, or manage your sign-in methods.
         </p>
         {error && (
           <p role="alert" className="mt-3 text-sm text-tp-severity-error">
@@ -78,7 +84,7 @@ export default function IdentityAccountSection({ linking = false }: { linking?: 
           )}
           <a
             className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${linking ? 'border border-tp-hairline-strong text-tp-ink' : 'bg-tp-primary text-tp-on-primary'}`}
-            href={config.accountUrl}
+            href={accountUrl?.href}
             target="_blank"
             rel="noopener noreferrer"
           >

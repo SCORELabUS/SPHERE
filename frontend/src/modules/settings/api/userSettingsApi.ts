@@ -55,7 +55,7 @@ export function useUserSettingsApi() {
     return res.json();
   }
 
-  async function updateAccount(data: { email?: string; firstName: string; lastName: string; phone?: string }): Promise<UserSettings> {
+  async function updateAccount(data: { email: string; firstName: string; lastName: string; phone?: string }): Promise<UserSettings> {
     const res = await fetchWithInterceptor(`${BASE_PATH}/users/me/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

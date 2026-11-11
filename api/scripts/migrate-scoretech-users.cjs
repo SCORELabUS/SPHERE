@@ -1,6 +1,6 @@
 const { createHash } = require('node:crypto');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
+const { closeSync, constants, fstatSync, openSync, readSync, readFileSync } = require('node:fs');
+const { resolve, sep } = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const aliases = ['google', 'us-sso'];
@@ -64,8 +64,8 @@ function validateSources(sources) {
   }
 }
 
-async function withSphere(work) {
-  check((process.env.AUTH_PROVIDER || 'local') === 'local', 'Keep SPHERE in local sign-in mode while migrating.');
+async function withSphere(work, profilesOnly = false) {
+  check(profilesOnly || (process.env.AUTH_PROVIDER || 'local') === 'local', 'Keep SPHERE in local sign-in mode while migrating.');
   const { default: mongoose } = await import('mongoose');
   const moduleUrl = pathToFileURL(resolve('dist/main/config/mongoose.js'));
   const { getMongoDBConnectionURI } = await import(moduleUrl.href);
@@ -78,16 +78,76 @@ async function withSphere(work) {
   await mongoose.connect(getMongoDBConnectionURI(), { serverSelectionTimeoutMS: 10000 });
   try {
     const users = mongoose.connection.db.collection('users');
-    const rows = await users.find({}, {
-      projection: { email: 1, firstName: 1, lastName: 1, emailVerifiedAt: 1, identities: 1 },
+    const rows = await users.find(profilesOnly ? { 'identities.provider': 'scoretech' } : {}, {
+      projection: profilesOnly ? {
+        identities: 1, 'settings.profile': 1, 'settings.socialLinks': 1, 'settings.phone': 1,
+        'settings.avatar': 1, 'settings.avatarBgColor': 1, 'settings.avatarFgColor': 1,
+      } : { email: 1, firstName: 1, lastName: 1, emailVerifiedAt: 1, identities: 1 },
       sort: { _id: 1 },
     }).toArray();
+    if (profilesOnly) {
+      await work(config, users, rows);
+      return;
+    }
     const sources = rows.map(sourceRecord);
     validateSources(sources);
     await work({ issuer: config.issuer, clientId: config.clientId, sources }, users, rows);
   } finally {
     await mongoose.disconnect();
   }
+}
+
+function sourceAvatar(id, settings, frontend) {
+  const { avatar, avatarBgColor, avatarFgColor } = settings;
+  const color = (value, fallback) => /^#[0-9a-f]{6}$/i.test(value ?? '') ? value : fallback;
+  const backgroundColor = color(avatarBgColor, '#fa520f');
+  const foregroundColor = color(avatarFgColor, '#ffffff');
+  if (!avatar) {
+    return avatarBgColor || avatarFgColor ? { kind: 'initials', backgroundColor, foregroundColor } : undefined;
+  }
+  const url = new URL(avatar, frontend + '/');
+  check(url.origin === new URL(frontend).origin && !url.username && !url.password, 'Avatar is outside SPHERE storage.');
+  const asset = /^\/static\/avatars\/users\/default\/(avatar-(?:[1-4]|[6-9]|10))\.svg$/.exec(url.pathname);
+  if (asset) return { kind: 'icon', assetId: asset[1], backgroundColor, foregroundColor };
+
+  const folders = ['static/avatars/users', 'static/avatars/users/uploaded', process.env.AVATARS_FOLDER]
+    .filter(Boolean).map((folder) => folder.replace(/^\/+|\/+$/g, ''));
+  const filename = url.pathname.split('/').at(-1);
+  check(filename && new RegExp(`^${id}-[0-9]+\\.(?:webp|png|jpe?g)$`, 'i').test(filename) &&
+    folders.some((folder) => url.pathname === `/${folder}/${filename}`), 'Avatar path is not a supported SPHERE upload.');
+  const root = resolve(process.env.SERVER_STATICS_FOLDER || 'public');
+  const location = resolve(root, '.' + url.pathname);
+  check(location.startsWith(root + sep), 'Invalid avatar path.');
+  const fd = openSync(location, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(fd);
+    check(stat.isFile() && stat.size > 0 && stat.size <= 2 * 1024 * 1024, 'Avatar file is empty or too large.');
+    const bytes = Buffer.alloc(stat.size);
+    check(readSync(fd, bytes) === stat.size, 'Avatar file changed while reading.');
+    return { kind: 'photo', bytes: bytes.toString('base64') };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+async function exportProfiles() {
+  await withSphere(({ issuer, frontend }, _users, rows) => {
+    const profiles = rows.map((row) => {
+      const id = String(row._id);
+      const links = row.identities.filter((identity) => identity.provider === 'scoretech');
+      check(/^[a-f0-9]{24}$/.test(id) && links.length === 1 && /^[a-f0-9]{64}$/.test(links[0].providerId),
+        `Invalid SCORETech link on SPHERE user ${id}.`);
+      const settings = row.settings ?? {};
+      let avatar;
+      try { avatar = sourceAvatar(id, settings, frontend); }
+      catch { console.error(`SPHERE user ${id}: avatar file unavailable or unsupported.`); }
+      return {
+        id, binding: links[0].providerId, profile: settings.profile,
+        socialLinks: settings.socialLinks, phone: settings.phone, avatar,
+      };
+    });
+    write({ issuer, profiles });
+  }, true);
 }
 
 async function link() {
@@ -269,6 +329,7 @@ async function provision(apply) {
 
 async function main(mode) {
   if (mode === 'export') await withSphere((snapshot) => write(snapshot));
+  else if (mode === 'export-profiles') await exportProfiles();
   else if (mode === 'link') await link();
   else if (mode === 'plan' || mode === 'provision') await provision(mode === 'provision');
   else throw new MigrationError('Invalid migration command.');
@@ -280,4 +341,4 @@ if (process.argv[1] === '--scoretech-migration') main(process.argv[2]).catch((er
   process.exitCode = 1;
 });
 
-module.exports = { plan, providerId, sourceRecord, validateSources };
+module.exports = { plan, providerId, sourceAvatar, sourceRecord, validateSources };
