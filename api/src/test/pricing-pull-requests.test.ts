@@ -24,6 +24,8 @@ import OrganizationMembershipMongoose from '../main/repositories/mongoose/models
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
 import PricingIdentityMongoose from '../main/repositories/mongoose/models/PricingIdentityMongoose';
 import PricingPullRequestMongoose from '../main/repositories/mongoose/models/PricingPullRequestMongoose';
+import { OAuthGrant, OAuthToken } from '../main/repositories/mongoose/models/OAuthMongoose';
+import { oauthResource } from '../main/services/OAuthService';
 import PricingPullRequestRepository, {
   MERGE_LOCK_MS,
   duplicateKeyFields,
@@ -1066,26 +1068,59 @@ describe('Pricing pull requests', () => {
         .set(bearer(author.token))
         .send({ name: `key ${randomSuffix()}`, scopes: [{ organizationId: scene.organizationId, scope: 'ALL' }] });
       expect(keyResponse.status).toBe(201);
-      const body = { title: 'Again', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '9.0.0', both(V2, goldAt(6)))) };
-      const routes = [
-        (call: any) => call.get(`${PULL_REQUESTS}?pricingId=${scene.pricingId}`),
-        (call: any) => call.post(PULL_REQUESTS).send(body),
-        (call: any) => call.get(`${PULL_REQUESTS}/${created.id}`),
-        (call: any) => call.put(`${PULL_REQUESTS}/${created.id}`).send({ title: 'Changed' }),
-        (call: any) => call.post(`${PULL_REQUESTS}/${created.id}/close`).send({}),
-      ];
+      // An OAuth access token the MCP server accepts for the same user.
+      const oauthRepository = appContainer.resolve('oauthRepository');
+      const oauthService = appContainer.resolve('oauthService');
+      const grant = await oauthRepository.createGrant({
+        userId: author.id, clientId: `pr-test-${randomSuffix()}`, clientName: 'Claude', resource: oauthResource(),
+        scopes: [{ organizationId: scene.organizationId, scope: 'ALL' }], refreshHash: `pending_${randomSuffix()}`,
+        expiresAt: new Date(Date.now() + HOUR),
+      });
+      const grantId = String(grant._id);
+      try {
+        const oauthToken: string = (await oauthService.issue(grantId)).access_token;
+        expect(String((await oauthService.authenticate(oauthToken)).user.id)).toBe(author.id);
 
-      for (const route of routes) {
-        const withKey = await route(request(app())).set('x-api-key', keyResponse.body.plainKey);
-        expect(withKey.status).toBe(401);
-        expect(withKey.body).toEqual({ error: 'A SPHERE web session is required', code: 'WEB_SESSION_REQUIRED' });
-
-        const others = [
-          route(request(app())).set('Authorization', `Bearer sph_oat_${randomSuffix()}`),
-          route(request(app())).set('Cookie', `token=${author.token}`),
-          route(request(app())),
+        const proposal = pricingYaml(scene.name, '9.0.0', both(V2, goldAt(6)));
+        const body = { title: 'Again', source: textSource(scene.pricingId, scene.v2.id, proposal) };
+        const routes = [
+          (call: any) => call.get(`${PULL_REQUESTS}?pricingId=${scene.pricingId}`),
+          (call: any) => call.post(PULL_REQUESTS).send(body),
+          (call: any) => call.get(`${PULL_REQUESTS}/fork-target?forkPricingId=${scene.pricingId}`),
+          (call: any) => call.post(`${PULL_REQUESTS}/previews`).send({ source: body.source }),
+          (call: any) => call.get(`${PULL_REQUESTS}/${created.id}`),
+          (call: any) => call.put(`${PULL_REQUESTS}/${created.id}`).send({ title: 'Changed' }),
+          (call: any) => call.post(`${PULL_REQUESTS}/${created.id}/merge-preview`).send({ purpose: 'merge' }),
+          (call: any) => call.post(`${PULL_REQUESTS}/${created.id}/update`).send({ previewToken: 'x.y' }),
+          (call: any) => call.post(`${PULL_REQUESTS}/${created.id}/merge`).send({ previewToken: 'x.y', version: '9.0.0' }),
+          (call: any) => call.post(`${PULL_REQUESTS}/${created.id}/close`).send({}),
         ];
-        for (const response of await Promise.all(others)) expect(response.status).toBe(401);
+        const anonymous = await routes[0](request(app()));
+        expect(anonymous.status).toBe(401);
+
+        for (const [index, route] of routes.entries()) {
+          const withKey = await route(request(app())).set('x-api-key', keyResponse.body.plainKey);
+          expect(withKey.status, `API key on route ${index}`).toBe(401);
+          expect(withKey.body).toEqual({ error: 'A SPHERE web session is required', code: 'WEB_SESSION_REQUIRED' });
+
+          // A valid OAuth token is turned away before it authenticates anyone.
+          const withOAuth = await route(request(app())).set('Authorization', `Bearer ${oauthToken}`);
+          expect(withOAuth.status, `OAuth on route ${index}`).toBe(401);
+          expect(withOAuth.body).toEqual({ error: 'OAuth access tokens are restricted to MCP' });
+
+          // The same web session token in a cookie, under the names a browser might use, is no session.
+          const cookie = ['token', 'accessToken', 'authToken', 'jwt'].map(name => `${name}=${author.token}`).join('; ');
+          const withCookie = await route(request(app())).set('Cookie', cookie);
+          expect(withCookie.status, `Cookie on route ${index}`).toBe(401);
+          expect(withCookie.body).toEqual(anonymous.body);
+
+          expect((await route(request(app()))).status, `anonymous on route ${index}`).toBe(401);
+        }
+        // The same token as a web session is let in.
+        expect((await routes[0](request(app())).set(bearer(author.token))).status).toBe(200);
+      } finally {
+        await OAuthToken.deleteMany({ grantId });
+        await OAuthGrant.deleteOne({ _id: grantId });
       }
       const stored = await PricingPullRequestMongoose.findById(created.id).lean();
       expect(stored).toMatchObject({ title: 'Change a price', status: 'open' });
