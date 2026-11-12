@@ -163,6 +163,22 @@ describe('Propose changes in the editor', () => {
     expect(query).toEqual({ source: 'acme/demo', version: '3.0', versionId: V3, mode: 'code', collection: 'main' });
   });
 
+  it('keeps the reason inside a phone screen, hung from the header instead of the button (CA-21)', async () => {
+    mocks.listPullRequests.mockResolvedValue(proposals({ latest: { id: V3, version: '3.0' } }));
+    await render(source({ version: '3.1', versionId: '6650f0c0c0c0c0c0c0c0c0a4' }));
+    const why = view.root.find(node => node.props['aria-label'] === 'Why proposing changes is not available');
+    await act(async () => why.props.onClick());
+    const note = view.root.findByProps({ role: 'note' });
+    const classes = (node: ReactTestInstance) => String(node.props.className).split(/\s+/);
+    // Below `sm` the button's wrapper is not positioned, so the note spans the sticky header with a gutter.
+    expect(classes(note.parent!)).not.toContain('relative');
+    expect(classes(note.parent!)).toContain('sm:relative');
+    expect(classes(note)).toEqual(expect.arrayContaining(['absolute', 'inset-x-3', 'break-words']));
+    expect(classes(note)).not.toContain('w-72');
+    // From `sm` on it hangs from the button again, at its usual width.
+    expect(classes(note)).toEqual(expect.arrayContaining(['sm:inset-x-auto', 'sm:right-0', 'sm:w-72']));
+  });
+
   it('is disabled when the editor was not opened on a version by id, even if the label matches (CA-87)', async () => {
     await render(source({ versionId: undefined }));
     expect(button('Propose changes').props.disabled).toBe(true);

@@ -68,8 +68,10 @@ export default function ProposeChangesButton({ source, yaml }: { source: EditorS
   const label = pullRequestId ? 'Update pull request' : 'Propose changes';
   const { versionId } = source;
 
+  // On narrow screens the reason hangs from the editor's header (sticky, so positioned), across
+  // its whole width: hung from this button it would start off the left edge of a phone.
   return (
-    <div ref={reasonRef} className="relative flex items-center">
+    <div ref={reasonRef} className="flex items-center sm:relative">
       <button
         type="button"
         disabled={Boolean(reason)}
@@ -95,7 +97,7 @@ export default function ProposeChangesButton({ source, yaml }: { source: EditorS
       {reason && showReason && (
         <div
           role="note"
-          className="absolute right-0 top-full z-50 mt-2 w-72 space-y-2 rounded-lg border border-white/10 bg-tp-surface-code p-3 text-xs text-white/75 shadow-elevation-4"
+          className="absolute inset-x-3 top-full z-50 mt-2 space-y-2 break-words rounded-lg border border-white/10 bg-tp-surface-code p-3 text-xs text-white/75 shadow-elevation-4 sm:inset-x-auto sm:right-0 sm:w-72"
         >
           <p>{reason}</p>
           {latestHref && latest && (
