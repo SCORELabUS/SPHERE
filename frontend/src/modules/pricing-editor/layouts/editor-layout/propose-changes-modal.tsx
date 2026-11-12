@@ -210,11 +210,15 @@ export default function ProposeChangesModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex cursor-pointer items-start justify-center overflow-y-auto bg-black/70 p-3 pt-[8dvh] backdrop-blur-sm sm:p-4 sm:pt-[10dvh]"
+      // While the changes are combined with the latest version, a click outside does not close
+      // the dialog: the choices made there would go with it. Close and Cancel do.
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 pt-[8dvh] backdrop-blur-sm sm:p-4 sm:pt-[10dvh] ${
+        applyOnLatest ? '' : 'cursor-pointer'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="propose-changes-title"
-      onClick={onClose}
+      onClick={applyOnLatest ? undefined : onClose}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 12 }}

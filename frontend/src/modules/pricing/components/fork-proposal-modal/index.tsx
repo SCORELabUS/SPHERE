@@ -121,11 +121,12 @@ function ForkProposalDialog({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex cursor-pointer items-start justify-center overflow-y-auto bg-tp-ink/60 p-3 pt-[6dvh] sm:p-4"
+      // A click outside does not close it: the choices, the edited YAML, the title and the
+      // description would go with it. Close and Cancel do.
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-tp-ink/60 p-3 pt-[6dvh] sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="fork-proposal-title"
-      onClick={onClose}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 12 }}

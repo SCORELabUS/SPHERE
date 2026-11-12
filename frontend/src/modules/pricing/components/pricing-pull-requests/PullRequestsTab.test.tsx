@@ -800,5 +800,18 @@ describe('Pull requests tab', () => {
       expect(button('Open pull request').props.disabled).toBe(true);
       expect(text()).toContain('Nothing to propose: version 2.0 of Demo already has everything this fork changes.');
     });
+
+    it('is not closed by a click outside, which would lose the choices; Close and Cancel close it', async () => {
+      mocks.previewProposal.mockResolvedValue(forkPreview);
+      await renderFork({ canPropose: true, parent });
+      await act(async () => button('Propose changes to Demo').props.onClick());
+      await flush();
+      const dialog = () => view.root.findAll(node => node.type === 'div' && node.props.role === 'dialog');
+      expect(dialog()).toHaveLength(1);
+      expect(dialog()[0].props.onClick).toBeUndefined();
+      expect(dialog()[0].props.className).not.toContain('cursor-pointer');
+      await act(async () => button('Cancel').props.onClick());
+      expect(dialog()).toHaveLength(0);
+    });
   });
 });

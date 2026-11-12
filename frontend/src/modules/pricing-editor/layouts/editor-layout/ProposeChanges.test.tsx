@@ -253,9 +253,15 @@ describe('Propose changes in the editor', () => {
       'A newer public version (3.0) was published. Proposals start from the latest public version.'
     );
     expect(text()).toContain('Your text in the editor stays as it is.');
+    // Until there is a merge to resolve, a click outside closes the dialog as usual.
+    const dialog = () => view.root.findByProps({ role: 'dialog' });
+    expect(dialog().props.onClick).toBeTypeOf('function');
 
     await act(async () => button('Apply my changes on top of the latest').props.onClick());
     await flush();
+    // Then it does not, so the choices are not lost by a stray click (Close and Cancel still close).
+    expect(dialog().props.onClick).toBeUndefined();
+    expect(dialog().props.className).not.toContain('cursor-pointer');
     // The proposal against the version it was written on, merged with the latest public one.
     expect(mocks.previewProposal).toHaveBeenCalledWith(
       { kind: 'text', pricingId: PRICING, baseVersionId: V2, proposedYaml: yaml },
