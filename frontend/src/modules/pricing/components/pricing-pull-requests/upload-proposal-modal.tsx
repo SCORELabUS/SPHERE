@@ -60,6 +60,8 @@ export default function UploadProposalModal({
   onClose: () => void;
 }) {
   const { createPullRequest } = usePricingPullRequestsApi();
+  // The version proposed on: the latest public one, or a newer one the server named when refusing.
+  const [base, setBase] = useState(latest);
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [latestYaml, setLatestYaml] = useState<{ yaml?: string; error?: string } | null>(null);
@@ -70,7 +72,8 @@ export default function UploadProposalModal({
 
   useEffect(() => {
     let active = true;
-    loadLatestYaml(latest)
+    setLatestYaml(null);
+    loadLatestYaml(base)
       .then(yaml => {
         if (active) setLatestYaml({ yaml });
       })
@@ -80,7 +83,7 @@ export default function UploadProposalModal({
     return () => {
       active = false;
     };
-  }, [latest, loadLatestYaml]);
+  }, [base, loadLatestYaml]);
 
   const summary = useMemo(
     () => (file && latestYaml?.yaml !== undefined ? summarizeProposal(latestYaml.yaml, file.text) : undefined),
@@ -97,7 +100,7 @@ export default function UploadProposalModal({
 
   let blockReason: string | null = null;
   if (!file) blockReason = 'Choose a Pricing2Yaml file to propose.';
-  else if (summary?.isEmpty) blockReason = `Nothing to propose: the file is the same as version ${latest.version}.`;
+  else if (summary?.isEmpty) blockReason = `Nothing to propose: the file is the same as version ${base.version}.`;
   else blockReason = proposalFieldsError(title, description);
 
   const submit = async () => {
@@ -108,17 +111,22 @@ export default function UploadProposalModal({
       const created = await createPullRequest({
         title: title.trim(),
         ...(description.trim() ? { description } : {}),
-        source: { kind: 'text', pricingId, baseVersionId: latest.id, proposedYaml: file.text },
+        source: { kind: 'text', pricingId, baseVersionId: base.id, proposedYaml: file.text },
       });
       const notices = created.warnings.map(pullRequestWarningMessage).join(' ');
       customAlert(`Pull request #${created.number} opened.${notices ? ` ${notices}` : ''}`, 'success');
       onCreated(created);
     } catch (caught) {
-      setError(
+      let message =
         caught instanceof PullRequestApiError
           ? pullRequestMessage(caught.code, { message: caught.message, latest: caught.latest })
-          : pullRequestMessage(null)
-      );
+          : pullRequestMessage(null);
+      // A newer public version: the file is compared with it, and can be proposed on it after a look.
+      if (caught instanceof PullRequestApiError && caught.code === 'BASE_NOT_LATEST' && caught.latest && caught.latest.id !== base.id) {
+        setBase(caught.latest);
+        message += ` The proposal now starts from version ${caught.latest.version}: review its changes and open it again.`;
+      }
+      setError(message);
       setIsSubmitting(false);
     }
   };
@@ -149,7 +157,7 @@ export default function UploadProposalModal({
               Propose a YAML file
             </h2>
             <p className="mt-0.5 text-xs text-tp-steel">
-              The pull request is based on version {latest.version}, the latest public version.
+              The pull request is based on version {base.version}, the latest public version.
             </p>
           </div>
           <button
@@ -189,13 +197,13 @@ export default function UploadProposalModal({
 
         {file &&
           (latestYaml === null ? (
-            <p className="text-xs text-tp-steel">Reading version {latest.version}…</p>
+            <p className="text-xs text-tp-steel">Reading version {base.version}…</p>
           ) : latestYaml.yaml === undefined ? (
             <p className="text-xs text-tp-steel">
-              Version {latest.version} could not be read to compare: {latestYaml.error}
+              Version {base.version} could not be read to compare: {latestYaml.error}
             </p>
           ) : (
-            <ProposalSummary summary={summary ?? null} baseLabel={latest.version} />
+            <ProposalSummary summary={summary ?? null} baseLabel={base.version} />
           ))}
 
         <ProposalFields title={title} description={description} onTitleChange={setTitle} onDescriptionChange={setDescription} />

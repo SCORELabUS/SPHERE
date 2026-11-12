@@ -619,9 +619,43 @@ describe('Pull requests tab', () => {
       act(() => view.root.findByType('input').props.onChange({ target: { value: 'Old syntax' } }));
       await act(async () => button('Open pull request').props.onClick());
       expect(view.root.findByProps({ role: 'alert' }).children.map(textOf).join('')).toBe(
-        'A newer public version (3.0) was published. Proposals start from the latest public version.'
+        'A newer public version (3.0) was published. Proposals start from the latest public version. ' +
+          'The proposal now starts from version 3.0: review its changes and open it again.'
       );
       expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('after a newer public version was published, compares the file with it and proposes it there', async () => {
+      const newer: VersionData = { ...latestVersion, id: 'v3', version: '3.0', yaml: '/static/pricings/acme/demo/3.0.yml' };
+      const NEWER_YAML = LATEST_YAML.replace('version: "2.0"', 'version: "3.0"').replace('price: 10', 'price: 11');
+      fetchMock.mockImplementation(async (url: string) => new Response(url.endsWith('/3.0.yml') ? NEWER_YAML : LATEST_YAML));
+      mocks.listPullRequests.mockResolvedValue(page([]));
+      await act(async () => {
+        view = create(
+          <PricingPullRequestsTab pricingId={PRICING} selectedId={null} onSelect={onSelect} context={{ ...withVersions, versions: [newer, latestVersion] }} />
+        );
+      });
+      const proposed = 'saasName: Demo\nversion: "2.1"\nplans:\n  BASIC:\n    price: 0\n  PRO:\n    price: 12\n';
+      await upload('demo.yml', proposed);
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Raise PRO' } }));
+      mocks.createPullRequest.mockRejectedValueOnce(
+        new PullRequestApiError(409, { error: 'x', code: 'BASE_NOT_LATEST', latest: { id: 'v3', version: '3.0' } })
+      );
+      await act(async () => button('Open pull request').props.onClick());
+      await flush();
+
+      expect(text()).toContain('The pull request is based on version 3.0, the latest public version.');
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/static/pricings/acme/demo/3.0.yml', {});
+      expect(text()).toContain('Changes against version 3.0');
+      expect(button('Open pull request').props.disabled).toBe(false);
+
+      mocks.createPullRequest.mockResolvedValue({ ...detail({ id: 'new-pr', number: 9 }), warnings: [] });
+      await act(async () => button('Open pull request').props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenLastCalledWith({
+        title: 'Raise PRO',
+        source: { kind: 'text', pricingId: PRICING, baseVersionId: 'v3', proposedYaml: proposed },
+      });
+      expect(onSelect).toHaveBeenCalledWith('new-pr');
     });
 
     it('gives every enabled button of the menu and the upload dialog a pointer cursor (CA-37)', async () => {
