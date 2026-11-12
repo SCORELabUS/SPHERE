@@ -1,4 +1,4 @@
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestInstance, type ReactTestRenderer, type TestRendererOptions } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MergePanel from '../../../pricing/components/pricing-pull-requests/merge-panel';
 import UpdatePanel from '../../../pricing/components/pricing-pull-requests/update-panel';
@@ -177,7 +177,7 @@ describe('Merge resolver', () => {
     await act(async () => button(label, card(target)).props.onClick());
   };
 
-  async function renderMerge() {
+  async function renderMerge(options?: TestRendererOptions) {
     await act(async () => {
       view = create(
         <MergePanel
@@ -187,7 +187,8 @@ describe('Merge resolver', () => {
           onMerged={mocks.onMerged}
           onPricingChanged={mocks.onPricingChanged}
           onCancel={() => {}}
-        />
+        />,
+        options
       );
     });
     await settle(0);
@@ -532,18 +533,39 @@ describe('Merge resolver', () => {
 
   it('moves between conflicts with Alt+↓ and Alt+↑, and gives every enabled button a pointer cursor (CA-37)', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
-    await renderMerge();
+    // The element that has the focus, as `document.activeElement` would say: the conflict of a card.
+    let focused: string | null = null;
+    await renderMerge({
+      createNodeMock: element =>
+        element.type === 'article'
+          ? { scrollIntoView: () => {}, focus: () => (focused = element.props['data-conflict-id']) }
+          : null,
+    });
     const list = view.root.findByProps({ role: 'group', 'aria-label': 'Conflicts' });
     const active = () => view.root.find(node => node.type === 'article' && node.props['aria-current'] === 'true').props['data-conflict-id'];
     const key = (key: string, altKey = true) => act(async () => list.props.onKeyDown({ key, altKey, preventDefault: () => {} }));
     expect(active()).toBe(EVERYWHERE[0].id);
+    expect(focused).toBeNull();
     await key('ArrowDown');
     await key('ArrowDown');
     expect(active()).toBe(EVERYWHERE[2].id);
+    // The focus goes with it, so Enter and Tab act on the conflict that is marked.
+    expect(focused).toBe(EVERYWHERE[2].id);
+    expect(card(EVERYWHERE[2]).props).toMatchObject({ tabIndex: -1, 'aria-label': EVERYWHERE[2].label });
     await key('ArrowUp');
     expect(active()).toBe(EVERYWHERE[1].id);
+    expect(focused).toBe(EVERYWHERE[1].id);
     await key('ArrowDown', false);
     expect(active()).toBe(EVERYWHERE[1].id);
+    expect(focused).toBe(EVERYWHERE[1].id);
+    // Choosing with the mouse marks a conflict without taking the focus away from the button.
+    await choose(EVERYWHERE[4], 'Keep current');
+    expect(active()).toBe(EVERYWHERE[4].id);
+    expect(focused).toBe(EVERYWHERE[1].id);
+    // The keyboard goes on from the conflict chosen, and takes the focus again.
+    focused = null;
+    await key('ArrowDown');
+    expect(focused).toBe(EVERYWHERE[5].id);
 
     for (const label of ['Conflicts', 'YAML', 'Compare', 'Visual']) {
       await showView(label);

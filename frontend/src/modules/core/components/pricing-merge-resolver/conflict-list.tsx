@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { FiAlertTriangle, FiCheck, FiRefreshCw } from 'react-icons/fi';
 import type {
   ConflictChoice,
@@ -8,6 +8,7 @@ import type {
   MergeSection,
 } from '../../../pricing/types/pull-requests';
 import type { MergeResolver } from '../../hooks/useMergeResolver';
+import { movedActiveId } from '../../utils/pricing-merge-resolver';
 
 const SECTION_LABELS: Record<MergeSection, string> = {
   plans: 'Plans',
@@ -101,28 +102,38 @@ export function ConflictCard({
   conflict,
   resolver,
   currentLabel,
+  focusRequest = null,
 }: {
   conflict: MergeConflict;
   resolver: MergeResolver;
   /** The version the proposal is merged into, to name the "current" side. */
   currentLabel: string;
+  /** Changes each time the keyboard moves to this conflict, which then takes the focus. */
+  focusRequest?: number | null;
 }) {
   const { state } = resolver;
   const choice = state.choices[conflict.id];
   const active = state.activeId === conflict.id;
   const element = useRef<HTMLElement>(null);
 
-  // Alt+↑/↓ moves the active conflict; it scrolls into view as it does.
+  // Alt+↑/↓ moves the active conflict; it scrolls into view as it does...
   useEffect(() => {
     if (active) element.current?.scrollIntoView?.({ block: 'nearest' });
   }, [active]);
+
+  // ...and takes the focus, so Enter and Tab act on the conflict that is marked.
+  useEffect(() => {
+    if (focusRequest !== null) element.current?.focus?.({ preventScroll: true });
+  }, [focusRequest]);
 
   return (
     <article
       ref={element}
       data-conflict-id={conflict.id}
       aria-current={active ? 'true' : undefined}
-      className={`space-y-3 rounded-xl border p-3 sm:p-4 ${
+      aria-label={conflict.label}
+      tabIndex={-1}
+      className={`space-y-3 rounded-xl border p-3 outline-none focus-visible:ring-2 focus-visible:ring-tp-primary/40 sm:p-4 ${
         active ? 'border-tp-primary/60 bg-tp-canvas shadow-sm' : 'border-tp-hairline bg-tp-canvas'
       }`}
     >
@@ -166,11 +177,16 @@ function groupBySectionAndEntry(conflicts: readonly MergeConflict[]) {
  */
 export default function ConflictList({ resolver, currentLabel }: { resolver: MergeResolver; currentLabel: string }) {
   const { conflicts } = resolver.state;
+  // The conflict the keyboard last moved to, and a count that changes with every move.
+  const [keyboardFocus, setKeyboardFocus] = useState<{ id: string; count: number } | null>(null);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!event.altKey || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
     event.preventDefault();
-    resolver.move(event.key === 'ArrowDown' ? 1 : -1);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const next = movedActiveId(resolver.state, step);
+    resolver.move(step);
+    if (next) setKeyboardFocus(previous => ({ id: next, count: (previous?.count ?? 0) + 1 }));
   };
 
   if (conflicts.length === 0) {
@@ -200,7 +216,13 @@ export default function ConflictList({ resolver, currentLabel }: { resolver: Mer
             <div key={entry} className="space-y-2">
               {entry && <p className="break-all font-mono text-xs font-medium text-tp-slate">{entry}</p>}
               {items.map(conflict => (
-                <ConflictCard key={conflict.id} conflict={conflict} resolver={resolver} currentLabel={currentLabel} />
+                <ConflictCard
+                  key={conflict.id}
+                  conflict={conflict}
+                  resolver={resolver}
+                  currentLabel={currentLabel}
+                  focusRequest={keyboardFocus?.id === conflict.id ? keyboardFocus.count : null}
+                />
               ))}
             </div>
           ))}

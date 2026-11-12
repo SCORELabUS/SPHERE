@@ -98,14 +98,20 @@ export function resolverReducer(state: ResolverState, action: ResolverAction): R
     case 'focus':
       return state.conflicts.some(conflict => conflict.id === action.id) ? { ...state, activeId: action.id } : state;
     case 'move': {
-      if (state.conflicts.length === 0) return state;
-      const last = state.conflicts.length - 1;
-      const index = state.conflicts.findIndex(conflict => conflict.id === state.activeId);
-      // Without an active conflict, Alt+↓ starts at the first one and Alt+↑ at the last; both stop at the ends.
-      const next = index === -1 ? (action.step === 1 ? 0 : last) : Math.min(Math.max(index + action.step, 0), last);
-      return { ...state, activeId: state.conflicts[next].id };
+      const activeId = movedActiveId(state, action.step);
+      return activeId === null ? state : { ...state, activeId };
     }
   }
+}
+
+/** The conflict Alt+↓ (`1`) or Alt+↑ (`-1`) goes to, or null when there is none. */
+export function movedActiveId(state: Pick<ResolverState, 'conflicts' | 'activeId'>, step: 1 | -1): string | null {
+  if (state.conflicts.length === 0) return null;
+  const last = state.conflicts.length - 1;
+  const index = state.conflicts.findIndex(conflict => conflict.id === state.activeId);
+  // Without an active conflict, Alt+↓ starts at the first one and Alt+↑ at the last; both stop at the ends.
+  const next = index === -1 ? (step === 1 ? 0 : last) : Math.min(Math.max(index + step, 0), last);
+  return state.conflicts[next].id;
 }
 
 export function unresolvedConflicts(state: ResolverState): MergeConflict[] {
