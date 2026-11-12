@@ -141,6 +141,14 @@ class PricingPullRequestRepository extends RepositoryBase {
     return doc ? toPricingPullRequest(doc) : null;
   }
 
+  /** The pull requests with these ids that exist, in one query. */
+  async findByIds(ids: string[]): Promise<PricingPullRequest[]> {
+    const valid = [...new Set(ids)].filter(id => this.isValidObjectId(id));
+    if (valid.length === 0) return [];
+    const docs = await PricingPullRequestMongoose.find({ _id: { $in: valid.map(objectId) } }).lean();
+    return docs.map(toPricingPullRequest);
+  }
+
   /** A page of the pricing's pull requests, the most recently updated first. */
   async list(filter: PullRequestListFilter, page: number, pageSize: number): Promise<PullRequestPage> {
     const scope: Record<string, unknown> = { pricingId: objectId(filter.pricingId) };

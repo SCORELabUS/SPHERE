@@ -20,6 +20,7 @@ import PricingRepository from '../repositories/mongoose/PricingRepository';
 import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
 import CacheService, { INTERNAL_CACHE_PREFIX } from './CacheService';
 import { LeanUser } from '../types/models/User';
+import type { PricingPullRequest } from '../types/models/PricingPullRequest';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
 import { OrgRole } from '../types/models/Organization';
@@ -245,12 +246,22 @@ class PricingService {
       lanes.push((await this._graphLaneOf(id, 'source', reqUser)) ?? this._unavailableSourceLane(id, current.versions));
     }
 
+    // The merged pull requests of every lane, read in one query.
+    const prIds = lanes.flatMap(lane => lane.versions.flatMap(version => (version.mergedFrom ? [version.mergedFrom.prId] : [])));
+    const pullRequests = new Map(
+      (await this.pricingPullRequestRepository.findByIds(prIds)).map(pullRequest => [pullRequest.id, pullRequest])
+    );
     // Forks already looked up, so several merges from one fork read it once.
     const forkLanes = new Map<string, Promise<PricingGraphLane | null>>();
     for (const lane of lanes) {
       for (const version of lane.versions) {
         if (version.mergedFrom) {
-          version.mergedFrom.from = await this._mergeSource(version.mergedFrom.prId, lane.pricingId, forkLanes, reqUser);
+          version.mergedFrom.from = await this._mergeSource(
+            pullRequests.get(version.mergedFrom.prId) ?? null,
+            lane.pricingId,
+            forkLanes,
+            reqUser
+          );
         }
       }
     }
@@ -314,12 +325,11 @@ class PricingService {
    * not the fork's), and when the fork is gone or the caller may not read it.
    */
   private async _mergeSource(
-    prId: string,
+    pullRequest: PricingPullRequest | null,
     pricingId: string,
     forkLanes: Map<string, Promise<PricingGraphLane | null>>,
     reqUser?: LeanUser
   ): Promise<PricingGraphMergeSource | null> {
-    const pullRequest = await this.pricingPullRequestRepository.findById(prId);
     if (!pullRequest || pullRequest.pricingId !== pricingId || !pullRequest.origin || pullRequest.origin.edited) return null;
     const forkId = pullRequest.origin.pricingId;
     if (!forkLanes.has(forkId)) forkLanes.set(forkId, this._graphLaneOf(forkId, 'source', reqUser));

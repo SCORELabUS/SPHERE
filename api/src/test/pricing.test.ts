@@ -24,6 +24,7 @@ import {
 import { randomSuffix } from './utils/helpers';
 import { createOrgScopedPermission, createMembership, createTestOrganizationDirect } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
+import PricingPullRequestMongoose from '../main/repositories/mongoose/models/PricingPullRequestMongoose';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
@@ -3647,7 +3648,14 @@ describe('Pricings API integration', () => {
       await PricingMongoose.updateMany({ pricingId: forkId }, { $set: { private: true } });
       const { user: outsider } = await createAndLoginUser('USER');
 
+      // The three merged pull requests are read in one query, not one each.
+      const byId = vi.spyOn(PricingPullRequestMongoose, 'findById');
+      const find = vi.spyOn(PricingPullRequestMongoose, 'find');
       const asForker = await graphOf(organizationId, pricing.serviceName, forker.token);
+      expect(byId).not.toHaveBeenCalled();
+      expect(find).toHaveBeenCalledTimes(1);
+      byId.mockRestore();
+      find.mockRestore();
       expect(asForker.status).toBe(200);
       expect(asForker.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
       const seen = versionsByLabel(asForker.body.lanes[0].versions);
