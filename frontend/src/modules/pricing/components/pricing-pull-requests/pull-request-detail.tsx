@@ -23,11 +23,17 @@ import UpdatePanel from './update-panel';
 
 const ago = (date: string) => `${formatDistanceToNow(parseISO(date))} ago`;
 
+/**
+ * The base the proposal is compared with: as SPHERE upgrades it when it is stored in an
+ * older syntax, since the proposal is stored upgraded and the upgrade is not the author's.
+ */
+const comparedBase = (pullRequest: PullRequestDetailData) => pullRequest.base.normalizedYaml ?? pullRequest.base.yaml;
+
 /** The structured comparison, or null when either side is not a YAML mapping it can read. */
 function structuredDiff(pullRequest: PullRequestDetailData) {
   try {
     // SPHERE sets the pricing's name when it merges, so a different `saasName` is not a change.
-    return diffPricings(jsYaml.load(pullRequest.base.yaml), jsYaml.load(pullRequest.proposed.yaml), {
+    return diffPricings(jsYaml.load(comparedBase(pullRequest)), jsYaml.load(pullRequest.proposed.yaml), {
       ignoreKeys: ['saasName'],
     });
   } catch {
@@ -37,6 +43,7 @@ function structuredDiff(pullRequest: PullRequestDetailData) {
 
 function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
   const diff = useMemo(() => structuredDiff(pullRequest), [pullRequest]);
+  const upgraded = pullRequest.base.normalizedYaml !== undefined;
   const [view, setView] = useState<ViewMode>('structured');
   const [filter, setFilter] = useState<ChangeKind | null>(null);
   const shown: ViewMode = diff ? view : 'file';
@@ -49,6 +56,12 @@ function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
           <p className="text-xs text-tp-steel">
             Proposal compared with version {pullRequest.base.version}, the version it is based on.
           </p>
+          {upgraded && (
+            <p className="mt-1 text-xs text-tp-steel">
+              Version {pullRequest.base.version} is written in an older Pricing2Yaml syntax. It is compared as SPHERE
+              upgrades it, like the proposal, so the upgrade is not shown as a change.
+            </p>
+          )}
         </div>
         {diff && <ViewToggle value={shown} onChange={setView} />}
       </div>
@@ -56,7 +69,7 @@ function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
         <DiffResult diff={diff} filter={filter && diff.totals[filter] > 0 ? filter : null} onFilterChange={setFilter} />
       ) : (
         <FileDiffView
-          before={pullRequest.base.yaml}
+          before={comparedBase(pullRequest)}
           after={pullRequest.proposed.yaml}
           beforeLabel={`Version ${pullRequest.base.version}`}
           afterLabel="Proposal"

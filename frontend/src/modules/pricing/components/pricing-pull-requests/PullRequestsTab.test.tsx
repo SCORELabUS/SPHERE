@@ -223,6 +223,33 @@ describe('Pull requests tab', () => {
     expect(marks.map(textOf).sort()).toEqual(['~', '~', '~', '~', '~', '~']);
   });
 
+  it('compares the proposal with the base as SPHERE upgrades it, so the upgrade is not the author\'s change', async () => {
+    const raw = "syntaxVersion: '2.1'\nsaasName: Demo\nversion: '2.0'\naddOns:\n  extra:\n    price: 5\nplans:\n  PRO:\n    price: 10\n";
+    const upgraded = 'syntaxVersion: "3.1"\nsaasName: Demo\nversion: "2.0"\naddOns:\n  extra:\n    price: 5\n    subscriptionConstraints:\n      minQuantity: 1\nplans:\n  PRO:\n    price: 10\n';
+    const proposed = upgraded.replace('price: 10', 'price: 12');
+    mocks.getPullRequest.mockResolvedValue(detail({
+      base: { versionId: 'v2', version: '2.0', yaml: raw, normalizedYaml: upgraded },
+      proposed: { suggestedVersion: '2.1', yaml: proposed },
+    }));
+    await render(PR_ID);
+    expect(text()).toContain('Version 2.0 is written in an older Pricing2Yaml syntax');
+    expect(text()).toContain('PRO');
+    expect(text()).not.toContain('syntaxVersion');
+    expect(text()).not.toContain('subscriptionConstraints');
+    expect(text()).not.toContain('extra');
+
+    await act(async () => button('File').props.onClick());
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props).toMatchObject({ before: upgraded, after: proposed });
+    const marks = file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)));
+    expect(marks.map(textOf)).toEqual(['~', '~']);
+  });
+
+  it('says nothing about the syntax when the base is already in the latest one', async () => {
+    await render(PR_ID);
+    expect(text()).not.toContain('older Pricing2Yaml syntax');
+  });
+
   it('marks added and removed lines with + and − in the file view', async () => {
     mocks.getPullRequest.mockResolvedValue(detail({
       base: { versionId: 'v2', version: '2.0', yaml: 'saasName: Demo\nold: 1\nkeep: 1\n' },

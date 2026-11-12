@@ -72,7 +72,8 @@ export interface PullRequestSummary {
 
 export interface PullRequestDetail extends Omit<PullRequestSummary, 'base' | 'proposed'> {
   description: string;
-  base: { versionId: string; version: string; yaml: string };
+  /** `normalizedYaml` only when the base is stored in an older syntax: upgraded, as the proposal is stored. */
+  base: { versionId: string; version: string; yaml: string; normalizedYaml?: string };
   proposed: { suggestedVersion: string; yaml: string };
   origin?: PullRequestOrigin;
   permissions: PullRequestPermissions;
