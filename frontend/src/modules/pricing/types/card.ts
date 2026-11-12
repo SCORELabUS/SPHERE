@@ -21,7 +21,7 @@ export interface VersionData {
   } | null;
 }
 
-export type Tab = 'overview' | 'analytics' | 'config-space' | 'versions' | 'settings';
+export type Tab = 'overview' | 'analytics' | 'config-space' | 'versions' | 'pull-requests' | 'settings';
 
 export interface TreeAnalytics {
   numberOfPlans: number; numberOfFeatures: number; numberOfAddOns: number; numberOfUsageLimits: number;

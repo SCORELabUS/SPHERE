@@ -54,6 +54,11 @@ export function describePullRequestState(
   }
 }
 
+/** Who opened a pull request, or "Deleted user" once their account is gone. */
+export function pullRequestAuthorName(author: PullRequestSummary['author']): string {
+  return author?.username ?? 'Deleted user';
+}
+
 /**
  * Whether the editor may propose its text as a pull request: only when it was
  * opened on the latest public version, compared by id. A label can be reused

@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
 import { isPricingChangedError, PRICING_CHANGED_MESSAGE, usePricingsApi } from '../../api/pricingsApi';
+import { usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import {
   useOrganizationsApi,
   getPublicOrganization,
@@ -36,19 +37,27 @@ import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
 import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
+import PricingPullRequestsTab from '../../components/pricing-pull-requests';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
 
+/** A pull request id as `?pr=` may name it; anything else is ignored. */
+const PULL_REQUEST_ID = /^[0-9a-f]{24}$/i;
+
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const collectionParam = searchParams.get('collection');
   const collectionSlug =
     collectionParam && !['undefined', 'null'].includes(collectionParam) ? collectionParam : null;
   // Set by version permanent links (`/p/{pricingId}?version=…`): the version id, or its name.
   const requestedVersion = searchParams.get('version');
+  // `?tab=pull-requests&pr=<id>` opens the Pull requests tab on that pull request.
+  const tabParam = searchParams.get('tab');
+  const prParam = searchParams.get('pr');
+  const selectedPullRequest = prParam && PULL_REQUEST_ID.test(prParam) ? prParam : null;
   const router = useRouter();
   const {
     getPricingBySlug,
@@ -63,6 +72,7 @@ export default function CardPage() {
     unfollowPricing,
   } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
+  const { listPullRequests } = usePricingPullRequestsApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
 
@@ -78,7 +88,9 @@ export default function CardPage() {
   const [pricingName, setPricingName] = useState<string>('');
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(tabParam === 'pull-requests' ? 'pull-requests' : 'overview');
+  // Open pull requests the caller sees, shown on the tab; null until known.
+  const [openPullRequests, setOpenPullRequests] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingYaml, setIsLoadingYaml] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
@@ -145,6 +157,25 @@ export default function CardPage() {
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, [slug, organizationId, collectionSlug, requestedVersion]);
+
+  // A link to a pull request followed while the page is already open.
+  useEffect(() => {
+    if (tabParam === 'pull-requests') setTab('pull-requests');
+  }, [tabParam]);
+
+  useEffect(() => {
+    setOpenPullRequests(null);
+    if (!authUser.isAuthenticated || !pricingId) return;
+    let active = true;
+    listPullRequests(pricingId, { status: 'open' })
+      .then(result => {
+        if (active) setOpenPullRequests(result.counts.open);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [pricingId, authUser.isAuthenticated, listPullRequests]);
 
   useEffect(() => {
     setIsFollowing(null);
@@ -608,6 +639,32 @@ export default function CardPage() {
   };
 
   const showSettingsTab = entityPermissions?.PUT || entityPermissions?.DELETE;
+  // Pull requests need a SPHERE session: the tab is not offered to visitors.
+  const showPullRequestsTab = authUser.isAuthenticated && Boolean(pricingId);
+  const activeTab: Tab = tab === 'pull-requests' && !showPullRequestsTab ? 'overview' : tab;
+
+  // The URL keeps the tab only for pull requests (and the one open), replacing the entry.
+  const replaceQuery = (change: (query: URLSearchParams) => void) => {
+    const next = new URLSearchParams(searchParams);
+    change(next);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  };
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    replaceQuery(query => {
+      query.delete('pr');
+      if (next === 'pull-requests') query.set('tab', next);
+      else query.delete('tab');
+    });
+  };
+
+  const selectPullRequest = (id: string | null) =>
+    replaceQuery(query => {
+      query.set('tab', 'pull-requests');
+      if (id) query.set('pr', id);
+      else query.delete('pr');
+    });
   const isPrivateNoAccess = !entityPermissions?.GET && !currentVersion;
 
   const pricingSuggestions: SuggestedQuestion[] = useMemo(() => {
@@ -836,20 +893,24 @@ export default function CardPage() {
                 ['analytics', 'Analytics'],
                 ['config-space', 'Config Space'],
                 ['versions', 'Versions'],
+                ...(showPullRequestsTab ? [['pull-requests', 'Pull requests'] as const] : []),
                 ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
               ] as const
             ).map(([k, l]) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setTab(k)}
+                onClick={() => selectTab(k)}
                 className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
-                  tab === k
+                  activeTab === k
                     ? 'bg-tp-primary text-tp-on-primary shadow-sm'
                     : 'bg-tp-surface text-tp-steel hover:bg-tp-hairline hover:text-tp-ink'
                 }`}
               >
                 {l}
+                {k === 'pull-requests' && openPullRequests !== null && (
+                  <span className="ml-1.5 tabular-nums opacity-80">{openPullRequests}</span>
+                )}
               </button>
             ))}
           </div>
@@ -860,17 +921,23 @@ export default function CardPage() {
                 ['analytics', 'Analytics'],
                 ['config-space', 'Configuration Space'],
                 ['versions', 'Versions'],
+                ...(showPullRequestsTab ? [['pull-requests', 'Pull requests'] as const] : []),
                 ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
               ] as const
             ).map(([k, l]) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setTab(k)}
-                className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}
+                onClick={() => selectTab(k)}
+                className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}
               >
                 {l}
-                {tab === k && (
+                {k === 'pull-requests' && openPullRequests !== null && (
+                  <span className="ml-1.5 rounded-full bg-tp-surface px-1.5 text-xs tabular-nums text-tp-slate">
+                    {openPullRequests}
+                  </span>
+                )}
+                {activeTab === k && (
                   <motion.div
                     layoutId="pricing-tab"
                     className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary"
@@ -884,7 +951,7 @@ export default function CardPage() {
 
         <AnimatePresence mode="wait">
           {/* OVERVIEW */}
-          {tab === 'overview' && (
+          {activeTab === 'overview' && (
             <motion.div
               key="overview"
               initial={{ opacity: 0, y: 8 }}
@@ -1044,7 +1111,7 @@ export default function CardPage() {
           )}
 
           {/* ANALYTICS */}
-          {tab === 'analytics' && (
+          {activeTab === 'analytics' && (
             <motion.div
               key="analytics"
               initial={{ opacity: 0, y: 8 }}
@@ -1072,7 +1139,7 @@ export default function CardPage() {
           )}
 
           {/* CONFIGURATION SPACE */}
-          {tab === 'config-space' && (
+          {activeTab === 'config-space' && (
             <motion.div
               key="config-space"
               initial={{ opacity: 0, y: 8 }}
@@ -1120,7 +1187,7 @@ export default function CardPage() {
           )}
 
           {/* VERSIONS */}
-          {tab === 'versions' && (
+          {activeTab === 'versions' && (
             <motion.div
               key="versions"
               initial={{ opacity: 0, y: 8 }}
@@ -1155,7 +1222,7 @@ export default function CardPage() {
                   onDelete={handleDeleteVersion}
                   onSelect={v => {
                     setCurrentVersion(v);
-                    setTab('overview');
+                    selectTab('overview');
                   }}
                   canChangeVisibility={!!entityPermissions?.PUT}
                   onToggleVisibility={handleToggleVersionVisibility}
@@ -1166,8 +1233,26 @@ export default function CardPage() {
             </motion.div>
           )}
 
+          {/* PULL REQUESTS */}
+          {activeTab === 'pull-requests' && pricingId && (
+            <motion.div
+              key="pull-requests"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={transitionDefault}
+            >
+              <PricingPullRequestsTab
+                pricingId={pricingId}
+                selectedId={selectedPullRequest}
+                onSelect={selectPullRequest}
+                onCountsChange={counts => setOpenPullRequests(counts.open)}
+              />
+            </motion.div>
+          )}
+
           {/* SETTINGS */}
-          {tab === 'settings' && (
+          {activeTab === 'settings' && (
             <motion.div
               key="settings"
               initial={{ opacity: 0, y: 8 }}
