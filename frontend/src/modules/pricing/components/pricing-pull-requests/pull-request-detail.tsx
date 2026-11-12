@@ -110,10 +110,13 @@ const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
  */
 export default function PullRequestDetail({
   id,
+  pricingId,
   onBack,
   context,
 }: {
   id: string;
+  /** The pricing of the page: a pull request of another one is not shown here. */
+  pricingId: string;
   onBack: () => void;
   context: PullRequestPageContext;
 }) {
@@ -132,7 +135,10 @@ export default function PullRequestDetail({
     setPanel(null);
     getPullRequest(id)
       .then(result => {
-        if (active) setPullRequest(result);
+        if (!active) return;
+        // A link that names a pull request of another pricing: its merge and edits would act on this page's.
+        if (result.pricingId !== pricingId) setError(pullRequestMessage('NOT_FOUND'));
+        else setPullRequest(result);
       })
       .catch((caught: unknown) => {
         if (!active) return;
@@ -145,7 +151,7 @@ export default function PullRequestDetail({
     return () => {
       active = false;
     };
-  }, [id, getPullRequest]);
+  }, [id, pricingId, getPullRequest]);
 
   const back = (
     <button

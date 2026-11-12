@@ -32,7 +32,7 @@ export default function PricingPullRequestsTab({
   const [uploadOn, setUploadOn] = useState<PullRequestVersionRef | null>(null);
   const loadVersionYaml = usePageVersionYaml(context.versions);
 
-  if (selectedId) return <PullRequestDetail id={selectedId} onBack={() => onSelect(null)} context={context} />;
+  if (selectedId) return <PullRequestDetail id={selectedId} pricingId={pricingId} onBack={() => onSelect(null)} context={context} />;
   return (
     <>
       <PullRequestList

@@ -306,6 +306,14 @@ describe('Pull requests tab', () => {
     expect(view.root.findAllByType('a')).toHaveLength(0);
   });
 
+  it('does not show a pull request of another pricing under this one', async () => {
+    mocks.getPullRequest.mockResolvedValue(detail({ pricingId: '6650f0c0c0c0c0c0c0c0c0ff' }));
+    await render(PR_ID);
+    expect(view.root.findByProps({ role: 'alert' }).children.map(textOf).join('')).toBe('This pull request is not available.');
+    expect(button('Merge…')).toBeUndefined();
+    expect(text()).not.toContain('Raise PRO');
+  });
+
   it('renders titles, descriptions and reasons as plain text (CA-80)', async () => {
     mocks.listPullRequests.mockResolvedValue(page([summary({ title: MARKUP })]));
     mocks.getPullRequest.mockResolvedValue(detail({
