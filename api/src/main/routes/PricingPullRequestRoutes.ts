@@ -10,6 +10,10 @@ const loadFileRoutes = function (app: express.Application) {
 
   const baseUrl = (process.env.BASE_URL_PATH ?? '') + '/api/v1/pricing-pull-requests';
 
+  // An edit that only renames costs no parsing; one that sends a proposal parses it like POST /.
+  const limitProposalEdits = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    req.body?.proposedYaml === undefined ? next() : pricingPullRequestRateLimiter(req, res, next);
+
   // Kept outside of /pricings/** on purpose, like /pricing-forks: there the middleware
   // would ask CREATE or PUT on the pricing of whoever only proposes, and a version named
   // "pull-requests" would clash with the route. PricingPullRequestService checks who may
@@ -43,7 +47,13 @@ const loadFileRoutes = function (app: express.Application) {
   app
     .route(baseUrl + '/:pullRequestId')
     .get(webSession, PricingPullRequestValidator.show, handleValidation, pricingPullRequestController.show)
-    .put(webSession, PricingPullRequestValidator.update, handleValidation, pricingPullRequestController.update);
+    .put(
+      webSession,
+      limitProposalEdits,
+      PricingPullRequestValidator.update,
+      handleValidation,
+      pricingPullRequestController.update
+    );
 
   app
     .route(baseUrl + '/:pullRequestId/merge-preview')

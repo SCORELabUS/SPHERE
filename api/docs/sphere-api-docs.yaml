@@ -5219,6 +5219,10 @@ paths:
         `NO_PUBLIC_VERSION`. The proposal goes through the same checks as when it was opened,
         so one that does not change its base gets 400 `NO_CHANGES`.
 
+        A request with `proposedYaml` is rate limited per user like opening a pull request
+        (`PRICING_PR_RATE_LIMIT_MAX_REQUESTS` every `PRICING_PR_RATE_LIMIT_WINDOW_SECONDS`, 20 a
+        minute by default); one that only changes the title or the description is not.
+
         **Authentication**: SPHERE web session only.
       tags:
         - Pricings
@@ -5274,6 +5278,8 @@ paths:
           $ref: '#/components/responses/PricingPullRequestRefused'
         '422':
           description: Invalid fields, or a proposal too complex or with forbidden keys
+        '429':
+          description: The rate limit was reached (only with `proposedYaml`)
 
   /pricing-pull-requests/{pullRequestId}/merge-preview:
     parameters:
