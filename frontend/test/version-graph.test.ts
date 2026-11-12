@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { baseVersionOf, layoutGraph, nodeKey, routeEdge } from '../src/modules/pricing/utils/version-graph.ts';
+import { baseVersionOf, layoutGraph, mergedFromLabel, nodeKey, routeEdge } from '../src/modules/pricing/utils/version-graph.ts';
 import type { PricingGraph, PricingGraphLane } from '../src/modules/pricing/types/graph.ts';
 
 const lane = (
@@ -207,4 +207,12 @@ test('orders versions by addedAt even when release dates disagree', () => {
     layoutGraph({ pricingId: 'personal', truncated: false, lanes: [current] }).nodes.map(node => node.version.version),
     ['first', 'b', 'a']
   );
+});
+
+test('a merged version is named by its pull request, and by its fork only when the graph names it (CA-60)', () => {
+  const fork = { pricingId: 'fork', name: 'Demo fork', slug: 'demo-fork', organization: { id: 'org-2', name: 'beta', displayName: 'Beta Inc.' } };
+  assert.equal(mergedFromLabel({ mergedFrom: { number: 4, prId: 'pr-4', from: fork } }), 'Merged from #4 from beta/demo-fork');
+  // A reader of the fork's parent who may not read the fork only learns the number.
+  assert.equal(mergedFromLabel({ mergedFrom: { number: 4, prId: 'pr-4', from: null } }), 'Merged from #4');
+  assert.equal(mergedFromLabel({}), null);
 });

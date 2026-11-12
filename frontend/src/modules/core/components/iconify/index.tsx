@@ -63,6 +63,7 @@ import {
 } from 'react-icons/md';
 import { TbBinaryTree2, TbCurrencyDollar } from 'react-icons/tb';
 import { FaCrown, FaMicrosoft, FaShareAlt, FaWhatsapp } from 'react-icons/fa';
+import { FiGitPullRequest } from 'react-icons/fi';
 import { IconType } from 'react-icons';
 
 /** Three dots joining into one, left to right: Tabler's binary tree turned on its side. */
@@ -140,6 +141,7 @@ const iconMap: Record<string, IconType> = {
   'tabler:currency-dollar': TbCurrencyDollar,
   'tabler:binary-tree-2-right': ThreeIntoOne,
   'mdi:open-in-new': MdOpenInNew,
+  'mdi:source-pull': FiGitPullRequest,
 };
 
 type IconifyProps = {

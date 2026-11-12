@@ -60,6 +60,11 @@ export function pullRequestAuthorName(author: PullRequestSummary['author']): str
   return author?.username ?? 'Deleted user';
 }
 
+/** Whether a link names a pull request by id (`?pr=`); anything else is ignored. */
+export function isPullRequestId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{24}$/i.test(value);
+}
+
 /**
  * Whether the editor may propose its text as a pull request: only when it was
  * opened on the latest public version, compared by id. A label can be reused

@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate, useNavigationTyp
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CardPage from '.';
 import PricingPullRequestsTab from '../../components/pricing-pull-requests';
+import PermanentLinkPage from '../permalink';
 
 const mocks = vi.hoisted(() => ({
   getPricingBySlug: vi.fn(),
@@ -210,5 +211,92 @@ describe('pricing page tabs in the URL', () => {
     expect(pullRequestsTab()).toHaveLength(1);
     expect(pullRequestsTab()[0].props.selectedId).toBe(PR_ID);
     expect(mocks.getPricingBySlug).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('permanent links to a pull request (CA-86)', () => {
+  let view: ReactTestRenderer;
+  let location: Location;
+  let navigationType: string;
+  let requested: string[];
+
+  function Probe() {
+    location = useLocation();
+    navigationType = useNavigationType();
+    return null;
+  }
+
+  /** Opens `path` and lets the permanent link answer with `destination`. */
+  async function open(path: string, destination: string) {
+    requested = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      requested.push(url);
+      return url.includes('/permalinks/')
+        ? new Response(JSON.stringify({ location: destination }), { status: 200 })
+        : new Response('{}', { status: 404 });
+    }));
+    await act(async () => {
+      view = create(
+        <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Routes>
+            <Route path="/p/:id" element={<PermanentLinkPage kind="pricing" />} />
+            <Route path="/c/:id" element={<PermanentLinkPage kind="collection" />} />
+            <Route path="/pricings/:organizationId/:slug" element={<><CardPage /><Probe /></>} />
+            <Route path="/collections/:organizationId/:slug" element={<Probe />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+  }
+
+  const opened = () => `${location.pathname}${location.search}${location.hash}`;
+  const pullRequestsTab = () => view.root.findAllByType(PricingPullRequestsTab);
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.authUser = { isAuthenticated: true, token: 'token', user: { id: 'u1', username: 'alice' } };
+    mocks.getPricingBySlug.mockResolvedValue(pricing);
+    mocks.getPricingFollow.mockResolvedValue({ following: false });
+    mocks.getOrgMembers.mockResolvedValue([]);
+    mocks.listPullRequests.mockResolvedValue({ counts: { open: 1, merged: 0, closed: 0 } });
+  });
+  afterEach(() => {
+    act(() => view?.unmount());
+    vi.unstubAllGlobals();
+  });
+
+  it('opens the pull request a notification links to, by the pricing id', async () => {
+    await open(`/p/${PRICING_ID}?tab=pull-requests&pr=${PR_ID}`, '/pricings/acme/demo?collection=main');
+    expect(opened()).toBe(`/pricings/acme/demo?collection=main&tab=pull-requests&pr=${PR_ID}`);
+    expect(navigationType).toBe('REPLACE');
+    expect(pullRequestsTab()).toHaveLength(1);
+    expect(pullRequestsTab()[0].props).toMatchObject({ pricingId: PRICING_ID, selectedId: PR_ID });
+    // The tab and the pull request stay in the browser: the API is asked for the pricing only.
+    expect(requested.filter(url => url.includes('/permalinks/'))).toEqual([`/api/v1/permalinks/pricing/${PRICING_ID}`]);
+  });
+
+  it('adds them to a destination without a query, and keeps the fragment', async () => {
+    await open(`/p/${PRICING_ID}?tab=pull-requests&pr=${PR_ID}#top`, '/pricings/acme/demo');
+    expect(opened()).toBe(`/pricings/acme/demo?tab=pull-requests&pr=${PR_ID}#top`);
+  });
+
+  it('keeps the tab and drops a pr that is not a pull request id', async () => {
+    await open(`/p/${PRICING_ID}?tab=pull-requests&pr=javascript:alert(1)`, '/pricings/acme/demo');
+    expect(opened()).toBe('/pricings/acme/demo?tab=pull-requests');
+    expect(pullRequestsTab()[0].props.selectedId).toBeNull();
+  });
+
+  it('drops any other tab, and a pr without the Pull requests tab', async () => {
+    await open(`/p/${PRICING_ID}?tab=settings&pr=${PR_ID}`, '/pricings/acme/demo?collection=main');
+    expect(opened()).toBe('/pricings/acme/demo?collection=main');
+    expect(pullRequestsTab()).toHaveLength(0);
+  });
+
+  it('passes nothing on from a collection link', async () => {
+    await open(`/c/${PRICING_ID}?tab=pull-requests&pr=${PR_ID}`, '/collections/acme/main');
+    expect(opened()).toBe('/collections/acme/main');
   });
 });

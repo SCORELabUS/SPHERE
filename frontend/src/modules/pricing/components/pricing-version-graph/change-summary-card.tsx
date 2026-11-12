@@ -3,6 +3,7 @@ import type { IconType } from 'react-icons';
 import {
   FiCheckSquare,
   FiDollarSign,
+  FiGitMerge,
   FiLayers,
   FiPackage,
   FiSettings,
@@ -30,6 +31,8 @@ interface ChangeSummaryCardProps {
   heading: string;
   /** Nothing to compare with: the sections list what it contains. */
   firstVersion: boolean;
+  /** "Merged from #N", for a version published by merging a pull request. */
+  mergedFrom?: string;
   state: ChangesState;
   /** Where its top centre goes, inside the graph. */
   left: number;
@@ -99,6 +102,7 @@ export default function ChangeSummaryCard({
   createdAt,
   heading,
   firstVersion,
+  mergedFrom,
   state,
   left,
   top,
@@ -118,6 +122,12 @@ export default function ChangeSummaryCard({
           </span>
         )}
       </p>
+      {mergedFrom && (
+        <p className="flex items-center gap-1.5 text-[11px] font-medium text-tp-primary">
+          <FiGitMerge className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{mergedFrom}</span>
+        </p>
+      )}
       <p className="mb-1.5 text-[11px] text-tp-steel">{heading}</p>
 
       {state.status === 'loading' || state.status === 'idle' ? (

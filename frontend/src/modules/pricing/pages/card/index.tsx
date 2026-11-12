@@ -10,6 +10,7 @@ import {
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { isPullRequestId } from '../../../core/utils/pull-request-state';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
@@ -46,9 +47,6 @@ import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
 
-/** A pull request id as `?pr=` may name it; anything else is ignored. */
-const PULL_REQUEST_ID = /^[0-9a-f]{24}$/i;
-
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,7 +58,7 @@ export default function CardPage() {
   // `?tab=pull-requests&pr=<id>` opens the Pull requests tab on that pull request.
   const tabParam = searchParams.get('tab');
   const prParam = searchParams.get('pr');
-  const selectedPullRequest = prParam && PULL_REQUEST_ID.test(prParam) ? prParam : null;
+  const selectedPullRequest = isPullRequestId(prParam) ? prParam : null;
   const router = useRouter();
   const {
     getPricingBySlug,

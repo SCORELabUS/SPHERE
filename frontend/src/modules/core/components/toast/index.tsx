@@ -42,6 +42,13 @@ const kindConfig: Record<string, { icon: string; bgClass: string; borderClass: s
     textClass: 'text-tp-severity-warning',
     iconClass: 'text-tp-severity-warning',
   },
+  PricingPullRequest: {
+    icon: 'mdi:source-pull',
+    bgClass: 'bg-tp-primary/10',
+    borderClass: 'border-tp-primary/30',
+    textClass: 'text-tp-primary',
+    iconClass: 'text-tp-primary',
+  },
 };
 
 const defaultConfig = {
