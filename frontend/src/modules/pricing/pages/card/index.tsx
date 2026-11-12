@@ -682,6 +682,24 @@ export default function CardPage() {
     });
   };
 
+  // A merged pull request links to the version it published, shown on the Overview tab
+  // (a new history entry, so Back returns to the pull request).
+  const versionQuery = (versionId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    next.delete('pr');
+    next.set('version', versionId);
+    return next;
+  };
+  const versionHref = (versionId: string) =>
+    `${import.meta.env.BASE_URL.replace(/\/$/, '')}/pricings/${organizationId}/${slug}?${versionQuery(versionId).toString()}`;
+  const openVersion = (versionId: string) => {
+    const known = versions.find(version => version.id === versionId);
+    if (known) setCurrentVersion(known);
+    setTab('overview');
+    setSearchParams(versionQuery(versionId));
+  };
+
   const selectPullRequest = (id: string | null) =>
     replaceQuery(query => {
       query.set('tab', 'pull-requests');
@@ -1285,6 +1303,8 @@ export default function CardPage() {
                   onPricingChanged: offerReloadIfChanged,
                   openEditor: (version, { mode, pullRequestId }) =>
                     router.push(buildEditorPath(version, mode, pullRequestId)),
+                  versionHref,
+                  openVersion,
                 }}
               />
             </motion.div>

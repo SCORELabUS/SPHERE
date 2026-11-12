@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   createPullRequest: vi.fn(),
   getPricingBySlug: vi.fn(),
   openEditor: vi.fn(),
+  versionHref: vi.fn(),
+  openVersion: vi.fn(),
   alert: vi.fn(),
   user: { id: 'maintainer', username: 'maintainer' } as { id: string; username: string },
 }));
@@ -61,7 +63,14 @@ vi.mock('framer-motion', async () => {
 });
 
 const PRICING = '6650f0c0c0c0c0c0c0c0c001';
-const context = { versions: [], onMerged: () => {}, onPricingChanged: () => false, openEditor: mocks.openEditor };
+const context = {
+  versions: [],
+  onMerged: () => {},
+  onPricingChanged: () => false,
+  openEditor: mocks.openEditor,
+  versionHref: mocks.versionHref,
+  openVersion: mocks.openVersion,
+};
 const PR_ID = '6650f0c0c0c0c0c0c0c0c0aa';
 const MARKUP = '<img src=x onerror="alert(1)">';
 const BASE_YAML = 'saasName: Demo\nversion: "2.0"\nplans:\n  PRO:\n    price: 10\n';
@@ -238,6 +247,38 @@ describe('Pull requests tab', () => {
     expect(text()).toContain('Acme / Demo fork (version 1.3)edited after it was proposed');
   });
 
+  it('links a merged pull request to the version it published, only when the server names it (CA-38)', async () => {
+    mocks.versionHref.mockImplementation((id: string) => `/pricings/acme/demo?version=${id}`);
+    const merged = (version: { versionId?: string; version?: string }) =>
+      detail({ status: 'merged', state: { kind: 'merged' }, merged: { at: new Date().toISOString(), ...version } });
+    mocks.getPullRequest.mockResolvedValue(merged({ versionId: 'v4', version: '2.1' }));
+    await render(PR_ID);
+    expect(text()).toContain('Merged as version 2.1');
+    const link = view.root.findAllByType('a').find(item => textOf(item) === 'View version 2.1')!;
+    expect(link.props.href).toBe('/pricings/acme/demo?version=v4');
+    expect(link.props.className).toContain('cursor-pointer');
+    expect(mocks.versionHref).toHaveBeenCalledWith('v4');
+
+    // A modified click (a new tab) follows the link; a plain one stays in the app.
+    const click = (event: Partial<MouseEvent>) => {
+      const preventDefault = vi.fn();
+      act(() => link.props.onClick({ button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...event, preventDefault }));
+      return preventDefault;
+    };
+    expect(click({ ctrlKey: true })).not.toHaveBeenCalled();
+    expect(mocks.openVersion).not.toHaveBeenCalled();
+    expect(click({})).toHaveBeenCalled();
+    expect(mocks.openVersion).toHaveBeenCalledWith('v4');
+
+    // Who may not read the merged version is not told which one it is, nor linked to it.
+    act(() => view.unmount());
+    mocks.getPullRequest.mockResolvedValue(merged({}));
+    await render(PR_ID);
+    expect(text()).toContain('Merged');
+    expect(text()).not.toContain('View version');
+    expect(view.root.findAllByType('a')).toHaveLength(0);
+  });
+
   it('renders titles, descriptions and reasons as plain text (CA-80)', async () => {
     mocks.listPullRequests.mockResolvedValue(page([summary({ title: MARKUP })]));
     mocks.getPullRequest.mockResolvedValue(detail({
@@ -380,7 +421,7 @@ describe('Pull requests tab', () => {
             pricingId={PRICING}
             selectedId={PR_ID}
             onSelect={onSelect}
-            context={{ versions: [latest], etag: '"e.4"', onMerged, onPricingChanged: () => false, openEditor: mocks.openEditor }}
+            context={{ ...context, versions: [latest], etag: '"e.4"', onMerged }}
           />
         );
       });

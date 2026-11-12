@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import jsYaml from 'js-yaml';
 import { formatDistanceToNow, parseISO } from 'date-fns';
-import { FiArrowLeft } from 'react-icons/fi';
+import { FiArrowLeft, FiGitMerge } from 'react-icons/fi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import { pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
@@ -80,7 +80,14 @@ export interface PullRequestPageContext {
   onPricingChanged: (error: unknown) => boolean;
   /** Opens the editor on a version of the pricing, or on an open pull request's proposal to edit it again. */
   openEditor: (version: PullRequestVersionRef, options: { mode: 'visual' | 'code'; pullRequestId?: string }) => void;
+  /** Where the page shows a version of the pricing, and how it goes there without leaving the app. */
+  versionHref: (versionId: string) => string;
+  openVersion: (versionId: string) => void;
 }
+
+/** A plain click stays in the app; a modified one (new tab, new window) follows the link. */
+const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
+  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /**
  * A pull request: what it proposes against the version it is based on, its
@@ -246,6 +253,29 @@ export default function PullRequestDetail({
           </div>
         )}
       </header>
+
+      {merged && (
+        <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-success-border bg-tp-severity-success-bg p-4 text-sm">
+          <p className="inline-flex items-center gap-2 font-medium text-tp-ink">
+            <FiGitMerge aria-hidden="true" className="h-4 w-4 shrink-0 text-tp-severity-success" />
+            {merged.version ? `Merged as version ${merged.version}` : 'Merged'}
+          </p>
+          {/* The server names the merged version only to who may read it. */}
+          {merged.versionId && merged.version && (
+            <a
+              href={context.versionHref(merged.versionId)}
+              onClick={event => {
+                if (!isPlainClick(event)) return;
+                event.preventDefault();
+                context.openVersion(merged.versionId!);
+              }}
+              className="cursor-pointer text-xs font-semibold text-tp-primary underline-offset-2 hover:underline"
+            >
+              View version {merged.version}
+            </a>
+          )}
+        </section>
+      )}
 
       {closed && (
         <section className="rounded-xl border border-tp-hairline bg-tp-surface p-4 text-sm">

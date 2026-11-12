@@ -204,6 +204,19 @@ describe('pricing page tabs in the URL', () => {
     expect(context()).toMatchObject({ etag: '"tag.3"', versions: [merged, ...pricing.versions] });
   });
 
+  it('opens the version a merged pull request published on the Overview tab, as a new entry (CA-38)', async () => {
+    await render(`?collection=main&tab=pull-requests&pr=${PR_ID}`);
+    const context = () => pullRequestsTab()[0].props.context;
+    expect(context().versionHref('v1')).toBe('/pricings/acme/demo?collection=main&version=v1');
+
+    await act(async () => context().openVersion('v1'));
+    expect(query()).toEqual({ collection: 'main', version: 'v1' });
+    expect(navigationType).toBe('PUSH');
+    expect(pullRequestsTab()).toHaveLength(0);
+    // The page reads the pricing again for the version the URL names.
+    expect(mocks.getPricingBySlug).toHaveBeenCalledTimes(2);
+  });
+
   it('follows a link to a pull request while the page is open', async () => {
     await render();
     expect(pullRequestsTab()).toHaveLength(0);
