@@ -11,9 +11,12 @@ import yaml from 'js-yaml';
  * default schema, so a few hundred kilobytes can take the heap down before any
  * check runs. The text is therefore loaded first with the core schema, where
  * aliases stay shared references and `<<` is an ordinary key, and its size is
- * measured by walking it, counting every visit of a shared node. Only a text
- * within that budget is loaded again with the default schema, the one the
- * pricing parser uses (`pricing4ts/dist/server/utils/yaml-utils.js`).
+ * measured by walking it, counting every visit of a shared node and the
+ * characters of every key and string it reaches, so a long string used through
+ * many aliases costs its length each time (`structuredClone` and
+ * `yaml.dump({ noRefs })` copy it once per use). Only a text within that budget
+ * is loaded again with the default schema, the one the pricing parser uses
+ * (`pricing4ts/dist/server/utils/yaml-utils.js`).
  */
 
 export type PricingDoc = Record<string, unknown>;
@@ -41,6 +44,12 @@ export const STORED_PRICING_MAX_BYTES = 5 * 1024 * 1024;
 /** Nodes visited while measuring a document, shared ones once per visit. */
 export const PRICING_YAML_MAX_VISITS = 200_000;
 export const PRICING_YAML_MAX_DEPTH = 64;
+/**
+ * Characters of keys and strings a document may reach, counted on every visit,
+ * as a multiple of its byte limit. A text without aliases never gets near it:
+ * a string takes at least as many bytes in the text as characters once loaded.
+ */
+export const PRICING_YAML_EXPANSION_FACTOR = 2;
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -70,34 +79,42 @@ function invalidYaml(error: unknown): PricingYamlError {
   return new PricingYamlError(400, 'INVALID_PRICING', (error as Error)?.message ?? String(error));
 }
 
-function tooComplex(): PricingYamlError {
+function tooComplex(maxCharacters: number): PricingYamlError {
   return new PricingYamlError(
     422,
     'PRICING_TOO_COMPLEX',
-    `The pricing is too complex: it may have at most ${PRICING_YAML_MAX_VISITS} values (counting every use of an alias or merge key) nested at most ${PRICING_YAML_MAX_DEPTH} levels deep`
+    `The pricing is too complex: it may have at most ${PRICING_YAML_MAX_VISITS} values and ${maxCharacters} characters of keys and text (counting every use of an alias or merge key) nested at most ${PRICING_YAML_MAX_DEPTH} levels deep`
   );
 }
 
 /**
- * Walks a core-schema document counting every visit, without deduplicating
- * shared references, so an alias or `<<` costs its whole source every time it
- * is used. Stops as soon as the budget is spent. Forbidden keys are reported
- * only once the whole document is within budget.
+ * Walks a core-schema document counting every visit and the characters of
+ * every key and string, without deduplicating shared references, so an alias
+ * or `<<` costs its whole source every time it is used. Stops as soon as the
+ * budget is spent. Forbidden keys are reported only once the whole document is
+ * within budget.
  */
-function measure(root: unknown): void {
+function measure(root: unknown, maxCharacters: number): void {
   let visits = 0;
+  let characters = 0;
   let forbidden: string | undefined;
+  const spend = (length: number): void => {
+    characters += length;
+    if (characters > maxCharacters) throw tooComplex(maxCharacters);
+  };
   const visit = (node: unknown, depth: number): void => {
     visits += 1;
-    if (visits > PRICING_YAML_MAX_VISITS) throw tooComplex();
+    if (visits > PRICING_YAML_MAX_VISITS) throw tooComplex(maxCharacters);
+    if (typeof node === 'string') spend(node.length);
     if (typeof node !== 'object' || node === null) return;
-    if (depth >= PRICING_YAML_MAX_DEPTH) throw tooComplex();
+    if (depth >= PRICING_YAML_MAX_DEPTH) throw tooComplex(maxCharacters);
     if (Array.isArray(node)) {
       for (const item of node) visit(item, depth + 1);
       return;
     }
     for (const key of Object.keys(node)) {
       if (forbidden === undefined && FORBIDDEN_KEYS.has(key)) forbidden = key;
+      spend(key.length);
       visit((node as PricingDoc)[key], depth + 1);
     }
   };
@@ -125,7 +142,7 @@ export function loadPricingDoc(text: string, maxBytes: number): PricingDoc {
   } catch (error) {
     throw invalidYaml(error);
   }
-  measure(core);
+  measure(core, maxBytes * PRICING_YAML_EXPANSION_FACTOR);
 
   let doc: unknown;
   try {

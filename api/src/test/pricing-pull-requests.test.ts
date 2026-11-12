@@ -2065,6 +2065,8 @@ describe('Pricing pull requests', () => {
       const bad = [
         { text: `${valid}\n# ${'x'.repeat(1024 * 1024)}\n`, status: 413, code: 'PRICING_TOO_LARGE' },
         { text: aliases, status: 422, code: 'PRICING_TOO_COMPLEX' },
+        // A long string used through many aliases: few values, hundreds of megabytes once copied.
+        { text: `${valid}a: &a "${'x'.repeat(100_000)}"\nb: [${Array(2000).fill('*a').join(', ')}]\n`, status: 422, code: 'PRICING_TOO_COMPLEX' },
         { text: `${valid}__proto__:\n  polluted: true\n`, status: 422, code: 'INVALID_PRICING' },
       ];
       const sends = [

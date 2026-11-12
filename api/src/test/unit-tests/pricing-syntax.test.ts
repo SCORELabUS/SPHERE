@@ -131,6 +131,27 @@ describe('loadPricingDoc', () => {
     expect(Object.keys(loadPricingDoc(fewer, MIB))).toHaveLength(101);
   });
 
+  it('counts a long string every time an alias uses it, before anything copies it', () => {
+    // 100 KB used 5000 times: 5005 visits, well within the visit budget, but 500 MB once copied.
+    const uses = (count: number) => `a: &a "${'x'.repeat(100_000)}"\nb: [${Array(count).fill('*a').join(', ')}]\n`;
+    const clone = vi.spyOn(globalThis, 'structuredClone');
+    const started = Date.now();
+    const error = caught(() => normalizeProposalText(uses(5000), MIB));
+    expect(error.status).toBe(422);
+    expect(error.code).toBe('PRICING_TOO_COMPLEX');
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(clone).not.toHaveBeenCalled();
+    // Up to twice the byte limit in characters, keys included.
+    expect(loadPricingDoc(uses(19), MIB).b).toHaveLength(19);
+    expect(caught(() => loadPricingDoc(uses(21), MIB)).code).toBe('PRICING_TOO_COMPLEX');
+  });
+
+  it('lets a text without aliases reach its byte limit', () => {
+    const text = `saasName: "${'x'.repeat(MIB - 20)}"\n`;
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MIB);
+    expect(loadPricingDoc(text, MIB).saasName).toHaveLength(MIB - 20);
+  });
+
   it(`refuses nesting deeper than ${PRICING_YAML_MAX_DEPTH} levels and alias cycles`, () => {
     const deep = `${'['.repeat(PRICING_YAML_MAX_DEPTH + 1)}1${']'.repeat(PRICING_YAML_MAX_DEPTH + 1)}`;
     expect(caught(() => loadPricingDoc(`x: ${deep}\n`, MIB)).code).toBe('PRICING_TOO_COMPLEX');
