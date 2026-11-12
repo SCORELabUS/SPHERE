@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -118,4 +119,25 @@ test('paths are labelled as the server labels them', () => {
   assert.equal(formatConflictPath(['features', 'sso', 'valueType']), 'features.sso.valueType');
   assert.equal(formatConflictPath(['plans', 'Pro plan']), 'plans["Pro plan"]');
   assert.equal(formatConflictPath(['1st']), '["1st"]');
+});
+
+test('the Visual view uses none of the pieces that #200 moves or removes, nor drag and drop (CA-83)', () => {
+  const source = readFileSync(
+    new URL('../src/modules/core/components/pricing-merge-resolver/visual-conflicts.tsx', import.meta.url),
+    'utf8'
+  );
+  const imports = [...source.matchAll(/^import[\s\S]*?from\s+'([^']+)';/gm)].map(match => match[0]);
+  assert.ok(imports.length > 0);
+  for (const piece of [
+    /PricingRenderer/,
+    /pricing-renderer/,
+    /FeatureTableV2/,
+    /AddOnCard/,
+    /Sortable/,
+    /UsageValueCell/,
+    /@dnd-kit/,
+    /visual-editor'/,
+  ]) {
+    assert.equal(imports.filter(line => piece.test(line)).length, 0, `imports ${piece}`);
+  }
 });

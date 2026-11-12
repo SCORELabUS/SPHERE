@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import jsYaml from 'js-yaml';
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -6,12 +6,21 @@ import { FiArrowLeft } from 'react-icons/fi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import { pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
+import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { versionYamlUrl } from '../../utils/version-yaml';
 import { diffPricings, type ChangeKind } from '../../utils/pricing-diff';
 import { DiffResult, ViewToggle, type ViewMode } from '../pricing-version-diff';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
-import type { PullRequestDetail as PullRequestDetailData } from '../../types/pull-requests';
+import type { VersionData } from '../../types/card';
+import type {
+  PullRequestDetail as PullRequestDetailData,
+  PullRequestMergeResult,
+  PullRequestVersionRef,
+} from '../../types/pull-requests';
 import StateChip from './state-chip';
 import CloseDialog from './close-dialog';
+import MergePanel from './merge-panel';
+import UpdatePanel from './update-panel';
 
 const ago = (date: string) => `${formatDistanceToNow(parseISO(date))} ago`;
 
@@ -59,21 +68,55 @@ function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
   );
 }
 
+/** What the page shares with a pull request to merge it: its versions, its ETag and how to take the merge in. */
+export interface PullRequestPageContext {
+  /** The versions of the pricing the page loaded, to read the one a merge or an update follows. */
+  versions: VersionData[];
+  etag?: string;
+  onMerged: (result: PullRequestMergeResult) => void;
+  /** Offers to reload when the pricing changed since the page loaded it (412); says whether it was that. */
+  onPricingChanged: (error: unknown) => boolean;
+}
+
 /**
  * A pull request: what it proposes against the version it is based on, its
- * description, where it stands and, for its author or a maintainer, closing it.
+ * description and where it stands. Its author can bring it up to the latest
+ * version or withdraw it; a maintainer can merge or close it.
  */
-export default function PullRequestDetail({ id, onBack }: { id: string; onBack: () => void }) {
+export default function PullRequestDetail({
+  id,
+  onBack,
+  context,
+}: {
+  id: string;
+  onBack: () => void;
+  context: PullRequestPageContext;
+}) {
   const { authUser } = useAuth();
   const { getPullRequest, closePullRequest } = usePricingPullRequestsApi();
   const [pullRequest, setPullRequest] = useState<PullRequestDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
+  const [panel, setPanel] = useState<'merge' | 'update' | null>(null);
+  const { versions } = context;
+
+  const loadLatestYaml = useCallback(
+    async (target: PullRequestVersionRef) => {
+      const version = versions.find(item => item.id === target.id);
+      if (!version) throw new Error('it is not loaded on this page. Reload the page and try again.');
+      const url = versionYamlUrl(version.yaml);
+      const response = await fetch(url, pricingYamlRequestInit(url, authUser.token));
+      if (!response.ok) throw new Error(`the server answered ${response.status}.`);
+      return response.text();
+    },
+    [versions, authUser.token]
+  );
 
   useEffect(() => {
     let active = true;
     setPullRequest(null);
     setError(null);
+    setPanel(null);
     getPullRequest(id)
       .then(result => {
         if (active) setPullRequest(result);
@@ -124,7 +167,7 @@ export default function PullRequestDetail({ id, onBack }: { id: string; onBack: 
   }
 
   const isAuthor = Boolean(pullRequest.author && pullRequest.author.id === authUser.user?.id);
-  const { origin, closed, merged } = pullRequest;
+  const { origin, closed, merged, permissions } = pullRequest;
 
   return (
     <div className="space-y-5">
@@ -162,15 +205,37 @@ export default function PullRequestDetail({ id, onBack }: { id: string; onBack: 
             </div>
           )}
         </dl>
-        {pullRequest.permissions.close && (
+        {(permissions.merge || permissions.update || permissions.close) && (
           <div className="flex flex-wrap gap-2 border-t border-tp-hairline pt-3">
-            <button
-              type="button"
-              onClick={() => setIsClosing(true)}
-              className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-            >
-              {isAuthor ? 'Withdraw' : 'Close'}
-            </button>
+            {permissions.merge && (
+              <button
+                type="button"
+                aria-pressed={panel === 'merge'}
+                onClick={() => setPanel(panel === 'merge' ? null : 'merge')}
+                className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
+              >
+                Merge…
+              </button>
+            )}
+            {permissions.update && (
+              <button
+                type="button"
+                aria-pressed={panel === 'update'}
+                onClick={() => setPanel(panel === 'update' ? null : 'update')}
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+              >
+                Update to latest
+              </button>
+            )}
+            {permissions.close && (
+              <button
+                type="button"
+                onClick={() => setIsClosing(true)}
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+              >
+                {isAuthor ? 'Withdraw' : 'Close'}
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -193,7 +258,32 @@ export default function PullRequestDetail({ id, onBack }: { id: string; onBack: 
         )}
       </section>
 
-      <Changes key={`${pullRequest.id}:${pullRequest.proposalRevision}`} pullRequest={pullRequest} />
+      {panel === 'merge' && permissions.merge ? (
+        <MergePanel
+          pullRequest={pullRequest}
+          etag={context.etag}
+          loadLatestYaml={loadLatestYaml}
+          onPricingChanged={context.onPricingChanged}
+          onCancel={() => setPanel(null)}
+          onMerged={result => {
+            setPullRequest(result.pullRequest);
+            setPanel(null);
+            context.onMerged(result);
+          }}
+        />
+      ) : panel === 'update' && permissions.update ? (
+        <UpdatePanel
+          pullRequest={pullRequest}
+          loadLatestYaml={loadLatestYaml}
+          onCancel={() => setPanel(null)}
+          onUpdated={updated => {
+            setPullRequest(updated);
+            setPanel(null);
+          }}
+        />
+      ) : (
+        <Changes key={`${pullRequest.id}:${pullRequest.proposalRevision}`} pullRequest={pullRequest} />
+      )}
 
       <AnimatePresence>
         {isClosing && (

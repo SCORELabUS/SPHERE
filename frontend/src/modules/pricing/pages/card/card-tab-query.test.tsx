@@ -186,6 +186,23 @@ describe('pricing page tabs in the URL', () => {
     expect(pullRequestsTab()).toHaveLength(0);
   });
 
+  it('shares its versions and ETag with a merge, and takes the new ETag and versions after it', async () => {
+    await render(`?tab=pull-requests&pr=${PR_ID}`);
+    const context = () => pullRequestsTab()[0].props.context;
+    expect(context()).toMatchObject({ versions: pricing.versions, etag: '"tag"' });
+
+    const merged = { id: 'v2', version: '2.0', createdAt: '2026-02-01', yaml: '', private: false, collection: null, analytics: null, forkedFrom: null };
+    let reload: (value: unknown) => void = () => {};
+    mocks.getPricingBySlug.mockReturnValueOnce(new Promise(resolve => (reload = resolve)));
+    await act(async () => context().onMerged({ pullRequest: {}, version: { id: 'v2', version: '2.0', private: false }, etag: '"tag.2"' }));
+    // The new ETag is taken at once, so a second merge is not refused while the versions load.
+    expect(context().etag).toBe('"tag.2"');
+    expect(mocks.getPricingBySlug).toHaveBeenCalledTimes(2);
+
+    await act(async () => reload({ ...pricing, etag: '"tag.3"', versions: [merged, ...pricing.versions] }));
+    expect(context()).toMatchObject({ etag: '"tag.3"', versions: [merged, ...pricing.versions] });
+  });
+
   it('follows a link to a pull request while the page is open', async () => {
     await render();
     expect(pullRequestsTab()).toHaveLength(0);

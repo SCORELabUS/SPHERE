@@ -39,6 +39,7 @@ import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
 import PricingPullRequestsTab from '../../components/pricing-pull-requests';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
+import type { PullRequestMergeResult } from '../../types/pull-requests';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
@@ -621,6 +622,21 @@ export default function CardPage() {
       customAlert(`Error adding version: ${(error as Error).message}`, 'error');
     }
   }
+
+  // A merge publishes a new version: the page takes the pricing's new ETag at once
+  // (a second merge would otherwise be refused) and reads the versions again.
+  const handlePullRequestMerged = (result: PullRequestMergeResult) => {
+    if (result.etag) setEtag(result.etag);
+    if (!slug || !organizationId) return;
+    getPricingBySlug(slug, organizationId, collectionSlug)
+      .then(data => {
+        setEtag(data.etag);
+        const vers = (data.versions ?? []) as VersionData[];
+        setVersions(vers);
+        if (vers.length > 0) setCurrentVersion(vers[0]);
+      })
+      .catch(() => {});
+  };
 
   const handleFork = async (targetOrganizationId: string, name?: string) => {
     if (!organizationId || !slug || !currentVersion) throw new Error('Pricing not loaded yet');
@@ -1247,6 +1263,12 @@ export default function CardPage() {
                 selectedId={selectedPullRequest}
                 onSelect={selectPullRequest}
                 onCountsChange={counts => setOpenPullRequests(counts.open)}
+                context={{
+                  versions,
+                  etag,
+                  onMerged: handlePullRequestMerged,
+                  onPricingChanged: offerReloadIfChanged,
+                }}
               />
             </motion.div>
           )}

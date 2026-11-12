@@ -3,12 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PricingPullRequestsTab from '.';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
 import { PullRequestApiError } from '../../api/pricingPullRequestsApi';
-import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '../../types/pull-requests';
+import type {
+  PullRequestDetail,
+  PullRequestList,
+  PullRequestPreview,
+  PullRequestSummary,
+} from '../../types/pull-requests';
+import type { VersionData } from '../../types/card';
 
 const mocks = vi.hoisted(() => ({
   listPullRequests: vi.fn(),
   getPullRequest: vi.fn(),
   closePullRequest: vi.fn(),
+  previewPullRequestMerge: vi.fn(),
+  mergePullRequest: vi.fn(),
   user: { id: 'maintainer', username: 'maintainer' } as { id: string; username: string },
 }));
 vi.mock('../../api/pricingPullRequestsApi', async importOriginal => ({
@@ -37,6 +45,7 @@ vi.mock('framer-motion', async () => {
 });
 
 const PRICING = '6650f0c0c0c0c0c0c0c0c001';
+const context = { versions: [], onMerged: () => {}, onPricingChanged: () => false };
 const PR_ID = '6650f0c0c0c0c0c0c0c0c0aa';
 const MARKUP = '<img src=x onerror="alert(1)">';
 const BASE_YAML = 'saasName: Demo\nversion: "2.0"\nplans:\n  PRO:\n    price: 10\n';
@@ -94,7 +103,7 @@ describe('Pull requests tab', () => {
 
   async function render(selectedId: string | null = null) {
     await act(async () => {
-      view = create(<PricingPullRequestsTab pricingId={PRICING} selectedId={selectedId} onSelect={onSelect} />);
+      view = create(<PricingPullRequestsTab pricingId={PRICING} selectedId={selectedId} onSelect={onSelect} context={context} />);
     });
   }
 
@@ -152,7 +161,7 @@ describe('Pull requests tab', () => {
     expect(onSelect).toHaveBeenCalledWith(PR_ID);
 
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={context} />);
     });
     expect(mocks.getPullRequest).toHaveBeenCalledWith(PR_ID);
     expect(text()).toContain('#7Raise PRO');
@@ -166,10 +175,10 @@ describe('Pull requests tab', () => {
     await act(async () => button('Merged4').props.onClick());
     await act(async () => button('2').props.onClick());
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={context} />);
     });
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={null} onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={null} onSelect={onSelect} context={context} />);
     });
     expect(mocks.listPullRequests).toHaveBeenLastCalledWith(PRICING, { status: 'merged', page: 2 });
   });
@@ -228,7 +237,7 @@ describe('Pull requests tab', () => {
     expect(textOf(view.root.findByType('li'))).toContain(MARKUP);
 
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={context} />);
     });
     await act(async () => button('File').props.onClick());
     const description = view.root.findAll(node => node.type === 'p' && textOf(node).includes('javascript:alert(1)">x'));
@@ -248,7 +257,7 @@ describe('Pull requests tab', () => {
     enabled().forEach(item => expect(item.props.className).toContain('cursor-pointer'));
 
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={context} />);
     });
     await act(async () => button('Close').props.onClick());
     expect(enabled().length).toBeGreaterThan(4);
@@ -301,8 +310,99 @@ describe('Pull requests tab', () => {
 
     mocks.getPullRequest.mockRejectedValueOnce(new PullRequestApiError(404, { error: 'Pull request not found' }));
     await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId="6650f0c0c0c0c0c0c0c0c0bb" onSelect={onSelect} />);
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId="6650f0c0c0c0c0c0c0c0c0bb" onSelect={onSelect} context={context} />);
     });
     expect(text()).toContain('This pull request is not available.');
+  });
+
+  describe('merging and updating from the detail', () => {
+    const LATEST_YAML = 'saasName: Demo\nversion: "3.0"\nplans:\n  PRO:\n    price: 11\n';
+    const latest: VersionData = {
+      id: 'v3', version: '3.0', createdAt: '2026-03-01', yaml: '/static/pricings/acme/demo/3.0.yml', private: false,
+      collection: null, analytics: null, forkedFrom: null,
+    };
+    const mergePreview: PullRequestPreview = {
+      base: { id: 'v2', version: '2.0' },
+      target: { id: 'v3', version: '3.0', private: false },
+      outcome: 'merged',
+      conflicts: [],
+      resultYaml: PROPOSED_YAML,
+      regenerated: false,
+      validation: { ok: true },
+      warnings: [],
+      previewToken: 'token-1',
+      suggestedVersion: '2.1',
+      versionTaken: false,
+      defaults: { private: false },
+    };
+    const flush = () => act(() => new Promise(resolve => setTimeout(resolve, 5)));
+    const fetchMock = vi.fn();
+
+    beforeEach(() => {
+      fetchMock.mockImplementation(async () => new Response(LATEST_YAML));
+      vi.stubGlobal('fetch', fetchMock);
+      mocks.previewPullRequestMerge.mockResolvedValue(mergePreview);
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('lets a maintainer merge with the page ETag, reading the version it follows from the page', async () => {
+      const onMerged = vi.fn();
+      const result = {
+        pullRequest: detail({
+          status: 'merged',
+          state: { kind: 'merged' },
+          merged: { at: new Date().toISOString(), versionId: 'v4', version: '2.1' },
+          permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
+        }),
+        version: { id: 'v4', version: '2.1', private: false },
+        etag: '"e.5"',
+      };
+      mocks.mergePullRequest.mockResolvedValue(result);
+      await act(async () => {
+        view = create(
+          <PricingPullRequestsTab
+            pricingId={PRICING}
+            selectedId={PR_ID}
+            onSelect={onSelect}
+            context={{ versions: [latest], etag: '"e.4"', onMerged, onPricingChanged: () => false }}
+          />
+        );
+      });
+      expect(button('Update to latest')).toBeUndefined();
+      await act(async () => button('Merge…').props.onClick());
+      await flush();
+      expect(mocks.previewPullRequestMerge).toHaveBeenCalledWith(PR_ID, 'merge', {});
+
+      await act(async () => button('Compare').props.onClick());
+      await flush();
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/static/pricings/acme/demo/3.0.yml', {});
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: LATEST_YAML, after: PROPOSED_YAML });
+
+      await act(async () => button('Merge pull request').props.onClick());
+      expect(mocks.mergePullRequest).toHaveBeenCalledWith(
+        PR_ID,
+        { resolutions: {}, previewToken: 'token-1', version: '2.1', private: false },
+        '"e.4"'
+      );
+      expect(onMerged).toHaveBeenCalledWith(result);
+      expect(text()).toContain('Merged as 2.1');
+      expect(button('Merge pull request')).toBeUndefined();
+      expect(button('Merge…')).toBeUndefined();
+    });
+
+    it('lets the author bring a pull request behind the latest version up to it', async () => {
+      mocks.user = { id: 'author', username: 'alice' };
+      mocks.getPullRequest.mockResolvedValue(detail({
+        permissions: { edit: true, editProposal: false, update: true, close: true, merge: false },
+      }));
+      await render(PR_ID);
+      expect(button('Merge…')).toBeUndefined();
+      await act(async () => button('Update to latest').props.onClick());
+      await flush();
+      expect(mocks.previewPullRequestMerge).toHaveBeenCalledWith(PR_ID, 'update', {});
+      expect(button('Update pull request').props.disabled).toBe(false);
+      await act(async () => button('Cancel').props.onClick());
+      expect(text()).toContain('Proposal compared with version 2.0');
+    });
   });
 });
