@@ -427,6 +427,26 @@ describe('Merge resolver', () => {
     expect(view.root.findAll(node => node.props['data-warning'] === 'MANUAL_OVERRIDE')).toHaveLength(1);
   });
 
+  it('shows the names in the YAML hovers as text, never as markdown images or links', async () => {
+    const planted = conflict(['plans', '![](https://attacker.example/p.png)', 'price']);
+    const linked = conflict(['features', '[click](https://phish.example)*bold*', 'description'], { current: 'a\n', proposal: 'b\n' });
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [planted, linked] }));
+    await renderMerge();
+    await showView('YAML');
+    const hovers = (mocks.editor.createDecorationsCollection.mock.lastCall![0] as Array<{
+      options: { hoverMessage: { value: string; isTrusted?: boolean; supportHtml?: boolean } };
+    }>).map(decoration => decoration.options.hoverMessage);
+    expect(hovers).toHaveLength(2);
+    for (const hover of hovers) {
+      expect(hover.value.startsWith('Conflict: ')).toBe(true);
+      expect(hover).toMatchObject({ isTrusted: false, supportHtml: false });
+      // Once the escaped characters are taken out, no markdown syntax is left.
+      expect(hover.value.slice('Conflict: '.length).replace(/\\[\s\S]/g, '')).not.toMatch(/[[\]()!*_<>`]/);
+    }
+    // The text still reads as the name.
+    expect(hovers[0].value.replace(/\\/g, '')).toBe(`Conflict: ${planted.label}`);
+  });
+
   it('asks before a choice replaces a result edited by hand (CA-35)', async () => {
     await renderMerge();
     await showView('YAML');

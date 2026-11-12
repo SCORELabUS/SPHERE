@@ -125,6 +125,17 @@ export function resolutionsOf(state: ResolverState): ConflictResolutions {
   );
 }
 
+/**
+ * A text shown as itself in Monaco's markdown hovers: every markdown character is
+ * escaped, so names written by a pull request's author (a plan called
+ * `![](https://…)`) never become images, links or formatting.
+ */
+export function escapeMarkdown(text: string): string {
+  // Characters that only mean something at the start of a line (#, +, -, digits and .) are
+  // left alone: the hover always starts with "Conflict: ".
+  return text.replace(/[\\`*_{}[\]()!|<>~&]/g, '\\$&');
+}
+
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /** A path as the server labels it: `plans["PRO.v2"].price`. */

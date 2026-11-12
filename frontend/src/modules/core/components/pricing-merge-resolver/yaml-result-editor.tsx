@@ -6,6 +6,7 @@ import { useMode } from '../../hooks/useTheme';
 import GithubDarkTheme from '../../theme/editor-themes/GitHub-Dark.json';
 import TextmateTheme from '../../theme/editor-themes/Textmate.json';
 import { conflictLocations, type MergeResolver } from '../../hooks/useMergeResolver';
+import { escapeMarkdown } from '../../utils/pricing-merge-resolver';
 
 function defineThemes(monaco: Monaco) {
   monaco.editor.defineTheme('github-dark', GithubDarkTheme as editor.IStandaloneThemeData);
@@ -44,7 +45,7 @@ export default function YamlResultEditor({ resolver }: { resolver: MergeResolver
           isWholeLine: true,
           className: 'bg-tp-severity-warning-bg',
           linesDecorationsClassName: 'border-l-4 border-tp-severity-warning',
-          hoverMessage: { value: `Conflict: ${conflict.label}` },
+          hoverMessage: { value: `Conflict: ${escapeMarkdown(conflict.label)}`, isTrusted: false, supportHtml: false },
         },
       }))
     );
