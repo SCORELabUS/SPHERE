@@ -88,6 +88,11 @@ const both = (...changes: PricingChange[]): PricingChange => doc => changes.forE
 const goldAt = (price: number): PricingChange => doc => {
   doc.plans.GOLD.price = price;
 };
+const goldAtNormalized = (doc: any, price: number) => {
+  const copy = structuredClone(doc);
+  copy.plans.GOLD.price = price;
+  return copy;
+};
 const platinumAt = (price: number): PricingChange => doc => {
   doc.plans.PLATINUM.price = price;
 };
@@ -675,6 +680,46 @@ describe('Pricing pull requests', () => {
       expect(response.status).toBe(201);
       expect(response.body.warnings).toEqual([{ code: 'SYNTAX_UPGRADED' }]);
       expect(loadPricingDoc(response.body.proposed.yaml, STORED_PRICING_MAX_BYTES).syntaxVersion).toBe('3.1');
+    });
+
+    it('Sends a base stored in an older syntax also upgraded, so the detail shows only the author\'s changes.', async () => {
+      const own = await publicScene();
+      const external = await outsider();
+      // v2's file as the seeded pricings keep theirs: in syntax 2.1, which the updater changes beyond its number.
+      const file = await fileOf(own.v2.id);
+      const older: any = { ...docOf(readFileSync(file, 'utf8')), syntaxVersion: '2.1' };
+      older.usageLimits.maxVisitsPerMonthAndPet = { ...older.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete older.usageLimits.maxVisitsPerMonthAndPet.period;
+      const olderText = yaml.dump(older);
+      await fsp.writeFile(file, olderText);
+      const proposal = structuredClone(older);
+      proposal.plans.GOLD.price = 7.5;
+
+      const created = await open(external.token, { title: 'From 2.1', source: textSource(own.pricingId, own.v2.id, yaml.dump(proposal)) });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const shown = await detail(external.token, created.body.id);
+
+      expect(shown.status).toBe(200);
+      expect(shown.body.base.yaml).toBe(olderText);
+      const normalized = docOf(shown.body.base.normalizedYaml);
+      expect(normalized.syntaxVersion).toBe('3.1');
+      expect(normalized).toEqual(upgradeToLatestSyntax(docOf(olderText)).doc);
+      // Against it, the proposal changes GOLD's price and nothing else.
+      const comparable = (doc: any) => {
+        const { saasName, version, createdAt, ...rest } = doc;
+        void saasName; void version; void createdAt;
+        return rest;
+      };
+      expect(comparable(docOf(shown.body.proposed.yaml))).toEqual(comparable(goldAtNormalized(normalized, 7.5)));
+      expect(comparable(docOf(shown.body.proposed.yaml))).not.toEqual(comparable(docOf(olderText)));
+
+      // A base in the latest syntax is sent once.
+      const current = await open(external.token, {
+        title: 'From 3.1', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '2.1.0', both(V2, goldAt(9)))),
+      });
+      expect(current.status).toBe(201);
+      const plain = await detail(external.token, current.body.id);
+      expect(plain.body.base).not.toHaveProperty('normalizedYaml');
     });
 
     it('Keeps markup as plain text and refuses titles that are too long or carry control characters (CA-80).', async () => {

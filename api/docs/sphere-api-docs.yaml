@@ -8185,6 +8185,13 @@ components:
                   type: string
                 yaml:
                   type: string
+                  description: The base as it was stored when the pull request started from it.
+                normalizedYaml:
+                  type: string
+                  description: |
+                    Only when `yaml` is in an older Pricing2Yaml syntax: the base upgraded to the latest
+                    one, as proposals are stored. Compare the proposal with it, so the upgrade is not
+                    shown as a change of the author's.
             proposed:
               type: object
               properties:

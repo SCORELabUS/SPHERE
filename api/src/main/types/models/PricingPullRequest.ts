@@ -188,7 +188,11 @@ export interface PullRequestSummaryDTO {
 
 export interface PullRequestDetailDTO extends Omit<PullRequestSummaryDTO, 'base' | 'proposed'> {
   description: string;
-  base: { versionId: string; version: string; yaml: string };
+  /**
+   * `normalizedYaml`: the base in the latest syntax, as proposals are stored, only when its
+   * stored text is in an older one; the proposal is compared with it.
+   */
+  base: { versionId: string; version: string; yaml: string; normalizedYaml?: string };
   proposed: { suggestedVersion: string; yaml: string };
   origin?: PullRequestOriginDTO;
   permissions: PullRequestPermissions;

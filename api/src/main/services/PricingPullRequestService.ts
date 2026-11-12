@@ -1346,11 +1346,24 @@ class PricingPullRequestService {
     return {
       ...summary,
       description: pullRequest.description,
-      base: { ...summary.base, yaml: pullRequest.base.yaml },
+      base: { ...summary.base, yaml: pullRequest.base.yaml, ...this.normalizedBaseOf(pullRequest.base.yaml) },
       proposed: { ...summary.proposed, yaml: pullRequest.proposed.yaml },
       ...(origin ? { origin } : {}),
       permissions: this.permissionsOf(pullRequest, pricing, viewer, summary.state),
     };
+  }
+
+  /**
+   * A base stored in an older syntax, as the proposal is stored (upgraded): what the
+   * detail compares the proposal with, so the upgrade is not shown as the author's change.
+   */
+  private normalizedBaseOf(text: string): { normalizedYaml?: string } {
+    try {
+      const loaded = this.loadStored(text);
+      return loaded.regenerated ? { normalizedYaml: loaded.text } : {};
+    } catch {
+      return {};
+    }
   }
 
   /** The merged version is named only to who may read it now. */
