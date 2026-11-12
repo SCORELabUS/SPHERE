@@ -523,6 +523,22 @@ describe('Merge resolver', () => {
     expect(text()).toContain(`${EVERYWHERE.length} conflicts · ${EVERYWHERE.length - 1} unresolved`);
   });
 
+  it('names in each visual mark the conflicts it stands for and whether they are resolved', async () => {
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
+    await renderMerge();
+    await showView('Visual');
+    // The plan's value of a feature: the only mark inside a cell of the table.
+    const cellMark = () => view.root.find(node => node.type === 'td' && node.findAllByType('button').length > 0).findByType('button');
+    expect(cellMark().props['aria-label']).toBe(`${SSO.label}: 1 unresolved`);
+    await showView('Conflicts');
+    await choose(SSO, 'Use proposal');
+    await showView('Visual');
+    expect(cellMark().props['aria-label']).toBe(`${SSO.label}: resolved`);
+    // Every mark says which conflicts it is about.
+    const marks = view.root.findAll(node => node.type === 'button' && node.props['data-conflicts'] !== undefined);
+    marks.forEach(mark => expect(mark.props['aria-label']).toMatch(/^.+: (\d+ unresolved|resolved)$/));
+  });
+
   it('shows values as text, never as links or markup (CA-80)', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
     await renderMerge();

@@ -147,6 +147,8 @@ export default function VisualConflicts({
         type="button"
         data-conflicts={conflicts.length}
         aria-pressed={isSelected}
+        // Says which conflicts the mark stands for, not only that there is one.
+        aria-label={`${conflicts.map(conflict => conflict.label).join(', ')}: ${open > 0 ? `${open} unresolved` : 'resolved'}`}
         onClick={() => {
           setSelected(isSelected ? null : place);
           resolver.focus(conflicts[0].id);
