@@ -38,8 +38,10 @@ export class PullRequestApiError extends Error {
   readonly number?: number;
   readonly line?: number;
   readonly conflictIds?: string[];
+  /** For a 429, the seconds until the limit lets requests through again, when the server says. */
+  readonly retryAfter?: number;
 
-  constructor(status: number, body: Record<string, unknown>) {
+  constructor(status: number, body: Record<string, unknown>, retryAfter?: number) {
     super(
       status === 412
         ? PRICING_CHANGED_MESSAGE
@@ -54,12 +56,36 @@ export class PullRequestApiError extends Error {
     if (typeof body.number === 'number') this.number = body.number;
     if (typeof body.line === 'number') this.line = body.line;
     if (Array.isArray(body.conflictIds)) this.conflictIds = body.conflictIds as string[];
+    if (retryAfter !== undefined) this.retryAfter = retryAfter;
   }
+}
+
+/**
+ * The seconds a 429 asks to wait: its `Retry-After` header (seconds or a date),
+ * or else the "Try again in N seconds" of the limiter's message, since a
+ * cross-origin client is not shown that header.
+ */
+export function retryAfterOf(response: Response, body: Record<string, unknown>): number | undefined {
+  const header = response.headers?.get('Retry-After')?.trim();
+  if (header) {
+    if (/^\d+$/.test(header)) return Number(header);
+    const at = Date.parse(header);
+    if (!Number.isNaN(at)) return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+  }
+  const match = typeof body.error === 'string' ? /try again in (\d+) seconds?/i.exec(body.error) : null;
+  return match ? Number(match[1]) : undefined;
 }
 
 async function readBody<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new PullRequestApiError(response.status, body ?? {});
+  if (!response.ok) {
+    const fields = (body ?? {}) as Record<string, unknown>;
+    throw new PullRequestApiError(
+      response.status,
+      fields,
+      response.status === 429 ? retryAfterOf(response, fields) : undefined
+    );
+  }
   return body as T;
 }
 

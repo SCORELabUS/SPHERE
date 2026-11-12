@@ -19,8 +19,15 @@ import {
 } from '../utils/pricing-merge-resolver';
 import { pullRequestMessage } from '../utils/pull-request-state';
 
-/** How long the resolver waits after a choice before asking for the preview again. */
+/** How long the resolver waits after a choice that leaves no conflict open before asking for the preview again. */
 export const PREVIEW_DEBOUNCE_MS = 300;
+/**
+ * How long it waits while conflicts are still open: previews share a budget of
+ * requests a minute with merges and proposals, so a run of choices asks once.
+ */
+export const OPEN_CONFLICTS_DEBOUNCE_MS = 1500;
+/** How long to wait after a 429 that does not say. */
+export const DEFAULT_RETRY_SECONDS = 10;
 
 export interface YamlSyntaxError {
   line: number;
@@ -68,6 +75,10 @@ export interface MergeResolver {
   preview: PullRequestPreview | null;
   /** Why the latest preview could not be computed. */
   error: string | null;
+  /** Seconds until the preview is asked again by itself, after too many requests (429). */
+  retryIn: number | null;
+  /** Asks for the preview again now, with the same choices. */
+  retry: () => void;
   unresolved: number;
   /** The result as it would be sent: the hand-typed one, or the server's. */
   resultYaml: string;
@@ -95,7 +106,18 @@ const STALE_CODES = new Set(['PREVIEW_STALE', 'BASE_NOT_LATEST', 'UNRESOLVED_CON
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
+const isRateLimited = (caught: unknown): caught is PullRequestApiError =>
+  caught instanceof PullRequestApiError && caught.status === 429;
+
+const retryMessage = (seconds: number) =>
+  `Too many requests in a short time. The preview is asked again in ${plural(seconds, 'second')}.`;
+
 function errorMessage(caught: unknown): string {
+  if (isRateLimited(caught)) {
+    return caught.retryAfter !== undefined
+      ? `Too many requests in a short time. Try again in ${plural(caught.retryAfter, 'second')}.`
+      : 'Too many requests in a short time. Try again in a moment.';
+  }
   return caught instanceof PullRequestApiError
     ? pullRequestMessage(caught.status === 404 ? 'NOT_FOUND' : caught.code, {
         message: caught.message,
@@ -117,19 +139,28 @@ export function useMergeResolver(
   const [settled, setSettled] = useState<{ request: string; error?: string } | null>(null);
   const [preview, setPreview] = useState<PullRequestPreview | null>(null);
   const [refreshes, setRefreshes] = useState(0);
+  // After a 429, the request it answered and the seconds left before asking again.
+  const [rateLimited, setRateLimited] = useState<{ request: string; seconds: number } | null>(null);
   const load = useRef(loadPreview);
   load.current = loadPreview;
-  const started = useRef(false);
+  // The choices of the last preview asked for; null before the first one.
+  const lastChoices = useRef<string | null>(null);
 
   const resolutions = useMemo(() => resolutionsOf(state), [state]);
   const resolutionsKey = JSON.stringify(resolutions);
   const request = `${refreshes}:${resolutionsKey}`;
+  const unresolved = unresolvedConflicts(state).length;
+  // Read when a request is scheduled, without asking again when only the conflicts' count changes.
+  const hasOpenConflicts = useRef(false);
+  hasOpenConflicts.current = unresolved > 0;
 
   useEffect(() => {
     let active = true;
-    // The first preview is asked at once; later ones wait until the choices settle.
-    const delay = started.current ? PREVIEW_DEBOUNCE_MS : 0;
-    started.current = true;
+    // The first preview, and one asked again with the same choices, go at once; after a
+    // choice the preview waits until the choices settle, longer while a conflict is open.
+    const sameChoices = lastChoices.current === null || lastChoices.current === resolutionsKey;
+    const delay = sameChoices ? 0 : hasOpenConflicts.current ? OPEN_CONFLICTS_DEBOUNCE_MS : PREVIEW_DEBOUNCE_MS;
+    lastChoices.current = resolutionsKey;
     const timer = setTimeout(() => {
       load
         .current(JSON.parse(resolutionsKey) as ConflictResolutions)
@@ -141,7 +172,11 @@ export function useMergeResolver(
           dispatch({ type: 'conflicts-loaded', conflicts: result.conflicts });
         })
         .catch((caught: unknown) => {
-          if (active) setSettled({ request, error: errorMessage(caught) });
+          if (!active) return;
+          setSettled({ request, error: errorMessage(caught) });
+          if (isRateLimited(caught)) {
+            setRateLimited({ request, seconds: caught.retryAfter ?? DEFAULT_RETRY_SECONDS });
+          }
         });
     }, delay);
     return () => {
@@ -150,9 +185,20 @@ export function useMergeResolver(
     };
   }, [request, resolutionsKey]);
 
+  // After a 429 the same preview is asked again once the limit lets it through, counting down
+  // the seconds; a new choice meanwhile asks by itself and drops the countdown.
+  const retryIn = rateLimited?.request === request ? rateLimited.seconds : null;
+  useEffect(() => {
+    if (retryIn === null) return;
+    const timer = setTimeout(() => {
+      if (retryIn <= 1) setRefreshes(count => count + 1);
+      else setRateLimited({ request, seconds: retryIn - 1 });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [retryIn, request]);
+
   const isLoading = settled?.request !== request;
-  const error = isLoading ? null : (settled?.error ?? null);
-  const unresolved = unresolvedConflicts(state).length;
+  const error = isLoading ? null : retryIn !== null ? retryMessage(retryIn) : (settled?.error ?? null);
   const resultYaml = state.manualYaml ?? preview?.resultYaml ?? '';
   const manualError = useMemo(
     () => (state.manualYaml === null ? null : yamlSyntaxError(state.manualYaml)),
@@ -212,6 +258,8 @@ export function useMergeResolver(
     state,
     preview,
     error,
+    retryIn,
+    retry: refresh,
     unresolved,
     resultYaml,
     manualError,

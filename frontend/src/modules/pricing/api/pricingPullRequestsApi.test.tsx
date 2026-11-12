@@ -117,6 +117,29 @@ describe('pricing pull requests API', () => {
     expect((error as Error).message).toMatch(/Someone else changed this pricing/);
   });
 
+  it('keeps how long a 429 asks to wait, from Retry-After or else from the limiter\'s message', async () => {
+    const limited = (headers: Record<string, string>, error = 'TOO MANY REQUESTS: Rate limit exceeded. Try again in 42 seconds.') =>
+      Response.json({ error }, { status: 429, headers });
+    const preview = () => api.previewPullRequestMerge(PR_ID, 'merge').catch((caught: unknown) => caught);
+
+    mount(() => limited({ 'Retry-After': '17' }));
+    expect(await preview()).toMatchObject({ status: 429, retryAfter: 17 });
+    act(() => view.unmount());
+
+    // Cross-origin, the header is not shown to the page: the message says it too.
+    mount(() => limited({}));
+    expect(await preview()).toMatchObject({ status: 429, retryAfter: 42 });
+    act(() => view.unmount());
+
+    mount(() => limited({}, 'Slow down'));
+    expect(((await preview()) as PullRequestApiError).retryAfter).toBeUndefined();
+    act(() => view.unmount());
+
+    // Only a 429 waits.
+    mount(() => Response.json({ error: 'Try again in 5 seconds.' }, { status: 503, headers: { 'Retry-After': '5' } }));
+    expect(((await preview()) as PullRequestApiError).retryAfter).toBeUndefined();
+  });
+
   it('survives an error without a JSON body', async () => {
     mount(() => new Response('<html>Bad gateway</html>', { status: 502 }));
     const error = await api.getPullRequest(PR_ID).catch((caught: unknown) => caught);

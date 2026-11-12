@@ -5,7 +5,7 @@ import UpdatePanel from '../../../pricing/components/pricing-pull-requests/updat
 import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
 import { PullRequestApiError } from '../../../pricing/api/pricingPullRequestsApi';
 import { VisualEditorUnavailable } from '../../../pricing-editor/components/visual-editor/components/VisualEditorUnavailable';
-import { PREVIEW_DEBOUNCE_MS } from '../../hooks/useMergeResolver';
+import { DEFAULT_RETRY_SECONDS, OPEN_CONFLICTS_DEBOUNCE_MS, PREVIEW_DEBOUNCE_MS } from '../../hooks/useMergeResolver';
 import { formatConflictPath } from '../../utils/pricing-merge-resolver';
 import type {
   ConflictScope,
@@ -228,8 +228,8 @@ describe('Merge resolver', () => {
     expect(text()).toContain('2 conflicts · 1 unresolved');
     expect(button('Keep current', card(PRICE)).props['aria-pressed']).toBe(true);
     expect(textOf(card(PRICE))).toContain('Keeping current');
-    // The preview is asked again once the choices settle, with them.
-    await settle(PREVIEW_DEBOUNCE_MS - 1);
+    // The preview is asked again once the choices settle, with them (later while a conflict is still open).
+    await settle(OPEN_CONFLICTS_DEBOUNCE_MS - 1);
     expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(1);
     await settle(1);
     expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'current' });
@@ -281,12 +281,80 @@ describe('Merge resolver', () => {
       'Something changed since the preview was computed. Review the new preview and try again.'
     );
     await settle();
-    await settle();
+    // Dropping the changed choice leaves a conflict open, so the next preview waits longer.
+    await settle(OPEN_CONFLICTS_DEBOUNCE_MS);
     expect(textOf(card(PRICE))).toContain('Using proposal');
     expect(textOf(card(SSO))).toContain('Changed since your choice');
     expect(button('Use proposal', card(SSO)).props['aria-pressed']).toBe(false);
     expect(text()).toContain('2 conflicts · 1 unresolved');
     expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'proposal' });
+  });
+
+  it('asks for the preview once a run of choices settles, and sooner when no conflict is left open', async () => {
+    const three = [PRICE, SSO, conflict(['addOns', 'extra', 'price'], { base: '4\n', current: '5\n', proposal: '6\n' })];
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: three }));
+    await renderMerge();
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(1);
+    // Choices a second apart while conflicts are still open ask nothing until they stop.
+    await choose(three[0], 'Keep current');
+    await settle(1000);
+    await choose(three[1], 'Use proposal');
+    await settle(1000);
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(1);
+    // The last one asks soon, once, with all of them.
+    await choose(three[2], 'Keep current');
+    await settle(PREVIEW_DEBOUNCE_MS);
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
+    expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', {
+      [three[0].id]: 'current',
+      [three[1].id]: 'proposal',
+      [three[2].id]: 'current',
+    });
+  });
+
+  it('after too many requests says when it asks again, and asks by itself with the same choices (429)', async () => {
+    await renderMerge();
+    await choose(PRICE, 'Use proposal');
+    mocks.previewPullRequestMerge.mockRejectedValueOnce(
+      new PullRequestApiError(429, { error: 'TOO MANY REQUESTS: Rate limit exceeded. Try again in 3 seconds.' }, 3)
+    );
+    await choose(SSO, 'Use proposal');
+    await settle();
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
+    expect(mergeButton().props.disabled).toBe(true);
+    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 3 seconds.');
+    const alert = () => view.root.findByProps({ role: 'alert' });
+    expect(textOf(alert())).toContain('asked again in 3 seconds');
+    expect(button('Try again now', alert()).props.className).toContain('cursor-pointer');
+
+    await settle(1000);
+    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 2 seconds.');
+    await settle(1000);
+    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 1 second.');
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ previewToken: 'token-2' }));
+    await settle(1000);
+    await settle(0);
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(3);
+    expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'proposal', [SSO.id]: 'proposal' });
+    expect(mergeButton().props.disabled).toBe(false);
+    expect(view.root.findAll(node => node.props.role === 'alert')).toHaveLength(0);
+  });
+
+  it('can be asked again at once, and waits a default time when a 429 does not say how long', async () => {
+    await renderMerge();
+    mocks.previewPullRequestMerge.mockRejectedValueOnce(new PullRequestApiError(429, { error: 'Slow down' }));
+    await choose(PRICE, 'Use proposal');
+    await choose(SSO, 'Use proposal');
+    await settle();
+    expect(blockReason()).toBe(
+      `Too many requests in a short time. The preview is asked again in ${DEFAULT_RETRY_SECONDS} seconds.`
+    );
+    await act(async () => button('Try again now', view.root.findByProps({ role: 'alert' })).props.onClick());
+    await settle(0);
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(3);
+    expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'proposal', [SSO.id]: 'proposal' });
+    expect(mergeButton().props.disabled).toBe(false);
   });
 
   it('marks the conflicts in the YAML and blocks a result with a syntax error, naming its line (CA-30)', async () => {

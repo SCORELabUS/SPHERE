@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IconType } from 'react-icons';
-import { FiAlertTriangle, FiCode, FiColumns, FiGrid, FiInfo, FiList } from 'react-icons/fi';
+import { FiAlertTriangle, FiCode, FiColumns, FiGrid, FiInfo, FiList, FiRefreshCw } from 'react-icons/fi';
 import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
 import type { PullRequestVersionRef, PullRequestWarning } from '../../../pricing/types/pull-requests';
 import type { MergeResolver } from '../../hooks/useMergeResolver';
@@ -37,6 +37,26 @@ function Warnings({ resolver }: { resolver: MergeResolver }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Why the preview failed, with a way to ask for it again (after too many requests it also retries by itself). */
+function PreviewError({ resolver }: { resolver: MergeResolver }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink"
+    >
+      <span className="min-w-0">{resolver.error}</span>
+      <button
+        type="button"
+        onClick={resolver.retry}
+        className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-hairline-strong bg-tp-canvas px-2.5 py-1 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+      >
+        <FiRefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+        {resolver.retryIn !== null ? 'Try again now' : 'Try again'}
+      </button>
+    </div>
   );
 }
 
@@ -116,9 +136,7 @@ export default function PricingMergeResolver({
 
   if (!preview) {
     return error ? (
-      <div role="alert" className="rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink">
-        {error}
-      </div>
+      <PreviewError resolver={resolver} />
     ) : (
       <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-10 text-center text-sm text-tp-slate">
         Computing the merge…
@@ -168,11 +186,7 @@ export default function PricingMergeResolver({
 
       <Warnings resolver={resolver} />
 
-      {error && (
-        <div role="alert" className="rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink">
-          {error}
-        </div>
-      )}
+      {error && <PreviewError resolver={resolver} />}
 
       {view === 'conflicts' && <ConflictList resolver={resolver} currentLabel={currentLabel} />}
       {view === 'yaml' && <YamlResultEditor resolver={resolver} />}
