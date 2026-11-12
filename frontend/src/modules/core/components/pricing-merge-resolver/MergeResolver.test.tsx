@@ -291,6 +291,26 @@ describe('Merge resolver', () => {
     expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'proposal' });
   });
 
+  it('computes the preview again when a version was published while merging', async () => {
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [], outcome: 'merged' }));
+    await renderMerge();
+    mocks.mergePullRequest.mockRejectedValue(
+      new PullRequestApiError(409, { error: 'changed', code: 'PRICING_CHANGED_DURING_MERGE' })
+    );
+    mocks.previewPullRequestMerge.mockResolvedValue(
+      preview({ conflicts: [], outcome: 'merged', target: { id: 'v4', version: '4.0', private: false }, previewToken: 'token-4' })
+    );
+    await act(async () => mergeButton().props.onClick());
+    expect(textOf(view.root.findByProps({ role: 'alert' }))).toBe('The pricing changed while merging. Review the merge again.');
+    await settle(0);
+    expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
+    expect(text()).toContain('Merging into version 4.0');
+
+    mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v5', version: '3.1', private: false } });
+    await act(async () => mergeButton().props.onClick());
+    expect(mocks.mergePullRequest.mock.lastCall![1]).toMatchObject({ previewToken: 'token-4' });
+  });
+
   it('asks for the preview once a run of choices settles, and sooner when no conflict is left open', async () => {
     const three = [PRICE, SSO, conflict(['addOns', 'extra', 'price'], { base: '4\n', current: '5\n', proposal: '6\n' })];
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: three }));

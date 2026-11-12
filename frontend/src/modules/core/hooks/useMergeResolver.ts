@@ -102,7 +102,14 @@ export interface MergeResolver {
 }
 
 /** Refusals that mean the preview the user reviewed no longer holds. */
-const STALE_CODES = new Set(['PREVIEW_STALE', 'BASE_NOT_LATEST', 'UNRESOLVED_CONFLICTS', 'UNKNOWN_RESOLUTION']);
+const STALE_CODES = new Set([
+  'PREVIEW_STALE',
+  'BASE_NOT_LATEST',
+  'UNRESOLVED_CONFLICTS',
+  'UNKNOWN_RESOLUTION',
+  // A version was published while merging: the preview was computed against the one before it.
+  'PRICING_CHANGED_DURING_MERGE',
+]);
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
