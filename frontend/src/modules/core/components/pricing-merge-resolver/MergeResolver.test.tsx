@@ -291,6 +291,30 @@ describe('Merge resolver', () => {
     expect(mocks.previewPullRequestMerge).toHaveBeenLastCalledWith(PR_ID, 'merge', { [PRICE.id]: 'proposal' });
   });
 
+  it('drops a preview answered after the choices changed, even when it arrives last', async () => {
+    await renderMerge();
+    const pending: Array<(value: PullRequestPreview) => void> = [];
+    mocks.previewPullRequestMerge.mockImplementation(() => new Promise<PullRequestPreview>(resolve => pending.push(resolve)));
+    await choose(PRICE, 'Use proposal');
+    await choose(SSO, 'Use proposal');
+    await settle();
+    await choose(SSO, 'Keep current');
+    await settle();
+    expect(pending).toHaveLength(2);
+    // The answer to the latest choices comes first; the one to the earlier choices, after it.
+    await act(async () => pending[1](preview({ previewToken: 'latest-choices', resultYaml: RESULT })));
+    await act(async () => pending[0](preview({ previewToken: 'earlier-choices', resultYaml: 'saasName: Stale\n' })));
+    await showView('YAML');
+    expect(view.root.findByType('textarea').props.value).toBe(RESULT);
+
+    mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v4', version: '3.1', private: false } });
+    await act(async () => mergeButton().props.onClick());
+    expect(mocks.mergePullRequest.mock.lastCall![1]).toMatchObject({
+      resolutions: { [PRICE.id]: 'proposal', [SSO.id]: 'current' },
+      previewToken: 'latest-choices',
+    });
+  });
+
   it('computes the preview again when a version was published while merging', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [], outcome: 'merged' }));
     await renderMerge();
