@@ -5216,7 +5216,8 @@ paths:
         request. Changing the proposal needs the pull request to start from the latest public
         version (otherwise 409 `PULL_REQUEST_BEHIND`) and moves `proposalRevision` on; the title
         and description can always change. A pricing left without public versions answers 409
-        `NO_PUBLIC_VERSION`. The proposal goes through the same checks as when it was opened.
+        `NO_PUBLIC_VERSION`. The proposal goes through the same checks as when it was opened,
+        so one that does not change its base gets 400 `NO_CHANGES`.
 
         **Authentication**: SPHERE web session only.
       tags:
@@ -8077,9 +8078,10 @@ components:
     PricingPullRequestState:
       type: object
       description: |
-        Computed for the caller. `behind` compares the proposal with the latest version (for a
-        maintainer) or the latest public one (anyone else) and says how many conflicts merging it
-        would have.
+        Computed for the caller against the latest version (for a maintainer) or the latest public
+        one (anyone else). `no-changes` when merging the proposal into it adds nothing, whether
+        the pull request starts from it or not; otherwise `up-to-date` when it starts from it, and
+        `behind` when not, with how many conflicts merging it would have.
       required: [kind]
       properties:
         kind:
@@ -8225,6 +8227,7 @@ components:
                   type: boolean
                 merge:
                   type: boolean
+                  description: False when the state is `no-changes`, since merging would add nothing
 
     PricingPullRequestList:
       type: object

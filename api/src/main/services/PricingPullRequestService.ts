@@ -451,7 +451,11 @@ class PricingPullRequestService {
         throw new PullRequestError(409, 'PULL_REQUEST_BEHIND', 'Update the pull request to the latest public version before changing its proposal');
       }
       const proposal = this.prepareProposal(changes.proposedYaml, pricing);
-      update.proposed = { yaml: proposal.text, suggestedVersion: proposal.suggestedVersion };
+      const base = this.storedDoc(pullRequest.base.yaml);
+      if (mergePricingDocs(base, base, proposal.doc).outcome === 'no-changes') {
+        throw new PullRequestError(400, 'NO_CHANGES', 'The proposal does not change the latest public version');
+      }
+      update.proposed ={ yaml: proposal.text, suggestedVersion: proposal.suggestedVersion };
       // The proposal is no longer what the fork had.
       if (pullRequest.origin) update.originEdited = true;
       warnings = proposal.warnings;
@@ -1277,21 +1281,20 @@ class PricingPullRequestService {
     if (pullRequest.status === 'closed') return { kind: 'closed' };
     const target = this.targetOf(pricing, viewer);
     if (!target) return { kind: 'no-public-version' };
-    if (target.id === pullRequest.base.versionId) return { kind: 'up-to-date' };
+    const onTarget = target.id === pullRequest.base.versionId;
 
     // Every input is fixed by these ids (P's name, the only thing that can change, is not compared).
     const key = [pullRequest.id, pullRequest.proposalRevision, pullRequest.base.versionId, target.id].join(':');
     let summary = this.states.get(key);
     if (!summary) {
-      const merge = mergePricingDocs(
-        this.storedDoc(pullRequest.base.yaml),
-        await targetDoc(),
-        this.storedDoc(pullRequest.proposed.yaml)
-      );
+      const base = this.storedDoc(pullRequest.base.yaml);
+      const merge = mergePricingDocs(base, onTarget ? base : await targetDoc(), this.storedDoc(pullRequest.proposed.yaml));
       summary = { outcome: merge.outcome, conflicts: merge.conflicts.length };
       this.states.set(key, summary);
     }
-    return summary.outcome === 'no-changes' ? { kind: 'no-changes' } : { kind: 'behind', conflicts: summary.conflicts };
+    // A proposal that adds nothing to its target has no changes, on the target or behind it.
+    if (summary.outcome === 'no-changes') return { kind: 'no-changes' };
+    return onTarget ? { kind: 'up-to-date' } : { kind: 'behind', conflicts: summary.conflicts };
   }
 
   private async authorsOf(pullRequests: PricingPullRequest[]): Promise<Map<string, string>> {
@@ -1346,7 +1349,7 @@ class PricingPullRequestService {
       base: { ...summary.base, yaml: pullRequest.base.yaml },
       proposed: { ...summary.proposed, yaml: pullRequest.proposed.yaml },
       ...(origin ? { origin } : {}),
-      permissions: this.permissionsOf(pullRequest, pricing, viewer),
+      permissions: this.permissionsOf(pullRequest, pricing, viewer, summary.state),
     };
   }
 
@@ -1393,7 +1396,12 @@ class PricingPullRequestService {
     };
   }
 
-  private permissionsOf(pullRequest: PricingPullRequest, pricing: TargetPricing, viewer: Viewer): PullRequestPermissions {
+  private permissionsOf(
+    pullRequest: PricingPullRequest,
+    pricing: TargetPricing,
+    viewer: Viewer,
+    state: PullRequestState
+  ): PullRequestPermissions {
     const isAuthor = pullRequest.authorId === viewer.user.id;
     const open = pullRequest.status === 'open' && !lockIsLive(pullRequest);
     const onLatestPublic = pricing.latestPublic !== null && pullRequest.base.versionId === pricing.latestPublic.id;
@@ -1402,7 +1410,8 @@ class PricingPullRequestService {
       editProposal: open && isAuthor && onLatestPublic,
       update: open && isAuthor && pricing.latestPublic !== null && !onLatestPublic,
       close: open && (isAuthor || viewer.maintainer),
-      merge: open && viewer.maintainer,
+      // A maintainer's state compares with the latest version: merging it would add nothing.
+      merge: open && viewer.maintainer && state.kind !== 'no-changes',
     };
   }
 }

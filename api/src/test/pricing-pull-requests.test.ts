@@ -830,9 +830,11 @@ describe('Pricing pull requests', () => {
       const included = await openOn(external, scene, scene.v2, goldAt(8));
       const clashing = await openOn(external, scene, scene.v2, platinumAt(14));
       const sameAsBase = await openOn(external, scene, scene.v2, platinumAt(15));
-      // Its proposal ends up as the base: compared with itself it is up to date, not "no changes".
-      expect((await edit(external.token, sameAsBase.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', V2) })).status).toBe(200);
-      expect((await detail(external.token, sameAsBase.id)).body.state).toEqual({ kind: 'up-to-date' });
+      // A proposal that does not change its base is refused, as when it was opened.
+      const unchanged = await edit(external.token, sameAsBase.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', V2) });
+      expect(unchanged.status).toBe(400);
+      expect(unchanged.body.code).toBe('NO_CHANGES');
+      expect((await detail(external.token, sameAsBase.id)).body).toMatchObject({ proposalRevision: 1, state: { kind: 'up-to-date' } });
 
       const v4 = await publish(scene.owner.token, scene.organizationId, {
         name: scene.name, slug: scene.slug, version: '4.0.0', change: both(V2, goldAt(8), platinumAt(20)),
@@ -863,6 +865,35 @@ describe('Pricing pull requests', () => {
       const afterUpdate = await edit(external.token, behind.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7), platinumAt(20))) });
       expect(afterUpdate.status).toBe(200);
       expect(afterUpdate.body).toMatchObject({ proposalRevision: 3, state: { kind: 'up-to-date' } });
+    });
+
+    it('Has no changes once updated to a version that already has its proposal, and cannot be merged then.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const external = await outsider();
+      const created = await openOn(external, scene, scene.v2, goldAt(7.5));
+      const v4 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '4.0.0', change: both(V2, goldAt(7.5)),
+      });
+
+      const preview = await request(app()).post(`${PULL_REQUESTS}/${created.id}/merge-preview`).set(bearer(external.token)).send({ purpose: 'update' });
+      expect(preview.body.outcome).toBe('no-changes');
+      const updated = await request(app()).post(`${PULL_REQUESTS}/${created.id}/update`).set(bearer(external.token)).send({
+        previewToken: preview.body.previewToken,
+      });
+      expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+      expect(updated.body).toMatchObject({ base: { versionId: v4.id }, state: { kind: 'no-changes' } });
+
+      expect(stateIn((await list(external.token, scene.pricingId)).body, created.id)).toEqual({ kind: 'no-changes' });
+      const asOwner = await detail(scene.owner.token, created.id);
+      expect(asOwner.body.state).toEqual({ kind: 'no-changes' });
+      expect(asOwner.body.permissions).toMatchObject({ close: true, merge: false });
+      const mergePreview = await request(app()).post(`${PULL_REQUESTS}/${created.id}/merge-preview`).set(bearer(scene.owner.token)).send({ purpose: 'merge' });
+      expect(mergePreview.body.outcome).toBe('no-changes');
+      const merged = await request(app()).post(`${PULL_REQUESTS}/${created.id}/merge`).set(bearer(scene.owner.token)).send({
+        previewToken: mergePreview.body.previewToken, version: '5.0.0', private: false,
+      });
+      expect(merged.status, JSON.stringify(merged.body)).toBe(400);
+      expect(merged.body.code).toBe('NO_CHANGES');
     });
 
     it('Is merged once merged, whatever its base.', async () => {
@@ -2104,7 +2135,7 @@ describe('Pricing pull requests', () => {
       expect((await proposeFork(scene.fork.forker.token, scene.fork.forkId, preview.body)).status).toBe(201);
       expect((await previews(scene.author.token, { source: textSource(scene.pricingId, scene.v1.id, pricingYaml(scene.name, '9.0.0', goldAt(6))) })).status).toBe(200);
       expect((await open(scene.author.token, { title: 'Text', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '9.0.0', both(V2, goldAt(6)))) })).status).toBe(201);
-      expect((await edit(scene.author.token, scene.onLatest.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(5))) })).status).toBe(200);
+      expect((await edit(scene.author.token, scene.onLatest.id, { proposedYaml: pricingYaml(scene.name, '9.0.0', both(V2, goldAt(5.5))) })).status).toBe(200);
       const update = await mergePreview(scene.author.token, scene.behind.id, { purpose: 'update' });
       expect((await updateToLatest(scene.author.token, scene.behind.id, { previewToken: update.body.previewToken })).status).toBe(200);
 
