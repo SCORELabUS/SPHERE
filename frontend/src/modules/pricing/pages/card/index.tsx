@@ -13,6 +13,7 @@ import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
+import { editorPath } from '../../../pricing-editor/utils/editor-source';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
@@ -37,9 +38,10 @@ import PricingImportModal from '../../components/pricing-import-modal';
 import GetPricingMenu from '../../components/get-pricing-menu';
 import NewVersionMenu from '../../components/new-version-menu';
 import ForkPricingModal from '../../components/fork-pricing-modal';
+import ForkProposal, { type ForkParentLocation } from '../../components/fork-proposal-modal';
 import PricingPullRequestsTab from '../../components/pricing-pull-requests';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
-import type { PullRequestMergeResult } from '../../types/pull-requests';
+import type { CreatedPullRequest, PullRequestMergeResult, PullRequestVersionRef } from '../../types/pull-requests';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
@@ -344,12 +346,12 @@ export default function CardPage() {
   };
 
   // The editor receives the pricing and version it starts from, so publishing
-  // can offer to continue from it.
-  const buildEditorPath = (v: VersionData, mode: 'visual' | 'code') => {
-    const params = new URLSearchParams({ source: `${organizationId}/${slug}`, version: v.version, mode });
-    if (collectionSlug) params.set('collection', collectionSlug);
-    return `/editor?${params.toString()}`;
-  };
+  // can offer to continue from it and a proposal knows the version it is based on.
+  const buildEditorPath = (
+    v: PullRequestVersionRef,
+    mode: 'visual' | 'code',
+    pullRequestId?: string
+  ) => editorPath({ organizationId: organizationId ?? '', slug: slug ?? '', collectionSlug }, v, { mode, pullRequestId });
 
   const handleOpenInEditor = (v: VersionData) => {
     window.open(buildEditorPath(v, 'code'), '_blank');
@@ -648,6 +650,13 @@ export default function CardPage() {
     router.push(url);
   };
 
+  // A proposal from this fork opens on the pricing it was forked from.
+  const handleForkProposed = (pullRequest: CreatedPullRequest, parent: ForkParentLocation) => {
+    const query = new URLSearchParams({ tab: 'pull-requests', pr: pullRequest.id });
+    if (parent.collectionSlug) query.set('collection', parent.collectionSlug);
+    router.push(`/pricings/${parent.organizationId}/${parent.slug}?${query.toString()}`);
+  };
+
   const handleForkSuccess = (result: { slug: string; _organizationId: string }) => {
     setShowForkModal(false);
     customAlert('Pricing forked successfully', 'success');
@@ -801,6 +810,14 @@ export default function CardPage() {
                   {' · '}
                   {currentVersion.forkedFrom.organizationDisplayName}
                 </button>
+              )}
+              {authUser.isAuthenticated && pricingId && (
+                <ForkProposal
+                  forkPricingId={pricingId}
+                  forkedFrom={versions.find(v => v.forkedFrom)?.forkedFrom ?? null}
+                  canCreate={Boolean(entityPermissions?.CREATE)}
+                  onProposed={handleForkProposed}
+                />
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1268,6 +1285,8 @@ export default function CardPage() {
                   etag,
                   onMerged: handlePullRequestMerged,
                   onPricingChanged: offerReloadIfChanged,
+                  openEditor: (version, { mode, pullRequestId }) =>
+                    router.push(buildEditorPath(version, mode, pullRequestId)),
                 }}
               />
             </motion.div>

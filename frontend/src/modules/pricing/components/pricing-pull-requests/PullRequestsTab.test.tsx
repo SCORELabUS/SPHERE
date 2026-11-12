@@ -1,9 +1,12 @@
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PricingPullRequestsTab from '.';
+import ForkProposal from '../fork-proposal-modal';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
+import FileUpload from '../../../core/components/file-upload-input';
 import { PullRequestApiError } from '../../api/pricingPullRequestsApi';
 import type {
+  ForkTarget,
   PullRequestDetail,
   PullRequestList,
   PullRequestPreview,
@@ -17,15 +20,28 @@ const mocks = vi.hoisted(() => ({
   closePullRequest: vi.fn(),
   previewPullRequestMerge: vi.fn(),
   mergePullRequest: vi.fn(),
+  getForkTarget: vi.fn(),
+  previewProposal: vi.fn(),
+  createPullRequest: vi.fn(),
+  getPricingBySlug: vi.fn(),
+  openEditor: vi.fn(),
+  alert: vi.fn(),
   user: { id: 'maintainer', username: 'maintainer' } as { id: string; username: string },
 }));
 vi.mock('../../api/pricingPullRequestsApi', async importOriginal => ({
   ...(await importOriginal<typeof import('../../api/pricingPullRequestsApi')>()),
   usePricingPullRequestsApi: () => mocks,
 }));
+vi.mock('../../api/pricingsApi', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../api/pricingsApi')>()),
+  usePricingsApi: () => ({ getPricingBySlug: mocks.getPricingBySlug }),
+}));
 vi.mock('../../../auth/hooks/useAuth', () => ({
   useAuth: () => ({ authUser: { isAuthenticated: true, user: mocks.user } }),
 }));
+vi.mock('../../../core/utils/custom-alert', () => ({ default: mocks.alert }));
+// The drop zone needs a browser: the tests hand the dialog a file through its `onSubmit`.
+vi.mock('../../../core/components/file-upload-input', () => ({ default: () => null }));
 // Plain elements instead of animations, so a closed dialog leaves at once.
 vi.mock('framer-motion', async () => {
   const React = await import('react');
@@ -45,7 +61,7 @@ vi.mock('framer-motion', async () => {
 });
 
 const PRICING = '6650f0c0c0c0c0c0c0c0c001';
-const context = { versions: [], onMerged: () => {}, onPricingChanged: () => false };
+const context = { versions: [], onMerged: () => {}, onPricingChanged: () => false, openEditor: mocks.openEditor };
 const PR_ID = '6650f0c0c0c0c0c0c0c0c0aa';
 const MARKUP = '<img src=x onerror="alert(1)">';
 const BASE_YAML = 'saasName: Demo\nversion: "2.0"\nplans:\n  PRO:\n    price: 10\n';
@@ -364,7 +380,7 @@ describe('Pull requests tab', () => {
             pricingId={PRICING}
             selectedId={PR_ID}
             onSelect={onSelect}
-            context={{ versions: [latest], etag: '"e.4"', onMerged, onPricingChanged: () => false }}
+            context={{ versions: [latest], etag: '"e.4"', onMerged, onPricingChanged: () => false, openEditor: mocks.openEditor }}
           />
         );
       });
@@ -403,6 +419,284 @@ describe('Pull requests tab', () => {
       expect(button('Update pull request').props.disabled).toBe(false);
       await act(async () => button('Cancel').props.onClick());
       expect(text()).toContain('Proposal compared with version 2.0');
+    });
+  });
+  it('lets the author edit an open proposal in the editor while it starts from the latest public version', async () => {
+    mocks.user = { id: 'author', username: 'alice' };
+    mocks.getPullRequest.mockResolvedValue(detail({
+      permissions: { edit: true, editProposal: true, update: false, close: true, merge: false },
+    }));
+    await render(PR_ID);
+    await act(async () => button('Edit proposal').props.onClick());
+    expect(mocks.openEditor).toHaveBeenCalledWith({ id: 'v2', version: '2.0' }, { mode: 'code', pullRequestId: PR_ID });
+
+    mocks.getPullRequest.mockResolvedValue(detail({
+      permissions: { edit: true, editProposal: false, update: true, close: true, merge: false },
+    }));
+    await act(async () => {
+      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId="6650f0c0c0c0c0c0c0c0c0bb" onSelect={onSelect} context={context} />);
+    });
+    expect(button('Edit proposal')).toBeUndefined();
+  });
+
+  describe('proposing changes', () => {
+    const LATEST_YAML = 'saasName: Demo\nversion: "2.0"\nplans:\n  BASIC:\n    price: 0\n  PRO:\n    price: 10\n';
+    const latestVersion: VersionData = {
+      id: 'v2', version: '2.0', createdAt: '2026-02-01', yaml: '/static/pricings/acme/demo/2.0.yml', private: false,
+      collection: null, analytics: null, forkedFrom: null,
+    };
+    const withVersions = { ...context, versions: [latestVersion] };
+    const flush = () => act(() => new Promise(resolve => setTimeout(resolve, 5)));
+    const fetchMock = vi.fn();
+
+    async function renderList(list: PullRequestList) {
+      mocks.listPullRequests.mockResolvedValue(list);
+      await act(async () => {
+        view = create(<PricingPullRequestsTab pricingId={PRICING} selectedId={null} onSelect={onSelect} context={withVersions} />);
+      });
+    }
+
+    async function upload(name: string, text: string) {
+      await act(async () => button('Propose changes').props.onClick());
+      await act(async () => button('Upload YAMLPropose a file as the next version of 2.0').props.onClick());
+      await flush();
+      await act(async () => view.root.findByType(FileUpload).props.onSubmit(new File([text], name)));
+      await flush();
+    }
+
+    beforeEach(() => {
+      fetchMock.mockImplementation(async () => new Response(LATEST_YAML));
+      vi.stubGlobal('fetch', fetchMock);
+      // The menu closes on outside clicks and Escape, listened for on the document.
+      vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('disables "Propose changes" with the reason when there is no public version (CA-7)', async () => {
+      await renderList(page([], { proposals: { canOpen: false, reason: 'NO_PUBLIC_VERSION', latest: null } }));
+      const propose = button('Propose changes');
+      expect(propose.props.disabled).toBe(true);
+      expect(propose.props.className).toContain('disabled:cursor-default');
+      expect(view.root.findByProps({ id: 'propose-block-reason' }).children.map(textOf).join('')).toBe(
+        'This pricing has no public version to propose changes to.'
+      );
+
+      await act(async () => view.unmount());
+      await renderList(page([], { proposals: { canOpen: false, reason: 'LIMIT_REACHED', latest: { id: 'v2', version: '2.0' } } }));
+      expect(button('Propose changes').props.disabled).toBe(true);
+      expect(text()).toContain('You cannot open more pull requests on this pricing for now.');
+    });
+
+    it('opens the latest public version in the editor to propose changes', async () => {
+      await renderList(page([]));
+      const propose = button('Propose changes');
+      expect(propose.props.disabled).toBe(false);
+      await act(async () => propose.props.onClick());
+      await act(async () => button('Code editorEdit the YAML of version 2.0').props.onClick());
+      expect(mocks.openEditor).toHaveBeenCalledWith({ id: 'v2', version: '2.0' }, { mode: 'code' });
+      await act(async () => button('Propose changes').props.onClick());
+      await act(async () => button('Visual editorEdit version 2.0 visually').props.onClick());
+      expect(mocks.openEditor).toHaveBeenLastCalledWith({ id: 'v2', version: '2.0' }, { mode: 'visual' });
+    });
+
+    it('proposes an uploaded file on the latest public version, summarising it and warning about removals (CA-22)', async () => {
+      const proposed = 'saasName: Demo\nversion: "2.1"\nplans:\n  PRO:\n    price: 12\n  TEAM:\n    price: 30\n';
+      mocks.createPullRequest.mockResolvedValue({ ...detail({ id: 'new-pr', number: 8 }), warnings: [{ code: 'SYNTAX_UPGRADED' }] });
+      await renderList(page([]));
+      await upload('demo.yml', proposed);
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/static/pricings/acme/demo/2.0.yml', {});
+      expect(text()).toContain('Changes against version 2.0, the latest public version');
+      const warning = view.root.findByProps({ 'data-warning': 'removals' });
+      expect(textOf(warning)).toContain('This proposal removes plans BASIC');
+      expect(text()).toContain('+TEAM');
+      expect(text()).toContain('~PRO');
+      expect(text()).toContain('Prices change: PRO');
+
+      expect(button('Open pull request').props.disabled).toBe(true);
+      expect(text()).toContain('Give the pull request a title.');
+      act(() => view.root.findByType('input').props.onChange({ target: { value: '  Raise PRO ' } }));
+      await act(async () => button('Open pull request').props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenCalledWith({
+        title: 'Raise PRO',
+        source: { kind: 'text', pricingId: PRICING, baseVersionId: 'v2', proposedYaml: proposed },
+      });
+      expect(mocks.alert).toHaveBeenCalledWith(expect.stringContaining('Pull request #8 opened. Some of these pricings'), 'success');
+      expect(onSelect).toHaveBeenCalledWith('new-pr');
+      expect(view.root.findAllByType(FileUpload)).toHaveLength(0);
+    });
+
+    it('says there is nothing to propose when the file is the latest public version (CA-15)', async () => {
+      await renderList(page([]));
+      await upload('same.yml', LATEST_YAML.replace('saasName: Demo', 'saasName: Renamed'));
+      expect(text()).toContain('Nothing to propose: it is the same as version 2.0.');
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Same' } }));
+      expect(button('Open pull request').props.disabled).toBe(true);
+      expect(text()).toContain('Nothing to propose: the file is the same as version 2.0.');
+    });
+
+    it('refuses a file in the latest syntax that the pricing parser refuses, and explains refusals', async () => {
+      await renderList(page([]));
+      await upload('broken.yml', 'saasName: Demo\nsyntaxVersion: "3.1"\nversion: "2.1"\n');
+      expect(view.root.findByProps({ role: 'alert' }).children.map(textOf).join('')).toContain('The file is not a valid pricing');
+      expect(view.root.findAllByType(FileUpload)).toHaveLength(1);
+
+      mocks.createPullRequest.mockRejectedValue(
+        new PullRequestApiError(409, { error: 'x', code: 'BASE_NOT_LATEST', latest: { id: 'v3', version: '3.0' } })
+      );
+      await act(async () =>
+        view.root.findByType(FileUpload).props.onSubmit(new File(['saasName: Demo\nplans:\n  PRO:\n    price: 12\n'], 'old.yml'))
+      );
+      await flush();
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Old syntax' } }));
+      await act(async () => button('Open pull request').props.onClick());
+      expect(view.root.findByProps({ role: 'alert' }).children.map(textOf).join('')).toBe(
+        'A newer public version (3.0) was published. Proposals start from the latest public version.'
+      );
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('gives every enabled button of the menu and the upload dialog a pointer cursor (CA-37)', async () => {
+      await renderList(page([]));
+      await upload('demo.yml', 'saasName: Demo\nplans:\n  PRO:\n    price: 12\n');
+      const enabled = buttons().filter(item => !item.props.disabled);
+      expect(enabled.length).toBeGreaterThan(5);
+      enabled.forEach(item => expect(item.props.className).toContain('cursor-pointer'));
+    });
+  });
+
+  describe('proposing a fork to the pricing it came from', () => {
+    const FORK = '6650f0c0c0c0c0c0c0c0c0f1';
+    const forkedFrom: NonNullable<VersionData['forkedFrom']> = {
+      pricingId: PRICING, organizationId: 'acme', organizationName: 'acme', organizationDisplayName: 'Acme',
+      collectionSlug: 'main', slug: 'demo', name: 'Demo', version: '1.0',
+    };
+    const parent = { pricingId: PRICING, name: 'Demo', slug: 'demo', organizationId: 'acme' };
+    const forkPreview: PullRequestPreview = {
+      base: { id: 'f1', version: '1.0' },
+      target: { id: 'v2', version: '2.0' },
+      outcome: 'merged',
+      conflicts: [],
+      resultYaml: PROPOSED_YAML,
+      regenerated: true,
+      validation: { ok: true },
+      warnings: [{ code: 'FORMAT_REGENERATED' }, { code: 'PREVIOUSLY_MERGED', number: 3 }],
+      previewToken: 'fork-token',
+      suggestedVersion: '2.1',
+      existingPullRequest: { id: PR_ID, number: 7, proposalRevision: 2 },
+    };
+    const onProposed = vi.fn();
+    const flush = () => act(() => new Promise(resolve => setTimeout(resolve, 5)));
+
+    async function renderFork(target: ForkTarget | Error, props: { forkedFrom?: typeof forkedFrom | null; canCreate?: boolean } = {}) {
+      if (target instanceof Error) mocks.getForkTarget.mockRejectedValue(target);
+      else mocks.getForkTarget.mockResolvedValue(target);
+      await act(async () => {
+        view = create(
+          <ForkProposal
+            forkPricingId={FORK}
+            forkedFrom={props.forkedFrom === undefined ? forkedFrom : props.forkedFrom}
+            canCreate={props.canCreate ?? true}
+            onProposed={onProposed}
+          />
+        );
+      });
+    }
+
+    it('offers "Propose changes to <parent>" only on a fork, to who may publish its versions (CA-10, CA-18)', async () => {
+      await renderFork({ canPropose: true, parent });
+      expect(mocks.getForkTarget).toHaveBeenCalledWith(FORK);
+      expect(button('Propose changes to Demo').props.disabled).toBe(false);
+      expect(button('Propose changes to Demo').props.className).toContain('cursor-pointer');
+
+      for (const props of [{ forkedFrom: null }, { canCreate: false }]) {
+        await act(async () => view.unmount());
+        mocks.getForkTarget.mockClear();
+        await renderFork({ canPropose: true, parent }, props);
+        expect(view.toJSON()).toBeNull();
+        expect(mocks.getForkTarget).not.toHaveBeenCalled();
+      }
+
+      // The page's permissions can be behind the server's: a refusal hides it too.
+      await act(async () => view.unmount());
+      await renderFork(new PullRequestApiError(403, { error: 'Forbidden', code: 'FORBIDDEN' }));
+      expect(view.toJSON()).toBeNull();
+    });
+
+    it('shows nothing when no readable version of the fork names a parent (CA-71)', async () => {
+      await renderFork({ canPropose: false, reason: 'NOT_A_FORK' });
+      expect(view.toJSON()).toBeNull();
+    });
+
+    it('disables the action with a neutral reason when the parent is gone or unreadable (CA-17)', async () => {
+      await renderFork({ canPropose: false, reason: 'PARENT_UNAVAILABLE' });
+      expect(button('Propose changes to Demo').props.disabled).toBe(true);
+      expect(view.root.findByProps({ id: 'fork-proposal-reason' }).children.map(textOf).join('')).toBe(
+        'The pricing this fork comes from is not available.'
+      );
+
+      await act(async () => view.unmount());
+      await renderFork({ canPropose: false, reason: 'PULL_REQUEST_EXISTS', parent, openPullRequest: { number: 4 } });
+      expect(button('Propose changes to Demo').props.disabled).toBe(true);
+      expect(text()).toContain('Pull request #4 is already open');
+
+      await act(async () => view.unmount());
+      await renderFork({ canPropose: false, reason: 'NO_PUBLIC_VERSION', parent });
+      expect(button('Propose changes to Demo').props.disabled).toBe(true);
+      expect(text()).toContain('This pricing has no public version to propose changes to.');
+    });
+
+    it('replaces the author\'s open pull request, showing the notices of the merge (CA-89, CA-97)', async () => {
+      mocks.previewProposal.mockResolvedValue(forkPreview);
+      mocks.getPullRequest.mockResolvedValue(detail({ title: 'Earlier title', description: 'Earlier description' }));
+      mocks.getPricingBySlug.mockResolvedValue({ pricingId: PRICING, versions: [{ id: 'v2', yaml: '/static/pricings/acme/demo/2.0.yml' }] });
+      const fetchMock = vi.fn(async () => new Response(BASE_YAML));
+      vi.stubGlobal('fetch', fetchMock);
+      const created = { ...detail({ number: 7 }), warnings: [], updated: true as const };
+      mocks.createPullRequest.mockResolvedValue(created);
+
+      await renderFork({ canPropose: true, parent, openPullRequest: { id: PR_ID, number: 7, proposalRevision: 2 } });
+      await act(async () => button('Update pull request #7').props.onClick());
+      await flush();
+      expect(mocks.previewProposal).toHaveBeenCalledWith({ kind: 'fork', forkPricingId: FORK }, {});
+      expect(mocks.getPullRequest).toHaveBeenCalledWith(PR_ID);
+      expect(text()).toContain('Replaces the current proposal of #7.');
+      const notices = view.root.findAll(node => typeof node.props['data-warning'] === 'string').map(node => node.props['data-warning']);
+      expect(notices).toEqual(['FORMAT_REGENERATED', 'PREVIOUSLY_MERGED']);
+      expect(text()).toContain('Pull request #3 from this fork was merged before.');
+      expect(text()).toContain('comments and the original layout are not kept');
+      expect(view.root.findByType('input').props.value).toBe('Earlier title');
+
+      // Compare reads the parent's latest public version, which the fork's page has not loaded.
+      await act(async () => button('Compare').props.onClick());
+      await flush();
+      expect(mocks.getPricingBySlug).toHaveBeenCalledWith('demo', 'acme', 'main');
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: BASE_YAML, after: PROPOSED_YAML });
+
+      // The dialog's own button, after the one on the page that opened it.
+      const submit = buttons().filter(item => textOf(item).trim() === 'Update pull request #7');
+      expect(submit).toHaveLength(2);
+      await act(async () => submit[1].props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenCalledWith({
+        title: 'Earlier title',
+        description: 'Earlier description',
+        source: { kind: 'fork', forkPricingId: FORK },
+        resolutions: {},
+        previewToken: 'fork-token',
+      });
+      expect(mocks.alert).toHaveBeenCalledWith('Pull request #7 updated on Demo.', 'success');
+      expect(onProposed).toHaveBeenCalledWith(created, { organizationId: 'acme', slug: 'demo', collectionSlug: 'main' });
+      vi.unstubAllGlobals();
+    });
+
+    it('says when the fork has nothing the parent lacks (CA-15)', async () => {
+      mocks.previewProposal.mockResolvedValue({ ...forkPreview, outcome: 'no-changes', warnings: [], existingPullRequest: undefined });
+      await renderFork({ canPropose: true, parent });
+      await act(async () => button('Propose changes to Demo').props.onClick());
+      await flush();
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Sync' } }));
+      expect(button('Open pull request').props.disabled).toBe(true);
+      expect(text()).toContain('Nothing to propose: version 2.0 of Demo already has everything this fork changes.');
     });
   });
 });

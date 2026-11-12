@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import jsYaml from 'js-yaml';
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -6,8 +6,6 @@ import { FiArrowLeft } from 'react-icons/fi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import { pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
-import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
-import { versionYamlUrl } from '../../utils/version-yaml';
 import { diffPricings, type ChangeKind } from '../../utils/pricing-diff';
 import { DiffResult, ViewToggle, type ViewMode } from '../pricing-version-diff';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
@@ -17,6 +15,7 @@ import type {
   PullRequestMergeResult,
   PullRequestVersionRef,
 } from '../../types/pull-requests';
+import { usePageVersionYaml } from './use-page-version-yaml';
 import StateChip from './state-chip';
 import CloseDialog from './close-dialog';
 import MergePanel from './merge-panel';
@@ -68,7 +67,10 @@ function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
   );
 }
 
-/** What the page shares with a pull request to merge it: its versions, its ETag and how to take the merge in. */
+/**
+ * What the page shares with its pull requests: its versions, its ETag, how to
+ * take a merge in and how to open the editor to propose or edit a proposal.
+ */
 export interface PullRequestPageContext {
   /** The versions of the pricing the page loaded, to read the one a merge or an update follows. */
   versions: VersionData[];
@@ -76,12 +78,15 @@ export interface PullRequestPageContext {
   onMerged: (result: PullRequestMergeResult) => void;
   /** Offers to reload when the pricing changed since the page loaded it (412); says whether it was that. */
   onPricingChanged: (error: unknown) => boolean;
+  /** Opens the editor on a version of the pricing, or on an open pull request's proposal to edit it again. */
+  openEditor: (version: PullRequestVersionRef, options: { mode: 'visual' | 'code'; pullRequestId?: string }) => void;
 }
 
 /**
  * A pull request: what it proposes against the version it is based on, its
- * description and where it stands. Its author can bring it up to the latest
- * version or withdraw it; a maintainer can merge or close it.
+ * description and where it stands. Its author can edit its proposal again,
+ * bring it up to the latest version or withdraw it; a maintainer can merge or
+ * close it.
  */
 export default function PullRequestDetail({
   id,
@@ -94,23 +99,11 @@ export default function PullRequestDetail({
 }) {
   const { authUser } = useAuth();
   const { getPullRequest, closePullRequest } = usePricingPullRequestsApi();
+  const loadLatestYaml = usePageVersionYaml(context.versions);
   const [pullRequest, setPullRequest] = useState<PullRequestDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [panel, setPanel] = useState<'merge' | 'update' | null>(null);
-  const { versions } = context;
-
-  const loadLatestYaml = useCallback(
-    async (target: PullRequestVersionRef) => {
-      const version = versions.find(item => item.id === target.id);
-      if (!version) throw new Error('it is not loaded on this page. Reload the page and try again.');
-      const url = versionYamlUrl(version.yaml);
-      const response = await fetch(url, pricingYamlRequestInit(url, authUser.token));
-      if (!response.ok) throw new Error(`the server answered ${response.status}.`);
-      return response.text();
-    },
-    [versions, authUser.token]
-  );
 
   useEffect(() => {
     let active = true;
@@ -205,7 +198,7 @@ export default function PullRequestDetail({
             </div>
           )}
         </dl>
-        {(permissions.merge || permissions.update || permissions.close) && (
+        {(permissions.merge || permissions.update || permissions.editProposal || permissions.close) && (
           <div className="flex flex-wrap gap-2 border-t border-tp-hairline pt-3">
             {permissions.merge && (
               <button
@@ -215,6 +208,20 @@ export default function PullRequestDetail({
                 className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
               >
                 Merge…
+              </button>
+            )}
+            {permissions.editProposal && (
+              <button
+                type="button"
+                onClick={() =>
+                  context.openEditor(
+                    { id: pullRequest.base.versionId, version: pullRequest.base.version },
+                    { mode: 'code', pullRequestId: pullRequest.id }
+                  )
+                }
+                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+              >
+                Edit proposal
               </button>
             )}
             {permissions.update && (

@@ -3,8 +3,13 @@ import { FiGitPullRequest } from 'react-icons/fi';
 import Pagination from '../pagination';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import { pullRequestMessage } from '../../../core/utils/pull-request-state';
-import type { PullRequestList as PullRequestPage, PullRequestStatus } from '../../types/pull-requests';
+import type {
+  PullRequestList as PullRequestPage,
+  PullRequestStatus,
+  PullRequestVersionRef,
+} from '../../types/pull-requests';
 import PullRequestRow from './pull-request-row';
+import ProposeMenu from './propose-menu';
 
 /** The pull requests shown: one status, or all of them. */
 export type PullRequestFilter = PullRequestStatus | 'all';
@@ -33,7 +38,8 @@ function countOf(counts: PullRequestPage['counts'] | undefined, filter: PullRequ
 
 /**
  * The pull requests of a pricing the caller may see (all of them for a
- * maintainer, their own for anyone else), filtered by status and paged.
+ * maintainer, their own for anyone else), filtered by status and paged, and
+ * "Propose changes" on the latest public version.
  */
 export default function PullRequestList({
   pricingId,
@@ -43,6 +49,8 @@ export default function PullRequestList({
   onPageChange,
   onOpen,
   onCountsChange,
+  onProposeInEditor,
+  onUpload,
 }: {
   pricingId: string;
   filter: PullRequestFilter;
@@ -51,6 +59,8 @@ export default function PullRequestList({
   onPageChange: (page: number) => void;
   onOpen: (id: string) => void;
   onCountsChange?: (counts: PullRequestPage['counts']) => void;
+  onProposeInEditor: (latest: PullRequestVersionRef, mode: 'visual' | 'code') => void;
+  onUpload: (latest: PullRequestVersionRef) => void;
 }) {
   const { listPullRequests } = usePricingPullRequestsApi();
   const [list, setList] = useState<PullRequestPage | null>(null);
@@ -116,10 +126,11 @@ export default function PullRequestList({
             );
           })}
         </div>
-        {list?.viewer.isMaintainer === false && (
-          <p className="text-xs text-tp-steel">You see the pull requests you opened.</p>
-        )}
+        {list && <ProposeMenu proposals={list.proposals} onEditor={onProposeInEditor} onUpload={onUpload} />}
       </div>
+      {list?.viewer.isMaintainer === false && (
+        <p className="text-xs text-tp-steel">You see the pull requests you opened.</p>
+      )}
 
       {error ? (
         <div role="alert" className="rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink">

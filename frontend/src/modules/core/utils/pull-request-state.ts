@@ -3,6 +3,7 @@ import type {
   ProposalBlock,
   PullRequestErrorCode,
   PullRequestSummary,
+  PullRequestWarning,
 } from '../../pricing/types/pull-requests';
 
 /** The colour family of a state chip: the `--color-tp-severity-*` tokens it maps to. */
@@ -70,6 +71,41 @@ export function canProposeFromEditor(
   latest: { id: string } | null | undefined
 ): boolean {
   return Boolean(source?.versionId && latest?.id && source.versionId === latest.id);
+}
+
+/** The longest title and description a pull request keeps, as the API checks them. */
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_DESCRIPTION_LENGTH = 10_000;
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+/** Why a pull request's title and description cannot be sent as they are; null when they can. */
+export function proposalFieldsError(title: string, description: string): string | null {
+  const trimmed = title.trim();
+  if (!trimmed) return 'Give the pull request a title.';
+  if (trimmed.length > MAX_TITLE_LENGTH) return `The title is longer than ${MAX_TITLE_LENGTH} characters.`;
+  if (CONTROL_CHARACTERS.test(trimmed)) return 'The title cannot contain control characters.';
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    return `The description is longer than ${MAX_DESCRIPTION_LENGTH.toLocaleString('en')} characters.`;
+  }
+  return null;
+}
+
+/** What SPHERE did, or will do, to a proposal or a merge result, in words. */
+export function pullRequestWarningMessage(warning: PullRequestWarning): string {
+  switch (warning.code) {
+    case 'SYNTAX_UPGRADED':
+      return 'Some of these pricings were written in an older Pricing2Yaml syntax: SPHERE compares them, and writes the result, in the latest one.';
+    case 'FORMAT_REGENERATED':
+      return 'The result combines both sides, so SPHERE writes its YAML again: comments and the original layout are not kept.';
+    case 'MANUAL_OVERRIDE':
+      return 'The result was edited by hand: it replaces the computed merge.';
+    case 'GLOBAL_FIELD_CHANGED':
+      return `The current version changed ${warning.fields.join(', ')} and the proposal changes prices: check that they still mean what the proposal intended.`;
+    case 'PREVIOUSLY_MERGED':
+      return `Pull request #${warning.number} from this fork was merged before.`;
+  }
 }
 
 /** What a refusal or a reason not to propose may carry to word its message. */

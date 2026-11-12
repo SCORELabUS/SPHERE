@@ -9,6 +9,8 @@ export interface VersionData {
   collection: { id: string; name: string; slug: string } | null;
   analytics: Record<string, number> | null;
   forkedFrom: {
+    /** The pricing it was forked from. */
+    pricingId?: string;
     organizationId: string;
     organizationName: string;
     organizationDisplayName: string;

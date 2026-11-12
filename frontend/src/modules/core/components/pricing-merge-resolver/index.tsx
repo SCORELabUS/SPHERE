@@ -4,6 +4,7 @@ import { FiAlertTriangle, FiCode, FiColumns, FiGrid, FiInfo, FiList } from 'reac
 import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
 import type { PullRequestVersionRef, PullRequestWarning } from '../../../pricing/types/pull-requests';
 import type { MergeResolver } from '../../hooks/useMergeResolver';
+import { pullRequestWarningMessage } from '../../utils/pull-request-state';
 import ConflictList from './conflict-list';
 import YamlResultEditor from './yaml-result-editor';
 import VisualConflicts from './visual-conflicts';
@@ -16,22 +17,6 @@ const VIEWS: { view: ResolverView; label: string; icon: IconType }[] = [
   { view: 'compare', label: 'Compare', icon: FiColumns },
   { view: 'visual', label: 'Visual', icon: FiGrid },
 ];
-
-/** What SPHERE did, or will do, to the result, in words. */
-function warningMessage(warning: PullRequestWarning): string {
-  switch (warning.code) {
-    case 'SYNTAX_UPGRADED':
-      return 'Some of these pricings were written in an older Pricing2Yaml syntax: SPHERE compares them, and writes the result, in the latest one.';
-    case 'FORMAT_REGENERATED':
-      return 'The result combines both sides, so SPHERE writes its YAML again: comments and the original layout are not kept.';
-    case 'MANUAL_OVERRIDE':
-      return 'The result was edited by hand: it replaces the computed merge.';
-    case 'GLOBAL_FIELD_CHANGED':
-      return `The current version changed ${warning.fields.join(', ')} and the proposal changes prices: check that they still mean what the proposal intended.`;
-    case 'PREVIOUSLY_MERGED':
-      return `Pull request #${warning.number} from this fork was merged before.`;
-  }
-}
 
 function Warnings({ resolver }: { resolver: MergeResolver }) {
   const warnings: PullRequestWarning[] = [...(resolver.preview?.warnings ?? [])];
@@ -48,7 +33,7 @@ function Warnings({ resolver }: { resolver: MergeResolver }) {
           className="flex items-start gap-2 rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink"
         >
           <FiInfo aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tp-severity-info" />
-          <span>{warningMessage(warning)}</span>
+          <span>{pullRequestWarningMessage(warning)}</span>
         </li>
       ))}
     </ul>

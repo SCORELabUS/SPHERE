@@ -12,6 +12,7 @@ import ConfirmModal from '../../../core/components/confirm-modal';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import EditorAccountMenu from './editor-account-menu';
 import PublishPricingModal from './publish-pricing-modal';
+import ProposeChangesButton from './propose-changes-button';
 
 interface Props {
   onShareLink: () => void;
@@ -268,6 +269,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
           <span className="h-8 w-24 animate-pulse rounded-lg bg-white/10" />
         ) : authUser.isAuthenticated ? (
           <>
+            {sourcePricing ? <ProposeChangesButton source={sourcePricing} yaml={editorValue} /> : null}
             <button
               type="button"
               onClick={() => setPublishModalOpen(true)}

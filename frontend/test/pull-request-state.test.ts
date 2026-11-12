@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import {
   canProposeFromEditor,
   describePullRequestState,
+  proposalFieldsError,
   pullRequestMessage,
+  pullRequestWarningMessage,
 } from '../src/modules/core/utils/pull-request-state.ts';
 import type { PullRequestState } from '../src/modules/pricing/types/pull-requests.ts';
 
@@ -89,4 +91,21 @@ test('error codes and reasons not to propose have their own message, with the de
   assert.match(pullRequestMessage(undefined), /Something went wrong/);
   // Inherited object keys are not codes.
   assert.equal(pullRequestMessage('toString', { message: 'From the server' }), 'From the server');
+});
+
+test('a title is required, one line of at most 200 characters, and a description at most 10 000', () => {
+  assert.equal(proposalFieldsError('Raise PRO', ''), null);
+  assert.equal(proposalFieldsError('   ', ''), 'Give the pull request a title.');
+  assert.equal(proposalFieldsError(`  ${'a'.repeat(200)}  `, ''), null);
+  assert.match(proposalFieldsError('a'.repeat(201), '') ?? '', /longer than 200/);
+  assert.match(proposalFieldsError('Bell' + String.fromCharCode(7), '') ?? '', /control characters/);
+  assert.equal(proposalFieldsError('Raise PRO', 'x'.repeat(10_000)), null);
+  assert.match(proposalFieldsError('Raise PRO', 'x'.repeat(10_001)) ?? '', /description is longer than 10,000/);
+});
+
+test('each notice about a proposal has its own words', () => {
+  assert.match(pullRequestWarningMessage({ code: 'SYNTAX_UPGRADED' }), /older Pricing2Yaml syntax/);
+  assert.match(pullRequestWarningMessage({ code: 'FORMAT_REGENERATED' }), /comments and the original layout/);
+  assert.equal(pullRequestWarningMessage({ code: 'PREVIOUSLY_MERGED', number: 3 }), 'Pull request #3 from this fork was merged before.');
+  assert.match(pullRequestWarningMessage({ code: 'GLOBAL_FIELD_CHANGED', fields: ['currency'] }), /changed currency/);
 });
