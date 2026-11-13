@@ -1,9 +1,13 @@
 import Editor, { Monaco } from '@monaco-editor/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pricing, retrievePricingFromYaml } from 'pricing4ts';
+import { Pricing } from 'pricing4ts';
 
-import { PricingRenderer } from '../../components/pricing-renderer';
+import {
+  SpherePricingRenderer,
+  pricingRendererSource,
+  retrieveUpgradedPricing,
+} from '../../../core/components/pricing-renderer';
 import VisualPricingEditor from '../../components/visual-editor';
 import { Helmet } from 'react-helmet-async';
 import Alerts from '../../../core/components/alerts';
@@ -24,7 +28,7 @@ import {
   pricingLoadStatus,
   type PricingLoad,
 } from '../../services/pricing-loading';
-import { useCacheApi } from '../../components/pricing-renderer/api/cacheApi';
+import { useCacheApi } from '../../api/cacheApi';
 import { TEMPLATE_PETCLINIC_PRICING } from './templates/petclinic';
 import { PRICING2YAML_SNIPPETS } from './templates/snippets';
 import EditorSkeleton from '../../../core/components/skeletons/editor-skeleton';
@@ -160,25 +164,7 @@ export default function EditorPage() {
         try {
           setEditorValue(value);
 
-          const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
-          const syntaxVersion = value.match(regex)?.[1];
-          let parsedPricing: Pricing;
-
-          if (syntaxVersion !== '3.1') {
-            const response = await fetch('/api/v1/pricings', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pricing: value }),
-            });
-
-            if (!response.ok) {
-              throw new Error('Failed to parse pricing. Please check the YAML syntax.');
-            }
-
-            parsedPricing = await response.json();
-          } else {
-            parsedPricing = retrievePricingFromYaml(value);
-          }
+          const parsedPricing = await retrieveUpgradedPricing(value);
 
           if (currentRequestId !== requestIdRef.current) return;
 
@@ -255,24 +241,11 @@ export default function EditorPage() {
 
       const regex = /^syntaxVersion:\s*['"]?([^'"\n\r]+)['"]?$/m;
       const syntaxVersion = templatePricing.match(regex)?.[1];
-      let parsedPricing: Pricing;
       const normalizedVersion = normalizeSyntaxVersion(syntaxVersion);
 
       setSelectedSyntaxVersion(normalizedVersion);
 
-      if (syntaxVersion !== '3.1'){
-        const response = await fetch('/api/v1/pricings', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ pricing: templatePricing }),
-        })
-
-        parsedPricing = await response.json();
-      }else{
-        parsedPricing = retrievePricingFromYaml(templatePricing);
-      }
+      const parsedPricing = await retrieveUpgradedPricing(templatePricing);
 
       loadedYamlRef.current = templatePricing;
       setPricing(parsedPricing);
@@ -483,6 +456,10 @@ export default function EditorPage() {
     setIsDirty(true);
   }, [setPendingVisualDraft, setIsDirty]);
 
+  // The editor targets Pricing2Yaml 3.1, so the renderer normally parses the buffer itself. A
+  // template loaded from an older document arrives as an upgraded pricing object instead.
+  const rendererSource = pricingRendererSource(editorValue, pricing);
+
   return (
     <>
       <Helmet>
@@ -577,40 +554,11 @@ export default function EditorPage() {
                 onSelect={goToDiagnostic}
               />
             </div>
-            <div className="box-border flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-200 py-2">
+            <div className="box-border flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain bg-slate-200 py-2">
               <div className="w-full">
-                {pricing ? <PricingRenderer pricing={pricing} errors={errors} onApplyVariables={(variables) => {
-                  const newYaml = (function replaceVariablesInYaml(yaml: string, vars: Record<string, unknown>) {
-                    const serializeVal = (v: unknown) => {
-                      if (typeof v === 'string') return JSON.stringify(v);
-                      if (typeof v === 'boolean') return v ? 'true' : 'false';
-                      if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-                      return JSON.stringify(v);
-                    };
-
-                    const varsLines = ['variables:'];
-                    for (const k of Object.keys(vars)) {
-                      varsLines.push(`  ${k}: ${serializeVal(vars[k])}`);
-                    }
-                    const varsBlock = varsLines.join('\n');
-
-                    const variablesRegex = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-
-                    if (variablesRegex.test(yaml)) {
-                      return yaml.replace(variablesRegex, varsBlock + '\n');
-                    } else {
-                      const insertAfterRegex = /^(createdAt:.*|currency:.*)$/mi;
-                      const m = insertAfterRegex.exec(yaml);
-                      if (m) {
-                        const idx = (m.index ?? 0) + (m[0]?.length ?? 0);
-                        return yaml.slice(0, idx) + '\n' + varsBlock + yaml.slice(idx);
-                      }
-                      return yaml + '\n' + varsBlock + '\n';
-                    }
-                  })(editorValue, variables);
-
-                  setEditorValue(newYaml);
-                }} /> : loadError ? (
+                {rendererSource ? (
+                  <SpherePricingRenderer source={rendererSource} />
+                ) : loadError ? (
                   <div role="alert" className="m-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                     <p className="font-semibold">There is no pricing to show</p>
                     <p className="mt-1">{loadError}</p>

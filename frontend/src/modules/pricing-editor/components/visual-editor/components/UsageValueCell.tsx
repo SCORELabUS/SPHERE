@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { FaTimesCircle } from 'react-icons/fa';
 import { UsageLimit } from 'pricing4ts';
-import { formatUsageDisplay } from '../../pricing-renderer/shared/value-helpers';
+import { formatUsageDisplay } from '../../../utils/value-helpers';
 
 export function UsageValueCell({
   value, usage, onSave,

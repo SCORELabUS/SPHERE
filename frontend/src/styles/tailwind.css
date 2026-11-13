@@ -1,3 +1,18 @@
+/* Cascade-layer order for the whole app.
+ *
+ * `pricing-renderer` ships its rules in `@layer pricing-renderer` and its tokens in
+ * `@layer pricing-renderer.theme`, and Tailwind declares `theme, base, components, utilities`.
+ * Later layers win, and the order is fixed by whichever stylesheet names a layer first -- which,
+ * left alone, is whatever order the bundler happens to emit. When the renderer's CSS landed first,
+ * Tailwind's preflight (`input { opacity: 1 }` in `base`) beat the renderer's own
+ * `.pr-selection-control input { opacity: 0 }` and the native radio of every plan card was drawn
+ * full-size over the card.
+ *
+ * Naming the order here, before any import, pins it: the renderer sits after Tailwind's layers, so
+ * its component rules win over preflight, and app utilities still win over both.
+ */
+@layer theme, base, components, pricing-renderer, pricing-renderer.theme, utilities;
+
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));

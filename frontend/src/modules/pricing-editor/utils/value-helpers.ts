@@ -1,5 +1,5 @@
 import { UsageLimit } from 'pricing4ts';
-import { pluralizeUnit } from '../../../services/pricing.service';
+import { pluralizeUnit } from '../services/pricing.service';
 import { camelToTitle } from './stringUtils';
 
 function formatNumberValue(value: number, unit?: string): string | number {

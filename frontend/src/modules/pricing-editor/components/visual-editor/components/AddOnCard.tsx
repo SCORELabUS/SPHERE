@@ -5,9 +5,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FaTrash, FaGripVertical, FaLink, FaArrowRightArrowLeft, FaLock, FaPlus, FaXmark, FaSliders } from 'react-icons/fa6';
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { NameInlineEdit } from './NameInlineEdit';
-import PALETTE from '../../pricing-renderer/shared/planPalette';
-import { camelToTitle } from '../../pricing-renderer/shared/stringUtils';
-import { formatMoneyDisplay } from '../../pricing-renderer/shared/value-helpers';
+import PALETTE from '../../../utils/planPalette';
+import { camelToTitle } from '../../../utils/stringUtils';
+import { formatMoneyDisplay } from '../../../utils/value-helpers';
 import type { DraftAddOn } from '../../../services/pricing2yaml';
 import type { DraggableAttributes } from '@dnd-kit/core';
 

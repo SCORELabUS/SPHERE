@@ -1,7 +1,16 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { selectionFromSearchParams, selectionToSearchParams } from 'pricing-renderer';
+import type { NormalizedPricing, PricingSelection } from 'pricing-renderer';
 import { usePricingsApi } from '../../api/pricingsApi';
 import BanterLoader from '../../../core/components/loaders/banter-loader';
+import ConfigurationPicker from './configuration-picker';
+import ConfigurationComparison from './configuration-comparison';
+import CompareTray from './compare-tray';
+import { captureLabel, nextSlot, type CompareSide, type CompareSlots } from './compare-slots';
+import { completeSelectionForConfiguration, selectedAddOnIds } from './selection-mapping';
+import type { SpherePricingSource } from '../../../core/components/pricing-renderer';
 
 export interface Configuration {
   selectedPlan?: string;
@@ -25,12 +34,10 @@ function summarizeConfiguration(c: IndexedConfiguration, i: number) {
   return { index: i + 1, plan: c.selectedPlan || 'No plan', addOns: c.selectedAddons.length, features: c.subscriptionFeatures.length, limits: c.subscriptionUsageLimits.length };
 }
 
-function compactList(v: string[], max = 7) { return v.length <= max ? v : v.slice(0, max); }
-
 const PAGE_SIZE = 200;
 const BATCH = 120;
 
-export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion }: { organizationId: string; pricingSlug: string; pricingVersion: string }) {
+export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion, source }: { organizationId: string; pricingSlug: string; pricingVersion: string; source?: SpherePricingSource }) {
   const [allConfigs, setAllConfigs] = useState<IndexedConfiguration[]>([]);
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -38,8 +45,13 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('All plans');
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [showAllFeat, setShowAllFeat] = useState(false);
   const [visibleCount, setVisibleCount] = useState(BATCH);
+  // The renderer's state, lifted: the tab needs the normalized pricing to turn a configuration
+  // into a selection, and the live selection to hold it for comparison.
+  const [rendererState, setRendererState] = useState<{ pricing: NormalizedPricing; selection: PricingSelection }>();
+  const [slots, setSlots] = useState<CompareSlots>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const restoredRef = useRef(false);
   const { getConfigurationSpace } = usePricingsApi();
   const loaderRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
@@ -66,7 +78,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   useEffect(() => {
     let canceled = false;
     idRef.current = 0;
-    setAllConfigs([]); setTotalSize(0); setShowAllFeat(false); setVisibleCount(BATCH); setLoadError(null);
+    setAllConfigs([]); setTotalSize(0); setVisibleCount(BATCH); setLoadError(null);
     const load = async () => {
       try {
         const all: IndexedConfiguration[] = [];
@@ -92,8 +104,83 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
     if (!focusedId || !filtered.some(c => c.id === focusedId)) setFocusedId(filtered[0].id);
   }, [filtered, focusedId]);
 
-  useEffect(() => { setShowAllFeat(false); }, [focusedId]);
   useEffect(() => { setVisibleCount(p => Math.min(Math.max(BATCH, p), filtered.length)); }, [filtered.length]);
+
+  // --- holding configurations for comparison ------------------------------------------------
+  // Both slots live in the query string, so a comparison is a link. Writing uses `replace` so the
+  // back button still leaves the tab rather than stepping through every capture.
+  //
+  // Both sides are written in one pass from the next state, through the functional form of
+  // setSearchParams. Writing them one side at a time from the `searchParams` of this render meant
+  // the second write started from the params the first had not yet produced, so clearing both left
+  // A behind and swapping wrote one side twice.
+  const applySlots = useCallback(
+    (next: CompareSlots) => {
+      setSlots(next);
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          for (const side of ['a', 'b'] as const) {
+            const prefix = `cfg${side.toUpperCase()}.`;
+            for (const key of [...params.keys()]) if (key.startsWith(prefix)) params.delete(key);
+            const held = next[side];
+            if (held) {
+              for (const [k, v] of selectionToSearchParams(held, { prefix })) params.append(k, v);
+            }
+          }
+          return params;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const hold = useCallback(
+    (selection: PricingSelection | undefined) => {
+      if (!selection) return;
+      applySlots({ ...slots, [nextSlot(slots)]: selection });
+    },
+    [slots, applySlots]
+  );
+
+  const clearSlots = useCallback(
+    (side?: CompareSide) => {
+      applySlots(side ? { ...slots, [side]: undefined } : {});
+    },
+    [slots, applySlots]
+  );
+
+  // Computed before the setters run, never inside a state updater: React may call an updater
+  // during render, and navigating from there updates the router while this component renders.
+  const swapSlots = useCallback(() => {
+    applySlots({ a: slots.b, b: slots.a });
+  }, [slots, applySlots]);
+
+  // A link someone was given: read both sides back once the pricing is known. A side with no keys
+  // was never captured -- selectionFromSearchParams would otherwise return the schema defaults and
+  // invent one.
+  useEffect(() => {
+    const pricing = rendererState?.pricing;
+    if (!pricing || restoredRef.current) return;
+    restoredRef.current = true;
+    const entries = [...searchParams.entries()];
+    const restored: CompareSlots = {};
+    for (const side of ['a', 'b'] as const) {
+      const prefix = `cfg${side.toUpperCase()}.`;
+      if (!entries.some(([key]) => key.startsWith(prefix))) continue;
+      restored[side] = selectionFromSearchParams(pricing, entries, { prefix }).selection;
+    }
+    if (restored.a || restored.b) setSlots(restored);
+  }, [rendererState?.pricing, searchParams]);
+
+  const identicalSlots = useMemo(() => {
+    if (!slots.a || !slots.b) return false;
+    if ((slots.a.planId ?? '') !== (slots.b.planId ?? '')) return false;
+    const x = selectedAddOnIds(slots.a);
+    const y = selectedAddOnIds(slots.b);
+    return x.length === y.length && x.every((id, i) => id === y[i]);
+  }, [slots]);
 
   const quickItems = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const hasMore = visibleCount < filtered.length;
@@ -117,7 +204,23 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4">
-      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+      {/* Kept at the top so the mechanism is visible before anyone scrolls. */}
+      {source && (
+        <CompareTray slots={slots} onClear={clearSlots} onSwap={swapSlots} identical={identicalSlots} />
+      )}
+
+      {source && rendererState && slots.a && slots.b && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-tp-hairline bg-tp-canvas p-4"
+        >
+          <h2 className="mb-2 text-lg font-semibold text-tp-ink">A compared with B</h2>
+          <ConfigurationComparison pricing={rendererState.pricing} a={slots.a} b={slots.b} />
+        </motion.div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         {/* Explorer */}
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -158,19 +261,6 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
                       <div key={l} className="rounded-lg bg-tp-canvas px-3 py-2 border border-tp-hairline"><p className="text-[11px] text-tp-steel">{l}</p><p className="text-sm font-semibold text-tp-ink">{n as number}</p></div>
                     ))}
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div><p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-tp-steel">Add-ons</p><div className="flex flex-wrap gap-1">{focused.selectedAddons.length > 0 ? compactList(focused.selectedAddons).map(v => <span key={v} className="rounded-full bg-tp-primary/10 px-2 py-0.5 text-[11px] text-tp-primary">{v}</span>) : <span className="text-xs text-tp-muted">None</span>}</div></div>
-                    <div><p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-tp-steel">Usage limits</p><div className="flex flex-wrap gap-1">{focused.subscriptionUsageLimits.length > 0 ? compactList(focused.subscriptionUsageLimits).map(v => <span key={v} className="rounded-full bg-tp-surface px-2 py-0.5 text-[11px] text-tp-slate">{v}</span>) : <span className="text-xs text-tp-muted">None</span>}</div></div>
-                  </div>
-                  <div className="mt-4">
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-tp-steel">Features</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(showAllFeat ? focused.subscriptionFeatures : compactList(focused.subscriptionFeatures, 10)).map(v => <span key={v} className="rounded-full bg-tp-surface px-2 py-0.5 text-[11px] text-tp-slate">{v}</span>)}
-                      {!showAllFeat && focused.subscriptionFeatures.length > 10 && <button type="button" onClick={() => setShowAllFeat(true)} className="cursor-pointer rounded-full border border-tp-hairline-strong bg-tp-canvas px-2 py-0.5 text-[11px] text-tp-steel hover:bg-tp-surface">+{focused.subscriptionFeatures.length - 10} more</button>}
-                      {showAllFeat && focused.subscriptionFeatures.length > 10 && <button type="button" onClick={() => setShowAllFeat(false)} className="cursor-pointer rounded-full border border-tp-hairline-strong bg-tp-canvas px-2 py-0.5 text-[11px] text-tp-steel hover:bg-tp-surface">Show less</button>}
-                      {focused.subscriptionFeatures.length === 0 && <span className="text-xs text-tp-muted">None</span>}
-                    </div>
-                  </div>
                 </motion.div>
               ) : (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-lg border border-dashed border-tp-hairline-strong p-6 text-center text-xs text-tp-muted">No configurations match this search.</motion.div>
@@ -181,6 +271,22 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
               <button type="button" onClick={() => { if (activeIdx < filtered.length - 1) setFocusedId(filtered[activeIdx + 1].id); }} disabled={activeIdx < 0 || activeIdx >= filtered.length - 1} className="cursor-pointer flex items-center gap-1 rounded-md border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs text-tp-slate transition-colors hover:bg-tp-surface disabled:opacity-30">Next →</button>
               <button type="button" onClick={() => { if (filtered.length > 0) setFocusedId(filtered[Math.floor(Math.random() * filtered.length)].id); }} disabled={filtered.length === 0} className="ml-auto cursor-pointer flex items-center gap-1 rounded-md bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:opacity-50">🎲 Surprise me</button>
             </div>
+
+            {source && (
+              <div className="mt-4 border-t border-tp-hairline pt-4">
+                <ConfigurationPicker
+                  source={source}
+                  focused={focused}
+                  configurations={filtered}
+                  allConfigurations={allConfigs}
+                  position={Math.max(activeIdx + 1, 0)}
+                  onPick={setFocusedId}
+                  onStateChange={setRendererState}
+                  captureLabel={captureLabel(slots)}
+                  onCapture={() => hold(rendererState?.selection)}
+                />
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -188,16 +294,40 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
         <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border border-tp-hairline bg-tp-canvas p-3">
           <h3 className="text-xs font-medium text-tp-steel">Quick Browse</h3>
           <p className="mt-0.5 text-[11px] text-tp-muted">Scroll to load more configurations.</p>
-          <div className="mt-3 max-h-[66vh] overflow-y-auto pr-1">
+          <div className="mt-3 max-h-[66vh] overflow-y-auto overscroll-contain pr-1">
             <div className="space-y-1.5">
               {quickItems.map((c, i) => {
                 const s = summarizeConfiguration(c, i);
                 const active = focusedId === c.id;
                 return (
-                  <button key={c.id} type="button" onClick={() => setFocusedId(c.id)} className={`cursor-pointer w-full rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-tp-primary bg-tp-primary/5' : 'border-tp-hairline bg-tp-canvas hover:bg-tp-surface'}`}>
-                    <div className="flex items-center justify-between"><p className="truncate text-sm font-medium text-tp-ink">{s.plan}</p><p className="text-[10px] text-tp-muted">#{s.index}</p></div>
-                    <p className="mt-0.5 text-[11px] text-tp-steel">{s.addOns} add-ons · {s.features} features · {s.limits} limits</p>
-                  </button>
+                  // A row is two actions: draw it in the pricing, or hold it for comparison. The
+                  // second does not move the focus, so both slots can be filled from this list
+                  // without a trip through the pricing each time.
+                  <div key={c.id} className={`flex w-full items-center gap-1 rounded-lg border transition-colors ${active ? 'border-tp-primary bg-tp-primary/5' : 'border-tp-hairline bg-tp-canvas hover:bg-tp-surface'}`}>
+                    <button type="button" onClick={() => setFocusedId(c.id)} className="min-w-0 flex-1 cursor-pointer px-3 py-2 text-left">
+                      <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-medium text-tp-ink">{s.plan}</p><p className="shrink-0 text-[10px] text-tp-muted">#{s.index}</p></div>
+                      <p className="mt-0.5 text-[11px] text-tp-steel">{s.addOns} add-ons · {s.features} features · {s.limits} limits</p>
+                    </button>
+                    {rendererState && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          hold(
+                            completeSelectionForConfiguration(
+                              rendererState.pricing,
+                              c,
+                              rendererState.selection
+                            )
+                          )
+                        }
+                        aria-label={`${captureLabel(slots)}: ${s.plan}`}
+                        title={captureLabel(slots)}
+                        className="mr-2 shrink-0 cursor-pointer rounded-md border border-tp-hairline-strong bg-tp-canvas px-2 py-1 text-[10px] font-medium text-tp-slate transition-colors hover:bg-tp-surface"
+                      >
+                        {slots.a && !slots.b ? 'vs A' : 'Compare'}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
               {filtered.length === 0 && <div className="rounded-lg border border-dashed border-tp-hairline-strong p-4 text-center text-[11px] text-tp-muted">No results.</div>}
@@ -208,6 +338,7 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
           </div>
         </motion.div>
       </div>
+
     </div>
   );
 }
