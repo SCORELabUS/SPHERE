@@ -293,6 +293,7 @@ function fixture(options: { blind?: string[] } = {}) {
     notifier,
     permissionEngine,
     states: { get: () => undefined, set: () => undefined },
+    normalizedBases: { get: () => undefined, set: () => undefined },
   }) as unknown as PricingPullRequestService;
 
   const v1 = addVersion(pricingId, '1.0.0', pricingText(NAME, '1.0.0'));

@@ -13,22 +13,29 @@ vi.mock('pricing4ts/server', async importOriginal => {
 });
 vi.mock('../../main/utils/pricing-syntax', async importOriginal => {
   const actual = await importOriginal<typeof import('../../main/utils/pricing-syntax')>();
-  // Counted where other modules load a text (stamping), not inside pricing-syntax itself.
-  return { ...actual, loadPricingDoc: vi.fn(actual.loadPricingDoc) };
+  // Counted where other modules load a text (stamping, the service), not inside pricing-syntax itself.
+  return {
+    ...actual,
+    loadPricingDoc: vi.fn(actual.loadPricingDoc),
+    normalizeProposalText: vi.fn(actual.normalizeProposalText),
+  };
 });
 
 import { retrievePricingFromText } from 'pricing4ts/server';
 import PricingPullRequestService from '../../main/services/PricingPullRequestService';
 import { LeanUser } from '../../main/types/models/User';
-import { dumpPricingDoc, loadPricingDoc, STORED_PRICING_MAX_BYTES, upgradeToLatestSyntax } from '../../main/utils/pricing-syntax';
+import {
+  dumpPricingDoc,
+  loadPricingDoc,
+  normalizeProposalText,
+  STORED_PRICING_MAX_BYTES,
+  upgradeToLatestSyntax,
+} from '../../main/utils/pricing-syntax';
 
 const NAME = 'Petclinic parses';
-const TEMPLATE = upgradeToLatestSyntax(
-  loadPricingDoc(
-    fs.readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'),
-    STORED_PRICING_MAX_BYTES
-  )
-).doc;
+/** A pricing in an older syntax (3.0). */
+const TEMPLATE_TEXT = fs.readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8');
+const TEMPLATE = upgradeToLatestSyntax(loadPricingDoc(TEMPLATE_TEXT, STORED_PRICING_MAX_BYTES)).doc;
 
 function pricingText(name: string, version: string, goldPrice?: number) {
   const doc: any = structuredClone(TEMPLATE);
@@ -41,41 +48,48 @@ function pricingText(name: string, version: string, goldPrice?: number) {
 
 const parses = vi.mocked(retrievePricingFromText);
 const stampLoads = vi.mocked(loadPricingDoc);
+const normalizes = vi.mocked(normalizeProposalText);
 
-/** The service with its repositories and permission checks replaced: P has v1 and v2, both public. */
-function scene() {
+/**
+ * The service with its repositories and permission checks replaced: P has v1 and
+ * v2, both public. `newService` gives another instance (empty caches) on the same data.
+ */
+function scene(v1Text = pricingText(NAME, '1.0')) {
   const v1 = { id: 'v1', version: '1.0', private: false, yaml: 'v1.yml' };
   const v2 = { id: 'v2', version: '2.0', private: false, yaml: 'v2.yml' };
-  const files: Record<string, string> = { v1: pricingText(NAME, '1.0'), v2: pricingText(NAME, '2.0', 30) };
+  const files: Record<string, string> = { v1: v1Text, v2: pricingText(NAME, '2.0', 30) };
   const pricing = { pricingId: 'p1', name: NAME, slug: 'petclinic-parses', organizationId: 'o1', latest: v1, latestPublic: v1 };
   const user = { id: 'author', username: 'author', role: 'USER' } as unknown as LeanUser;
   const viewer = { user, reader: true, readsPrivate: true, maintainer: true };
-  const service: any = new PricingPullRequestService();
   let stored: any;
-  Object.assign(service, {
-    findPricing: async () => pricing,
-    viewerOf: async () => viewer,
-    limitReached: async () => false,
-    announce: async () => undefined,
-    authorsOf: async () => new Map(),
-    readStored: async (version: { id: string }) => ({ raw: files[version.id], ...service.loadStored(files[version.id]) }),
-    loadPullRequest: async () => ({ pullRequest: stored, pricing, viewer }),
-    pricingRepository: {
-      findVersionOf: async (_pricingId: string, id: string) => [v1, v2].find(version => version.id === id) ?? null,
-      hasVersionLabel: async () => false,
-    },
-    pricingPullRequestRepository: {
-      create: async (data: any) =>
-        (stored = { id: 'pr1', number: 1, status: 'open', proposalRevision: 1, createdAt: new Date(), updatedAt: new Date(), ...data }),
-      updateOpen: async (_id: string, _revision: number, changes: any) =>
-        (stored = { ...stored, ...changes, proposalRevision: stored.proposalRevision + 1 }),
-    },
-  });
+  const newService = () => {
+    const service: any = new PricingPullRequestService();
+    return Object.assign(service, {
+      findPricing: async () => pricing,
+      viewerOf: async () => viewer,
+      limitReached: async () => false,
+      announce: async () => undefined,
+      authorsOf: async () => new Map(),
+      readStored: async (version: { id: string }) => ({ raw: files[version.id], ...service.loadStored(files[version.id]) }),
+      loadPullRequest: async () => ({ pullRequest: stored, pricing, viewer }),
+      pricingRepository: {
+        findVersionOf: async (_pricingId: string, id: string) => [v1, v2].find(version => version.id === id) ?? null,
+        hasVersionLabel: async () => false,
+      },
+      pricingPullRequestRepository: {
+        create: async (data: any) =>
+          (stored = { id: 'pr1', number: 1, status: 'open', proposalRevision: 1, createdAt: new Date(), updatedAt: new Date(), ...data }),
+        updateOpen: async (_id: string, _revision: number, changes: any) =>
+          (stored = { ...stored, ...changes, proposalRevision: stored.proposalRevision + 1 }),
+      },
+    });
+  };
+  const service = newService();
   const open = (proposedYaml: string) =>
     service.create(user, { title: 'Gold up', source: { kind: 'text', pricingId: 'p1', baseVersionId: 'v1', proposedYaml } });
   /** P moves on to v2, leaving the pull request behind. */
   const publishV2 = () => Object.assign(pricing, { latest: v2, latestPublic: v2 });
-  return { service, user, open, publishV2, stored: () => stored };
+  return { service, newService, user, open, publishV2, stored: () => stored };
 }
 
 describe('Pull request proposals are parsed once', () => {
@@ -134,5 +148,35 @@ describe('Pull request proposals are parsed once', () => {
     await service.update(user, 'pr1', { previewToken: preview.previewToken, manualYaml });
     expect(parses).toHaveBeenCalledTimes(1);
     expect(stored()).toMatchObject({ base: { versionId: 'v2' }, proposed: { suggestedVersion: '2.1' } });
+  });
+});
+
+describe('The detail of a pull request', () => {
+  it('upgrades a base stored in an older syntax once, not on every request', async () => {
+    const { newService, user, open, publishV2, stored } = scene(TEMPLATE_TEXT);
+    await open(pricingText(NAME, '1.1', 25));
+    const base = stored().base.yaml;
+    expect(base).toBe(TEMPLATE_TEXT);
+    const loadsOfBase = () => normalizes.mock.calls.filter(([text]) => text === base).length;
+
+    // Another instance: nothing cached from opening it.
+    const service = newService();
+    normalizes.mockClear();
+    const first = await service.show(user, 'pr1');
+    // Once for its state and once for the detail.
+    expect(loadsOfBase()).toBe(2);
+    normalizes.mockClear();
+    const second = await service.show(user, 'pr1');
+    expect(normalizes).not.toHaveBeenCalled();
+    expect(first.base.normalizedYaml).toBeDefined();
+    expect(second.base).toEqual(first.base);
+
+    // Brought up to v2, in the latest syntax: nothing to upgrade.
+    publishV2();
+    const preview = await service.mergePreview(user, 'pr1', { purpose: 'update' });
+    const updated = await service.update(user, 'pr1', { previewToken: preview.previewToken, resolutions: { [preview.conflicts[0].id]: 'proposal' } });
+    expect(updated.base.versionId).toBe('v2');
+    expect(updated.base).not.toHaveProperty('normalizedYaml');
+    expect((await service.show(user, 'pr1')).base).not.toHaveProperty('normalizedYaml');
   });
 });

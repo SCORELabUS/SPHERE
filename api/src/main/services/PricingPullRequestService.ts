@@ -49,6 +49,12 @@ import PricingService from './PricingService';
 const PAGE_SIZE = 20;
 /** States computed for the listings, by pull request, proposal, base and target. */
 const STATE_CACHE_ENTRIES = 500;
+/**
+ * Bases in an older syntax as the details show them (upgraded), by pull request,
+ * proposal and base: at most this many, holding at most this many characters.
+ */
+const NORMALIZED_BASE_CACHE_ENTRIES = 500;
+const NORMALIZED_BASE_CACHE_CHARACTERS = 32 * 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const limitFromEnv = (name: string, fallback: number) => {
@@ -213,23 +219,35 @@ interface ForkContext {
 
 const PREVIEW_TOKEN_PURPOSE = 'pricing-pr-preview';
 
-/** A small least-recently-used map. */
-class StateCache {
-  private entries = new Map<string, MergeSummary>();
+/** A small least-recently-used map, bounded by its entries and by the total size of its values. */
+class LruCache<V> {
+  private entries = new Map<string, V>();
+  private size = 0;
 
-  get(key: string): MergeSummary | undefined {
-    const value = this.entries.get(key);
-    if (value) {
-      this.entries.delete(key);
-      this.entries.set(key, value);
-    }
+  constructor(
+    private readonly maxEntries: number,
+    private readonly sizeOf: (value: V) => number = () => 0,
+    private readonly maxSize = Infinity
+  ) {}
+
+  get(key: string): V | undefined {
+    if (!this.entries.has(key)) return undefined;
+    const value = this.entries.get(key)!;
+    this.entries.delete(key);
+    this.entries.set(key, value);
     return value;
   }
 
-  set(key: string, value: MergeSummary) {
-    this.entries.delete(key);
+  set(key: string, value: V) {
+    if (this.entries.has(key)) this.remove(key);
     this.entries.set(key, value);
-    if (this.entries.size > STATE_CACHE_ENTRIES) this.entries.delete(this.entries.keys().next().value!);
+    this.size += this.sizeOf(value);
+    while (this.entries.size > this.maxEntries || this.size > this.maxSize) this.remove(this.entries.keys().next().value!);
+  }
+
+  private remove(key: string) {
+    this.size -= this.sizeOf(this.entries.get(key)!);
+    this.entries.delete(key);
   }
 }
 
@@ -337,7 +355,12 @@ class PricingPullRequestService {
   private pricingService: PricingService;
   private notifier: PricingPullRequestNotifier;
   private permissionEngine = new PermissionEngine();
-  private states = new StateCache();
+  private states = new LruCache<MergeSummary>(STATE_CACHE_ENTRIES);
+  private normalizedBases = new LruCache<{ normalizedYaml?: string }>(
+    NORMALIZED_BASE_CACHE_ENTRIES,
+    value => value.normalizedYaml?.length ?? 0,
+    NORMALIZED_BASE_CACHE_CHARACTERS
+  );
 
   constructor() {
     this.pricingPullRequestRepository = container.resolve('pricingPullRequestRepository');
@@ -1357,7 +1380,7 @@ class PricingPullRequestService {
     return {
       ...summary,
       description: pullRequest.description,
-      base: { ...summary.base, yaml: pullRequest.base.yaml, ...this.normalizedBaseOf(pullRequest.base.yaml) },
+      base: { ...summary.base, yaml: pullRequest.base.yaml, ...this.normalizedBaseOf(pullRequest) },
       proposed: { ...summary.proposed, yaml: pullRequest.proposed.yaml },
       ...(origin ? { origin } : {}),
       permissions: this.permissionsOf(pullRequest, pricing, viewer, summary.state),
@@ -1367,14 +1390,21 @@ class PricingPullRequestService {
   /**
    * A base stored in an older syntax, as the proposal is stored (upgraded): what the
    * detail compares the proposal with, so the upgrade is not shown as the author's change.
+   * Computed once per base: the stored base only changes with the proposal revision.
    */
-  private normalizedBaseOf(text: string): { normalizedYaml?: string } {
+  private normalizedBaseOf(pullRequest: PricingPullRequest): { normalizedYaml?: string } {
+    const key = [pullRequest.id, pullRequest.proposalRevision, pullRequest.base.versionId].join(':');
+    const cached = this.normalizedBases.get(key);
+    if (cached) return cached;
+    let normalized: { normalizedYaml?: string } = {};
     try {
-      const loaded = this.loadStored(text);
-      return loaded.regenerated ? { normalizedYaml: loaded.text } : {};
+      const loaded = this.loadStored(pullRequest.base.yaml);
+      if (loaded.regenerated) normalized = { normalizedYaml: loaded.text };
     } catch {
-      return {};
+      // A base that does not load is shown as stored.
     }
+    this.normalizedBases.set(key, normalized);
+    return normalized;
   }
 
   /** The merged version is named only to who may read it now. */
