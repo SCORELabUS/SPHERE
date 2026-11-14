@@ -101,7 +101,12 @@ export default function UploadProposalModal({
   let blockReason: string | null = null;
   if (!file) blockReason = 'Choose a Pricing2Yaml file to propose.';
   else if (summary?.isEmpty) blockReason = `Nothing to propose: the file is the same as version ${base.version}.`;
-  else blockReason = proposalFieldsError(title, description);
+  // A refusal moved the proposal onto a newer version: it is opened there only after its changes were shown.
+  else if (base.id !== latest.id && latestYaml?.yaml === undefined) {
+    blockReason = latestYaml === null
+      ? `Reading version ${base.version}…`
+      : `Reload the page to review the changes against version ${base.version}.`;
+  } else blockReason = proposalFieldsError(title, description);
 
   const submit = async () => {
     if (!file || blockReason) return;

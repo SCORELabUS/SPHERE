@@ -666,6 +666,30 @@ describe('Pull requests tab', () => {
       expect(onSelect).toHaveBeenCalledWith('new-pr');
     });
 
+    it('does not open the pull request on a newer version this page cannot read until it is reloaded', async () => {
+      mocks.listPullRequests.mockResolvedValue(page([]));
+      await act(async () => {
+        view = create(<PricingPullRequestsTab pricingId={PRICING} selectedId={null} onSelect={onSelect} context={withVersions} />);
+      });
+      const proposed = 'saasName: Demo\nversion: "2.1"\nplans:\n  BASIC:\n    price: 0\n  PRO:\n    price: 12\n';
+      await upload('demo.yml', proposed);
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Raise PRO' } }));
+      mocks.createPullRequest.mockRejectedValueOnce(
+        new PullRequestApiError(409, { error: 'x', code: 'BASE_NOT_LATEST', latest: { id: 'v3', version: '3.0' } })
+      );
+      await act(async () => button('Open pull request').props.onClick());
+      await flush();
+
+      expect(text()).toContain('The pull request is based on version 3.0, the latest public version.');
+      expect(text()).not.toContain('Changes against version 3.0');
+      expect(button('Open pull request').props.disabled).toBe(true);
+      expect(view.root.findByProps({ id: 'upload-block-reason' }).children.map(textOf).join('')).toBe(
+        'Reload the page to review the changes against version 3.0.'
+      );
+      await act(async () => button('Open pull request').props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenCalledTimes(1);
+    });
+
     it('gives every enabled button of the menu and the upload dialog a pointer cursor (CA-37)', async () => {
       await renderList(page([]));
       await upload('demo.yml', 'saasName: Demo\nplans:\n  PRO:\n    price: 12\n');
