@@ -96,28 +96,43 @@ function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-/** The parser's result for the text, or undefined if it refuses it. */
-function parses(text: string): ParsedPricing | undefined {
+/**
+ * The parser refused a stamped text: `text` is that text, the caller's stamped
+ * line by line when `regenerated` is false. Parsing is what a pricing costs
+ * most, so nothing parses the caller's own text again for this message:
+ * stamping only changes the stamped fields, and the parser's only check on them
+ * is that the name is valid, so the message is the one the caller's text would
+ * give unless its own `saasName` was all that was wrong.
+ */
+export class StampRefusedError extends PricingYamlError {
+  constructor(
+    message: string,
+    readonly text: string,
+    readonly regenerated: boolean
+  ) {
+    super(400, 'INVALID_PRICING', message);
+    this.name = 'StampRefusedError';
+  }
+}
+
+/** The parser's result for the text, or a `StampRefusedError`. */
+function parse(text: string, regenerated: boolean): ParsedPricing {
   try {
     return retrievePricingFromText(text);
-  } catch {
-    return undefined;
+  } catch (error) {
+    throw new StampRefusedError((error as Error)?.message ?? String(error), text, regenerated);
   }
 }
 
 /**
  * The stamped text is kept only if it loads to the original document with just
- * the stamped fields changed to the requested values, and the parser accepts it:
- * returns the parser's result, or undefined to regenerate. When no field changes
- * (each already had its value), the stamped text loads to the original's very
- * document, so `parsed`, the caller's result for the original, is its result too.
+ * the stamped fields changed to the requested values: returns the parser's
+ * result for it (throwing a `StampRefusedError` if the parser refuses it), or
+ * undefined to regenerate. A text the parser refuses is not regenerated: the
+ * regenerated text would load to the same document, so the parser would refuse
+ * it too.
  */
-function stampIsExact(
-  original: PricingDoc,
-  stampedText: string,
-  values: Array<[Field, string]>,
-  parsed?: ParsedPricing
-): ParsedPricing | undefined {
+function stampIsExact(original: PricingDoc, stampedText: string, values: Array<[Field, string]>): ParsedPricing | undefined {
   let stamped: PricingDoc;
   try {
     stamped = loadPricingDoc(stampedText, STORED_PRICING_MAX_BYTES);
@@ -133,9 +148,7 @@ function stampIsExact(
     return undefined;
   }
   if (!values.every(([key, value]) => stamped[key] === value)) return undefined;
-  const unchanged = values.every(([key, value]) => Object.prototype.hasOwnProperty.call(original, key) && original[key] === value);
-  if (unchanged && parsed) return parsed;
-  return parses(stampedText);
+  return parse(stampedText, false);
 }
 
 /** The document in the latest syntax with the fields set, written again from scratch. */
@@ -146,19 +159,13 @@ function regenerate(original: PricingDoc, values: Array<[Field, string]>): Stamp
   const result: PricingDoc = { ...missing, ...doc };
   for (const [key, value] of values) result[key] = value;
   const text = dumpPricingDoc(result);
-  try {
-    return { text, regenerated: true, pricing: retrievePricingFromText(text) };
-  } catch (error) {
-    throw new PricingYamlError(400, 'INVALID_PRICING', (error as Error)?.message ?? String(error));
-  }
+  return { text, regenerated: true, pricing: parse(text, true) };
 }
 
 /** What the caller already has for the text, so stamping does not compute it again. */
 export interface StampInputs {
   /** The document `loadPricingDoc` gives for the text. */
   loaded?: PricingDoc;
-  /** The parser's result for the text. */
-  parsed?: ParsedPricing;
 }
 
 /**
@@ -168,15 +175,16 @@ export interface StampInputs {
  * stamped lines do not load back to exactly the requested change (a multi-line
  * `saasName: >`, a flow mapping, a quoted key...), is regenerated instead:
  * pricing4ts rewrites any file it reads in an older syntax, so only a text in
- * the latest one can be published as written. The result carries the parser's
- * result for its text, so the caller need not parse it again.
+ * the latest one can be published as written. Only the stamped text is parsed:
+ * the result carries the parser's result for it, so the caller need not parse
+ * it again, and a text the parser refuses throws a `StampRefusedError`.
  */
 export function stampTopLevel(text: string, fields: TopLevelFields, inputs: StampInputs = {}): StampResult {
   const original = inputs.loaded ?? loadPricingDoc(text, STORED_PRICING_MAX_BYTES);
   const values = expectedValues(fields);
   if (original.syntaxVersion === LATEST_SYNTAX_VERSION) {
     const stamped = stampLines(text, values);
-    const pricing = stampIsExact(original, stamped, values, inputs.parsed);
+    const pricing = stampIsExact(original, stamped, values);
     if (pricing) return { text: stamped, regenerated: false, pricing };
   }
   return regenerate(original, values);

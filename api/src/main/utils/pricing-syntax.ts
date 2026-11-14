@@ -49,7 +49,9 @@ export const PROPOSAL_MAX_BYTES_CEILING = 1024 * 1024;
 /**
  * The default limit of a user's text: over ten times the largest pricing SPHERE
  * ships (36 KB), while the parser, which grows faster than the text, takes about
- * 1.5 s of the event loop on a pricing this large (7.6 s on 1 MiB).
+ * 1.2 s of the event loop on a pricing this large (7.6 s on 1 MiB). A text is
+ * parsed once, as stamped with the pricing's name, whatever name it carries, so
+ * a request that sends one takes about 1.3 s.
  */
 export const PROPOSAL_DEFAULT_MAX_BYTES = 384 * 1024;
 /** Nodes visited while measuring a document, shared ones once per visit. */

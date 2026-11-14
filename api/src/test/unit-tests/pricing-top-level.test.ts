@@ -6,7 +6,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { retrievePricingFromPath, retrievePricingFromText } from 'pricing4ts/server';
 import { PricingYamlError } from '../../main/utils/pricing-syntax';
-import { stampTopLevel } from '../../main/utils/pricing-top-level';
+import { StampRefusedError, stampTopLevel } from '../../main/utils/pricing-top-level';
 
 const FIELDS = {
   saasName: 'Target "Pricing"',
@@ -181,14 +181,25 @@ describe('stampTopLevel', () => {
     }
   });
 
-  it('refuses a pricing the parser rejects even after regenerating it', () => {
+  it('refuses a pricing the parser rejects with the text as stamped, without regenerating it', () => {
     const invalid = PRICING_31.replace('    type: NON_RENEWABLE\n', '    type: NOT_A_TYPE\n');
-    expect(() => stampTopLevel(invalid, FIELDS)).toThrow(PricingYamlError);
+    let refusal: unknown;
     try {
       stampTopLevel(invalid, FIELDS);
     } catch (error) {
-      expect((error as PricingYamlError).status).toBe(400);
-      expect((error as PricingYamlError).code).toBe('INVALID_PRICING');
+      refusal = error;
     }
+    expect(refusal).toBeInstanceOf(StampRefusedError);
+    expect(refusal).toBeInstanceOf(PricingYamlError);
+    const { status, code, message, text, regenerated } = refusal as StampRefusedError;
+    expect({ status, code, regenerated }).toEqual({ status: 400, code: 'INVALID_PRICING', regenerated: false });
+    // The comments of the text sent are still there: it was stamped line by line, not written again.
+    expect(text).toBe(
+      invalid
+        .replace('saasName: Demo', 'saasName: "Target \\"Pricing\\""')
+        .replace('version: "1.0" # the label', 'version: "2.0.0"')
+        .replace('createdAt: "2024-01-01"', 'createdAt: "2025-05-25T14:30:00.000Z"')
+    );
+    expect(message).toMatch(/NOT_A_TYPE/);
   });
 });

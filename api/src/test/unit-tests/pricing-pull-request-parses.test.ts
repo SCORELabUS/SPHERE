@@ -111,15 +111,67 @@ describe('Pull request proposals are parsed once', () => {
     expect(stored().proposed).toEqual({ yaml: proposal.replace(`saasName: ${NAME}`, `saasName: "${NAME}"`), suggestedVersion: '1.1' });
   });
 
-  it('parses a proposal with another name again once it carries the name of the pricing', async () => {
+  it('parses a proposal with another name once, as it is stored: with the name of the pricing', async () => {
     const { open, stored } = scene();
 
     await open(pricingText('Somebody else', '1.1', 25));
 
-    // The text as sent and the text as stored: they are different documents.
-    expect(parses).toHaveBeenCalledTimes(2);
+    // Only the text as stored is parsed, not the text as sent.
+    expect(parses).toHaveBeenCalledTimes(1);
+    expect(loadPricingDoc(parses.mock.calls[0][0], STORED_PRICING_MAX_BYTES).saasName).toBe(NAME);
     expect(loadPricingDoc(stored().proposed.yaml, STORED_PRICING_MAX_BYTES).saasName).toBe(NAME);
     expect(stored().proposed.suggestedVersion).toBe('1.1');
+  });
+
+  it('accepts a proposal whose only fault is its own name, with the name of the pricing', async () => {
+    const { open, stored } = scene();
+    const nameless = pricingText(NAME, '1.1', 25).replace(`saasName: ${NAME}\n`, '');
+    expect(() => retrievePricingFromText(nameless)).toThrow('The SaaS must have a name');
+    parses.mockClear();
+
+    await open(nameless);
+
+    expect(parses).toHaveBeenCalledTimes(1);
+    expect(stored().proposed.yaml).toBe(`saasName: "${NAME}"\n${nameless}`);
+  });
+
+  it('refuses a proposal the parser rejects with its message, parsing it once', async () => {
+    const { open } = scene();
+    const invalid = pricingText('Somebody else', '1.1', 25).replace('type: DOMAIN', 'type: NOT_A_TYPE');
+    let expected = '';
+    try {
+      retrievePricingFromText(invalid);
+    } catch (error) {
+      expected = (error as Error).message;
+    }
+    expect(expected).not.toBe('');
+    parses.mockClear();
+
+    await expect(open(invalid)).rejects.toMatchObject({ status: 400, code: 'INVALID_PRICING', message: expected, details: {} });
+    expect(parses).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a proposal that is not YAML with its line, parsing nothing', async () => {
+    const { open } = scene();
+    const lines = pricingText('Somebody else', '1.1', 25).split('\n');
+    lines.splice(4, 0, 'key: value: other');
+
+    await expect(open(lines.join('\n'))).rejects.toMatchObject({ status: 400, code: 'INVALID_PRICING', line: 5 });
+    expect(parses).not.toHaveBeenCalled();
+  });
+
+  it('shows a result the parser rejects as stamped, parsing it once', async () => {
+    const { service, user } = scene();
+    const invalid = `# Gold goes up\n${pricingText('Somebody else', '1.1', 25).replace('type: DOMAIN', 'type: NOT_A_TYPE')}`;
+
+    const preview = await service.preview(user, { source: { kind: 'text', pricingId: 'p1', baseVersionId: 'v1', proposedYaml: invalid } });
+
+    expect(parses).toHaveBeenCalledTimes(1);
+    expect(preview.validation).toMatchObject({ ok: false });
+    expect(preview.warnings).toEqual([]);
+    // Written line by line, comment included, with the name of the pricing.
+    expect(preview).toMatchObject({ regenerated: false });
+    expect(preview.resultYaml).toBe(invalid.replace('saasName: Somebody else', `saasName: "${NAME}"`));
   });
 
   it('parses the result of a preview once', async () => {
@@ -148,6 +200,26 @@ describe('Pull request proposals are parsed once', () => {
     await service.update(user, 'pr1', { previewToken: preview.previewToken, manualYaml });
     expect(parses).toHaveBeenCalledTimes(1);
     expect(stored()).toMatchObject({ base: { versionId: 'v2' }, proposed: { suggestedVersion: '2.1' } });
+  });
+
+  it('parses a result typed by hand with another name once, and refuses an invalid one parsing it once', async () => {
+    const { service, user, open, publishV2, stored } = scene();
+    await open(pricingText(NAME, '1.1', 25));
+    publishV2();
+    const preview = await service.mergePreview(user, 'pr1', { purpose: 'update' });
+    const manualYaml = pricingText('Somebody else', '2.1', 40);
+
+    parses.mockClear();
+    await expect(
+      service.update(user, 'pr1', { previewToken: preview.previewToken, manualYaml: manualYaml.replace('type: DOMAIN', 'type: NOT_A_TYPE') })
+    ).rejects.toMatchObject({ status: 400, code: 'INVALID_PRICING', message: expect.stringContaining('NOT_A_TYPE') });
+    expect(parses).toHaveBeenCalledTimes(1);
+
+    parses.mockClear();
+    await service.update(user, 'pr1', { previewToken: preview.previewToken, manualYaml });
+    expect(parses).toHaveBeenCalledTimes(1);
+    expect(stored()).toMatchObject({ base: { versionId: 'v2' }, proposed: { suggestedVersion: '2.1' } });
+    expect(loadPricingDoc(stored().proposed.yaml, STORED_PRICING_MAX_BYTES).saasName).toBe(NAME);
   });
 });
 
