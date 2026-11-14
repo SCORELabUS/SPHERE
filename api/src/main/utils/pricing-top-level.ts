@@ -16,10 +16,15 @@ export interface TopLevelFields {
   createdAt?: Date;
 }
 
+/** What the parser makes of a pricing text. */
+export type ParsedPricing = ReturnType<typeof retrievePricingFromText>;
+
 export interface StampResult {
   text: string;
   /** True when the text had to be written again from its document (comments and layout lost). */
   regenerated: boolean;
+  /** The parser's result for `text`. */
+  pricing: ParsedPricing;
 }
 
 /** The order the fields are stamped in, which is also where missing ones are inserted. */
@@ -91,36 +96,50 @@ function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
+/** The parser's result for the text, or undefined if it refuses it. */
+function parses(text: string): ParsedPricing | undefined {
+  try {
+    return retrievePricingFromText(text);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The stamped text is kept only if it loads to the original document with just
- * the stamped fields changed to the requested values, and the parser accepts it.
+ * the stamped fields changed to the requested values, and the parser accepts it:
+ * returns the parser's result, or undefined to regenerate. When no field changes
+ * (each already had its value), the stamped text loads to the original's very
+ * document, so `parsed`, the caller's result for the original, is its result too.
  */
-function stampIsExact(original: PricingDoc, stampedText: string, values: Array<[Field, string]>): boolean {
+function stampIsExact(
+  original: PricingDoc,
+  stampedText: string,
+  values: Array<[Field, string]>,
+  parsed?: ParsedPricing
+): ParsedPricing | undefined {
   let stamped: PricingDoc;
   try {
     stamped = loadPricingDoc(stampedText, STORED_PRICING_MAX_BYTES);
   } catch {
-    return false;
+    return undefined;
   }
   const stampedKeys = new Set<string>(values.map(([key]) => key));
   const rest = (doc: PricingDoc) => Object.keys(doc).filter((key) => !stampedKeys.has(key));
   const originalRest = rest(original);
   const stampedRest = rest(stamped);
-  if (originalRest.length !== stampedRest.length) return false;
+  if (originalRest.length !== stampedRest.length) return undefined;
   if (!originalRest.every((key) => Object.prototype.hasOwnProperty.call(stamped, key) && sameValue(original[key], stamped[key]))) {
-    return false;
+    return undefined;
   }
-  if (!values.every(([key, value]) => stamped[key] === value)) return false;
-  try {
-    retrievePricingFromText(stampedText);
-  } catch {
-    return false;
-  }
-  return true;
+  if (!values.every(([key, value]) => stamped[key] === value)) return undefined;
+  const unchanged = values.every(([key, value]) => Object.prototype.hasOwnProperty.call(original, key) && original[key] === value);
+  if (unchanged && parsed) return parsed;
+  return parses(stampedText);
 }
 
 /** The document in the latest syntax with the fields set, written again from scratch. */
-function regenerate(original: PricingDoc, values: Array<[Field, string]>): string {
+function regenerate(original: PricingDoc, values: Array<[Field, string]>): StampResult {
   const { doc } = upgradeToLatestSyntax(original);
   const missing: PricingDoc = {};
   for (const [key, value] of values) if (!(key in doc)) missing[key] = value;
@@ -128,11 +147,18 @@ function regenerate(original: PricingDoc, values: Array<[Field, string]>): strin
   for (const [key, value] of values) result[key] = value;
   const text = dumpPricingDoc(result);
   try {
-    retrievePricingFromText(text);
+    return { text, regenerated: true, pricing: retrievePricingFromText(text) };
   } catch (error) {
     throw new PricingYamlError(400, 'INVALID_PRICING', (error as Error)?.message ?? String(error));
   }
-  return text;
+}
+
+/** What the caller already has for the text, so stamping does not compute it again. */
+export interface StampInputs {
+  /** The document `loadPricingDoc` gives for the text. */
+  loaded?: PricingDoc;
+  /** The parser's result for the text. */
+  parsed?: ParsedPricing;
 }
 
 /**
@@ -142,14 +168,16 @@ function regenerate(original: PricingDoc, values: Array<[Field, string]>): strin
  * stamped lines do not load back to exactly the requested change (a multi-line
  * `saasName: >`, a flow mapping, a quoted key...), is regenerated instead:
  * pricing4ts rewrites any file it reads in an older syntax, so only a text in
- * the latest one can be published as written.
+ * the latest one can be published as written. The result carries the parser's
+ * result for its text, so the caller need not parse it again.
  */
-export function stampTopLevel(text: string, fields: TopLevelFields): StampResult {
-  const original = loadPricingDoc(text, STORED_PRICING_MAX_BYTES);
+export function stampTopLevel(text: string, fields: TopLevelFields, inputs: StampInputs = {}): StampResult {
+  const original = inputs.loaded ?? loadPricingDoc(text, STORED_PRICING_MAX_BYTES);
   const values = expectedValues(fields);
   if (original.syntaxVersion === LATEST_SYNTAX_VERSION) {
     const stamped = stampLines(text, values);
-    if (stampIsExact(original, stamped, values)) return { text: stamped, regenerated: false };
+    const pricing = stampIsExact(original, stamped, values, inputs.parsed);
+    if (pricing) return { text: stamped, regenerated: false, pricing };
   }
-  return { text: regenerate(original, values), regenerated: true };
+  return regenerate(original, values);
 }

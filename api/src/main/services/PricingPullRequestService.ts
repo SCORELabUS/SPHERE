@@ -38,7 +38,7 @@ import {
   PricingYamlError,
   STORED_PRICING_MAX_BYTES,
 } from '../utils/pricing-syntax';
-import { stampTopLevel } from '../utils/pricing-top-level';
+import { ParsedPricing, stampTopLevel } from '../utils/pricing-top-level';
 import { serverHmac } from '../utils/users/helpers';
 import PermissionService from './PermissionService';
 import PricingPullRequestNotifier, { RoundKind } from './PricingPullRequestNotifier';
@@ -151,11 +151,17 @@ export interface MergeResult extends PullRequestMergeDTO {
   etag?: string;
 }
 
-/** A pricing text in the latest syntax and its document. `regenerated` when it was in an older one. */
+/**
+ * A pricing text in the latest syntax and its document. `regenerated` when it was
+ * in an older one. `loaded` (the text as loaded, when it was kept as written) and
+ * `parsed` (the parser's result, when it was parsed) spare stamping the text both.
+ */
 interface LoadedText {
   text: string;
   doc: PricingDoc;
   regenerated: boolean;
+  loaded?: PricingDoc;
+  parsed?: ParsedPricing;
 }
 
 /** A stored version's file as read from disk (`raw`), and in the latest syntax. */
@@ -295,9 +301,10 @@ const baseNotLatest = (latest: StoredVersion) =>
   });
 
 /** The parser's verdict on a result, with the line of a YAML error. */
-function validate(text: string): { validation: PreviewValidation; version?: string } {
+function validate(text: string): { validation: PreviewValidation; version?: string; parsed?: ParsedPricing } {
   try {
-    return { validation: { ok: true }, version: String(retrievePricingFromText(text).version) };
+    const parsed = retrievePricingFromText(text);
+    return { validation: { ok: true }, version: String(parsed.version), parsed };
   } catch (error) {
     const line = (error as { mark?: { line?: number } })?.mark?.line;
     return {
@@ -1001,9 +1008,9 @@ class PricingPullRequestService {
   /** A result typed by hand: within the limits, in the latest syntax and accepted by the parser. */
   private loadManual(text: string): LoadedText {
     const manual = normalizeProposalText(text, limits().proposalBytes);
-    const { validation } = validate(manual.text);
+    const { validation, parsed } = validate(manual.text);
     if (!validation.ok) throw new PullRequestError(400, 'INVALID_PRICING', validation.error!, validation.line !== undefined ? { line: validation.line } : {});
-    return manual;
+    return { ...manual, parsed };
   }
 
   /**
@@ -1033,7 +1040,10 @@ class PricingPullRequestService {
       source = { text: dumpPricingDoc(doc), doc, regenerated: true };
     }
     const stamped = this.withName(source, pricing.name);
-    const { validation, version } = validate(stamped.text);
+    // Stamping already parsed the text it returns; only a refused one is parsed again, for its error.
+    const { validation, version } = stamped.pricing
+      ? { validation: { ok: true }, version: String(stamped.pricing.version) }
+      : validate(stamped.text);
 
     const warnings: PullRequestWarning[] = [];
     if ([inputs.base, inputs.current, inputs.proposal, manual].some(text => text?.regenerated)) warnings.push({ code: 'SYNTAX_UPGRADED' });
@@ -1057,9 +1067,9 @@ class PricingPullRequestService {
    * result the parser refuses is still shown (written again with the name), so
    * the caller sees why it cannot be submitted.
    */
-  private withName(source: LoadedText, name: string): { text: string; regenerated: boolean } {
+  private withName(source: LoadedText, name: string): { text: string; regenerated: boolean; pricing?: ParsedPricing } {
     try {
-      return stampTopLevel(source.text, { saasName: name });
+      return stampTopLevel(source.text, { saasName: name }, { loaded: source.loaded, parsed: source.parsed });
     } catch (error) {
       if (!(error instanceof PricingYamlError) || error.code !== 'INVALID_PRICING') throw error;
       return { text: dumpPricingDoc({ ...source.doc, saasName: name }), regenerated: true };
@@ -1224,7 +1234,8 @@ class PricingPullRequestService {
     } catch (error) {
       throw new PullRequestError(400, 'INVALID_PRICING', (error as Error)?.message ?? String(error));
     }
-    const stamped = stampTopLevel(normalized.text, { saasName: pricing.name });
+    // A proposal that already carries P's name is not parsed again.
+    const stamped = stampTopLevel(normalized.text, { saasName: pricing.name }, { loaded: normalized.loaded, parsed });
     const warnings: PullRequestWarning[] = [];
     if (normalized.regenerated) warnings.push({ code: 'SYNTAX_UPGRADED' });
     else if (stamped.regenerated) warnings.push({ code: 'FORMAT_REGENERATED' });

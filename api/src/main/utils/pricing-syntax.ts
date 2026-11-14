@@ -193,15 +193,17 @@ export function dumpPricingDoc(doc: PricingDoc): string {
 
 /**
  * A proposal as SPHERE stores it: in the latest syntax. A text already in it is
- * returned as is (comments and layout kept); any other is upgraded and
- * regenerated, with `regenerated: true`. `doc` is the normalized document.
+ * returned as is (comments and layout kept), with `loaded`, the document
+ * `loadPricingDoc` gave for it, so stamping the text does not load it again;
+ * any other is upgraded and regenerated, with `regenerated: true`. `doc` is the
+ * normalized document (a copy: `loaded` is never changed).
  */
 export function normalizeProposalText(
   text: string,
   maxBytes: number
-): { text: string; doc: PricingDoc; regenerated: boolean } {
+): { text: string; doc: PricingDoc; regenerated: boolean; loaded?: PricingDoc } {
   const loaded = loadPricingDoc(text, maxBytes);
   const { doc, upgraded } = upgradeToLatestSyntax(loaded);
-  if (!upgraded) return { text, doc, regenerated: false };
+  if (!upgraded) return { text, doc, regenerated: false, loaded };
   return { text: dumpPricingDoc(doc), doc, regenerated: true };
 }
