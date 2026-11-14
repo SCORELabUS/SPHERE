@@ -100,9 +100,11 @@ function sameValue(a: unknown, b: unknown): boolean {
  * The parser refused a stamped text: `text` is that text, the caller's stamped
  * line by line when `regenerated` is false. Parsing is what a pricing costs
  * most, so nothing parses the caller's own text again for this message:
- * stamping only changes the stamped fields, and the parser's only check on them
- * is that the name is valid, so the message is the one the caller's text would
- * give unless its own `saasName` was all that was wrong.
+ * when only `saasName` is stamped (proposals and results typed by hand), the
+ * parser's only check on it is that the name is valid, so the message is the
+ * one the caller's text would give unless its own `saasName` was all that was
+ * wrong. A merge also stamps `version` and `createdAt`, with values the server
+ * sets.
  */
 export class StampRefusedError extends PricingYamlError {
   constructor(
