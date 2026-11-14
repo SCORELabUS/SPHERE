@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 // Vitest unless a limit is set.
 vi.hoisted(() => {
   process.env.PRICING_PR_RATE_LIMIT_MAX_REQUESTS = '6';
+  // One window from 1970 to 2033, so the requests never straddle two of them.
+  process.env.PRICING_PR_RATE_LIMIT_WINDOW_SECONDS = '2000000000';
 });
 
 import { shutdownApp } from './utils/testApp';
@@ -65,17 +67,23 @@ describe('Rate limit of the pricing pull requests', { timeout: 30000 }, () => {
       expect((await send()).status, `request ${index}`).not.toBe(429);
       expect(counter, `request ${index}`).toHaveBeenCalledTimes(index + 1);
     }
+    // A minute later: with a window of a minute, a new one could have started between both rounds.
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 61_000);
     for (const [index, send] of limited.entries()) {
       const refused = await send();
       expect(refused.status, `request ${index}`).toBe(429);
       expect(refused.headers['ratelimit-limit']).toBe('6');
       expect(refused.body.error).toMatch(/^TOO MANY REQUESTS/);
     }
-    expect(counter.mock.calls.map(([key]) => key)).toEqual(
-      Array(limited.length * 2).fill(expect.stringMatching(new RegExp(`^ratelimit:pricing-pr:user:${user.id}:\\d+$`)))
-    );
+    clock.mockRestore();
+    const keys = counter.mock.calls.map(([key]) => key);
+    expect(keys).toEqual(Array(limited.length * 2).fill(`ratelimit:pricing-pr:user:${user.id}:0`));
     // Another user has a budget of their own.
     expect((await propose(other.token)).status).toBe(404);
     counter.mockRestore();
+    // The counters would otherwise outlive the test by years.
+    const cache = appContainer.resolve('cacheService');
+    for (const key of new Set([...keys, `ratelimit:pricing-pr:user:${other.id}:0`])) await cache.del(key);
   });
 });
