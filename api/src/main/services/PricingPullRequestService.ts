@@ -485,7 +485,7 @@ class PricingPullRequestService {
       if (mergePricingDocs(base, base, proposal.doc).outcome === 'no-changes') {
         throw new PullRequestError(400, 'NO_CHANGES', 'The proposal does not change the latest public version');
       }
-      update.proposed ={ yaml: proposal.text, suggestedVersion: proposal.suggestedVersion };
+      update.proposed = { yaml: proposal.text, suggestedVersion: proposal.suggestedVersion };
       // The proposal is no longer what the fork had.
       if (pullRequest.origin) update.originEdited = true;
       warnings = proposal.warnings;
