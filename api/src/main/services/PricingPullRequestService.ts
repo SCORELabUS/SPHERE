@@ -36,6 +36,8 @@ import {
   normalizeProposalText,
   PricingDoc,
   PricingYamlError,
+  PROPOSAL_DEFAULT_MAX_BYTES,
+  PROPOSAL_MAX_BYTES_CEILING,
   STORED_PRICING_MAX_BYTES,
 } from '../utils/pricing-syntax';
 import { ParsedPricing, stampTopLevel } from '../utils/pricing-top-level';
@@ -48,8 +50,6 @@ const PAGE_SIZE = 20;
 /** States computed for the listings, by pull request, proposal, base and target. */
 const STATE_CACHE_ENTRIES = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A JSON body takes at most 2 MB and escaping can almost double a text, so a proposal stays within 1 MiB. */
-const MAX_PROPOSAL_BYTES = 1024 * 1024;
 
 const limitFromEnv = (name: string, fallback: number) => {
   const raw = process.env[name];
@@ -62,7 +62,7 @@ const limits = () => ({
   openPerAuthor: limitFromEnv('PRICING_PR_MAX_OPEN_PER_AUTHOR', 5),
   openPerPricing: limitFromEnv('PRICING_PR_MAX_OPEN_PER_PRICING', 50),
   createdPerDay: limitFromEnv('PRICING_PR_MAX_CREATED_PER_DAY', 20),
-  proposalBytes: Math.min(limitFromEnv('PRICING_PR_MAX_YAML_BYTES', MAX_PROPOSAL_BYTES), MAX_PROPOSAL_BYTES),
+  proposalBytes: Math.min(limitFromEnv('PRICING_PR_MAX_YAML_BYTES', PROPOSAL_DEFAULT_MAX_BYTES), PROPOSAL_MAX_BYTES_CEILING),
 });
 
 /** The pricing a pull request targets (P), with its latest versions. */

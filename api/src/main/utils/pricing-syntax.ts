@@ -41,6 +41,17 @@ export class PricingYamlError extends Error {
 
 /** Pricing files SPHERE reads from disk (bases and latest versions). */
 export const STORED_PRICING_MAX_BYTES = 5 * 1024 * 1024;
+/**
+ * What `PRICING_PR_MAX_YAML_BYTES` may raise a user's text to: a JSON body takes
+ * at most 2 MB and escaping can almost double a text.
+ */
+export const PROPOSAL_MAX_BYTES_CEILING = 1024 * 1024;
+/**
+ * The default limit of a user's text: over ten times the largest pricing SPHERE
+ * ships (36 KB), while the parser, which grows faster than the text, takes about
+ * 1.5 s of the event loop on a pricing this large (7.6 s on 1 MiB).
+ */
+export const PROPOSAL_DEFAULT_MAX_BYTES = 384 * 1024;
 /** Nodes visited while measuring a document, shared ones once per visit. */
 export const PRICING_YAML_MAX_VISITS = 200_000;
 export const PRICING_YAML_MAX_DEPTH = 64;

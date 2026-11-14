@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import yaml from 'js-yaml';
 import { retrievePricingFromText } from 'pricing4ts/server';
@@ -6,6 +8,8 @@ import {
   normalizeProposalText,
   PRICING_YAML_MAX_DEPTH,
   PricingYamlError,
+  PROPOSAL_DEFAULT_MAX_BYTES,
+  PROPOSAL_MAX_BYTES_CEILING,
   upgradeToLatestSyntax,
 } from '../../main/utils/pricing-syntax';
 
@@ -92,6 +96,27 @@ describe('loadPricingDoc', () => {
     expect(error.status).toBe(413);
     expect(error.code).toBe('PRICING_TOO_LARGE');
     expect(loadPricingDoc(text, 2000)).toEqual({ saasName: 'ñ'.repeat(600) });
+  });
+
+  it('takes by default ten times the largest pricing SPHERE ships, and at most 1 MiB', () => {
+    // The dataset the seeders publish and the templates; `uploaded` holds what users sent.
+    const root = path.resolve(process.cwd(), 'public', 'static', 'pricings');
+    const sizes: number[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (file !== path.join(root, 'uploaded')) walk(file);
+        } else if (/\.ya?ml$/.test(entry.name)) {
+          sizes.push(fs.statSync(file).size);
+        }
+      }
+    };
+    walk(root);
+    expect(sizes.length).toBeGreaterThan(100);
+    expect(Math.max(...sizes) * 10).toBeLessThanOrEqual(PROPOSAL_DEFAULT_MAX_BYTES);
+    expect(PROPOSAL_DEFAULT_MAX_BYTES).toBe(384 * 1024);
+    expect(PROPOSAL_MAX_BYTES_CEILING).toBe(MIB);
   });
 
   it('refuses a 1 MiB proposal one byte over', () => {

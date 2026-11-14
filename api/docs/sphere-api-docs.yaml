@@ -4959,8 +4959,8 @@ paths:
         parsed: 5 open pull requests per author and pricing, 50 per pricing, 20 created per
         author a day; `PRICING_PR_MAX_OPEN_PER_AUTHOR`, `PRICING_PR_MAX_OPEN_PER_PRICING`,
         `PRICING_PR_MAX_CREATED_PER_DAY`), 409 `NO_PUBLIC_VERSION`, 409 `BASE_NOT_LATEST` (with
-        `latest`, the latest public version), 413 `PRICING_TOO_LARGE` (1 MiB,
-        `PRICING_PR_MAX_YAML_BYTES`; a body over 2 MB gets Express's own 413), 422
+        `latest`, the latest public version), 413 `PRICING_TOO_LARGE` (384 KiB by default,
+        `PRICING_PR_MAX_YAML_BYTES`, at most 1 MiB; a body over 2 MB gets Express's own 413), 422
         `PRICING_TOO_COMPLEX` or `INVALID_PRICING` (forbidden keys), 400 `INVALID_PRICING` (with
         the parser's message and, for YAML errors, its `line`) and 400 `NO_CHANGES`.
 

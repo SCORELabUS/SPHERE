@@ -2205,6 +2205,20 @@ describe('Pricing pull requests', () => {
       expect(stored.map(pullRequest => pullRequest.proposalRevision)).toEqual([1, 1]);
     });
 
+    it('Takes proposals of up to 384 KiB by default (CA-79).', async () => {
+      const scene = await behindScene2();
+      const valid = pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7)));
+      // The valid proposal and a comment, `bytes` in all.
+      const padded = (bytes: number) => `${valid}#${'x'.repeat(bytes - Buffer.byteLength(valid) - 2)}\n`;
+      const send = (text: string) => previews(scene.author.token, { source: textSource(scene.pricingId, scene.v2.id, text) });
+
+      const fits = await send(padded(384 * 1024));
+      expect(fits.status, JSON.stringify(fits.body).slice(0, 300)).toBe(200);
+      const over = await send(padded(384 * 1024 + 1));
+      expect(over.status).toBe(413);
+      expect(over.body.code).toBe('PRICING_TOO_LARGE');
+    });
+
     it('Writes no file for previews, pull requests, edits or updates (CA-79b).', async () => {
       const scene = await behindScene2();
       const folders = [scene.name, scene.organizationId, scene.fork.name, scene.fork.fork.name, scene.fork.organizationId, scene.fork.forkOrganizationId];
