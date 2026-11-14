@@ -76,12 +76,13 @@ export default function ProposeChangesButton({ source, yaml }: { source: EditorS
         type="button"
         disabled={Boolean(reason)}
         aria-label={label}
-        title={reason ?? undefined}
+        title={reason ?? label}
         onClick={() => setIsOpen(true)}
         className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white disabled:cursor-default disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-transparent"
       >
         <FiGitPullRequest aria-hidden="true" className="h-4 w-4" />
-        <span className="hidden sm:inline">{label}</span>
+        {/* Only an icon below 2xl, where the editor's header has no room for the words (named by aria-label and title). */}
+        <span className="hidden 2xl:inline">{label}</span>
       </button>
       {reason && (
         <button
