@@ -1828,6 +1828,12 @@ describe('Pricing pull requests', () => {
   });
 
   describe('Proposing again from the same fork', { timeout: 30000 }, () => {
+    // CA-96 drops and restores the index of one open pull request per fork: it must exist
+    // first, also when this block runs alone, before Mongoose's own index build finishes.
+    beforeAll(async () => {
+      await up(mongoose.connection);
+    });
+
     it('Replaces the proposal of its author\'s open pull request (CA-76).', async () => {
       const scene = await forkScene();
       const first = await proposeFromScene(scene);
