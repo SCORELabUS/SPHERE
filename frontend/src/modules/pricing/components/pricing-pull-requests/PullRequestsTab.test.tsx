@@ -262,6 +262,19 @@ describe('Pull requests tab', () => {
     expect(marks.map(textOf)).toEqual(['−', '+']);
   });
 
+  it('does not show the quotes SPHERE writes around the same name as a change in the file view', async () => {
+    mocks.getPullRequest.mockResolvedValue(detail({
+      base: { versionId: 'v2', version: '2.0', yaml: 'saasName: Demo\nplans:\n  PRO:\n    price: 10\n' },
+      proposed: { suggestedVersion: '2.1', yaml: 'saasName: "Demo"\nplans:\n  PRO:\n    price: 12\n' },
+    }));
+    await render(PR_ID);
+    await act(async () => button('File').props.onClick());
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props.after).toBe('saasName: Demo\nplans:\n  PRO:\n    price: 12\n');
+    const marks = file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)));
+    expect(marks.map(textOf)).toEqual(['~', '~']);
+  });
+
   it('shows the suggested version and the fork it came from', async () => {
     mocks.getPullRequest.mockResolvedValue(detail({
       origin: {

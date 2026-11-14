@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  alignSaasNameLine,
   canProposeFromEditor,
   describePullRequestState,
   proposalFieldsError,
@@ -101,6 +102,19 @@ test('a title is required, one line of at most 200 characters, and a description
   assert.match(proposalFieldsError('Bell' + String.fromCharCode(7), '') ?? '', /control characters/);
   assert.equal(proposalFieldsError('Raise PRO', 'x'.repeat(10_000)), null);
   assert.match(proposalFieldsError('Raise PRO', 'x'.repeat(10_001)) ?? '', /description is longer than 10,000/);
+});
+
+test('a file comparison does not show the quotes SPHERE writes around the same name as a change', () => {
+  const before = "syntaxVersion: '3.1'\nsaasName: Pumble\nplans:\n  PRO:\n    price: 1.99\n";
+  const after = 'syntaxVersion: "3.1"\nsaasName: "Pumble"\nplans:\n  PRO:\n    price: 2.49\n';
+  assert.equal(alignSaasNameLine(before, after), 'syntaxVersion: "3.1"\nsaasName: Pumble\nplans:\n  PRO:\n    price: 2.49\n');
+  // CRLF files keep their own line ends.
+  assert.equal(alignSaasNameLine('saasName: Pumble\r\nx: 1\r\n', "saasName: 'Pumble'\r\nx: 2\r\n"), 'saasName: Pumble\r\nx: 2\r\n');
+  // Another name, a nested key, no name or a name that is not one line is left as it is.
+  assert.equal(alignSaasNameLine('saasName: Pumble\n', 'saasName: "Slack"\n'), 'saasName: "Slack"\n');
+  assert.equal(alignSaasNameLine('saasName: Pumble\n', 'plans:\n  saasName: "Pumble"\n'), 'plans:\n  saasName: "Pumble"\n');
+  assert.equal(alignSaasNameLine('version: 1\n', 'saasName: "Pumble"\n'), 'saasName: "Pumble"\n');
+  assert.equal(alignSaasNameLine('saasName: [\n', 'saasName: "["\n'), 'saasName: "["\n');
 });
 
 test('each notice about a proposal has its own words', () => {

@@ -1,3 +1,4 @@
+import jsYaml from 'js-yaml';
 import type {
   ForkProposalBlock,
   ProposalBlock,
@@ -175,4 +176,29 @@ const isMessageCode = (code: string): code is MessageCode => Object.prototype.ha
 export function pullRequestMessage(code: string | null | undefined, details: PullRequestMessageDetails = {}): string {
   if (code && isMessageCode(code)) return MESSAGES[code](details);
   return details.message || FALLBACK_MESSAGE;
+}
+
+const SAAS_NAME_LINE = /^saasName:[^\r\n]*/m;
+
+/** The name a top-level `saasName:` line gives, or null when it gives none in one line. */
+function saasNameOf(line: string): string | null {
+  try {
+    const name = (jsYaml.load(line) as { saasName?: unknown } | null)?.saasName;
+    return typeof name === 'string' && name !== '' ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `after` with its top-level `saasName` line written as `before` writes it, when both give the
+ * same name. SPHERE stamps the pricing's name on what it stores (quoted), so a file comparison
+ * would otherwise show the quotes as a change.
+ */
+export function alignSaasNameLine(before: string, after: string): string {
+  const original = SAAS_NAME_LINE.exec(before)?.[0];
+  const stamped = SAAS_NAME_LINE.exec(after)?.[0];
+  if (!original || !stamped || original === stamped) return after;
+  const name = saasNameOf(original);
+  return name !== null && name === saasNameOf(stamped) ? after.replace(SAAS_NAME_LINE, () => original) : after;
 }

@@ -498,6 +498,15 @@ describe('Merge resolver', () => {
     expect(new Set(marks.map(textOf))).toEqual(new Set(['+', '~']));
   });
 
+  it('does not show the quotes SPHERE writes around the same name as a change in Compare', async () => {
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ resultYaml: LATEST_YAML.replace('saasName: Demo', "saasName: 'Demo'") }));
+    await renderMerge();
+    await showView('Compare');
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props.after).toBe(LATEST_YAML);
+    expect(file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)))).toHaveLength(0);
+  });
+
   it('marks conflicts where the visual layout draws them, each once, and shares the choices (CA-32, CA-33, CA-83)', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
     await renderMerge();

@@ -5,7 +5,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { FiArrowLeft, FiGitMerge } from 'react-icons/fi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
-import { pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
+import { alignSaasNameLine, pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
 import { diffPricings, type ChangeKind } from '../../utils/pricing-diff';
 import { DiffResult, ViewToggle, type ViewMode } from '../pricing-version-diff';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
@@ -70,7 +70,7 @@ function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
       ) : (
         <FileDiffView
           before={comparedBase(pullRequest)}
-          after={pullRequest.proposed.yaml}
+          after={alignSaasNameLine(comparedBase(pullRequest), pullRequest.proposed.yaml)}
           beforeLabel={`Version ${pullRequest.base.version}`}
           afterLabel="Proposal"
           markers

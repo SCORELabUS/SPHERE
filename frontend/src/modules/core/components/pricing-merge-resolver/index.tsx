@@ -4,7 +4,7 @@ import { FiAlertTriangle, FiCode, FiColumns, FiGrid, FiInfo, FiList, FiRefreshCw
 import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
 import type { PullRequestVersionRef, PullRequestWarning } from '../../../pricing/types/pull-requests';
 import type { MergeResolver } from '../../hooks/useMergeResolver';
-import { pullRequestWarningMessage } from '../../utils/pull-request-state';
+import { alignSaasNameLine, pullRequestWarningMessage } from '../../utils/pull-request-state';
 import ConflictList from './conflict-list';
 import YamlResultEditor from './yaml-result-editor';
 import VisualConflicts from './visual-conflicts';
@@ -108,7 +108,7 @@ function CompareView({
   return (
     <FileDiffView
       before={latest.yaml}
-      after={resolver.resultYaml}
+      after={alignSaasNameLine(latest.yaml, resolver.resultYaml)}
       beforeLabel={`Version ${target.version}`}
       afterLabel="Result"
       markers
