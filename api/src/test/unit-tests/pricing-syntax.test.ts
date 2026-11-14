@@ -171,6 +171,21 @@ describe('loadPricingDoc', () => {
     expect(caught(() => loadPricingDoc(uses(21), MIB)).code).toBe('PRICING_TOO_COMPLEX');
   });
 
+  it('counts a long key every time an alias uses its mapping, before anything copies it', () => {
+    // A 100 KB key used 3000 times: 3001 visits, well within the visit budget, but 300 MB once dumped.
+    const uses = (count: number) => `a: &a {"${'k'.repeat(100_000)}": 1}\nb: [${Array(count).fill('*a').join(', ')}]\n`;
+    const clone = vi.spyOn(globalThis, 'structuredClone');
+    const started = Date.now();
+    const error = caught(() => normalizeProposalText(uses(3000), MIB));
+    expect(error.status).toBe(422);
+    expect(error.code).toBe('PRICING_TOO_COMPLEX');
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(clone).not.toHaveBeenCalled();
+    // Up to twice the byte limit in characters.
+    expect(loadPricingDoc(uses(19), MIB).b).toHaveLength(19);
+    expect(caught(() => loadPricingDoc(uses(21), MIB)).code).toBe('PRICING_TOO_COMPLEX');
+  });
+
   it('lets a text without aliases reach its byte limit', () => {
     const text = `saasName: "${'x'.repeat(MIB - 20)}"\n`;
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MIB);
