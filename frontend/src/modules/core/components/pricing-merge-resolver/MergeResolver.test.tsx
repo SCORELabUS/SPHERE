@@ -367,15 +367,18 @@ describe('Merge resolver', () => {
     await settle();
     expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
     expect(mergeButton().props.disabled).toBe(true);
-    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 3 seconds.');
     const alert = () => view.root.findByProps({ role: 'alert' });
-    expect(textOf(alert())).toContain('asked again in 3 seconds');
+    expect(textOf(alert())).toContain('Too many requests in a short time. The preview is asked again in 3 seconds.');
     expect(button('Try again now', alert()).props.className).toContain('cursor-pointer');
+    // Said once, in the alert: the reason next to the disabled button only points at it.
+    expect(blockReason()).toBe('Waiting to ask for the preview again.');
+    expect(text().split('Too many requests').length - 1).toBe(1);
 
     await settle(1000);
-    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 2 seconds.');
+    expect(textOf(alert())).toContain('asked again in 2 seconds.');
     await settle(1000);
-    expect(blockReason()).toBe('Too many requests in a short time. The preview is asked again in 1 second.');
+    expect(textOf(alert())).toContain('asked again in 1 second.');
+    expect(text().split('Too many requests').length - 1).toBe(1);
     expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(2);
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ previewToken: 'token-2' }));
     await settle(1000);
@@ -392,9 +395,10 @@ describe('Merge resolver', () => {
     await choose(PRICE, 'Use proposal');
     await choose(SSO, 'Use proposal');
     await settle();
-    expect(blockReason()).toBe(
+    expect(textOf(view.root.findByProps({ role: 'alert' }))).toContain(
       `Too many requests in a short time. The preview is asked again in ${DEFAULT_RETRY_SECONDS} seconds.`
     );
+    expect(blockReason()).toBe('Waiting to ask for the preview again.');
     await act(async () => button('Try again now', view.root.findByProps({ role: 'alert' })).props.onClick());
     await settle(0);
     expect(mocks.previewPullRequestMerge).toHaveBeenCalledTimes(3);

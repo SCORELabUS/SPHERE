@@ -212,9 +212,11 @@ export function useMergeResolver(
     [state.manualYaml]
   );
 
+  // The resolver shows the error itself, with its countdown and button: the reason only points at it.
+  const errorReason = retryIn !== null ? 'Waiting to ask for the preview again.' : 'The preview could not be computed.';
   let blockReason: string | null = null;
-  if (!preview) blockReason = error ?? 'Computing the merge…';
-  else if (error) blockReason = error;
+  if (error) blockReason = errorReason;
+  else if (!preview) blockReason = 'Computing the merge…';
   else if (isLoading) blockReason = 'Updating the preview…';
   else if (state.manualYaml !== null) {
     if (manualError) blockReason = `The YAML has an error on line ${manualError.line}: ${manualError.message}`;
