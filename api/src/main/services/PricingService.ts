@@ -325,7 +325,7 @@ class PricingService {
    * not the fork's), and when the fork is gone or the caller may not read it.
    */
   private async _mergeSource(
-    pullRequest: PricingPullRequest | null,
+    pullRequest: Pick<PricingPullRequest, 'pricingId' | 'origin'> | null,
     pricingId: string,
     forkLanes: Map<string, Promise<PricingGraphLane | null>>,
     reqUser?: LeanUser

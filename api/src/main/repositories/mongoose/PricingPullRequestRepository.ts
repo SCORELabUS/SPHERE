@@ -15,6 +15,12 @@ import {
   PullRequestStatus,
 } from '../../types/models/PricingPullRequest';
 
+/** A pull request without its texts: the copy of its base and its proposal. */
+export type PricingPullRequestWithoutTexts = Omit<PricingPullRequest, 'base' | 'proposed'> & {
+  base: Omit<PricingPullRequest['base'], 'yaml'>;
+  proposed: Omit<PricingPullRequest['proposed'], 'yaml'>;
+};
+
 /** How long a merge keeps its reservation of the pull request. */
 export const MERGE_LOCK_MS = 10 * 60 * 1000;
 
@@ -141,12 +147,20 @@ class PricingPullRequestRepository extends RepositoryBase {
     return doc ? toPricingPullRequest(doc) : null;
   }
 
-  /** The pull requests with these ids that exist, in one query. */
-  async findByIds(ids: string[]): Promise<PricingPullRequest[]> {
+  /**
+   * The pull requests with these ids that exist, in one query, without their texts
+   * (up to a few MiB each), which the callers do not read.
+   */
+  async findByIds(ids: string[]): Promise<PricingPullRequestWithoutTexts[]> {
     const valid = [...new Set(ids)].filter(id => this.isValidObjectId(id));
     if (valid.length === 0) return [];
-    const docs = await PricingPullRequestMongoose.find({ _id: { $in: valid.map(objectId) } }).lean();
-    return docs.map(toPricingPullRequest);
+    const docs = await PricingPullRequestMongoose.find({ _id: { $in: valid.map(objectId) } })
+      .select('-base.yaml -proposed.yaml')
+      .lean();
+    return docs.map(doc => {
+      const { base: { yaml: _base, ...base }, proposed: { yaml: _proposed, ...proposed }, ...rest } = toPricingPullRequest(doc);
+      return { ...rest, base, proposed };
+    });
   }
 
   /** A page of the pricing's pull requests, the most recently updated first. */

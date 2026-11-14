@@ -226,6 +226,30 @@ describe('Pricing pull requests', () => {
       await up(mongoose.connection);
     });
 
+    it('Finds pull requests by id in one query, without their texts.', async () => {
+      const pricingId = trackedPricingId();
+      const created = await Promise.all([
+        repository.create(pullRequest(pricingId)),
+        repository.create(pullRequest(pricingId, { origin: fromFork(trackedPricingId()) })),
+      ]);
+      const find = vi.spyOn(PricingPullRequestMongoose, 'find');
+
+      const found = await repository.findByIds([...created.map(pr => pr.id), created[0].id, 'not-an-id', newId()]);
+
+      expect(find).toHaveBeenCalledTimes(1);
+      // The texts are not even read from the database.
+      expect(find.mock.results[0].value.projection()).toEqual({ 'base.yaml': 0, 'proposed.yaml': 0 });
+      find.mockRestore();
+      expect(found.map(pr => pr.id).sort()).toEqual(created.map(pr => pr.id).sort());
+      for (const pr of found) {
+        const own = created.find(candidate => candidate.id === pr.id)!;
+        expect(pr.base).toEqual({ versionId: own.base.versionId, version: own.base.version });
+        expect(pr.proposed).toEqual({ suggestedVersion: own.proposed.suggestedVersion });
+        expect(pr).toMatchObject({ pricingId, number: own.number, status: 'open' });
+        expect(pr.origin).toEqual(own.origin);
+      }
+    });
+
     it('Numbers the pull requests of each pricing from 1, also when they are created at once.', async () => {
       const pricingId = trackedPricingId();
       const otherPricingId = trackedPricingId();
