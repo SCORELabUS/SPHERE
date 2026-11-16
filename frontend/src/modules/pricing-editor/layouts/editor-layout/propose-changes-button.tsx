@@ -14,11 +14,15 @@ import ProposeChangesModal from './propose-changes-modal';
  * latest public one; otherwise disabled, with the reason and a link that opens
  * the latest public version in another tab, so the text here is kept. An editor
  * opened on an open pull request offers "Update pull request" instead.
+ *
+ * `readYaml` gives the text the user sees, the visual editor's unsaved draft
+ * included; it is read when the dialog opens and kept while it is open.
  */
-export default function ProposeChangesButton({ source, yaml }: { source: EditorSourcePricing; yaml: string }) {
+export default function ProposeChangesButton({ source, readYaml }: { source: EditorSourcePricing; readYaml: () => string }) {
   const { listPullRequests } = usePricingPullRequestsApi();
   const [proposals, setProposals] = useState<PullRequestList['proposals'] | 'failed' | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  // The text proposed, taken when the dialog opens; null while it is closed.
+  const [yaml, setYaml] = useState<string | null>(null);
   const [showReason, setShowReason] = useState(false);
   const reasonRef = useRef<HTMLDivElement>(null);
   const { pricingId, pullRequestId } = source;
@@ -77,7 +81,7 @@ export default function ProposeChangesButton({ source, yaml }: { source: EditorS
         disabled={Boolean(reason)}
         aria-label={label}
         title={reason ?? label}
-        onClick={() => setIsOpen(true)}
+        onClick={() => setYaml(readYaml())}
         className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white disabled:cursor-default disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-transparent"
       >
         <FiGitPullRequest aria-hidden="true" className="h-4 w-4" />
@@ -115,11 +119,11 @@ export default function ProposeChangesButton({ source, yaml }: { source: EditorS
         </div>
       )}
       <AnimatePresence>
-        {isOpen && !reason && versionId && (
+        {yaml !== null && !reason && versionId && (
           <ProposeChangesModal
             source={{ ...source, pricingId, versionId }}
             yaml={yaml}
-            onClose={() => setIsOpen(false)}
+            onClose={() => setYaml(null)}
           />
         )}
       </AnimatePresence>

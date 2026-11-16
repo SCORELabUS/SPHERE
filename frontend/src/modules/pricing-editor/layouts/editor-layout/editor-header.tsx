@@ -6,7 +6,7 @@ import { downloadYaml } from '../../services/export.service';
 import { getClearEditorValue } from '../../services/clear.service';
 import { dropdownVariants, transitionFast } from '../../../core/utils/motion-variants';
 import { useRouter } from '../../../core/hooks/useRouter';
-import { ensureSyntaxVersion31 } from '../../services/pricing2yaml';
+import { ensureSyntaxVersion31, serializeDraftToYaml } from '../../services/pricing2yaml';
 import type { EditorMode } from '../../contexts/editorValueContext';
 import ConfirmModal from '../../../core/components/confirm-modal';
 import { useAuth } from '../../../auth/hooks/useAuth';
@@ -22,7 +22,7 @@ interface Props {
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
   const { authUser } = useAuth();
-  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft, sourcePricing } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, saveDraft, sourcePricing } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -62,6 +62,11 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
       // Error downloading yaml
     }
   };
+
+  // What "Propose changes" proposes is what the user sees: the visual editor's draft not yet
+  // saved to the YAML (as Save would write it), or else the editor's text. Nothing is saved.
+  const readProposalYaml = () =>
+    isDirty && pendingVisualDraft ? serializeDraftToYaml(pendingVisualDraft) : editorValue;
 
   const handleModeToggle = (mode: EditorMode) => {
     if (mode === editorMode) return;
@@ -274,7 +279,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
 
         {authUser.isAuthenticated && !authUser.isLoading && sourcePricing ? (
           <div data-header-part="propose" className="col-span-2 col-start-3 row-start-2 flex justify-self-end">
-            <ProposeChangesButton source={sourcePricing} yaml={editorValue} />
+            <ProposeChangesButton source={sourcePricing} readYaml={readProposalYaml} />
           </div>
         ) : null}
 

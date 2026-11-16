@@ -110,7 +110,7 @@ describe('Propose changes in the editor', () => {
 
   async function render(from: EditorSourcePricing, yaml = EDITED_YAML) {
     await act(async () => {
-      view = create(<ProposeChangesButton source={from} yaml={yaml} />);
+      view = create(<ProposeChangesButton source={from} readYaml={() => yaml} />);
     });
   }
 
