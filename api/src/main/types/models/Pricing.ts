@@ -22,6 +22,8 @@ export interface LeanPricing {
 
   forkedFrom?: ForkedFrom;
 
+  mergedFrom?: MergedFrom;
+
   // Virtual (when populate is used)
   collection?: PricingCollection | string | null;
   organization?: PricingOrganization | null;
@@ -38,6 +40,12 @@ export interface ForkedFrom {
   slug: string;
   name: string;
   version: string;
+}
+
+/** The pull request whose merge published a version, set only by the server. */
+export interface MergedFrom {
+  number: number;
+  prId: Types.ObjectId | string;
 }
 
 export interface PricingAnalytics {
@@ -101,6 +109,20 @@ export interface PricingGraphVersion {
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */
   forkedFrom: { pricingId: string; version: string } | null;
+  /**
+   * Only on a version a pull request merge published: its number and id, and the
+   * fork it was proposed from when the caller may read that fork and the author
+   * did not edit the proposal by hand (null otherwise). Never a lane.
+   */
+  mergedFrom?: { number: number; prId: string; from: PricingGraphMergeSource | null };
+}
+
+/** The fork a merged pull request was proposed from. */
+export interface PricingGraphMergeSource {
+  pricingId: string;
+  name: string;
+  slug: string;
+  organization: { id: string; name: string; displayName: string };
 }
 
 /** One pricing of a version graph, drawn as a lane. */

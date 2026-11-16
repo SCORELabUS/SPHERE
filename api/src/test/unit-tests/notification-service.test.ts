@@ -20,6 +20,10 @@ vi.mock('../../main/config/container', () => ({
 vi.mock('../../main/services/SseManager', () => ({ default: mocks.sse }));
 
 import NotificationService from '../../main/services/NotificationService';
+import NotificationMongoose from '../../main/repositories/mongoose/models/NotificationMongoose';
+import UserMongoose from '../../main/repositories/mongoose/models/UserMongoose';
+
+const EARLIER_KINDS = ['OrganizationInvitation', 'System', 'CollectionShared', 'PricingUpdated'];
 
 const buildUser = (prefs?: unknown) => ({
   id: 'user-1',
@@ -145,5 +149,46 @@ describe('NotificationService.createNotification', () => {
 
     expect(mocks.notificationRepository.create).not.toHaveBeenCalled();
     expect(mocks.emailService.sendNotificationEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('Notification kinds', () => {
+  const notificationOf = (kind: string) =>
+    new NotificationMongoose({ _userId: '507f1f77bcf86cd799439011', kind, title: 'Title', message: 'Message' });
+
+  it('stores pull request notifications next to the earlier kinds, and nothing else', () => {
+    for (const kind of [...EARLIER_KINDS, 'PricingPullRequest']) {
+      expect(notificationOf(kind).validateSync()).toBeUndefined();
+    }
+    expect(notificationOf('PullRequest').validateSync()?.errors.kind).toBeDefined();
+  });
+
+  it('turns pull request notifications on by default and leaves the earlier defaults alone', () => {
+    const prefs = new UserMongoose({ username: 'someone' }).toJSON({ flattenMaps: true }).settings?.notificationPrefs;
+
+    expect(JSON.parse(JSON.stringify(prefs))).toEqual({
+      OrganizationInvitation: { email: true, inbox: true },
+      System: { email: true, inbox: true },
+      CollectionShared: { email: true, inbox: true },
+      PricingUpdated: { email: true, inbox: true },
+      PricingPullRequest: { email: true, inbox: true },
+    });
+  });
+
+  it('delivers a pull request notification on both channels to someone who never saved a preference for it', async () => {
+    vi.clearAllMocks();
+    mocks.notificationRepository.create.mockResolvedValue({ id: 'n-1', read: false });
+    mocks.emailService.sendNotificationEmail.mockResolvedValue(undefined);
+    const saved = Object.fromEntries(EARLIER_KINDS.map(kind => [kind, { email: false, inbox: false }]));
+    mocks.userRepository.findById.mockResolvedValue(buildUser(saved));
+
+    const notification = await new NotificationService().createNotification({
+      ...payload,
+      kind: 'PricingPullRequest',
+    });
+
+    expect(notification).not.toBeNull();
+    expect(mocks.notificationRepository.create).toHaveBeenCalledWith(expect.objectContaining({ kind: 'PricingPullRequest' }));
+    expect(mocks.emailService.sendNotificationEmail).toHaveBeenCalledTimes(1);
   });
 });

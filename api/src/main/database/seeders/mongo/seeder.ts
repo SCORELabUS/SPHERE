@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { up as initializeOAuth } from '../../../migrations/mongo/20261024120000-create-oauth-collections';
 import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092005000-pricing-identities';
 import { up as initializeServiceTrees } from '../../../migrations/mongo/20261104120000-create-service-trees';
+import { up as initializePricingPullRequests } from '../../../migrations/mongo/20261111120000-create-pricing-pull-requests';
 import { up as stampPricingAddedAt } from '../../../migrations/mongo/20261106120000-pricing-added-at';
 import { Seeder } from 'mongo-seeding';
 import path from 'path';
@@ -33,6 +34,8 @@ export const seedDatabase = async () => {
     await initializeOAuth(mongoose.connection);
     // Service trees (beta) are not seeded either: only their empty indexed collection.
     await initializeServiceTrees(mongoose.connection);
+    // Nor pricing pull requests: only their empty indexed collection.
+    await initializePricingPullRequests(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     await stampPricingAddedAt(mongoose.connection);
     console.log('==== Mongo seeding successfull ====');

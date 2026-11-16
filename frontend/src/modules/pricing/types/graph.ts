@@ -11,6 +11,19 @@ export interface PricingGraphVersion {
   private: boolean;
   /** The version it was forked from, by pricing and label: an edge of the graph. */
   forkedFrom: { pricingId: string; version: string } | null;
+  /**
+   * The pull request whose merge published it; `from` names the fork it was
+   * proposed from, only for who may read that fork (null otherwise). Never a lane.
+   */
+  mergedFrom?: { number: number; prId: string; from: PricingGraphMergeSource | null };
+}
+
+/** The fork a merged pull request was proposed from. */
+export interface PricingGraphMergeSource {
+  pricingId: string;
+  name: string;
+  slug: string;
+  organization: { id: string; name: string; displayName: string };
 }
 
 /** One pricing of a version graph, drawn as a lane. */

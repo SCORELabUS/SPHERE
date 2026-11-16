@@ -256,3 +256,15 @@ export function baseVersionOf(graph: PricingGraph, pricingId: string, label: str
   const before = ordered[ordered.indexOf(version) - 1];
   return before?.yaml ? { lane, version: before } : null;
 }
+
+/**
+ * How a version published by merging a pull request is named in the graph:
+ * "Merged from #N", and the fork it came from as "<organization>/<fork>" when the
+ * graph names it (only for who may read that fork). Null for any other version.
+ */
+export function mergedFromLabel(version: Pick<PricingGraphVersion, 'mergedFrom'>): string | null {
+  const merged = version.mergedFrom;
+  if (!merged) return null;
+  const from = merged.from ? ` from ${merged.from.organization.name}/${merged.from.slug}` : '';
+  return `Merged from #${merged.number}${from}`;
+}

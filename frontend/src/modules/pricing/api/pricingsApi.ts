@@ -15,7 +15,7 @@ export function isPricingChangedError(error: unknown): boolean {
   return (error as { status?: number } | null)?.status === 412;
 }
 
-function ifMatchHeader(etag?: string | null): Record<string, string> {
+export function ifMatchHeader(etag?: string | null): Record<string, string> {
   return etag ? { 'If-Match': etag } : {};
 }
 

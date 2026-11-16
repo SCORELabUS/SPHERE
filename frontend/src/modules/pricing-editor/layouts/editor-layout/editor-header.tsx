@@ -6,12 +6,13 @@ import { downloadYaml } from '../../services/export.service';
 import { getClearEditorValue } from '../../services/clear.service';
 import { dropdownVariants, transitionFast } from '../../../core/utils/motion-variants';
 import { useRouter } from '../../../core/hooks/useRouter';
-import { ensureSyntaxVersion31 } from '../../services/pricing2yaml';
+import { ensureSyntaxVersion31, serializeDraftToYaml } from '../../services/pricing2yaml';
 import type { EditorMode } from '../../contexts/editorValueContext';
 import ConfirmModal from '../../../core/components/confirm-modal';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import EditorAccountMenu from './editor-account-menu';
 import PublishPricingModal from './publish-pricing-modal';
+import ProposeChangesButton from './propose-changes-button';
 
 interface Props {
   onShareLink: () => void;
@@ -21,7 +22,7 @@ interface Props {
 export default function EditorHeader({ onShareLink, onImport }: Props) {
   const router = useRouter();
   const { authUser } = useAuth();
-  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, saveDraft, sourcePricing } = useEditorValue();
+  const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, pendingVisualDraft, saveDraft, sourcePricing } = useEditorValue();
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -62,6 +63,11 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
     }
   };
 
+  // What "Propose changes" proposes is what the user sees: the visual editor's draft not yet
+  // saved to the YAML (as Save would write it), or else the editor's text. Nothing is saved.
+  const readProposalYaml = () =>
+    isDirty && pendingVisualDraft ? serializeDraftToYaml(pendingVisualDraft) : editorValue;
+
   const handleModeToggle = (mode: EditorMode) => {
     if (mode === editorMode) return;
     if (editorMode === 'visual' && isDirty) {
@@ -97,9 +103,14 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
 
   return (
     <>
-    <header className="sticky top-0 z-40 grid min-h-14 shrink-0 grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1 border-b border-white/10 bg-tp-surface-code px-3 py-2 sm:flex sm:h-14 sm:flex-nowrap sm:px-4 sm:py-0">
+    {/*
+      Below md the mode toggle has a row of its own (with "Propose changes" at its right); from md
+      the three groups share one row, the toggle in a column of its own that stays centred while
+      both sides fit and moves aside otherwise, so no group ever lies under another.
+    */}
+    <header className="sticky top-0 z-40 grid min-h-14 shrink-0 grid-cols-[auto_1fr_auto_auto] items-center gap-x-0.5 gap-y-1 border-b border-white/10 bg-tp-surface-code px-3 py-2 sm:gap-x-1 sm:px-4 md:h-14 md:grid-cols-[1fr_auto_1fr] md:gap-x-2 md:py-0">
       {/* Left: Logo + back */}
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={() => router.push('/')}
@@ -115,7 +126,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
           </span>
         ) : null}
         {authUser.isAuthenticated ? (
-          <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-300 lg:inline-flex">
+          <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-300 lg:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Workspace connected
           </span>
@@ -123,7 +134,7 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
       </div>
 
       {/* Center: Mode toggle */}
-      <div className="col-span-3 row-start-2 justify-self-center sm:absolute sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2">
+      <div data-header-part="mode" className="col-span-4 col-start-1 row-start-2 justify-self-center md:col-span-1 md:col-start-2 md:row-start-1">
         <div className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
           {(['code', 'visual'] as EditorMode[]).map((mode) => {
             const isActive = editorMode === mode;
@@ -153,143 +164,153 @@ export default function EditorHeader({ onShareLink, onImport }: Props) {
         </div>
       </div>
 
-      {/* Right: Action buttons */}
-      <div className="col-start-3 row-start-1 ml-auto flex items-center gap-0.5 sm:gap-1">
-        {/* File menu */}
-        <div ref={fileMenuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => { setFileMenuOpen(prev => !prev); setExportMenuOpen(false); }}
-            className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
-          >
-            File
-          </button>
-          <AnimatePresence>
-            {fileMenuOpen && (
-              <motion.div
-                variants={dropdownVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                transition={transitionFast}
-                className="absolute left-0 top-full z-50 mt-1 w-[180px] rounded-lg border border-white/10 bg-tp-surface-code py-1 shadow-elevation-4"
-              >
-                <button
-                  type="button"
-                  onClick={() => { setEditorValue(originalValue); setFileMenuOpen(false); }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-                  </svg>
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { onImport(); setFileMenuOpen(false); }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                  Import YAML
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEditorValue(getClearEditorValue()); setFileMenuOpen(false); }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
-                  </svg>
-                  Clear
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Export menu */}
-        <div ref={exportMenuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => { setExportMenuOpen(prev => !prev); setFileMenuOpen(false); }}
-            className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
-          >
-            Export
-          </button>
-          <AnimatePresence>
-            {exportMenuOpen && (
-              <motion.div
-                variants={dropdownVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                transition={transitionFast}
-                className="absolute right-0 top-full z-50 mt-1 w-[180px] rounded-lg border border-white/10 bg-tp-surface-code py-1 shadow-elevation-4"
-              >
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  Download YAML
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { onShareLink(); setExportMenuOpen(false); }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-                  </svg>
-                  Share Link
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Documentation */}
-        <button
-          type="button"
-          onClick={() => window.open('https://sphere-docs.vercel.app/docs/2.0.1/api/pricing-description-languages/Pricing2Yaml/the-pricing2yaml-syntax', '_blank')}
-          className="hidden cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white lg:block"
-        >
-          Docs
-        </button>
-
-        <span className="mx-1 h-5 w-px bg-white/10" />
-
-        {authUser.isLoading ? (
-          <span className="h-8 w-24 animate-pulse rounded-lg bg-white/10" />
-        ) : authUser.isAuthenticated ? (
-          <>
+      {/* Right: Action buttons (below md its parts are placed on the header's grid one by one) */}
+      <div data-header-part="actions" className="contents md:col-start-3 md:row-start-1 md:flex md:items-center md:gap-1 md:justify-self-end">
+        <div className="col-start-3 row-start-1 flex items-center gap-0.5 whitespace-nowrap sm:gap-1">
+          {/* File menu */}
+          <div ref={fileMenuRef} className="relative">
             <button
               type="button"
-              onClick={() => setPublishModalOpen(true)}
-              className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-tp-primary px-3 py-2 text-xs font-semibold text-tp-on-primary shadow-sm transition-all hover:bg-tp-primary-hover hover:shadow-md"
+              onClick={() => { setFileMenuOpen(prev => !prev); setExportMenuOpen(false); }}
+              className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
             >
-              <FiUploadCloud className="h-4 w-4" />
-              <span className="hidden sm:inline">Publish to SPHERE</span>
-              <span className="sm:hidden">Publish</span>
-              <FiArrowUpRight className="hidden h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 xl:block" />
+              File
             </button>
-            <EditorAccountMenu />
-          </>
-        ) : (
+            <AnimatePresence>
+              {fileMenuOpen && (
+                <motion.div
+                  variants={dropdownVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  transition={transitionFast}
+                  className="absolute left-0 top-full z-50 mt-1 w-[180px] rounded-lg border border-white/10 bg-tp-surface-code py-1 shadow-elevation-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setEditorValue(originalValue); setFileMenuOpen(false); }}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                    </svg>
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { onImport(); setFileMenuOpen(false); }}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    Import YAML
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEditorValue(getClearEditorValue()); setFileMenuOpen(false); }}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
+                    </svg>
+                    Clear
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Export menu */}
+          <div ref={exportMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => { setExportMenuOpen(prev => !prev); setFileMenuOpen(false); }}
+              className="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
+            >
+              Export
+            </button>
+            <AnimatePresence>
+              {exportMenuOpen && (
+                <motion.div
+                  variants={dropdownVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  transition={transitionFast}
+                  className="absolute right-0 top-full z-50 mt-1 w-[180px] rounded-lg border border-white/10 bg-tp-surface-code py-1 shadow-elevation-4"
+                >
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Download YAML
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { onShareLink(); setExportMenuOpen(false); }}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                    </svg>
+                    Share Link
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Documentation */}
           <button
             type="button"
-            onClick={() => router.push('/authentication')}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+            onClick={() => window.open('https://sphere-docs.vercel.app/docs/2.0.1/api/pricing-description-languages/Pricing2Yaml/the-pricing2yaml-syntax', '_blank')}
+            className="hidden cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white lg:block"
           >
-            Sign in
-            <FiArrowUpRight className="h-3.5 w-3.5" />
+            Docs
           </button>
-        )}
+
+          <span className="mx-1 h-5 w-px bg-white/10" />
+        </div>
+
+        {authUser.isAuthenticated && !authUser.isLoading && sourcePricing ? (
+          <div data-header-part="propose" className="col-span-2 col-start-3 row-start-2 flex justify-self-end">
+            <ProposeChangesButton source={sourcePricing} readYaml={readProposalYaml} />
+          </div>
+        ) : null}
+
+        <div className="col-start-4 row-start-1 flex items-center gap-0.5 whitespace-nowrap sm:gap-1">
+          {authUser.isLoading ? (
+            <span className="h-8 w-24 animate-pulse rounded-lg bg-white/10" />
+          ) : authUser.isAuthenticated ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setPublishModalOpen(true)}
+                className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-tp-primary px-3 py-2 text-xs font-semibold text-tp-on-primary shadow-sm transition-all hover:bg-tp-primary-hover hover:shadow-md"
+              >
+                <FiUploadCloud className="h-4 w-4" />
+                <span className="hidden sm:inline">Publish to SPHERE</span>
+                <span className="sm:hidden">Publish</span>
+                <FiArrowUpRight className="hidden h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 xl:block" />
+              </button>
+              <EditorAccountMenu />
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push('/authentication')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+            >
+              Sign in
+              <FiArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
 

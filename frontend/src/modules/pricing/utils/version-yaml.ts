@@ -1,3 +1,5 @@
+import { pricingYamlRequestInit } from '../../core/utils/pricing-yaml';
+
 const API_BASE = import.meta.env.VITE_API_URL.replace('/api/v1', '');
 
 /**
@@ -17,4 +19,12 @@ export function versionYamlUrl(yaml: string): string {
   } catch {
     return yaml;
   }
+}
+
+/** The YAML of a version, read with the session token when SPHERE serves it. */
+export async function readVersionYaml(yaml: string, token?: string | null): Promise<string> {
+  const url = versionYamlUrl(yaml);
+  const response = await fetch(url, pricingYamlRequestInit(url, token));
+  if (!response.ok) throw new Error(`the server answered ${response.status}.`);
+  return response.text();
 }

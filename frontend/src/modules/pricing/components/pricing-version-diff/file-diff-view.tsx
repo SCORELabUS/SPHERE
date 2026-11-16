@@ -14,6 +14,8 @@ interface FileDiffViewProps {
   after: string;
   beforeLabel: string;
   afterLabel: string;
+  /** Marks each changed line with `+`, `−` or `~` as text, so a change is not told by colour alone. */
+  markers?: boolean;
 }
 
 type Side = 'left' | 'right';
@@ -29,6 +31,9 @@ const CELL_STYLES: Record<Side, { row: string; gutter: string; mark: string }> =
 
 const isHighlighted = (kind: RowKind, side: Side) =>
   kind === 'change' || (side === 'left' ? kind === 'remove' : kind === 'add');
+
+/** The text mark of a highlighted line: changed on both sides, removed on the left, added on the right. */
+const markerOf = (kind: RowKind, side: Side) => (kind === 'change' ? '~' : side === 'left' ? '−' : '+');
 
 function Text({ cell, side }: { cell: DiffCell; side: Side }) {
   if (!cell.segments) return <>{cell.text || ' '}</>;
@@ -47,7 +52,17 @@ function Text({ cell, side }: { cell: DiffCell; side: Side }) {
   );
 }
 
-function Cell({ cell, kind, side }: { cell: DiffCell | null; kind: RowKind; side: Side }) {
+function Cell({
+  cell,
+  kind,
+  side,
+  markers,
+}: {
+  cell: DiffCell | null;
+  kind: RowKind;
+  side: Side;
+  markers: boolean;
+}) {
   const highlighted = cell !== null && isHighlighted(kind, side);
   const styles = CELL_STYLES[side];
   return (
@@ -64,17 +79,20 @@ function Cell({ cell, kind, side }: { cell: DiffCell | null; kind: RowKind; side
           highlighted ? styles.row : cell ? '' : 'bg-tp-surface'
         }`}
       >
+        {highlighted && markers && (
+          <span className="mr-2 select-none font-semibold">{markerOf(kind, side)}</span>
+        )}
         {cell ? <Text cell={cell} side={side} /> : null}
       </span>
     </>
   );
 }
 
-function Row({ row }: { row: DiffRow }) {
+function Row({ row, markers }: { row: DiffRow; markers: boolean }) {
   return (
     <div className="contents">
-      <Cell cell={row.left} kind={row.kind} side="left" />
-      <Cell cell={row.right} kind={row.kind} side="right" />
+      <Cell cell={row.left} kind={row.kind} side="left" markers={markers} />
+      <Cell cell={row.right} kind={row.kind} side="right" markers={markers} />
     </div>
   );
 }
@@ -85,6 +103,7 @@ export default function FileDiffView({
   after,
   beforeLabel,
   afterLabel,
+  markers = false,
 }: FileDiffViewProps) {
   const diff = useMemo(() => diffText(before, after), [before, after]);
   const blocks = useMemo(() => foldUnchanged(diff.rows), [diff.rows]);
@@ -143,12 +162,12 @@ export default function FileDiffView({
             {blocks.map((block, blockIndex) => {
               if (block.type === 'rows') {
                 return block.rows.map((row, rowIndex) => (
-                  <Row key={`${blockIndex}-${rowIndex}`} row={row} />
+                  <Row key={`${blockIndex}-${rowIndex}`} row={row} markers={markers} />
                 ));
               }
               if (expandAll || expanded.has(block.id)) {
                 return block.rows.map((row, rowIndex) => (
-                  <Row key={`${blockIndex}-${rowIndex}`} row={row} />
+                  <Row key={`${blockIndex}-${rowIndex}`} row={row} markers={markers} />
                 ));
               }
               return (

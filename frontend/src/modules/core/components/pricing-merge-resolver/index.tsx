@@ -1,0 +1,199 @@
+import { useEffect, useRef, useState } from 'react';
+import type { IconType } from 'react-icons';
+import { FiAlertTriangle, FiCode, FiColumns, FiGrid, FiInfo, FiList, FiRefreshCw } from 'react-icons/fi';
+import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
+import type { PullRequestVersionRef, PullRequestWarning } from '../../../pricing/types/pull-requests';
+import type { MergeResolver } from '../../hooks/useMergeResolver';
+import { alignSaasNameLine, pullRequestWarningMessage } from '../../utils/pull-request-state';
+import ConflictList from './conflict-list';
+import YamlResultEditor from './yaml-result-editor';
+import VisualConflicts from './visual-conflicts';
+
+type ResolverView = 'conflicts' | 'yaml' | 'compare' | 'visual';
+
+const VIEWS: { view: ResolverView; label: string; icon: IconType }[] = [
+  { view: 'conflicts', label: 'Conflicts', icon: FiList },
+  { view: 'yaml', label: 'YAML', icon: FiCode },
+  { view: 'compare', label: 'Compare', icon: FiColumns },
+  { view: 'visual', label: 'Visual', icon: FiGrid },
+];
+
+function Warnings({ resolver }: { resolver: MergeResolver }) {
+  const warnings: PullRequestWarning[] = [...(resolver.preview?.warnings ?? [])];
+  if (resolver.state.manualYaml !== null && !warnings.some(warning => warning.code === 'MANUAL_OVERRIDE')) {
+    warnings.push({ code: 'MANUAL_OVERRIDE' });
+  }
+  if (warnings.length === 0) return null;
+  return (
+    <ul aria-label="Notices about the result" className="space-y-1.5">
+      {warnings.map(warning => (
+        <li
+          key={warning.code}
+          data-warning={warning.code}
+          className="flex items-start gap-2 rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink"
+        >
+          <FiInfo aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tp-severity-info" />
+          <span>{pullRequestWarningMessage(warning)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Why the preview failed, with a way to ask for it again (after too many requests it also retries by itself). */
+function PreviewError({ resolver }: { resolver: MergeResolver }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink"
+    >
+      <span className="min-w-0">{resolver.error}</span>
+      <button
+        type="button"
+        onClick={resolver.retry}
+        className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-tp-hairline-strong bg-tp-canvas px-2.5 py-1 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
+      >
+        <FiRefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+        {resolver.retryIn !== null ? 'Try again now' : 'Try again'}
+      </button>
+    </div>
+  );
+}
+
+/** The Compare view: the version the result would follow against the result, line by line. */
+function CompareView({
+  resolver,
+  loadLatestYaml,
+}: {
+  resolver: MergeResolver;
+  loadLatestYaml: (target: PullRequestVersionRef) => Promise<string>;
+}) {
+  const target = resolver.preview!.target;
+  const [latest, setLatest] = useState<{ id: string; yaml?: string; error?: string } | null>(null);
+  const load = useRef(loadLatestYaml);
+  load.current = loadLatestYaml;
+
+  // The YAML of a version never changes, so it is read again only for another version.
+  useEffect(() => {
+    let active = true;
+    load
+      .current({ id: target.id, version: target.version })
+      .then(yaml => {
+        if (active) setLatest({ id: target.id, yaml });
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setLatest({ id: target.id, error: caught instanceof Error ? caught.message : 'The version could not be read.' });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [target.id, target.version]);
+
+  if (latest?.id !== target.id) {
+    return (
+      <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-8 text-center text-sm text-tp-slate">
+        Reading version {target.version}…
+      </div>
+    );
+  }
+  if (latest.yaml === undefined) {
+    return (
+      <div role="alert" className="rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink">
+        Version {target.version} could not be read: {latest.error}
+      </div>
+    );
+  }
+  return (
+    <FileDiffView
+      before={latest.yaml}
+      after={alignSaasNameLine(latest.yaml, resolver.resultYaml)}
+      beforeLabel={`Version ${target.version}`}
+      afterLabel="Result"
+      markers
+    />
+  );
+}
+
+/**
+ * Resolves a three-way merge of a pricing: the conflicts with their choices,
+ * the result as YAML (which can be edited by hand), the result compared with
+ * the version it would follow, and the result laid out like the visual editor.
+ * The four views share the choices of `resolver`; the result and whether it is
+ * valid always come from the server's preview.
+ */
+export default function PricingMergeResolver({
+  resolver,
+  loadLatestYaml,
+}: {
+  resolver: MergeResolver;
+  /** Reads the YAML of the version the proposal is merged into, for the Compare view. */
+  loadLatestYaml: (target: PullRequestVersionRef) => Promise<string>;
+}) {
+  const [view, setView] = useState<ResolverView>('conflicts');
+  const { preview, state, unresolved, error } = resolver;
+
+  if (!preview) {
+    return error ? (
+      <PreviewError resolver={resolver} />
+    ) : (
+      <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-10 text-center text-sm text-tp-slate">
+        Computing the merge…
+      </div>
+    );
+  }
+
+  const total = state.conflicts.length;
+  const currentLabel = preview.target.version;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="group" aria-label="Resolver view" className="flex flex-wrap gap-1 rounded-xl bg-tp-surface p-1">
+          {VIEWS.map(({ view: option, label, icon: Icon }) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={view === option}
+              onClick={() => setView(option)}
+              className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all ${
+                view === option
+                  ? 'border-tp-primary/30 bg-tp-canvas text-tp-ink shadow-sm'
+                  : 'border-transparent text-tp-steel hover:text-tp-ink'
+              }`}
+            >
+              <Icon aria-hidden="true" className={`h-4 w-4 ${view === option ? 'text-tp-primary' : ''}`} />
+              {label}
+            </button>
+          ))}
+        </div>
+        <p aria-live="polite" className="inline-flex items-center gap-1.5 text-xs font-medium text-tp-slate">
+          {total === 0 ? (
+            'No conflicts'
+          ) : (
+            <>
+              {unresolved > 0 && <FiAlertTriangle aria-hidden="true" className="h-3.5 w-3.5 text-tp-severity-warning" />}
+              {total} {total === 1 ? 'conflict' : 'conflicts'} · {unresolved} unresolved
+            </>
+          )}
+        </p>
+      </div>
+
+      <p className="text-xs text-tp-steel">
+        Merging into version {preview.target.version}, from the base version {preview.base.version}.
+      </p>
+
+      <Warnings resolver={resolver} />
+
+      {error && <PreviewError resolver={resolver} />}
+
+      {view === 'conflicts' && <ConflictList resolver={resolver} currentLabel={currentLabel} />}
+      {view === 'yaml' && <YamlResultEditor resolver={resolver} />}
+      {view === 'compare' && <CompareView resolver={resolver} loadLatestYaml={loadLatestYaml} />}
+      {view === 'visual' && (
+        <VisualConflicts resolver={resolver} currentLabel={currentLabel} onShowYaml={() => setView('yaml')} />
+      )}
+    </div>
+  );
+}

@@ -24,6 +24,30 @@ export function storableAnalytics(analytics: object | null | undefined) {
   );
 }
 
+/** A pricing's identity as the pull requests need it. */
+export interface PricingIdentityRef {
+  pricingId: string;
+  name: string;
+  slug: string;
+  organizationId: string;
+  collectionId: string | null;
+}
+
+/** A version as the pull requests need it: its id, label, visibility and stored file. */
+export interface StoredVersion {
+  id: string;
+  version: string;
+  private: boolean;
+  yaml: string;
+}
+
+const toStoredVersion = (version: { _id: unknown; version?: unknown; private?: unknown; yaml?: unknown }): StoredVersion => ({
+  id: String(version._id),
+  version: String(version.version),
+  private: version.private === true,
+  yaml: String(version.yaml),
+});
+
 class PricingRepository extends RepositoryBase {
   async findAll(
     queryParams: PricingIndexQueryParams,
@@ -185,6 +209,86 @@ class PricingRepository extends RepositoryBase {
     if (!mongoose.isValidObjectId(pricingId)) return null;
     const identity = await PricingIdentity.findOne({ _id: pricingId, deleted: { $ne: true } }).lean();
     return identity ? { slug: identity.slug, organizationId: String(identity._organizationId) } : null;
+  }
+
+  /** A live pricing by its identity: where it is now, its name and its collection. */
+  async findIdentity(pricingId: string): Promise<PricingIdentityRef | null> {
+    if (!mongoose.isValidObjectId(pricingId)) return null;
+    const identity = await PricingIdentity.findOne({ _id: pricingId, deleted: { $ne: true } }).lean();
+    if (!identity) return null;
+    return {
+      pricingId: String(identity._id),
+      name: identity.name,
+      slug: identity.slug,
+      organizationId: String(identity._organizationId),
+      collectionId: identity._collectionId ? String(identity._collectionId) : null,
+    };
+  }
+
+  /** The newest version of a pricing (`VERSION_ORDER`), or its newest public one. */
+  async findLatestVersion(pricingId: string, options: { publicOnly?: boolean } = {}): Promise<StoredVersion | null> {
+    if (!mongoose.isValidObjectId(pricingId)) return null;
+    const version = await PricingMongoose.findOne({
+      pricingId: new mongoose.Types.ObjectId(pricingId),
+      // As hasPublicVersion: a version without the flag is public.
+      ...(options.publicOnly ? { private: { $ne: true } } : {}),
+    })
+      .sort(VERSION_ORDER)
+      .select('version private yaml')
+      .lean();
+    return version ? toStoredVersion(version) : null;
+  }
+
+  /** A version by id, only if it belongs to that pricing. */
+  async findVersionOf(pricingId: string, versionId: string): Promise<StoredVersion | null> {
+    if (!mongoose.isValidObjectId(pricingId) || !mongoose.isValidObjectId(versionId)) return null;
+    const version = await PricingMongoose.findOne({
+      _id: new mongoose.Types.ObjectId(versionId),
+      pricingId: new mongoose.Types.ObjectId(pricingId),
+    })
+      .select('version private yaml')
+      .lean();
+    return version ? toStoredVersion(version) : null;
+  }
+
+  /**
+   * Every version of a pricing, newest first (`VERSION_ORDER`), with the pricing
+   * each one was forked from, if any. Proposals from a fork are computed on them.
+   */
+  async findForkVersions(pricingId: string): Promise<Array<StoredVersion & { forkedFromPricingId: string | null }>> {
+    if (!mongoose.isValidObjectId(pricingId)) return [];
+    const versions = await PricingMongoose.find({ pricingId: new mongoose.Types.ObjectId(pricingId) })
+      .sort(VERSION_ORDER)
+      .select('version private yaml forkedFrom.pricingId')
+      .lean();
+    return versions.map(version => ({
+      ...toStoredVersion(version),
+      forkedFromPricingId: version.forkedFrom?.pricingId ? String(version.forkedFrom.pricingId) : null,
+    }));
+  }
+
+  /** Whether a pricing already has a version with this label, private or not. */
+  async hasVersionLabel(pricingId: string, label: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(pricingId)) return false;
+    return Boolean(await PricingMongoose.exists({ pricingId: new mongoose.Types.ObjectId(pricingId), version: label }));
+  }
+
+  /** The version of a pricing that the merge of a pull request published, if any. */
+  async findMergedVersion(pricingId: string, pullRequestId: string): Promise<StoredVersion | null> {
+    if (!mongoose.isValidObjectId(pricingId) || !mongoose.isValidObjectId(pullRequestId)) return null;
+    const version = await PricingMongoose.findOne({
+      pricingId: new mongoose.Types.ObjectId(pricingId),
+      'mergedFrom.prId': new mongoose.Types.ObjectId(pullRequestId),
+    })
+      .select('version private yaml')
+      .lean();
+    return version ? toStoredVersion(version) : null;
+  }
+
+  /** Whether a pricing has at least one private version. */
+  async hasPrivateVersion(pricingId: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(pricingId)) return false;
+    return Boolean(await PricingMongoose.exists({ pricingId: new mongoose.Types.ObjectId(pricingId), private: true }));
   }
 
   async findExistingSlug(slug: string, organizationId: string): Promise<boolean> {
