@@ -1025,7 +1025,10 @@ class PricingPullRequestService {
    * Merges the inputs and applies the caller's choices (`manual` over
    * `resolutions` over the computed merge). The result keeps the proposal's
    * text when it is the proposal, and the target's when it adds nothing;
-   * anything else is written again. It always carries P's name.
+   * anything else is written again. It always carries P's name and, unless it
+   * was typed by hand, the proposal's own `version:` (when it names one), so
+   * `suggestedVersion` is the proposal's label, as in the pull request's
+   * detail, and never the target's.
    */
   private computeResult(
     pricing: TargetPricing,
@@ -1039,15 +1042,21 @@ class PricingPullRequestService {
     const proposalVersion = inputs.proposal.doc.version;
 
     let source: LoadedText;
+    // The proposal's label, stamped on the target's text when that is the result.
+    let label: string | undefined;
     if (manual) source = manual;
     else if (resolved.outcome === 'proposal-only') source = inputs.proposal;
-    else if (resolved.outcome === 'no-changes') source = inputs.current;
-    else {
+    else if (resolved.outcome === 'no-changes') {
+      source = inputs.current;
+      // A label the parser would refuse (a number or a date) is left out: the
+      // target's own text is a valid result.
+      if (typeof proposalVersion === 'string' && proposalVersion !== inputs.current.doc.version) label = proposalVersion;
+    } else {
       // The merge keeps the current version's label; the proposal names its own.
       const doc = proposalVersion === undefined ? resolved.doc : { ...resolved.doc, version: proposalVersion };
       source = { text: dumpPricingDoc(doc), doc, regenerated: true };
     }
-    const stamped = this.withName(source, pricing.name);
+    const stamped = this.withName(source, pricing.name, label);
     // Stamping parsed the text it returns, and says why when the parser refused it.
     const { validation, version } = stamped.pricing
       ? { validation: { ok: true }, version: String(stamped.pricing.version) }
@@ -1071,17 +1080,18 @@ class PricingPullRequestService {
   }
 
   /**
-   * The result with P's name. Stamping verifies the text with the parser; a
-   * result the parser refuses is still shown (as stamped), so the caller sees
-   * why it cannot be submitted.
+   * The result with P's name (and `version`, when given). Stamping verifies the
+   * text with the parser; a result the parser refuses is still shown (as
+   * stamped), so the caller sees why it cannot be submitted.
    */
   private withName(
     source: LoadedText,
-    name: string
+    name: string,
+    version?: string
   ): { text: string; regenerated: boolean; pricing?: ParsedPricing; validation: PreviewValidation } {
-    if (source.named?.name === name) return { ...source.named.stamped, validation: { ok: true } };
+    if (version === undefined && source.named?.name === name) return { ...source.named.stamped, validation: { ok: true } };
     try {
-      return { ...stampTopLevel(source.text, { saasName: name }, { loaded: source.loaded }), validation: { ok: true } };
+      return { ...stampTopLevel(source.text, { saasName: name, version }, { loaded: source.loaded }), validation: { ok: true } };
     } catch (error) {
       if (!(error instanceof StampRefusedError)) throw error;
       return { text: error.text, regenerated: error.regenerated, validation: { ok: false, error: error.message } };

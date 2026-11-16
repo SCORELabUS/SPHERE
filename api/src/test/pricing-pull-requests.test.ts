@@ -967,6 +967,74 @@ describe('Pricing pull requests', () => {
       expect(merged.body.code).toBe('NO_CHANGES');
     });
 
+    it('Suggests the proposal\'s own label in every preview that adds nothing, as its detail does, also after an update.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const external = await outsider();
+      const created = await openOn(external, scene, scene.v2, goldAt(7.5));
+      expect((await detail(external.token, created.id)).body.proposed.suggestedVersion).toBe('9.0.0');
+      // A public version that already has the proposal, and the latest one.
+      const v4 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '4.0.0', change: both(V2, goldAt(7.5)),
+      });
+      const mergePreview = (token: string, purpose: 'merge' | 'update') =>
+        request(app()).post(`${PULL_REQUESTS}/${created.id}/merge-preview`).set(bearer(token)).send({ purpose });
+      const labelOf = (yaml: string) => loadPricingDoc(yaml, STORED_PRICING_MAX_BYTES).version;
+
+      const toMerge = await mergePreview(scene.owner.token, 'merge');
+      expect(toMerge.body).toMatchObject({ outcome: 'no-changes', target: { id: v4.id }, suggestedVersion: '9.0.0', versionTaken: false });
+      // The result is the target's text under the proposal's label, as a merge that adds something is.
+      expect(labelOf(toMerge.body.resultYaml)).toBe('9.0.0');
+      const toUpdate = await mergePreview(external.token, 'update');
+      expect(toUpdate.body).toMatchObject({ outcome: 'no-changes', target: { id: v4.id }, suggestedVersion: '9.0.0' });
+      const fromText = await request(app()).post(`${PULL_REQUESTS}/previews`).set(bearer(external.token)).send({
+        source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '9.0.0', both(V2, goldAt(7.5)))),
+      });
+      expect(fromText.body).toMatchObject({ outcome: 'no-changes', target: { id: v4.id }, suggestedVersion: '9.0.0' });
+
+      // Updated to a version that has it all, it keeps its label: in its detail and in the next preview.
+      const updated = await request(app()).post(`${PULL_REQUESTS}/${created.id}/update`).set(bearer(external.token)).send({
+        previewToken: toUpdate.body.previewToken,
+      });
+      expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+      expect(updated.body).toMatchObject({ state: { kind: 'no-changes' }, proposed: { suggestedVersion: '9.0.0' } });
+      expect(labelOf(updated.body.proposed.yaml)).toBe('9.0.0');
+      const again = await mergePreview(scene.owner.token, 'merge');
+      expect(again.body).toMatchObject({ outcome: 'no-changes', suggestedVersion: '9.0.0' });
+    });
+
+    it('Answers a valid result when a proposal that adds nothing names a label that is not text.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const external = await outsider();
+      const v4 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '4.0.0', change: both(V2, goldAt(7.5)),
+      });
+      // `version: 2025`, a number: the parser refuses it, so the target's own text is the result.
+      const numbered = pricingYaml(scene.name, '9.0.0', (doc) => { both(V2, goldAt(7.5))(doc); doc.version = 2025; });
+      const preview = await request(app()).post(`${PULL_REQUESTS}/previews`).set(bearer(external.token)).send({
+        source: textSource(scene.pricingId, scene.v2.id, numbered),
+      });
+      expect(preview.body).toMatchObject({ outcome: 'no-changes', target: { id: v4.id }, validation: { ok: true }, suggestedVersion: '4.0.0' });
+    });
+
+    it('Never suggests the label of a private version that already has the proposal.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const external = await outsider();
+      const created = await openOn(external, scene, scene.v2, goldAt(7.5));
+      const hidden = `5.0.0-hidden-${randomSuffix()}`;
+      await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: hidden, isPrivate: true, change: both(V2, goldAt(7.5)),
+      });
+
+      // The maintainer's target is the private latest version, which has it all already.
+      const toMerge = await request(app()).post(`${PULL_REQUESTS}/${created.id}/merge-preview`).set(bearer(scene.owner.token)).send({ purpose: 'merge' });
+      expect(toMerge.body).toMatchObject({ outcome: 'no-changes', suggestedVersion: '9.0.0' });
+      expect(loadPricingDoc(toMerge.body.resultYaml, STORED_PRICING_MAX_BYTES).version).toBe('9.0.0');
+      // Its author, who does not read private versions, hears nothing of it.
+      const markers = [...scene.markers, hidden];
+      expect(leaks(await detail(external.token, created.id), markers)).toEqual([]);
+      expect(leaks(await list(external.token, scene.pricingId), markers)).toEqual([]);
+    });
+
     it('Is merged once merged, whatever its base.', async () => {
       const scene = await pricingWithPrivateLatest();
       const external = await outsider();
