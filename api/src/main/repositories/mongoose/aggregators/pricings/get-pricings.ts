@@ -1,10 +1,10 @@
 import { PipelineStage } from "mongoose";
-import { OrgUserPermissionsContext, PrivateCollectionAccess } from "../../../../types/policies";
+import { OrgUserPermissionsContext, PrivateCollectionAccess, UnlistedReaders } from "../../../../types/policies";
 import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorRootAggregator } from "./group-pricing-versions";
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
 import { filterByOrganizationAggregator } from "./filter-by-organization";
-import { considerUserPermissionsAggregator, grantedByKey } from "./filter-by-user-permissions";
+import { considerUserPermissionsAggregator, grantedByKey, LISTED_PUBLIC } from "./filter-by-user-permissions";
 import { filtersDataGenerator } from "./filters-data-generator";
 import { refactorOutputAggregator } from "./refactor-output";
 import { VERSION_ORDER } from "../../../../utils/version-order";
@@ -16,6 +16,8 @@ export function getPricingsAggregator(
   sortAggregator: PipelineStage[] = [],
   // Private collections the viewer may see; the others are hidden from the result.
   collectionVisibility: PrivateCollectionAccess = [],
+  // Who may also see unlisted pricings when `permissions` is not the caller's own (the global search).
+  unlistedReaders?: UnlistedReaders,
 ){
   const pipeline: PipelineStage[] = [
       { $sort: VERSION_ORDER },
@@ -35,11 +37,12 @@ export function getPricingsAggregator(
     pipeline.push(...filteringAggregator);
     
     // The version chosen above is public unless the viewer may see private ones,
-    // so these only drop pricings that have no public version at all.
+    // so these drop pricings that have no public version at all, and unlisted
+    // pricings for whoever may not read their private versions.
     if (!permissions){
-      pipeline.push({ $match: { private: false } });
+      pipeline.push({ $match: LISTED_PUBLIC });
     }else if (!permissions.isGlobalAdmin && (!permissions.orgRole || (permissions.orgRole !== 'OWNER' && permissions.orgRole !== 'ADMIN'))) {
-      pipeline.push(considerUserPermissionsAggregator(permissions));
+      pipeline.push(considerUserPermissionsAggregator(permissions, unlistedReaders));
     }
   
     pipeline.push(filtersDataGenerator);

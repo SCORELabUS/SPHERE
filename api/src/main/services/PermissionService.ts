@@ -16,7 +16,7 @@ import { ApiKey, LeanUser } from '../types/models/User';
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import { CollectionIndexQueryParams } from '../types/services/PricingCollection';
 import { PermissionQueries } from '../policies/queries/PermissionQueries';
-import { BatchEvaluationContext, OrgUserPermissionsContext, PrivateCollectionAccess } from '../types/policies';
+import { BatchEvaluationContext, OrgUserPermissionsContext, PrivateCollectionAccess, UnlistedReaders } from '../types/policies';
 import { ActingAccess, actingAccess, PrivateReader, privateReader, PrivateReadSources } from '../policies/privateReadRule';
 import { PermissionEngine } from '../policies/PermissionEngine';
 
@@ -224,6 +224,23 @@ class PermissionService {
       adminOrgIds: (orgRole === 'OWNER' || orgRole === 'ADMIN' || orgPermissions.isGlobalAdmin)
         ? [organizationId]
         : [],
+    };
+  }
+
+  /**
+   * Who the caller is for unlisted pricings in the global search: OWNER/ADMIN
+   * of an organization (or of one above it), GET on a pricing or a collection,
+   * all within the scopes of an API key (a VIEW key acts as a plain member, and
+   * no key gets the global ADMIN bypass).
+   */
+  async unlistedReaders(reqUser: LeanUser): Promise<UnlistedReaders> {
+    const context = await this.buildUserPermissionsContext(reqUser);
+    const adminOrgIds = await container.resolve('organizationRepository').findIdsWithin(context.adminOrgIds);
+    const narrowed = await this.narrowListingToCaller(reqUser, { ...context, adminOrgIds });
+    return {
+      adminOrgIds: narrowed.adminOrgIds,
+      pricingKeys: narrowed.pricingKeys ?? [],
+      collectionKeys: narrowed.collectionKeys ?? [],
     };
   }
 

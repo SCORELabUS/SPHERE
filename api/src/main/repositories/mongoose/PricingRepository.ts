@@ -6,7 +6,7 @@ import { PricingIndexQueryParams } from '../../types/services/PricingService';
 import mongoose, { PipelineStage } from 'mongoose';
 import { LeanPricing } from '../../types/models/Pricing';
 import { getPricingBySlugOrganizationAndVersionAggregator } from './aggregators/get-pricing-by-slug-organization-and-version';
-import { OrgUserPermissionsContext, PrivateCollectionAccess } from '../../types/policies';
+import { OrgUserPermissionsContext, PrivateCollectionAccess, UnlistedReaders } from '../../types/policies';
 import { getPricingsAggregator } from './aggregators/pricings/get-pricings';
 import { generateSlug } from '../../utils/slug-manager';
 import { processFileUris } from '../../services/FileService';
@@ -28,7 +28,8 @@ class PricingRepository extends RepositoryBase {
   async findAll(
     queryParams: PricingIndexQueryParams,
     permissions: OrgUserPermissionsContext,
-    collectionVisibility: PrivateCollectionAccess = []
+    collectionVisibility: PrivateCollectionAccess = [],
+    unlistedReaders?: UnlistedReaders
   ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
@@ -39,7 +40,8 @@ class PricingRepository extends RepositoryBase {
         permissions,
         filteringPipeline,
         sortPipeline,
-        collectionVisibility
+        collectionVisibility,
+        unlistedReaders
       );
 
       const paginationPipeline = this._processPricingPagination(queryParams);
@@ -454,7 +456,7 @@ class PricingRepository extends RepositoryBase {
    * its latest version: what ORBIT needs to name it and tell who may see it.
    */
   async findSummariesByOrganization(organizationId: string): Promise<
-    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number; publicVersions: number }>
+    Array<{ slug: string; name: string; private: boolean; unlisted: boolean; collectionId: string | null; versions: number; publicVersions: number }>
   > {
     const rows = await PricingMongoose.aggregate([
       { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
@@ -464,6 +466,7 @@ class PricingRepository extends RepositoryBase {
           _id: '$slug',
           name: { $first: '$name' },
           private: { $first: '$private' },
+          unlisted: { $max: { $eq: ['$unlisted', true] } },
           collectionId: { $first: '$_collectionId' },
           versions: { $sum: 1 },
           publicVersions: { $sum: { $cond: [{ $eq: ['$private', true] }, 0, 1] } },
@@ -475,6 +478,7 @@ class PricingRepository extends RepositoryBase {
       slug: row._id,
       name: row.name,
       private: row.private === true,
+      unlisted: row.unlisted === true,
       collectionId: row.collectionId ? String(row.collectionId) : null,
       versions: row.versions,
       publicVersions: row.publicVersions ?? 0,

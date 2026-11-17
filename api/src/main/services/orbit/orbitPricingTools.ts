@@ -142,6 +142,7 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
             : null,
           latestVersion: pricing.version ?? null,
           private: pricing.private ?? false,
+          unlisted: pricing.unlisted === true,
           collection: pricing.collectionName ?? pricing.collection?.name ?? null,
           ...summarizeAnalytics(pricing.analytics),
         })),
@@ -155,6 +156,8 @@ export async function runPricingTool(name: string, args: any, actor: OrbitActor)
       return {
         name: pricing.name,
         slug: pricing.slug,
+        // Anyone with its link reads its public versions, but listings leave it out.
+        unlisted: pricing.unlisted === true,
         collection: pricing.collection?.name ?? null,
         versions: pricing.versions.slice(0, 30).map((version: any) => ({
           version: version.version,
@@ -277,9 +280,10 @@ async function readVersion(organizationId: string, slug: string, visible: any, l
 }
 
 /**
- * The pricings of a collection the user may see: those with a public version,
- * and the rest only for who may read their private versions (see
- * `PermissionService.privateReader`; GET on the collection reaches them all).
+ * The pricings of a collection the user may see: listed ones with a public
+ * version, and the rest (unlisted ones too) only for who may read their private
+ * versions (see `PermissionService.privateReader`; GET on the collection
+ * reaches them all).
  */
 async function visiblePricingsIn(organizationId: string, collection: { id: string; slug: string }, actor: OrbitActor) {
   const repository: PricingRepository = container.resolve('pricingRepository');
@@ -287,7 +291,7 @@ async function visiblePricingsIn(organizationId: string, collection: { id: strin
     pricing => pricing.collectionId === collection.id
   );
   const reader = await container.resolve('permissionService').privateReader(requesterOf(actor), organizationId);
-  return inCollection.filter(pricing => pricing.publicVersions > 0 || reader('pricing', pricing.slug, collection.slug));
+  return inCollection.filter(pricing => (pricing.publicVersions > 0 && !pricing.unlisted) || reader('pricing', pricing.slug, collection.slug));
 }
 
 function summarizeAnalytics(analytics: any) {

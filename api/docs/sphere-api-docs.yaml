@@ -4065,13 +4065,13 @@ paths:
         **Authentication**: Public
 
         **Permission**:
-        - UNAUTHENTICATED: can only see PUBLIC pricings in the organization.
-        - USER (not a member of the org): can only see PUBLIC pricings.
-        - MEMBER: can see PUBLIC pricings, plus PRIVATE pricings for which they have
-          an explicit `GET` permission (either directly on the pricing or via a collection
-          they have `GET` access to).
-        - OWNER / ADMIN of the org: can see all pricings (PUBLIC and PRIVATE).
-        - Global ADMIN: can see all pricings (PUBLIC and PRIVATE) in any organization.
+        - UNAUTHENTICATED: can only see PUBLIC pricings in the organization that are listed.
+        - USER (not a member of the org): can only see PUBLIC pricings that are listed.
+        - MEMBER: can see PUBLIC pricings that are listed, plus PRIVATE and unlisted
+          (`unlisted: true`) pricings for which they have an explicit `GET` permission
+          (either directly on the pricing or via a collection they have `GET` access to).
+        - OWNER / ADMIN of the org: can see all pricings (PUBLIC, unlisted and PRIVATE).
+        - Global ADMIN: can see all pricings (PUBLIC, unlisted and PRIVATE) in any organization.
 
       tags:
         - Pricings
@@ -5244,6 +5244,9 @@ paths:
       summary: Download collection.
       description: |
         Downloads a given collection as a zip file containing the text plain YAMLs of the pricings in the collection.
+        Private versions and unlisted pricings (`unlisted: true`) are only included for who may read their
+        private versions (OWNER/ADMIN of the organization, GET on the pricing or on the collection); anyone
+        else gets the public versions of the listed pricings, as the collection lists them.
 
         **Authentication**: Public
 

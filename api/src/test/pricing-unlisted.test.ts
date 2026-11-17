@@ -25,6 +25,11 @@ import PricingCollectionMongoose from '../main/repositories/mongoose/models/Pric
 import PricingFollowMongoose from '../main/repositories/mongoose/models/PricingFollowMongoose';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import container from '../main/config/container';
+import OrganizationMongoose from '../main/repositories/mongoose/models/OrganizationMongoose';
+import NotificationMongoose from '../main/repositories/mongoose/models/NotificationMongoose';
+import OrbitToolRunner from '../main/services/orbit/OrbitTools';
+import unzipper from 'unzipper';
+import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 
 dotenv.config();
 
@@ -34,6 +39,7 @@ const label = () => `${Math.floor(Math.random() * 9000) + 1000}.${Math.floor(Mat
 
 describe('Unlisted pricings', { timeout: 60000 }, () => {
   let app: TestApp;
+  const adminUser: any = testContainer.resolve('adminUser');
   const usersToDelete: Set<string> = testContainer.resolve('usersToDelete');
   const orgsToDelete: Set<string> = testContainer.resolve('orgsToDelete');
   const collectionIdsToDelete: Set<string> = testContainer.resolve('collectionIdsToDelete');
@@ -96,7 +102,10 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
     const call = request(app)
       .post(`${BASE_PATH}/pricings/${organizationId}`)
       .set('Authorization', `Bearer ${token}`)
-      .field('private', String(options.private ?? false));
+      .field('private', String(options.private ?? false))
+      // The upload names its file after these, so two pricings never share one.
+      .field('saasName', name)
+      .field('version', version);
     if (options.unlisted !== undefined) call.field('unlisted', options.unlisted);
     return call.attach('yaml', fixture.filePath);
   };
@@ -343,6 +352,339 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(listedFork.unlisted).toBe(false);
       expect(listedFork.private).toBe(false);
       expect(listedFork.forkedFrom.slug).toBe(listed.body.slug);
+    });
+  });
+
+  // ===========================================================================
+  // Listings: an unlisted pricing is listed exactly to who may read its private
+  // versions (in the global search too), and read like a public one by its URL.
+  // ===========================================================================
+  describe('Listings', () => {
+    let nextId = 1;
+    const callMcp = async (key: string, name: string, args: Record<string, unknown>) => {
+      const response = await request(app)
+        .post(`${BASE_PATH}/orbit/mcp`)
+        .set('x-api-key', key)
+        .set('Accept', 'application/json, text/event-stream')
+        .send({ jsonrpc: '2.0', id: nextId++, method: 'tools/call', params: { name, arguments: args } });
+      expect(response.status).toBe(200);
+      return { data: JSON.parse(response.body.result.content[0].text), isError: response.body.result.isError === true };
+    };
+
+    const orbit = (user: any, name: string, args: Record<string, unknown>) =>
+      new OrbitToolRunner().runParsed(name, args, {
+        actor: { id: user.id, username: user.username, role: user.role === 'ADMIN' ? 'ADMIN' : 'USER' },
+        conversation: { id: new mongoose.Types.ObjectId().toString(), userId: user.id, title: '', messages: [], attachments: [] } as any,
+        onPlan: () => {},
+      }) as Promise<any>;
+
+    /**
+     * Organization O (below R), with a public collection C holding a pricing
+     * whose versions are all private (`hidden`), an unlisted one (`unlisted`)
+     * and a listed public one (`listed`, the control). Every name carries the
+     * same unique tag, so a name filter finds only these three.
+     */
+    const presenceSetup = async () => {
+      const tag = `presence${randomSuffix()}`.replace(/[^a-zA-Z0-9]/g, '');
+      const parentOwner = await newUser('parentowner');
+      const parent = await newOrganization(parentOwner, 'Parent');
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      await OrganizationMongoose.updateOne({ _id: organization.id }, { $set: { _parentId: new mongoose.Types.ObjectId(parent.id), ancestors: [new mongoose.Types.ObjectId(parent.id)] } });
+      const collection = await createTestCollection({ _organizationId: organization.id, name: `col-${tag}` });
+      collectionIdsToDelete.add(collection.id);
+
+      const names = { hidden: `${tag}-hidden`, unlisted: `${tag}-unlisted`, listed: `${tag}-listed` };
+      const slugs: Record<string, string> = {};
+      for (const [kind, name] of Object.entries(names)) {
+        const response = await publish(owner.token, organization.id, name, label(), {
+          private: kind === 'hidden', unlisted: kind === 'unlisted' ? 'true' : undefined,
+        });
+        expect(response.status).toBe(200);
+        slugs[kind] = response.body.slug;
+        await request(app).post(`${BASE_PATH}/collections/${organization.id}/${collection.slug}`)
+          .set('Authorization', `Bearer ${owner.token}`).send({ pricingSlug: response.body.slug }).expect(200);
+      }
+
+      const member = async (prefix: string, grants: Array<['pricing' | 'collection', string]>, role: 'MEMBER' | 'ADMIN' = 'MEMBER') => {
+        const user = await newUser(prefix);
+        await createMembership(user.id, organization.id, role);
+        for (const [type, slug] of grants) await createEntityScopedPermission(user.id, organization.id, slug, type, { ...NONE, GET: true });
+        return user;
+      };
+      const profiles: Record<string, any> = {
+        outsider: await newUser('outsider'),
+        member: await member('member', []),
+        memberGetPricing: await member('getpricing', [['pricing', slugs.hidden], ['pricing', slugs.unlisted]]),
+        memberGetCollection: await member('getcollection', [['collection', collection.slug]]),
+        admin: await member('admin', [], 'ADMIN'),
+        owner,
+        parentOwner,
+        globalAdmin: adminUser,
+      };
+      const keys: Record<string, string> = {
+        globalAdminKey: await createApiKey(adminUser, [{ organizationId: organization.id, scope: 'ALL' }]),
+        viewKey: await createApiKey(owner, [{ organizationId: organization.id, scope: 'VIEW' }]),
+        managementKey: await createApiKey(owner, [{ organizationId: organization.id, scope: 'MANAGEMENT' }]),
+        allKey: await createApiKey(owner, [{ organizationId: organization.id, scope: 'ALL' }]),
+      };
+      return { tag, organization, parent, collection, names, slugs, profiles, keys };
+    };
+
+    type Presence = 'SS' | 'SN' | 'NS' | 'NN';
+    /** What each listing shows of [hidden (all private), unlisted]: S shown, N not. */
+    const EXPECTED: Record<string, Partial<Record<'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7a' | 'L7b', Presence>>> = {
+      anonymous: { L1: 'NN', L2: 'NN', L3: 'NN' },
+      outsider: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L5: 'NN', L6: 'NN' },
+      member: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L5: 'NN', L6: 'NN' },
+      memberGetPricing: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
+      memberGetCollection: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
+      admin: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
+      owner: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
+      parentOwner: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'NN', L5: 'SS', L6: 'NS' },
+      globalAdmin: { L1: 'SS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'SS' },
+      globalAdminKey: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L7a: 'NN' },
+      viewKey: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L7a: 'NN', L7b: 'NN' },
+      managementKey: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NS', L7b: 'SS' },
+      allKey: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NS', L7b: 'SS' },
+    };
+
+    it('Lists an unlisted pricing exactly where the private one is listed, and in the global search to who may read it. (CA-4, CA-5, CA-23.1)', { timeout: 240000 }, async () => {
+      const f = await presenceSetup();
+      const names = (items: any[] | undefined) => new Set((items ?? []).map(item => item.name));
+      const listing = async (profile: string, list: string): Promise<{ shown: Set<string>; total?: number; count?: number }> => {
+        const user = f.profiles[profile];
+        const key = f.keys[profile];
+        const auth = user ? { token: user.token } : key ? { key } : undefined;
+        switch (list) {
+          case 'L1': {
+            const body = (await get(`${BASE_PATH}/pricings?name=${f.tag}&limit=50`, auth).expect(200)).body;
+            return { shown: names(body.pricings), total: body.total };
+          }
+          case 'L2': {
+            const body = (await get(`${BASE_PATH}/pricings/${f.organization.id}?name=${f.tag}&limit=50`, auth).expect(200)).body;
+            return { shown: names(body.pricings), total: body.total };
+          }
+          case 'L3': {
+            // The collection only gives a count: the control plus what the caller may see.
+            const body = (await get(`${BASE_PATH}/collections/${f.organization.id}?limit=50`, auth).expect(200)).body;
+            const item = (body.collections ?? body).find((collection: any) => collection.slug === f.collection.slug);
+            return { shown: new Set<string>(), count: item?.numberOfPricings ?? 0 };
+          }
+          case 'L4': {
+            const body = (await get(`${BASE_PATH}/users/me/pricings?name=${f.tag}&limit=50`, auth).expect(200)).body;
+            return { shown: names(body.pricings) };
+          }
+          case 'L5':
+            return { shown: names((await orbit(user, 'search_pricings', { organizationId: f.organization.id, query: f.tag })).pricings) };
+          case 'L6':
+            return { shown: names((await orbit(user, 'search_pricings', { query: f.tag })).pricings) };
+          case 'L7a':
+            return { shown: names((await callMcp(key, 'search_pricings', { query: f.tag })).data.pricings) };
+          case 'L7b':
+            return { shown: names((await callMcp(key, 'search_pricings', { organizationId: f.organization.id, query: f.tag })).data.pricings) };
+        }
+        throw new Error(list);
+      };
+
+      const failures: string[] = [];
+      for (const [profile, lists] of Object.entries(EXPECTED)) {
+        for (const [list, expected] of Object.entries(lists)) {
+          const { shown, total, count } = await listing(profile, list);
+          // A count tells "both" (3) from "neither" (1); anything else is a difference
+          // between the private pricing and the unlisted one.
+          const actual = list === 'L3'
+            ? (count === 3 ? 'SS' : count === 1 ? 'NN' : `count ${count}`)
+            : `${shown.has(f.names.hidden) ? 'S' : 'N'}${shown.has(f.names.unlisted) ? 'S' : 'N'}`;
+          if (actual !== expected) failures.push(`${profile} ${list}: expected ${expected}, got ${actual}`);
+          if (list !== 'L3' && list !== 'L4' && !shown.has(f.names.listed)) failures.push(`${profile} ${list}: the listed control is missing`);
+          // The total never counts what the listing hides (CA-4).
+          if (total !== undefined && total !== shown.size) failures.push(`${profile} ${list}: total ${total} for ${shown.size} shown`);
+        }
+      }
+      expect(failures).toEqual([]);
+    });
+
+    it('Lists an unlisted pricing in the search through each way of reading it, and never through a slug of another organization or a sibling. (L-002 V1-V7, N1, N2)', async () => {
+      const f = await presenceSetup();
+      const searched = async (auth: { token?: string; key?: string }) =>
+        ((await get(`${BASE_PATH}/pricings?name=${f.tag}&limit=50`, auth).expect(200)).body.pricings as any[]).map(item => item.name);
+
+      // V4: GET on the pricing only, with its collection not granted.
+      const onlyPricing = await newUser('onlypricing');
+      await createMembership(onlyPricing.id, f.organization.id, 'MEMBER');
+      await createEntityScopedPermission(onlyPricing.id, f.organization.id, f.slugs.unlisted, 'pricing', { ...NONE, GET: true });
+      expect(await searched({ token: onlyPricing.token })).toContain(f.names.unlisted);
+
+      // V7: the same owner and request, only the scope of the key changes.
+      expect(await searched({ key: f.keys.managementKey })).toContain(f.names.unlisted);
+      expect(await searched({ key: f.keys.viewKey })).not.toContain(f.names.unlisted);
+
+      // N1: GET on a pricing with the same slug in another organization.
+      const other = await newOrganization(f.profiles.owner, 'Other');
+      const sameSlug = await newUser('sameslug');
+      await createMembership(sameSlug.id, other.id, 'MEMBER');
+      await createEntityScopedPermission(sameSlug.id, other.id, f.slugs.unlisted, 'pricing', { ...NONE, GET: true });
+      await createEntityScopedPermission(sameSlug.id, other.id, f.collection.slug, 'collection', { ...NONE, GET: true });
+      expect(await searched({ token: sameSlug.token })).not.toContain(f.names.unlisted);
+
+      // N2: OWNER of a sibling of the organization, below the same parent.
+      const siblingOwner = await newUser('siblingowner');
+      const sibling = await newOrganization(siblingOwner, 'Sibling');
+      await OrganizationMongoose.updateOne({ _id: sibling.id }, { $set: { _parentId: new mongoose.Types.ObjectId(f.parent.id), ancestors: [new mongoose.Types.ObjectId(f.parent.id)] } });
+      expect(await searched({ token: siblingOwner.token })).not.toContain(f.names.unlisted);
+    });
+
+    it('Reads an unlisted pricing like a public one by its URL, and its private versions still not. (CA-6, CA-8.1)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const outsider = await newUser('outsider');
+      const pricing = await unlistedPricing(owner, organization);
+      const privateVersion = label();
+      await publish(owner.token, organization.id, pricing.name, privateVersion, { private: true });
+
+      const shown = await get(pricing.url).expect(200);
+      expect(shown.body.unlisted).toBe(true);
+      expect(shown.body.versions.map((version: any) => version.version).sort()).toEqual([...pricing.versions].sort());
+      expect(shown.body.versions.every((version: any) => version.private === false)).toBe(true);
+
+      const stored: any[] = await PricingMongoose.find({ slug: pricing.slug, _organizationId: new mongoose.Types.ObjectId(organization.id) }).lean();
+      const pricingId = String(stored[0].pricingId);
+      const publicDoc = stored.find(version => version.version === pricing.versions[0]);
+      const privateDoc = stored.find(version => version.version === privateVersion);
+
+      const permalink = await get(`${BASE_PATH}/permalinks/pricing/${pricingId}?version=${publicDoc._id}`).expect(200);
+      expect(permalink.body.location).toContain(`/pricings/${organization.id}/`);
+      expect(permalink.body.location).toContain(String(publicDoc._id));
+      await get(`${BASE_PATH}/public/pricings/${pricingId}`).expect(200);
+      await get(`${BASE_PATH}/public/pricings/${pricingId}/versions/${publicDoc._id}/yaml`).expect(200);
+      await get(`${BASE_PATH}/public/pricings/${pricingId}/download`).expect(200);
+      await get(`/${publicDoc.yaml}`).expect(200);
+      await get(`${pricing.url}/${pricing.versions[0]}`).expect(200);
+      const graph = await get(`${BASE_PATH}/pricing-graphs/${organization.id}/${pricing.slug}`).expect(200);
+      expect(JSON.stringify(graph.body)).not.toContain(privateVersion);
+
+      // Its private version is still for who may read it only.
+      expect(JSON.stringify(shown.body)).not.toContain(privateVersion);
+      await get(`${BASE_PATH}/public/pricings/${pricingId}/versions/${privateDoc._id}/yaml`).expect(404);
+      await get(`${pricing.url}/${privateVersion}`).expect(404);
+
+      // Another user follows it and forks it.
+      await request(app).put(`${BASE_PATH}/pricing-follows/${organization.id}/${pricing.slug}`).set('Authorization', `Bearer ${outsider.token}`).expect(200);
+      const fork = await request(app).post(`${BASE_PATH}/pricing-forks`).set('Authorization', `Bearer ${outsider.token}`).send({
+        sourceOrganizationId: organization.id, sourceSlug: pricing.slug, sourceVersion: pricing.versions[0],
+        targetOrganizationId: outsider.personalOrganizationId, name: `fork-${randomSuffix()}`,
+      });
+      expect(fork.status).toBe(200);
+
+      // Listings still carry each version's own `private`.
+      const mine = (await get(`${BASE_PATH}/pricings/${organization.id}?limit=50`, { token: owner.token }).expect(200)).body.pricings
+        .find((item: any) => item.slug === pricing.slug);
+      expect(mine).toMatchObject({ unlisted: true });
+      expect(typeof mine.private).toBe('boolean');
+    });
+
+    it('Keeps public and private pricings as they were for anonymous callers. (CA-7.2, CA-7.3, CA-7.6)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const listed = await publish(owner.token, organization.id, `listed-${randomSuffix()}`, label());
+      const hidden = await publish(owner.token, organization.id, `hidden-${randomSuffix()}`, label(), { private: true });
+
+      const anonymous = (await get(`${BASE_PATH}/pricings/${organization.id}?limit=50`).expect(200)).body.pricings.map((item: any) => item.slug);
+      expect(anonymous).toContain(listed.body.slug);
+      expect(anonymous).not.toContain(hidden.body.slug);
+
+      const hiddenDoc: any = await PricingMongoose.findOne({ slug: hidden.body.slug, _organizationId: new mongoose.Types.ObjectId(organization.id) }).lean();
+      await get(`${BASE_PATH}/pricings/${organization.id}/${hidden.body.slug}`).expect(404);
+      await get(`${BASE_PATH}/permalinks/pricing/${hiddenDoc.pricingId}`).expect(404);
+      await get(`${BASE_PATH}/public/pricings/${hiddenDoc.pricingId}`).expect(404);
+      // The file of a private version answers like a missing one (StaticFilesMiddleware).
+      const missing = await get(`/static/pricings/uploaded/missing-${randomSuffix()}.yml`);
+      const hiddenFile = await get(`/${hiddenDoc.yaml}`);
+      expect(hiddenFile.status).not.toBe(200);
+      expect(hiddenFile.status).toBe(missing.status);
+      expect(hiddenFile.text ?? '').not.toContain('saasName');
+
+      const listedDoc: any = await PricingMongoose.findOne({ slug: listed.body.slug, _organizationId: new mongoose.Types.ObjectId(organization.id) }).lean();
+      const manifest = (await get(`${BASE_PATH}/public/pricings/${listedDoc.pricingId}`).expect(200)).body;
+      expect(Object.keys(manifest).sort()).toEqual(['latestVersionId', 'name', 'permanentUrl', 'pricingId', 'versions']);
+      expect(Object.keys(manifest.versions[0]).sort()).toEqual(['contentHash', 'createdAt', 'version', 'versionId']);
+    });
+
+    it('Notifies the followers of an unlisted pricing of its new versions, also when it was unlisted after they followed. (CA-22)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const follower = await newUser('follower');
+      const listed = await publish(owner.token, organization.id, `follow-${randomSuffix()}`, label());
+      const url = `${BASE_PATH}/pricings/${organization.id}/${listed.body.slug}`;
+      await request(app).put(`${BASE_PATH}/pricing-follows/${organization.id}/${listed.body.slug}`).set('Authorization', `Bearer ${follower.token}`).expect(200);
+      await put(url, { unlisted: true }, { token: owner.token }).expect(200);
+
+      const before = await NotificationMongoose.countDocuments({ _userId: follower.id });
+      expect((await publish(owner.token, organization.id, listed.body.name ?? '', label())).status).toBe(200);
+      await expect.poll(async () => NotificationMongoose.countDocuments({ _userId: follower.id }), { timeout: 5000 }).toBeGreaterThan(before);
+    });
+
+    it('Tells ORBIT a pricing is unlisted and never calls making its versions public listing it. (CA-23.2, CA-23.3)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const outsider = await newUser('outsider');
+      const pricing = await unlistedPricing(owner, organization);
+
+      const read = await orbit(outsider, 'get_pricing', { organizationId: organization.id, pricing: pricing.slug });
+      expect(read.unlisted).toBe(true);
+      expect(read.versions.map((version: any) => version.version).sort()).toEqual([...pricing.versions].sort());
+
+      const searched = await orbit(owner, 'search_pricings', { organizationId: organization.id, query: pricing.name });
+      expect(searched.pricings.find((item: any) => item.slug === pricing.slug)).toMatchObject({ unlisted: true });
+      const resources = await orbit(owner, 'list_resources', { organizationId: organization.id, type: 'pricing' });
+      expect(resources.pricings.find((item: any) => item.slug === pricing.slug)).toMatchObject({ unlisted: true });
+      const member = await newUser('member');
+      await createMembership(member.id, organization.id, 'MEMBER');
+      const memberResources = await orbit(member, 'list_resources', { organizationId: organization.id, type: 'pricing' });
+      expect(JSON.stringify(memberResources)).not.toContain(pricing.slug);
+
+      const proposal = await orbit(owner, 'propose_plan', {
+        summary: 'Make it public',
+        visibilityChanges: [{ organizationId: organization.id, pricing: pricing.slug, private: false }],
+      });
+      const warnings = JSON.stringify(proposal.warnings ?? proposal.plan?.warnings ?? []);
+      expect(warnings).toContain('stays unlisted');
+      expect(warnings).not.toContain('already public');
+    });
+
+    it('Leaves an unlisted pricing out of the collection download for who may not read it. (CA-24)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const collection = await createTestCollection({ _organizationId: organization.id, name: `zip-${randomSuffix()}` });
+      collectionIdsToDelete.add(collection.id);
+      const pricing = await unlistedPricing(owner, organization);
+      const listed = await publish(owner.token, organization.id, `zip-listed-${randomSuffix()}`, label());
+      for (const slug of [pricing.slug, listed.body.slug]) {
+        await request(app).post(`${BASE_PATH}/collections/${organization.id}/${collection.slug}`)
+          .set('Authorization', `Bearer ${owner.token}`).send({ pricingSlug: slug }).expect(200);
+      }
+      const member = await newUser('member');
+      await createMembership(member.id, organization.id, 'MEMBER');
+      const reader = await newUser('reader');
+      await createMembership(reader.id, organization.id, 'MEMBER');
+      await createEntityScopedPermission(reader.id, organization.id, pricing.slug, 'pricing', { ...NONE, GET: true });
+
+      const entries = async (auth?: { token: string }) => {
+        const response = await get(`${BASE_PATH}/collections/${organization.id}/${collection.slug}/download`, auth)
+          .buffer(true).parse((res, done) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => done(null, Buffer.concat(chunks))); });
+        expect(response.status).toBe(200);
+        const directory = await unzipper.Open.buffer(response.body as Buffer);
+        return directory.files.map(file => file.path).join('\n');
+      };
+      for (const auth of [undefined, { token: member.token }]) {
+        const files = await entries(auth);
+        expect(files).not.toContain(`${pricing.name}/`);
+        expect(files).toContain(`${listed.body.name}/`);
+      }
+      for (const auth of [{ token: owner.token }, { token: reader.token }]) {
+        expect(await entries(auth)).toContain(`${pricing.name}/`);
+      }
     });
   });
 });
