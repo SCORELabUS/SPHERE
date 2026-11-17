@@ -28,6 +28,7 @@ async function render(props: Partial<Parameters<typeof AnonymousLinkDialog>[0]> 
   };
   const focus = vi.fn();
   const focusLink = vi.fn();
+  const focusDialog = vi.fn();
   let view: ReactTestRenderer;
   await act(async () => {
     view = create(
@@ -42,13 +43,14 @@ async function render(props: Partial<Parameters<typeof AnonymousLinkDialog>[0]> 
       {
         createNodeMock: element => {
           if (element.props.role === 'alertdialog') return { focus };
+          if (element.props.role === 'dialog') return { focus: focusDialog };
           if (element.props['aria-label'] === 'Anonymous pricing link') return { focus: focusLink };
           return {};
         },
       }
     );
   });
-  return { view: view!, focus, focusLink, ...handlers, ...props };
+  return { view: view!, focus, focusLink, focusDialog, ...handlers, ...props };
 }
 
 type Node = ReactTestRenderer['root'];
@@ -164,6 +166,45 @@ describe('AnonymousLinkDialog', () => {
     await click(button(view, 'Make this version unlisted and create link'));
     expect(order).toEqual(['unlist', 'show "etag.2"', 'create']);
     expect(onMakeVersionVisible.mock.calls[0][0]).toBe(selected);
+  });
+
+  it('does not touch a private version when the pricing has as many links as it may (I1)', async () => {
+    api.listAnonymousLinks.mockResolvedValue({ links: [link('a')], limit: 1 });
+    const selected = version('2', true);
+    const { view } = await render({ selected, versions: [selected] });
+    expect(button(view, 'Make this version unlisted and create link').props.disabled).toBe(true);
+  });
+
+  it('says what it already changed when the link cannot be created, and stops calling the version private (I1)', async () => {
+    api.createAnonymousLink.mockRejectedValue({ status: 409, message: 'CONFLICT: This pricing has 20 anonymous links.' });
+    const selected = version('2', true);
+    const { view, onMakeUnlisted, onMakeVersionVisible } = await render({ selected, versions: [version('1', false), selected] });
+    await click(button(view, 'Make this version unlisted and create link'));
+    expect(onMakeUnlisted).toHaveBeenCalledOnce();
+    expect(onMakeVersionVisible).toHaveBeenCalledOnce();
+    expect(view.root.findByProps({ role: 'alert' }).props.children).toBe(
+      'The pricing is now unlisted and version v2 is now visible to anyone with the link, but the link was not created: CONFLICT: This pricing has 20 anonymous links.'
+    );
+    expect(text(view)).not.toContain('is private');
+    // It can try again, without changing anything else.
+    expect(button(view, 'Create link').props.disabled).toBe(false);
+  });
+
+  it('says the pricing is now unlisted when only the link failed after unlisting it (I1)', async () => {
+    api.createAnonymousLink.mockRejectedValue({ status: 503, message: '' });
+    const { view } = await render();
+    await click(button(view, 'Make unlisted and create link'));
+    expect(view.root.findByProps({ role: 'alert' }).props.children).toBe(
+      'The pricing is now unlisted, but the link was not created: something went wrong.'
+    );
+    expect(view.root.findAll(node => node.props.role === 'alertdialog')).toHaveLength(0);
+  });
+
+  it('takes the focus when it opens without a warning (M3)', async () => {
+    const { focusDialog } = await render({ unlisted: true });
+    expect(focusDialog).toHaveBeenCalled();
+    const selected = version('2', true);
+    expect((await render({ selected, versions: [selected] })).focusDialog).toHaveBeenCalled();
   });
 
   it('cancels a private version without changing anything (CA-11.2)', async () => {

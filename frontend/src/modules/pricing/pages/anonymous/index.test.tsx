@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   }),
   addRecentPricing: vi.fn(),
   renderer: vi.fn(),
+  tree: vi.fn(),
 }));
 const TOKEN = 'Abc_DEF-ghi_jklmnopqrstuvwxyz012';
 
@@ -22,7 +23,12 @@ vi.mock('../../../pricing-editor/components/pricing-renderer', () => ({
     return <div data-testid="renderer">{props.pricing.saasName}</div>;
   },
 }));
-vi.mock('../../components/pricing-tree', () => ({ default: () => <div data-testid="tree" /> }));
+vi.mock('../../components/pricing-tree', () => ({
+  default: (props: { analytics: unknown }) => {
+    mocks.tree(props);
+    return <div data-testid="tree" />;
+  },
+}));
 vi.mock('../../components/yaml-source-panel', () => ({ default: ({ yamlText }: { yamlText: string }) => <pre data-testid="yaml">{yamlText}</pre> }));
 vi.mock('../../utils/pricing-text', () => ({
   parsePricingText: async (text: string) => ({ saasName: /saasName: (.*)/.exec(text)?.[1] ?? 'Pricing' }),
@@ -106,6 +112,30 @@ describe('Anonymous pricing page', () => {
     expect(download.props.href).toMatch(new RegExp(`/anonymous-pricings/${TOKEN}/yaml$`));
     expect(download.props.referrerPolicy).toBe('no-referrer');
     expect(download.props.className).toContain('cursor-pointer');
+  });
+
+  it('shows nothing of what an answer carries beyond the version, its date, its figures and its YAML (G17, CA-15.8)', async () => {
+    const leaky = {
+      ...shown,
+      organization: 'Secret Org',
+      organizationId: ORGANIZATION_ID,
+      pricingId: PRICING_ID,
+      versionId: VERSION_ID,
+      collection: { name: 'Secret Collection' },
+      forkedFrom: { organization: 'Origin Org', name: 'Origin pricing' },
+      owner: 'secret-owner',
+      analytics: { ...shown.analytics, organizationName: 'Secret Org' },
+    };
+    const { view } = await render(Response.json(leaky));
+    const content = textOf(view.root);
+    for (const absent of ['Secret Org', 'Secret Collection', 'Origin Org', 'Origin pricing', 'secret-owner', ORGANIZATION_ID, PRICING_ID, VERSION_ID]) {
+      expect(content, absent).not.toContain(absent);
+    }
+    const everyProp = view.root.findAll(() => true).flatMap(node => Object.values(node.props ?? {}));
+    expect(JSON.stringify(everyProp.filter(value => typeof value === 'string' || typeof value === 'number'))).not.toMatch(/Secret|Origin|secret-owner/);
+    // Only numbers reach the analytics tree.
+    const tree = mocks.tree.mock.lastCall?.[0].analytics as Record<string, unknown>;
+    expect(Object.values(tree).every(value => typeof value === 'number')).toBe(true);
   });
 
   it('keeps itself out of search engines and sends no Referer (CA-20.1)', async () => {

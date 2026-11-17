@@ -52,6 +52,7 @@ export default function AnonymousLinkDialog({
   const [created, setCreated] = useState<AnonymousLink | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
   // While the revoke confirmation is open, Escape belongs to it.
   const confirmingRef = useRef(false);
@@ -73,8 +74,10 @@ export default function AnonymousLinkDialog({
     };
   }, [pricingId, listAnonymousLinks]);
 
+  // The focus enters the dialog: on the warning when there is one.
   useEffect(() => {
     if (step === 'listed-warning') alertRef.current?.focus();
+    else dialogRef.current?.focus();
   }, [step]);
 
   // The button that created the link is gone; the focus moves to the link.
@@ -94,41 +97,55 @@ export default function AnonymousLinkDialog({
 
   const full = limit !== null && links !== null && links.length >= limit;
 
-  const run = async (action: () => Promise<void>) => {
+  /**
+   * Runs the steps of an action. `done` collects what each step already
+   * changed, so a later failure says so instead of "nothing was shared".
+   */
+  const run = async (action: (done: string[]) => Promise<void>) => {
+    const done: string[] = [];
     setBusy(true);
     setError(null);
     try {
-      await action();
+      await action(done);
     } catch (failure) {
-      setError((failure as { message?: string })?.message || 'Something went wrong. Nothing was shared.');
+      const reason = (failure as { message?: string })?.message;
+      setError(done.length > 0
+        ? `${done.join(' and ')}, but the link was not created: ${reason?.replace(/\.$/, '') || 'something went wrong'}.`
+        : reason || 'Something went wrong. Nothing was shared.');
     } finally {
       setBusy(false);
     }
   };
 
-  const create = () => run(async () => {
+  const createLink = async () => {
     const link = await createAnonymousLink(selected.id);
     setCreated(link);
     setLinks(current => [link, ...(current ?? [])]);
     setStep('ready');
-  });
+  };
 
-  const makeUnlistedAndCreate = () => run(async () => {
-    await onMakeUnlisted();
-    const link = await createAnonymousLink(selected.id);
-    setCreated(link);
-    setLinks(current => [link, ...(current ?? [])]);
-    setStep('ready');
+  const makeUnlisted = async (done: string[]) => {
+    const etag = await onMakeUnlisted();
+    done.push('The pricing is now unlisted');
+    // Not listed any more: nothing left to warn about.
+    setStep(current => (current === 'listed-warning' ? 'ready' : current));
+    return etag;
+  };
+
+  const create = () => run(createLink);
+
+  const makeUnlistedAndCreate = () => run(async done => {
+    await makeUnlisted(done);
+    await createLink();
   });
 
   // Unlisted first: the version is never visible while the pricing is still listed.
-  const makeVersionVisibleAndCreate = () => run(async () => {
-    const etag = unlisted ? undefined : await onMakeUnlisted();
+  const makeVersionVisibleAndCreate = () => run(async done => {
+    const etag = unlisted ? undefined : await makeUnlisted(done);
     await onMakeVersionVisible(selected, etag);
-    const link = await createAnonymousLink(selected.id);
-    setCreated(link);
-    setLinks(current => [link, ...(current ?? [])]);
+    done.push(`${done.length > 0 ? 'version' : 'Version'} ${selected.version} is now visible to anyone with the link`);
     setStep('ready');
+    await createLink();
   });
 
   const copy = async (link: AnonymousLink) => {
@@ -166,10 +183,12 @@ export default function AnonymousLinkDialog({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="anonymous-link-title"
-        className="flex max-h-[85dvh] w-full max-w-[32rem] cursor-default flex-col overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-4"
+        tabIndex={-1}
+        className="flex max-h-[85dvh] w-full max-w-[32rem] cursor-default flex-col overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas shadow-elevation-4 outline-none"
         onClick={event => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-tp-hairline px-5 py-4">
@@ -200,7 +219,7 @@ export default function AnonymousLinkDialog({
                 anyone with the link, keeping the pricing out of search and its organization's page, and share it.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" disabled={busy} onClick={makeVersionVisibleAndCreate} className={primaryButton}>
+                <button type="button" disabled={busy || full} onClick={makeVersionVisibleAndCreate} className={primaryButton}>
                   Make this version unlisted and create link
                 </button>
                 <button type="button" disabled={busy} onClick={onClose} className={secondaryButton}>

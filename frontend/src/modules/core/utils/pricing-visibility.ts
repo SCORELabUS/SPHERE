@@ -63,9 +63,25 @@ export function anonymousLinkStep(selected: VersionVisibility | null | undefined
   return 'ready';
 }
 
-/** The confirmation shown before listing an unlisted pricing that has active anonymous links. */
-export function makePublicConfirmation(activeLinks: number): string {
-  const links = activeLinks === 1 ? '1 active anonymous link' : `${activeLinks} active anonymous links`;
-  return `This pricing has ${links}. Making it public lists it in SPHERE's search and on its organization's page, ` +
-    'next to the organization that published it, so whoever opens those links could find out who published it.';
+/**
+ * The confirmation shown before making a pricing with anonymous links Public.
+ * `links` is how many it has, or null when they could not be read.
+ */
+export function makePublicConfirmation(links: number | null): string {
+  const has = links === null
+    ? 'This pricing may have anonymous links.'
+    : `This pricing has ${links === 1 ? '1 anonymous link' : `${links} anonymous links`}.`;
+  return `${has} Making it public lists it in SPHERE's search and on its organization's page, next to the organization ` +
+    'that published it, and makes every version visible, so whoever opens those links could find out who published it.';
+}
+
+/**
+ * The warning before making a pricing Public, or null when there is nothing
+ * to warn about. Every link counts, also the ones suspended while their
+ * version is private: Public makes every version visible, so they all serve
+ * again. Links that could not be read (null) still warn.
+ */
+export function publicSwitchWarning(links: readonly unknown[] | null): string | null {
+  if (links === null) return makePublicConfirmation(null);
+  return links.length > 0 ? makePublicConfirmation(links.length) : null;
 }

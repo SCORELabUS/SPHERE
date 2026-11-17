@@ -7,6 +7,7 @@ import {
   isListedWithPublicVersion,
   makePublicConfirmation,
   pricingVisibility,
+  publicSwitchWarning,
   visibilityChangeBody,
   visibilityFormFields,
 } from '../src/modules/core/utils/pricing-visibility.ts';
@@ -68,8 +69,18 @@ test('the anonymous link dialog asks about a private version before warning abou
 
 test('warns how many anonymous links making the pricing public exposes (CA-25.1)', () => {
   const text = makePublicConfirmation(2);
-  assert.match(text, /2 active anonymous links/);
+  assert.match(text, /2 anonymous links/);
   assert.match(text, /search/);
   assert.match(text, /organization/);
-  assert.match(makePublicConfirmation(1), /1 active anonymous link\b/);
+  assert.match(makePublicConfirmation(1), /1 anonymous link\b/);
+});
+
+test('counts every link before making a pricing public, also the suspended ones, and warns when they cannot be read (I2, CA-25.1, CA-25.2)', () => {
+  // Public makes every version visible, so a link suspended while its version is private serves again.
+  const suspended = { active: false };
+  const active = { active: true };
+  assert.match(publicSwitchWarning([suspended, suspended]) ?? '', /2 anonymous links/);
+  assert.match(publicSwitchWarning([active, suspended, suspended]) ?? '', /3 anonymous links/);
+  assert.equal(publicSwitchWarning([]), null);
+  assert.match(publicSwitchWarning(null) ?? '', /may have anonymous links/);
 });
