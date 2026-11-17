@@ -17,6 +17,8 @@ interface PricingVersionsTabProps {
   canChangeVisibility: boolean;
   onToggleVisibility: (v: VersionData) => void;
   onViewOrigin: (forkedFrom: NonNullable<VersionData['forkedFrom']>) => void;
+  /** The pricing is unlisted: its non-private versions are visible with the link, not listed. */
+  unlisted?: boolean;
 }
 
 export default function PricingVersionsTab({
@@ -31,6 +33,7 @@ export default function PricingVersionsTab({
   canChangeVisibility,
   onToggleVisibility,
   onViewOrigin,
+  unlisted = false,
 }: PricingVersionsTabProps) {
   const [comparePair, setComparePair] = useState<{ from: string; to: string } | null>(null);
 
@@ -87,7 +90,7 @@ export default function PricingVersionsTab({
             </div>
             <div className="flex items-center gap-1">
               {canChangeVisibility && (
-                <button type="button" onClick={() => onToggleVisibility(v)} title={v.private ? 'Private: click to make this version public' : 'Public: click to make this version private'} aria-label={v.private ? 'Make version public' : 'Make version private'} className={`cursor-pointer rounded-md p-1.5 transition-colors hover:bg-tp-surface ${v.private ? 'text-tp-steel hover:text-tp-ink' : 'text-emerald-700'}`}>
+                <button type="button" onClick={() => onToggleVisibility(v)} title={v.private ? `Private: click to make this version ${unlisted ? 'visible with the link' : 'public'}` : `${unlisted ? 'Visible with the link' : 'Public'}: click to make this version private`} aria-label={v.private ? `Make version ${unlisted ? 'visible with the link' : 'public'}` : 'Make version private'} className={`cursor-pointer rounded-md p-1.5 transition-colors hover:bg-tp-surface ${v.private ? 'text-tp-steel hover:text-tp-ink' : 'text-emerald-700'}`}>
                   {v.private ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
                 </button>
               )}

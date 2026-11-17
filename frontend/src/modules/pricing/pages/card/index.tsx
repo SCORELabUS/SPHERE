@@ -40,6 +40,12 @@ import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
+import RobotsMeta from '../../components/robots-meta';
+import {
+  pricingVisibility,
+  visibilityChangeBody,
+  type PricingVisibilityChoice,
+} from '../../../core/utils/pricing-visibility';
 
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
@@ -76,6 +82,8 @@ export default function CardPage() {
   // The pricing's ETag as loaded, sent back in If-Match with every change made here.
   const [etag, setEtag] = useState<string>();
   const [pricingName, setPricingName] = useState<string>('');
+  // Left out of listings for who may not read its private versions ("anyone with the link").
+  const [unlisted, setUnlisted] = useState(false);
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
@@ -110,6 +118,7 @@ export default function CardPage() {
         setPricingId(data.pricingId);
         setEtag(data.etag);
         setPricingName(data.name ?? slug);
+        setUnlisted(data.unlisted === true);
         setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
@@ -406,11 +415,9 @@ export default function CardPage() {
       .catch(() => {});
   };
 
-  // Visibility belongs to each version: the settings describe the pricing as a
-  // whole, so a pricing with some public and some private versions is "Mixed".
-  const privateCount = versions.filter(v => v.private).length;
-  const visibility =
-    privateCount === 0 ? 'Public' : privateCount === versions.length ? 'Private' : 'Mixed';
+  // Privacy belongs to each version and the listing to the pricing: the settings
+  // describe the pricing as a whole, so some public and some private versions are "Mixed".
+  const visibility = pricingVisibility(versions, unlisted);
 
   const setVersionsPrivacy = (isPrivate: boolean, shouldChange: (v: VersionData) => boolean) => {
     setVersions(prev => prev.map(v => (shouldChange(v) ? { ...v, private: isPrivate } : v)));
@@ -433,22 +440,28 @@ export default function CardPage() {
     }
   };
 
-  // The setting in the Settings tab: every version at once.
+  // The setting in the Settings tab: every version at once, and whether it is listed.
   const handleVisibilityChange = (value: string) => {
     if (!slug || !organizationId) return;
-    const target = value === 'Private' ? 'Private' : 'Public';
+    const target: PricingVisibilityChoice = value === 'Private' || value === 'Unlisted' ? value : 'Public';
     if (target === visibility) return;
-    const isPrivate = target === 'Private';
     const scope =
       versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
-    customConfirm(`Make ${scope} ${target.toLowerCase()}?`, { danger: true })
+    const question = target === 'Unlisted'
+      ? `Make ${scope} visible to anyone with the link, but leave the pricing out of search and its organization's page?`
+      : target === 'Public'
+        ? `Make ${scope} public and list the pricing in search and on its organization's page?`
+        : `Make ${scope} private?`;
+    customConfirm(question, { danger: true })
       .then(async () => {
         try {
-          const result = await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate }, etag);
+          const body = visibilityChangeBody(target);
+          const result = await updatePricing(organizationId, slug, collectionSlug ?? '', body, etag);
           setEtag(result.etag);
-          setVersionsPrivacy(isPrivate, () => true);
+          if (body.unlisted !== undefined) setUnlisted(body.unlisted);
+          setVersionsPrivacy(body.private, () => true);
           customAlert(
-            `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`,
+            `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target === 'Unlisted' ? 'visible to anyone with the link, and unlisted' : target.toLowerCase()}`,
             'success'
           );
         } catch (error) {
@@ -663,6 +676,8 @@ export default function CardPage() {
       <Helmet>
         <title>SPHERE - {pricingName}</title>
       </Helmet>
+      {/* An unlisted pricing stays out of search engines too. */}
+      {unlisted && <RobotsMeta />}
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
         {/* Breadcrumb + header */}
         <motion.div
@@ -1160,6 +1175,7 @@ export default function CardPage() {
                   canChangeVisibility={!!entityPermissions?.PUT}
                   onToggleVisibility={handleToggleVersionVisibility}
                   onViewOrigin={handleViewOrigin}
+                  unlisted={unlisted}
                 />
                 </div>
               )}
@@ -1178,6 +1194,7 @@ export default function CardPage() {
               <PricingSettingsTab
                 entityPermissions={entityPermissions}
                 visibility={visibility}
+                unlisted={unlisted}
                 pricingName={pricingName}
                 currentVersion={currentVersion}
                 versions={versions}
@@ -1209,6 +1226,7 @@ export default function CardPage() {
           <VersionsVisibilityModal
             versions={versions}
             currentVersionId={currentVersion?.id}
+            unlisted={unlisted}
             onClose={() => setShowVisibilityModal(false)}
           />
         )}
