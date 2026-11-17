@@ -306,6 +306,10 @@ describe('Anonymous pricing links', { timeout: 60000 }, () => {
         const baseline = comparable(await route(missing));
         expect(baseline.status).toBe(404);
         expect(JSON.parse(baseline.body)).toEqual({ error: 'Link not available' });
+        // Kept out of caches and search engines also when it shows nothing (CA-16.4).
+        expect(baseline.headers['cache-control']).toBe('no-store');
+        expect(baseline.headers['x-robots-tag']).toBe('noindex, nofollow');
+        expect(baseline.headers['referrer-policy']).toBe('no-referrer');
         expect(comparable(await route(second.token))).toEqual(baseline);
         for (const token of malformed) {
           const response = comparable(await route(encodeURIComponent(token).replace(/%25/g, '%')));

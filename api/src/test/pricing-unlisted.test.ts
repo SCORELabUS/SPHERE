@@ -721,6 +721,27 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(o3).not.toContain('unlisted');
     });
 
+    it('Leaves an unlisted pricing out of ORBIT\'s get_collection for who may not read it. (CA-23.1)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const collection = await createTestCollection({ _organizationId: organization.id, name: `orbit-${randomSuffix()}` });
+      collectionIdsToDelete.add(collection.id);
+      const pricing = await unlistedPricing(owner, organization);
+      const listed = await publish(owner.token, organization.id, `orbit-listed-${randomSuffix()}`, label());
+      for (const slug of [pricing.slug, listed.body.slug]) {
+        await request(app).post(`${BASE_PATH}/collections/${organization.id}/${collection.slug}`)
+          .set('Authorization', `Bearer ${owner.token}`).send({ pricingSlug: slug }).expect(200);
+      }
+      const member = await newUser('member');
+      await createMembership(member.id, organization.id, 'MEMBER');
+      const read = async (user: any) => JSON.stringify(await orbit(user, 'get_collection', { organizationId: organization.id, collection: collection.slug }));
+
+      const asMember = await read(member);
+      expect(asMember).toContain(listed.body.slug);
+      expect(asMember).not.toContain(pricing.slug);
+      expect(await read(owner)).toContain(pricing.slug);
+    });
+
     it('Leaves an unlisted pricing out of the collection download for who may not read it. (CA-24)', async () => {
       const owner = await newUser('owner');
       const organization = await newOrganization(owner);
