@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import PricingIdentity from './PricingIdentityMongoose';
+import PricingAnonymousLink from './PricingAnonymousLinkMongoose';
 import { generateSlug } from '../../../utils/slug-manager';
 
 const pricingSchema = new Schema(
@@ -139,7 +140,23 @@ export const YAML_PATH_COLLATION = { locale: 'en', strength: 2 } as const;
 
 pricingSchema.index({ yaml: 1 }, { name: 'yaml_1_ci', collation: YAML_PATH_COLLATION });
 
-async function refreshIdentities(ids: any[], pricingModel: any) {
+/**
+ * Deletes the anonymous links of these pricings whose version is gone (a
+ * deleted version, pricing, collection or organization), so a link never
+ * outlives what it showed, even if the same pricing and label come back.
+ */
+async function dropOrphanLinks(ids: any[], connection: any, Model: any) {
+  const Link = connection.models.PricingAnonymousLink ||
+    connection.model('PricingAnonymousLink', PricingAnonymousLink.schema, 'pricingAnonymousLinks');
+  const links: any[] = await Link.find({ pricingId: { $in: ids } }).select('versionId').lean();
+  if (!links.length) return;
+  const alive = new Set((await Model.find({ _id: { $in: links.map(link => link.versionId) } }).select('_id').lean())
+    .map((version: any) => String(version._id)));
+  const orphans = links.filter(link => !alive.has(String(link.versionId))).map(link => link._id);
+  if (orphans.length) await Link.deleteMany({ _id: { $in: orphans } });
+}
+
+async function refreshIdentities(ids: any[], pricingModel: any, deleted = false) {
   const identityIds = ids.filter(Boolean);
   if (!identityIds.length) return;
 
@@ -160,6 +177,7 @@ async function refreshIdentities(ids: any[], pricingModel: any) {
       _collectionId: current._collectionId ?? null, deleted: false,
     }, $inc: { revision: 1 } } : { $set: { deleted: true }, $inc: { revision: 1 } });
   }
+  if (deleted) await dropOrphanLinks(identityIds, connection, Model);
 }
 pricingSchema.post('save', async function(doc) { await refreshIdentities([doc.pricingId], doc.constructor); });
 for (const operation of ['updateMany', 'deleteMany', 'deleteOne', 'findOneAndDelete'] as const) {
@@ -167,7 +185,9 @@ for (const operation of ['updateMany', 'deleteMany', 'deleteOne', 'findOneAndDel
     const rows = await this.model.find(this.getFilter()).select('pricingId').lean();
     this.identityIds = rows.map((row: any) => row.pricingId);
   });
-  pricingSchema.post(operation, async function(this: any) { await refreshIdentities(this.identityIds ?? [], this.model); });
+  pricingSchema.post(operation, async function(this: any) {
+    await refreshIdentities(this.identityIds ?? [], this.model, operation !== 'updateMany');
+  });
 }
 
 const pricingModel = mongoose.model('Pricing', pricingSchema, 'pricings');

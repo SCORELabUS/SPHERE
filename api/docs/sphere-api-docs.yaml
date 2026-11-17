@@ -139,6 +139,12 @@ tags:
   - name: ORBIT
     description: |
       Chat assistant that runs SPHERE operations for the user. It proposes plans; nothing changes until the user confirms one.
+  - name: Anonymous Links
+    description: |
+      Links that show one version of a pricing to anyone without naming who published it (for
+      instance, in a paper under double-blind review). Who may edit a pricing creates, lists and
+      revokes its links; anyone holding a token reads what it shows, and the answer is the same
+      for every caller.
   - name: Public Synchronization
     description: |
       Permanent links and the read-only API that external tools (e.g. SPACE) use to
@@ -6619,6 +6625,245 @@ paths:
         '503':
           $ref: '#/components/responses/PublicSyncTemporarilyUnavailable'
 
+  /pricing-anonymous-links:
+    get:
+      operationId: listPricingAnonymousLinks
+      summary: List the anonymous links of a pricing
+      description: |
+        The anonymous links of a pricing, newest first, with their tokens, so its editors can copy
+        them again. `active` is false while the version a link shows is private: the link then
+        answers like a missing one, and answers again when the version stops being private.
+
+        **Authentication**: a user token or an API key (`MANAGEMENT` or `ALL`; a `VIEW` key gets 403).
+
+        **Permission**: PUT on the pricing (the PUT of its collection when it is in one), the same
+        as changing its visibility. A pricing whose versions are all private answers 404 to who
+        may not read them; any other pricing the caller may not edit answers 403.
+      tags:
+        - Anonymous Links
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: pricingId
+          in: query
+          required: true
+          description: The immutable id of the pricing (its `pricingId`).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The links of the pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingAnonymousLinkList'
+        '401':
+          description: No credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The caller may not edit the pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No such pricing, or one the caller may not read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createPricingAnonymousLink
+      summary: Create an anonymous link to a version
+      description: |
+        Creates a link that shows one version of a pricing (always the same one) to anyone, at
+        `/a/{token}` in the web app and `GET /anonymous-pricings/{token}` here. The token is 32
+        random base64url characters (192 bits), never derived from an id. Creating a link does not
+        change the pricing, so its `ETag` stays the same.
+
+        A listed pricing can be found in search next to its organization, so a link to it hides
+        less: the web app warns before creating one and offers to make the pricing unlisted.
+
+        **Authentication** and **Permission**: as listing them. A private version is never shared
+        this way (409); a pricing has at most 20 links (409 past that: revoke one first).
+      tags:
+        - Anonymous Links
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - versionId
+              properties:
+                versionId:
+                  type: string
+                  description: The id of the version to show.
+      responses:
+        '201':
+          description: The link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingAnonymousLink'
+        '401':
+          description: No credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The caller may not edit the pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No such version, or one the caller may not read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The version is private, or the pricing already has 20 links
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /pricing-anonymous-links/{linkId}:
+    delete:
+      operationId: revokePricingAnonymousLink
+      summary: Revoke an anonymous link
+      description: |
+        Deletes the link: its token then answers like one that never existed. A link the caller may
+        not manage answers 404, as one that does not exist.
+      tags:
+        - Anonymous Links
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          description: No credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No such link, or one the caller may not manage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /anonymous-pricings/{token}:
+    get:
+      operationId: getAnonymousPricing
+      summary: Read what an anonymous link shows
+      description: |
+        The version a link shows, with exactly these keys: its label, release date, analytics
+        (counts and prices) and the text of its YAML file as stored. Nothing names who published
+        it: no organization, collection, author, id, file path or origin of a fork.
+
+        **Authentication**: none. Credentials are dropped before authentication, so the answer is
+        the same for every caller (and is rate limited by address).
+
+        **Not available**: a malformed, unknown or revoked token, a version that is private,
+        deleted or in a deleted pricing, all answer the same `404`.
+      tags:
+        - Anonymous Links
+      security:
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/AnonymousToken'
+      responses:
+        '200':
+          description: What the link shows
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnonymousPricing'
+        '404':
+          description: The link shows nothing
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Link not available
+  /anonymous-pricings/{token}/yaml:
+    get:
+      operationId: downloadAnonymousPricing
+      summary: Download the YAML an anonymous link shows
+      description: |
+        The bytes of the version's file as stored, named `pricing-<version label>.yml`. Same rules
+        and answers as `GET /anonymous-pricings/{token}`.
+      tags:
+        - Anonymous Links
+      security:
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/AnonymousToken'
+      responses:
+        '200':
+          description: The YAML file
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+            Content-Disposition:
+              description: '`attachment; filename="pricing-<version label>.yml"`'
+              schema:
+                type: string
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '404':
+          description: The link shows nothing
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /public/pricings/{pricingId}:
     get:
       operationId: getPublicPricingManifest
@@ -7379,6 +7624,59 @@ components:
           type: string
       required:
         - error
+
+    PricingAnonymousLink:
+      type: object
+      properties:
+        id:
+          type: string
+        token:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{32}$'
+          description: 32 random base64url characters; the link is `/a/{token}` in the web app.
+        versionId:
+          type: string
+        version:
+          type: string
+          description: The label of the version it shows.
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        active:
+          type: boolean
+          description: False while the version is private (the link answers 404 until it is not).
+      required: [id, token, versionId, version, createdAt, active]
+
+    PricingAnonymousLinkList:
+      type: object
+      properties:
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingAnonymousLink'
+        limit:
+          type: integer
+          description: How many links a pricing may have.
+          example: 20
+      required: [links, limit]
+
+    AnonymousPricing:
+      type: object
+      additionalProperties: false
+      description: What an anonymous link shows. These are its only keys.
+      properties:
+        version:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/Date'
+        analytics:
+          type: object
+          description: Counts and prices of the version (only finite numbers).
+          additionalProperties:
+            type: number
+        yaml:
+          type: string
+          description: The text of the version's YAML file as stored, comments included.
+      required: [version, createdAt, analytics, yaml]
 
     PermanentLinkLocation:
       type: object
@@ -9638,6 +9936,13 @@ components:
                 example: "Cache set successfully"
 
   parameters:
+    AnonymousToken:
+      name: token
+      in: path
+      required: true
+      description: The token of an anonymous link (32 base64url characters).
+      schema:
+        type: string
     PricingId:
       name: pricingId
       in: path
@@ -9959,6 +10264,21 @@ components:
         example: "a1b2c3d4e5"
 
   headers:
+    AnonymousCacheControl:
+      description: What an anonymous link shows is never stored.
+      schema:
+        type: string
+        enum: ['no-store']
+    AnonymousRobotsTag:
+      description: Search engines do not index what an anonymous link shows.
+      schema:
+        type: string
+        enum: ['noindex, nofollow']
+    AnonymousReferrerPolicy:
+      description: No Referer carries the token away.
+      schema:
+        type: string
+        enum: ['no-referrer']
     PublicSyncETag:
       description: Strong validator, the SHA-256 (hex, quoted) of the response body.
       schema:
