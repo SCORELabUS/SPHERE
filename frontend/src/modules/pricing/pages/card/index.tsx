@@ -461,9 +461,11 @@ export default function CardPage() {
       : target === 'Public'
         ? `Make ${scope} public and list the pricing in search and on its organization's page?`
         : `Make ${scope} private?`;
+    // One question: the warning about the links, when there are any, stands for the usual one.
     linksWarning
-      .then(warning => (warning ? customConfirm(warning, { danger: true, confirmLabel: 'Make public' }) : undefined))
-      .then(() => customConfirm(question, { danger: true }))
+      .then(warning => (warning
+        ? customConfirm(warning, { danger: true, confirmLabel: 'Make public' })
+        : customConfirm(question, { danger: true })))
       .then(async () => {
         try {
           const body = visibilityChangeBody(target);

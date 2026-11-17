@@ -75,7 +75,9 @@ export function usePricingsApi() {
       requestUrl = `${PRICINGS_BASE_PATH}?${filterParams.toString()}`;
     }
 
-    return fetch(requestUrl as string, {
+    // With the session when there is one, so the search also lists the unlisted
+    // pricings the user may read; anonymous visitors send nothing, as before.
+    return fetchWithInterceptor(requestUrl as string, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -92,7 +94,7 @@ export function usePricingsApi() {
         const body = await (error as Response).json().catch(() => ({}));
         return Promise.reject({message: body.error});
       });
-  }, []);
+  }, [fetchWithInterceptor]);
 
   const getPricingBySlug = useCallback(async (slug: string, organizationId: string, collectionSlug: string | null) => {
     const withCollection = !!collectionSlug && collectionSlug !== 'undefined';
