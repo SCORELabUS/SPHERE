@@ -185,13 +185,21 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(shown.body.unlisted).toBe(true);
     });
 
-    it('Reads a version stored before the field existed as listed. (CA-7.5)', async () => {
+    it('Reads a version stored before the field existed as listed, and seeds no unlisted pricing. (CA-7.5)', async () => {
       const owner = await newUser('owner');
       const organization = await newOrganization(owner);
-      const created = await publish(owner.token, organization.id, `legacy-${randomSuffix()}`, label());
+      const name = `legacy-${randomSuffix()}`;
+      const created = await publish(owner.token, organization.id, name, label());
       await PricingMongoose.collection.updateMany({ slug: created.body.slug, _organizationId: new mongoose.Types.ObjectId(organization.id) }, { $unset: { unlisted: '' } });
       const shown = await get(`${BASE_PATH}/pricings/${organization.id}/${created.body.slug}`).expect(200);
       expect(shown.body.unlisted).toBe(false);
+      const searched = await get(`${BASE_PATH}/pricings?name=${name}`).expect(200);
+      expect(searched.body.pricings.map((item: any) => item.name)).toEqual([name]);
+
+      // No migration fills the field: what the seeder loads stays listed.
+      const seeded = JSON.parse(await fs.readFile(path.resolve(process.cwd(), 'src/main/database/seeders/mongo/pricings/pricings.json'), 'utf8'));
+      expect(seeded.length).toBeGreaterThan(0);
+      expect(seeded.filter((version: any) => version.unlisted === true)).toEqual([]);
     });
 
     it('Keeps a pricing unlisted when a version is added by an upload, the version route or the repository (ZIP, fork, ORBIT). (CA-3.2, CA-3.3)', async () => {
@@ -228,6 +236,12 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       const shown = await get(pricing.url).expect(200);
       expect(shown.body.unlisted).toBe(true);
       expect(shown.body.versions.map((version: any) => version.version)).toEqual(expect.arrayContaining([editorVersion, repositoryVersion]));
+
+      // CA-3.1: still out of the search and the organization's listing for anonymous callers.
+      const searched = await get(`${BASE_PATH}/pricings?name=${pricing.name}`).expect(200);
+      expect(searched.body.pricings.map((item: any) => item.name)).not.toContain(pricing.name);
+      const ofOrganization = await get(`${BASE_PATH}/pricings/${organization.id}`).expect(200);
+      expect(JSON.stringify(ofOrganization.body)).not.toContain(pricing.slug);
     });
 
     it('Changes only the privacy of the versions with private, never whether the pricing is listed. (CA-8.2)', async () => {
@@ -505,6 +519,37 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(failures).toEqual([]);
     });
 
+    it('Never lets the price and size ranges of the search give away an unlisted pricing. (CA-4, T14)', async () => {
+      const owner = await newUser('owner');
+      const organization = await newOrganization(owner);
+      const tag = `ranges${randomSuffix()}`;
+      const hidden = await publish(owner.token, organization.id, `${tag}-unlisted`, label(), { unlisted: 'true' });
+      const listed = await publish(owner.token, organization.id, `${tag}-listed`, label());
+      expect(hidden.status).toBe(200);
+      expect(listed.status).toBe(200);
+      const objectId = new mongoose.Types.ObjectId(organization.id);
+      const setAnalytics = (slug: string, value: number) => PricingMongoose.collection.updateMany({ slug, _organizationId: objectId }, {
+        $set: { 'analytics.minSubscriptionPrice': value, 'analytics.maxSubscriptionPrice': value, 'analytics.configurationSpaceSize': value },
+      });
+      // A figure nothing else has, so seeing it anywhere in the ranges means the unlisted pricing counted.
+      await setAnalytics(hidden.body.slug, 987654);
+      await setAnalytics(listed.body.slug, 3);
+
+      const search = async (auth?: { token: string }) => {
+        const { pricings, total, minPrice, maxPrice, configurationSpaceSize } = (await get(`${BASE_PATH}/pricings?name=${tag}`, auth).expect(200)).body;
+        return { names: pricings.map((item: any) => item.name), total, ranges: JSON.stringify({ minPrice, maxPrice, configurationSpaceSize }) };
+      };
+      const anonymous = await search();
+      expect(anonymous.names).toEqual([`${tag}-listed`]);
+      expect(anonymous.total).toBe(1);
+      expect(anonymous.ranges).not.toContain('987654');
+      expect(anonymous.ranges).toContain('"max":3');
+
+      const asOwner = await search({ token: owner.token });
+      expect(asOwner.names.sort()).toEqual([`${tag}-listed`, `${tag}-unlisted`]);
+      expect(asOwner.ranges).toContain('987654');
+    });
+
     it('Lists an unlisted pricing in the search through each way of reading it, and never through a slug of another organization or a sibling. (L-002 V1-V7, N1, N2)', async () => {
       const f = await presenceSetup();
       const searched = async (auth: { token?: string; key?: string }) =>
@@ -648,9 +693,32 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
         summary: 'Make it public',
         visibilityChanges: [{ organizationId: organization.id, pricing: pricing.slug, private: false }],
       });
-      const warnings = JSON.stringify(proposal.warnings ?? proposal.plan?.warnings ?? []);
+      const warningsOf = (result: any) => JSON.stringify(result.warnings ?? result.plan?.warnings ?? []);
+      const propose = (slug: string, isPrivate: boolean) => orbit(owner, 'propose_plan', {
+        summary: isPrivate ? 'Hide it' : 'Show it',
+        visibilityChanges: [{ organizationId: organization.id, pricing: slug, private: isPrivate }],
+      });
+      // O1: unlisted, every version public, made public: nothing to do, and it is not called public.
+      const warnings = warningsOf(proposal);
       expect(warnings).toContain('stays unlisted');
       expect(warnings).not.toContain('already public');
+
+      // O2: unlisted with a private version, made public: the version shows, the pricing stays unlisted.
+      await put(`${pricing.url}/${pricing.versions[0]}`, { private: true }, { token: owner.token }).expect(200);
+      const o2 = warningsOf(await propose(pricing.slug, false));
+      expect(o2).toContain('stays unlisted: anyone with its link will see it');
+      expect(o2).not.toContain('left out');
+
+      // O4: unlisted, made private: nothing about listing.
+      const o4 = warningsOf(await propose(pricing.slug, true));
+      expect(o4).not.toContain('unlisted');
+      expect(o4).not.toContain('left out');
+
+      // O3: listed and public, made public: already public, and nothing about listing.
+      const listed = await publish(owner.token, organization.id, `listed-${randomSuffix()}`, label());
+      const o3 = warningsOf(await propose(listed.body.slug, false));
+      expect(o3).toContain('already public');
+      expect(o3).not.toContain('unlisted');
     });
 
     it('Leaves an unlisted pricing out of the collection download for who may not read it. (CA-24)', async () => {
@@ -669,6 +737,11 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       const reader = await newUser('reader');
       await createMembership(reader.id, organization.id, 'MEMBER');
       await createEntityScopedPermission(reader.id, organization.id, pricing.slug, 'pricing', { ...NONE, GET: true });
+      const admin = await newUser('admin');
+      await createMembership(admin.id, organization.id, 'ADMIN');
+      const collectionReader = await newUser('colreader');
+      await createMembership(collectionReader.id, organization.id, 'MEMBER');
+      await createEntityScopedPermission(collectionReader.id, organization.id, collection.slug, 'collection', { ...NONE, GET: true });
 
       const entries = async (auth?: { token: string }) => {
         const response = await get(`${BASE_PATH}/collections/${organization.id}/${collection.slug}/download`, auth)
@@ -682,7 +755,7 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
         expect(files).not.toContain(`${pricing.name}/`);
         expect(files).toContain(`${listed.body.name}/`);
       }
-      for (const auth of [{ token: owner.token }, { token: reader.token }]) {
+      for (const auth of [{ token: owner.token }, { token: admin.token }, { token: reader.token }, { token: collectionReader.token }]) {
         expect(await entries(auth)).toContain(`${pricing.name}/`);
       }
     });

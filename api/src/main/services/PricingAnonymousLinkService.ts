@@ -96,6 +96,13 @@ class PricingAnonymousLinkService {
           const link = await this.repository.create({
             token: this.generateToken(), pricingId: family.pricingId, versionId: version._id, createdBy: reqUser.id,
           });
+          // A deletion of the version between reading it and this insert ran its
+          // cleanup before the link existed: take the link back, so it never holds
+          // one of the pricing's slots without showing in the list.
+          if (!(await this.repository.versionExists(version._id, family.pricingId))) {
+            await this.repository.deleteById(link._id);
+            throw new Error('NOT FOUND: Pricing version not found');
+          }
           return this._view(link, { version: version.version, private: false });
         } catch (err: any) {
           // A token taken already: 192 random bits make it next to impossible, but never fatal.

@@ -317,47 +317,70 @@ describe('Anonymous pricing links', { timeout: 60000 }, () => {
       await shown(f.link.token).expect(200);
     });
 
-    it('Stops showing a version while it is private and shows it again when it is not. (CA-17.4)', async () => {
+    it('Stops showing a version while it, or the whole pricing, is private and shows it again when it is not, on every public route. (CA-17.4, G4)', async () => {
       const f = await setup();
-      await request(app).put(`${f.url}/${f.versionLabel}`).set('Authorization', `Bearer ${f.owner.token}`).send({ private: true }).expect(200);
-      const hidden = comparable(await shown(f.link.token));
-      expect(hidden).toEqual(comparable(await shown('B'.repeat(32))));
-      expect((await listLinks(f.pricingId, { token: f.owner.token })).body.links[0]).toMatchObject({ id: f.link.id, active: false });
+      const missing = await Promise.all(publicRoutes.map(async route => comparable(await route('B'.repeat(32)))));
+      const answersLikeMissing = async (when: string) => {
+        for (const [index, route] of publicRoutes.entries()) expect(comparable(await route(f.link.token)), `${when}, route ${index}`).toEqual(missing[index]);
+      };
+      const showsIt = async (when: string) => {
+        for (const [index, route] of publicRoutes.entries()) expect((await route(f.link.token)).status, `${when}, route ${index}`).toBe(200);
+      };
+      const owner = { Authorization: `Bearer ${f.owner.token}` };
 
-      await request(app).put(`${f.url}/${f.versionLabel}`).set('Authorization', `Bearer ${f.owner.token}`).send({ private: false }).expect(200);
-      await shown(f.link.token).expect(200);
+      await request(app).put(`${f.url}/${f.versionLabel}`).set(owner).send({ private: true }).expect(200);
+      await answersLikeMissing('version private');
+      expect((await listLinks(f.pricingId, { token: f.owner.token })).body.links[0]).toMatchObject({ id: f.link.id, active: false });
+      await request(app).put(`${f.url}/${f.versionLabel}`).set(owner).send({ private: false }).expect(200);
+      await showsIt('version public again');
+
+      await request(app).put(f.url).set(owner).send({ private: true }).expect(200);
+      await answersLikeMissing('pricing private');
+      await request(app).put(f.url).set(owner).send({ private: false }).expect(200);
+      await showsIt('pricing public again');
     });
 
-    it('Answers alike and deletes the link when its version, its pricing or its organization goes. (CA-17.2, G2, G3)', async () => {
-      const missing = comparable(await shown('C'.repeat(32)));
+    it('Answers alike on every public route and deletes the link when its version, its pricing, its collection or its organization goes. (CA-17.2, G2, G3)', async () => {
+      const missingAnswers = await Promise.all(publicRoutes.map(async route => comparable(await route('C'.repeat(32)))));
+      const answersLikeMissing = async (token: string, when: string) => {
+        for (const [index, route] of publicRoutes.entries()) expect(comparable(await route(token)), `${when}, route ${index}`).toEqual(missingAnswers[index]);
+      };
 
       const versionGone = await setup();
       const other = await publish(versionGone.owner.token, versionGone.organization.id, versionGone.name, label());
       expect(other.slug).toBe(versionGone.slug);
       await request(app).delete(`${versionGone.url}/${versionGone.versionLabel}?collectionSlug=${versionGone.collection.slug}`).set('Authorization', `Bearer ${versionGone.owner.token}`).expect(200);
-      expect(comparable(await shown(versionGone.link.token))).toEqual(missing);
+      await answersLikeMissing(versionGone.link.token, 'version deleted');
       expect(await PricingAnonymousLinkMongoose.exists({ _id: versionGone.link.id })).toBeNull();
 
       const pricingGone = await setup();
       await request(app).delete(`${pricingGone.url}?collectionSlug=${pricingGone.collection.slug}`).set('Authorization', `Bearer ${pricingGone.owner.token}`).expect(200);
       expect((await PricingIdentityMongoose.findById(pricingGone.pricingId).lean() as any)?.deleted).toBe(true);
-      expect(comparable(await shown(pricingGone.link.token))).toEqual(missing);
+      await answersLikeMissing(pricingGone.link.token, 'pricing deleted');
       expect(await PricingAnonymousLinkMongoose.exists({ _id: pricingGone.link.id })).toBeNull();
 
       const identityFlagged = await setup();
       await PricingIdentityMongoose.updateOne({ _id: identityFlagged.pricingId }, { $set: { deleted: true } });
-      expect(comparable(await shown(identityFlagged.link.token))).toEqual(missing);
+      await answersLikeMissing(identityFlagged.link.token, 'identity flagged as deleted');
+
+      // A collection deleted with its pricings goes through the same delete hook as an organization.
+      const collectionGone = await setup();
+      await request(app).delete(`${BASE_PATH}/collections/${collectionGone.organization.id}/${collectionGone.collection.slug}?cascade=true`)
+        .set('Authorization', `Bearer ${collectionGone.owner.token}`).expect(200);
+      expect(await PricingMongoose.exists({ _id: collectionGone.version._id })).toBeNull();
+      await answersLikeMissing(collectionGone.link.token, 'collection deleted');
+      expect(await PricingAnonymousLinkMongoose.exists({ _id: collectionGone.link.id })).toBeNull();
 
       const organizationGone = await setup();
       await request(app).delete(`${BASE_PATH}/orgs/${organizationGone.organization.id}`).set('Authorization', `Bearer ${organizationGone.owner.token}`).expect(200);
       orgsToDelete.delete(organizationGone.organization.id);
       expect(await PricingMongoose.exists({ _id: organizationGone.version._id })).toBeNull();
-      expect(comparable(await shown(organizationGone.link.token))).toEqual(missing);
+      await answersLikeMissing(organizationGone.link.token, 'organization deleted');
       expect(await PricingAnonymousLinkMongoose.exists({ _id: organizationGone.link.id })).toBeNull();
 
       const fileGone = await setup();
       await fs.rm(path.resolve(process.cwd(), 'public', fileGone.version.yaml), { force: true });
-      expect(comparable(await shown(fileGone.link.token))).toEqual(missing);
+      await answersLikeMissing(fileGone.link.token, 'file gone');
     });
 
     it('Never shows a pricing deleted and created again with the same name and version through its old token. (CA-17.3, T19)', async () => {
@@ -429,7 +452,9 @@ describe('Anonymous pricing links', { timeout: 60000 }, () => {
       expect(body.version).toBe(f.versionLabel);
 
       const parent = await newOrganization(f.owner, 'Parent');
-      await OrganizationMongoose.updateOne({ _id: f.organization.id }, { $set: { _parentId: new mongoose.Types.ObjectId(parent.id), ancestors: [new mongoose.Types.ObjectId(parent.id)] } });
+      await request(app).put(`${BASE_PATH}/orgs/${f.organization.id}/parent`)
+        .set('Authorization', `Bearer ${f.owner.token}`).send({ parentId: parent.id }).expect(200);
+      expect(String((await OrganizationMongoose.findById(f.organization.id).lean() as any)._parentId)).toBe(parent.id);
       expect((await shown(f.link.token).expect(200)).body.version).toBe(f.versionLabel);
     });
   });
@@ -471,9 +496,40 @@ describe('Anonymous pricing links', { timeout: 60000 }, () => {
       expect((await createLink(versionId, { token: member.token })).status).toBe(201);
       expect((await listLinks(f.pricingId, { token: member.token })).status).toBe(200);
 
+      // A key of the owner with every scope, but over another organization, may not.
+      const elsewhereKey = await createApiKey(f.owner, [{ organizationId: f.owner.personalOrganizationId, scope: 'ALL' }]);
+      expect((await createLink(versionId, { key: elsewhereKey })).status).toBe(403);
+      expect((await listLinks(f.pricingId, { key: elsewhereKey })).status).toBe(403);
+      expect((await revokeLink(f.link.id, { key: elsewhereKey })).status).toBe(404);
+      await shown(f.link.token).expect(200);
+
       // A MANAGEMENT key of the owner may.
       const managementKey = await createApiKey(f.owner, [{ organizationId: f.organization.id, scope: 'MANAGEMENT' }]);
       expect((await listLinks(f.pricingId, { key: managementKey })).status).toBe(200);
+      expect((await createLink(versionId, { key: managementKey })).status).toBe(201);
+    });
+
+    it('Takes back a link whose version was deleted while it was being created, so it never holds a slot unseen. (M1)', async () => {
+      const f = await setup();
+      const second = await publish(f.owner.token, f.organization.id, f.name, label());
+      expect(second.slug).toBe(f.slug);
+      const target = await versionOf(f.organization.id, f.slug, (await PricingMongoose.findOne({ pricingId: f.pricingId, _id: { $ne: f.version._id } }).lean() as any).version);
+      const repository: any = (container.resolve('pricingAnonymousLinkService') as any).repository;
+      const original = repository.create;
+      // The deletion lands after the version was read and its cleanup runs before the insert.
+      repository.create = async (data: unknown) => {
+        await PricingMongoose.collection.deleteOne({ _id: target._id });
+        return original.call(repository, data);
+      };
+      try {
+        const response = await createLink(String(target._id), { token: f.owner.token });
+        expect(response.status).toBe(404);
+      } finally {
+        repository.create = original;
+      }
+      expect(await PricingAnonymousLinkMongoose.countDocuments({ pricingId: f.pricingId })).toBe(1);
+      const listed = (await listLinks(f.pricingId, { token: f.owner.token }).expect(200)).body.links;
+      expect(listed.map((link: any) => link.id)).toEqual([f.link.id]);
     });
 
     it('Answers a pricing the caller may not read like a missing one. (CA-12.4, CA-13.4)', async () => {

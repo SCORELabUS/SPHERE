@@ -6820,6 +6820,32 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Link not available
+        '429':
+          description: Too many requests from this address. `Retry-After` says when to try again.
+          headers:
+            Retry-After:
+              description: Seconds until the limit resets
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The link could not be read right now; the same body as a link that shows nothing
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Link not available
   /anonymous-pricings/{token}/yaml:
     get:
       operationId: downloadAnonymousPricing
@@ -6864,6 +6890,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests from this address. `Retry-After` says when to try again.
+          headers:
+            Retry-After:
+              description: Seconds until the limit resets
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The link could not be read right now; the same body as a link that shows nothing
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/AnonymousCacheControl'
+            X-Robots-Tag:
+              $ref: '#/components/headers/AnonymousRobotsTag'
+            Referrer-Policy:
+              $ref: '#/components/headers/AnonymousReferrerPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Link not available
   /public/pricings/{pricingId}:
     get:
       operationId: getPublicPricingManifest
