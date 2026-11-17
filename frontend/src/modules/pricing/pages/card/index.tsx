@@ -41,7 +41,10 @@ import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
 import RobotsMeta from '../../components/robots-meta';
+import AnonymousLinkDialog from '../../components/anonymous-link-dialog';
+import { useAnonymousLinksApi } from '../../api/anonymousLinksApi';
 import {
+  makePublicConfirmation,
   pricingVisibility,
   visibilityChangeBody,
   type PricingVisibilityChoice,
@@ -69,6 +72,7 @@ export default function CardPage() {
     unfollowPricing,
   } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
+  const { listAnonymousLinks } = useAnonymousLinksApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
 
@@ -101,6 +105,7 @@ export default function CardPage() {
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showForkModal, setShowForkModal] = useState(false);
+  const [showAnonymousDialog, setShowAnonymousDialog] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -447,12 +452,18 @@ export default function CardPage() {
     if (target === visibility) return;
     const scope =
       versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
+    // Listing an unlisted pricing exposes who published it to whoever holds its anonymous links.
+    const activeLinks = unlisted && target === 'Public' && pricingId
+      ? listAnonymousLinks(pricingId).then(result => result.links.filter(link => link.active).length).catch(() => 0)
+      : Promise.resolve(0);
     const question = target === 'Unlisted'
       ? `Make ${scope} visible to anyone with the link, but leave the pricing out of search and its organization's page?`
       : target === 'Public'
         ? `Make ${scope} public and list the pricing in search and on its organization's page?`
         : `Make ${scope} private?`;
-    customConfirm(question, { danger: true })
+    activeLinks
+      .then(count => (count > 0 ? customConfirm(makePublicConfirmation(count), { danger: true, confirmLabel: 'Make public' }) : undefined))
+      .then(() => customConfirm(question, { danger: true }))
       .then(async () => {
         try {
           const body = visibilityChangeBody(target);
@@ -470,6 +481,24 @@ export default function CardPage() {
         }
       })
       .catch(() => {});
+  };
+
+  // The anonymous link dialog unlists the pricing, or makes a private version
+  // visible, before sharing it; each change passes its ETag on to the next.
+  const handleMakeUnlisted = async () => {
+    if (!slug || !organizationId) return undefined;
+    const result = await updatePricing(organizationId, slug, collectionSlug ?? '', { unlisted: true }, etag);
+    setEtag(result.etag);
+    setUnlisted(true);
+    return result.etag as string | undefined;
+  };
+
+  const handleMakeVersionVisible = async (target: VersionData, currentEtag: string | undefined) => {
+    if (!slug || !organizationId) return undefined;
+    const result = await updatePricingVersionVisibility(organizationId, slug, target.version, false, currentEtag ?? etag);
+    setEtag(result.etag);
+    setVersionsPrivacy(false, candidate => candidate.id === target.id);
+    return result.etag as string | undefined;
   };
 
   const handleRename = (newName: string) => {
@@ -810,6 +839,7 @@ export default function CardPage() {
                 onCopyYamlLink={() => currentVersion && handleCopyLink(currentVersion)}
                 onDownloadCurrent={() => currentVersion && handleDownload(currentVersion)}
                 onDownloadAll={handleDownloadAllVersions}
+                onAnonymousLink={entityPermissions?.PUT && currentVersion ? () => setShowAnonymousDialog(true) : undefined}
               />
             </div>
           </div>
@@ -1217,6 +1247,19 @@ export default function CardPage() {
           onClose={() => {
             setShowLinkModal(false);
           }}
+        />
+      )}
+
+      {/* ANONYMOUS LINK */}
+      {showAnonymousDialog && pricingId && currentVersion && (
+        <AnonymousLinkDialog
+          pricingId={pricingId}
+          versions={versions}
+          selected={currentVersion}
+          unlisted={unlisted}
+          onMakeUnlisted={handleMakeUnlisted}
+          onMakeVersionVisible={handleMakeVersionVisible}
+          onClose={() => setShowAnonymousDialog(false)}
         />
       )}
 

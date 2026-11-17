@@ -2,12 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HiOutlineFolderDownload } from 'react-icons/hi';
 
+/** The menu's width (`w-72`) plus the page gutter it must keep. */
+const MENU_ROOM = 288 + 16;
+
 interface Props {
   pricingId?: string;
   yamlLink?: string;
   onCopyYamlLink: () => void;
   onDownloadCurrent: () => void;
   onDownloadAll: () => Promise<void>;
+  /** Only for who may edit the pricing: opens the anonymous link dialog. */
+  onAnonymousLink?: () => void;
 }
 
 export default function GetPricingMenu({
@@ -16,10 +21,13 @@ export default function GetPricingMenu({
   onCopyYamlLink,
   onDownloadCurrent,
   onDownloadAll,
+  onAnonymousLink,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Opens towards the side with room: on a phone the button sits on the left.
+  const [alignLeft, setAlignLeft] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -66,7 +74,11 @@ export default function GetPricingMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(value => !value)}
+        onClick={() => {
+          const box = menuRef.current?.getBoundingClientRect();
+          setAlignLeft(box !== undefined && box.right < MENU_ROOM);
+          setOpen(value => !value);
+        }}
         className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-orange-500 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300 dark:bg-orange-500 dark:hover:bg-orange-400"
       >
         <svg
@@ -96,7 +108,7 @@ export default function GetPricingMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas p-1.5 shadow-elevation-3"
+          className={`absolute ${alignLeft ? 'left-0' : 'right-0'} z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-tp-hairline bg-tp-canvas p-1.5 shadow-elevation-3`}
         >
           <div className="rounded-lg bg-tp-surface p-2.5">
             <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -165,6 +177,38 @@ export default function GetPricingMenu({
               {copied ? 'Permanent link copied to clipboard' : ''}
             </span>
           </div>
+          {onAnonymousLink && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onAnonymousLink();
+                setOpen(false);
+              }}
+              className="flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-xs text-tp-ink hover:bg-tp-surface"
+            >
+              <svg
+                className="mt-0.5 h-4 w-4 shrink-0 text-tp-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
+                />
+              </svg>
+              <span>
+                <span className="block font-medium">Anonymous link</span>
+                <span className="mt-0.5 block text-[11px] text-tp-steel">
+                  Share this version without showing who published it
+                </span>
+              </span>
+            </button>
+          )}
           {yamlLink && (
             <button
               type="button"
