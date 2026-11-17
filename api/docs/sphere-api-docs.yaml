@@ -3922,8 +3922,11 @@ paths:
         **Authentication**: Public
 
         **Permission**:
-        - UNAUTHENTICATED: can only see PUBLIC pricings.
-        - USER: can only see PUBLIC pricings.
+        - UNAUTHENTICATED: can only see PUBLIC pricings that are listed.
+        - USER: can only see PUBLIC pricings that are listed, plus the unlisted ones (`unlisted: true`)
+          they may read the private versions of: OWNER/ADMIN of their organization (also inherited),
+          GET on them or on their collection, within the scopes of an API key. Private versions are
+          still only shown to a global ADMIN.
         - ADMIN: can see any pricing (PUBLIC or PRIVATE).
 
       tags:
@@ -4162,6 +4165,16 @@ paths:
                   type: boolean
                   default: false
                   description: Whether the pricing should be private
+                unlisted:
+                  type: string
+                  enum: ['true', 'false']
+                  default: 'false'
+                  description: |
+                    Whether the pricing is left out of listings (search, its organization and its
+                    collections) for who may not read its private versions, while anyone with its
+                    URL still reads its public versions. Only read when the upload creates a pricing:
+                    a new version of an existing pricing always takes that pricing's value. Any other
+                    value is refused with `422`.
                 collectionId:
                   type: string
                   description: |
@@ -4466,7 +4479,9 @@ paths:
                 private:
                   type: boolean
                   default: false
-                  description: Whether the pricing version should be private
+                  description: |
+                    Whether the pricing version should be private. The version takes its pricing's
+                    `unlisted` (whether it is listed); this route never changes it.
                 createdAt:
                   type: string
                   format: date-time
@@ -7877,6 +7892,17 @@ components:
           type: boolean
           description: Whether the pricing is private (only accessible to users with explicit permissions)
           default: false
+        unlisted:
+          type: boolean
+          default: false
+          description: |
+            Whether the pricing is left out of listings ("anyone with the link"). It is the pricing's,
+            not the version's: an unlisted pricing's public versions are read like any public version
+            by their URL (show, permanent links, YAML files, forks, follows), but search, its
+            organization and its collections only list it to who may read its private versions:
+            OWNER/ADMIN of its organization (also inherited), members with GET on it or on its
+            collection and a global ADMIN with a token, with API keys within their scopes. `private`
+            keeps its meaning on every version.
         forkedFrom:
           type: object
           nullable: true
@@ -8978,7 +9004,13 @@ components:
                 maxLength: 255
               private:
                 type: boolean
-                description: Visibility of every version of the pricing.
+                description: Visibility of every version of the pricing. It never changes `unlisted`.
+              unlisted:
+                type: boolean
+                description: |
+                  Whether the pricing is left out of listings for who may not read its private versions
+                  (see `Pricing.unlisted`). It changes every version and never their `private`; it takes
+                  the same permission as `private` and honours `If-Match` like any other change.
               url:
                 type: string
                 format: uri

@@ -30,14 +30,23 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import mongoose from 'mongoose';
+import { parseBooleanField } from '../utils/boolean-field';
 
 /**
  * What a client may change with `PUT /pricings/{organizationId}/{slug}`. The
  * rest of a version is the server's: its file (`yaml`), organization,
  * collection (moved through the collection endpoints, which check the
- * collection's permissions), identity, label, dates and analytics.
+ * collection's permissions), identity, label, dates and analytics. `private`
+ * changes every version and `unlisted` whether the pricing is listed: neither
+ * changes the other.
  */
-export const CLIENT_PRICING_FIELDS = ['name', 'private', 'url'] as const;
+export const CLIENT_PRICING_FIELDS = ['name', 'private', 'unlisted', 'url'] as const;
+
+/** How a pricing is created when an upload creates one (a new version takes its pricing's). */
+export interface CreatePricingOptions {
+  /** Left out of listings for who may not read its private versions. */
+  unlisted?: boolean;
+}
 
 interface RevisionReader {
   reqUser: LeanUser;
@@ -548,7 +557,8 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string,
     name?: string,
-    revisionContext?: PricingRevisionContext
+    revisionContext?: PricingRevisionContext,
+    options: CreatePricingOptions = {}
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -561,7 +571,8 @@ class PricingService {
       undefined,
       undefined,
       undefined,
-      revisionContext
+      revisionContext,
+      options
     );
   }
 
@@ -708,7 +719,11 @@ class PricingService {
         forkedPricingName,
         forkedFrom,
         null,
-        new Date()
+        new Date(),
+        undefined,
+        // A fork of an unlisted pricing is unlisted too, so no listing shows
+        // a "Forked from" that leads to it.
+        { unlisted: sourcePricing.unlisted === true }
       );
       // From here on the stored version references the copied file, so it must not
       // be deleted if anything after this point fails.
@@ -734,7 +749,8 @@ class PricingService {
     forkedFrom?: ForkedFrom,
     previousPricingOverride?: any,
     createdAtOverride?: Date,
-    revisionContext?: PricingRevisionContext
+    revisionContext?: PricingRevisionContext,
+    options: CreatePricingOptions = {}
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -878,6 +894,9 @@ class PricingService {
         _collectionId: collectionId,
         _organizationId: organizationId,
         private: isPrivate,
+        // Only decides when this creates the pricing: `PricingRepository.create`
+        // gives a new version its pricing's value.
+        unlisted: options.unlisted === true,
         currency: uploadedPricing.currency,
         // A forked version is "created" now, when it's added to the destination pricing,
         // not when the original version being copied was authored.
@@ -1095,9 +1114,14 @@ class PricingService {
     }
 
     const reader = { reqUser, organizationId: effectiveOrgId, slug: pricingSlug, collectionSlug: pricing.collection?.slug };
+    const { unlisted, ...versionChanges } = data;
     return this._withRevisionClaim(pricing.pricingId, revisionContext, reader, async () => {
       for (const pricingVersion of pricing.versions) {
-        await this.pricingRepository.update(pricingVersion.id, data);
+        await this.pricingRepository.update(pricingVersion.id, versionChanges);
+      }
+      // Every version of the pricing, also one added after it was read above.
+      if (unlisted !== undefined) {
+        await this.pricingRepository.setUnlisted(pricing.pricingId, unlisted);
       }
 
       if (data.name) {
@@ -1146,7 +1170,7 @@ class PricingService {
    * touch a field the server manages (see `CLIENT_PRICING_FIELDS`). The slug
    * always follows the name.
    */
-  private _clientPricingChanges(data: unknown): { name?: string; private?: boolean; url?: string; slug?: string } {
+  private _clientPricingChanges(data: unknown): { name?: string; private?: boolean; unlisted?: boolean; url?: string; slug?: string } {
     const body = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
     const refused = Object.keys(body).filter(key => !(CLIENT_PRICING_FIELDS as readonly string[]).includes(key));
     if (refused.length > 0) {
@@ -1156,9 +1180,14 @@ class PricingService {
           'DELETE /collections/{organizationId}/{collectionSlug}/pricings/{pricingSlug}.'
       );
     }
-    const changes: { name?: string; private?: boolean; url?: string } = {};
+    const changes: { name?: string; private?: boolean; unlisted?: boolean; url?: string } = {};
     if (body.name !== undefined) changes.name = String(body.name);
     if (body.private !== undefined) changes.private = body.private === true || body.private === 'true';
+    if (body.unlisted !== undefined) {
+      const unlisted = parseBooleanField(body.unlisted);
+      if (unlisted === undefined) throw new Error('INVALID DATA: The unlisted field must be boolean');
+      changes.unlisted = unlisted;
+    }
     if (body.url !== undefined) changes.url = String(body.url);
     return changes;
   }

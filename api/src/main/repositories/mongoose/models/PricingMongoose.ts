@@ -19,6 +19,13 @@ const pricingSchema = new Schema(
     currency: { type: String, required: true },
     yaml: { type: String, required: true },
     private: { type: Boolean, required: true, default: false },
+    // Whether the pricing is left out of listings for whoever may not read its
+    // private versions (search, its organization and its collections). It is
+    // the pricing's, not the version's: every version of a pricing carries the
+    // same value (`PricingRepository.create` copies it to a new version and
+    // `setUnlisted` changes all of them). A missing value means listed. The
+    // versions are still read like public ones by anyone with their URL.
+    unlisted: { type: Boolean, required: false, default: false },
     // Identifies which pricing this one was forked from, alongside organization/collection/name.
     // Used to match a re-fork of the same origin to the fork already living in the target org,
     // instead of creating a duplicate pricing every time the origin gets a new version.

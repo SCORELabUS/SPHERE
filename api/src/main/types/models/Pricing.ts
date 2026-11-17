@@ -17,6 +17,8 @@ export interface LeanPricing {
   yaml: string;
 
   private: boolean;
+  /** The pricing is left out of listings for who may not read its private versions (same value on every version). */
+  unlisted?: boolean;
 
   analytics?: PricingAnalytics;
 

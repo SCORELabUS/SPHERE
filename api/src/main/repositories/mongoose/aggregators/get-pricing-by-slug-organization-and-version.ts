@@ -75,6 +75,8 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
         pricingId: { $first: { $toString: '$pricingId' } },
         name: { $first: '$name' },
         slug: { $first: '$slug' },
+        // The pricing's, carried by every version: any of them answers.
+        unlisted: { $max: { $eq: ['$unlisted', true] } },
         collection: {
           $first: {
             id: { $toString: '$collection._id' },
@@ -117,6 +119,7 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
         pricingId: 1,
         name: 1,
         slug: 1,
+        unlisted: 1,
         organization: 1,
         collection: 1,
         versions: { $sortArray: { input: '$versions', sortBy: VERSION_ITEM_ORDER } },

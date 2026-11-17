@@ -250,12 +250,28 @@ class PricingRepository extends RepositoryBase {
           { $setOnInsert: { ...locator, name: item.name } }, { upsert: true, new: true });
         item.pricingId = identity!._id;
       }
+      // Whether a pricing is listed is the pricing's: a version added to an
+      // existing pricing takes its value, whatever the caller sent (an upload,
+      // the editor, a ZIP, a fork or ORBIT), so no older client lists an
+      // unlisted pricing again by publishing to it.
+      const sibling = await PricingMongoose.findOne({ pricingId: item.pricingId }).select('unlisted').lean();
+      item.unlisted = sibling ? sibling.unlisted === true : item.unlisted === true;
     }
 
     const created = (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
     // insertMany runs no document middleware, so the revision is moved on here.
     await this.bumpRevisions(data.map(item => item.pricingId));
     return created;
+  }
+
+  /**
+   * Lists or unlists a pricing: every version takes the value, so the listings
+   * (which read the version they show) agree. The `updateMany` hook moves the
+   * pricing's revision on, so its ETag changes.
+   */
+  async setUnlisted(pricingId: unknown, unlisted: boolean) {
+    if (!mongoose.isValidObjectId(pricingId)) throw new Error('CONFLICT: This pricing cannot be listed or unlisted');
+    await PricingMongoose.updateMany({ pricingId }, { $set: { unlisted } });
   }
 
   /** Moves on the revision of these pricings (their PricingIdentity ids), so their ETags change. */
