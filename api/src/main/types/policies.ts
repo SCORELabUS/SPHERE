@@ -102,17 +102,5 @@ export interface OrgUserPermissionsContext {
   adminOrgIds: string[];
 }
 
-/**
- * Who may see an unlisted pricing in a listing where the rest of the
- * permissions context is not the caller's own (the global search): the
- * organizations where they are OWNER/ADMIN (directly or above), and the
- * pricings and collections they hold GET on, as `organizationId:slug`.
- */
-export interface UnlistedReaders {
-  adminOrgIds: string[];
-  pricingKeys: string[];
-  collectionKeys: string[];
-}
-
 /** The private collections a caller may see: every one, or those with these ids. */
 export type PrivateCollectionAccess = 'all' | string[];

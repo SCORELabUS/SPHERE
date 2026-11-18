@@ -1,5 +1,5 @@
 import { PipelineStage } from "mongoose";
-import { OrgUserPermissionsContext, PrivateCollectionAccess, UnlistedReaders } from "../../../../types/policies";
+import { OrgUserPermissionsContext, PrivateCollectionAccess } from "../../../../types/policies";
 import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorRootAggregator } from "./group-pricing-versions";
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
@@ -16,8 +16,6 @@ export function getPricingsAggregator(
   sortAggregator: PipelineStage[] = [],
   // Private collections the viewer may see; the others are hidden from the result.
   collectionVisibility: PrivateCollectionAccess = [],
-  // Who may also see unlisted pricings when `permissions` is not the caller's own (the global search).
-  unlistedReaders?: UnlistedReaders,
 ){
   const pipeline: PipelineStage[] = [
       { $sort: VERSION_ORDER },
@@ -42,7 +40,7 @@ export function getPricingsAggregator(
     if (!permissions){
       pipeline.push({ $match: LISTED_PUBLIC });
     }else if (!permissions.isGlobalAdmin && (!permissions.orgRole || (permissions.orgRole !== 'OWNER' && permissions.orgRole !== 'ADMIN'))) {
-      pipeline.push(considerUserPermissionsAggregator(permissions, unlistedReaders));
+      pipeline.push(considerUserPermissionsAggregator(permissions));
     }
   
     pipeline.push(filtersDataGenerator);

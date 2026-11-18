@@ -2,9 +2,10 @@
  * Unlisted pricings ("anyone with the link"): whether a pricing is listed is the
  * pricing's (`unlisted`, the same on every version), apart from the privacy of
  * each version (`private`). An unlisted pricing reads like a public one by its
- * URL, but listings only show it to whoever may read its private versions
- * (OWNER/ADMIN of its organization, GET on it or on its collection, a global
- * ADMIN with a token; API keys within their scopes).
+ * URL, but it never shows in the global search (except to a global ADMIN with
+ * a token), and its organization and collections only list it to whoever may
+ * read its private versions (OWNER/ADMIN of its organization, GET on it or on
+ * its collection, a global ADMIN with a token; API keys within their scopes).
  */
 import dotenv from 'dotenv';
 import request from 'supertest';
@@ -371,7 +372,7 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
 
   // ===========================================================================
   // Listings: an unlisted pricing is listed exactly to who may read its private
-  // versions (in the global search too), and read like a public one by its URL.
+  // versions, never in the global search, and read like a public one by its URL.
   // ===========================================================================
   describe('Listings', () => {
     let nextId = 1;
@@ -451,19 +452,19 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       anonymous: { L1: 'NN', L2: 'NN', L3: 'NN' },
       outsider: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L5: 'NN', L6: 'NN' },
       member: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L5: 'NN', L6: 'NN' },
-      memberGetPricing: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
-      memberGetCollection: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
-      admin: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
-      owner: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NS' },
-      parentOwner: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'NN', L5: 'SS', L6: 'NS' },
+      memberGetPricing: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NN' },
+      memberGetCollection: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NN' },
+      admin: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NN' },
+      owner: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'NN' },
+      parentOwner: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'NN', L5: 'SS', L6: 'NN' },
       globalAdmin: { L1: 'SS', L2: 'SS', L3: 'SS', L4: 'SS', L5: 'SS', L6: 'SS' },
       globalAdminKey: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L7a: 'NN' },
       viewKey: { L1: 'NN', L2: 'NN', L3: 'NN', L4: 'NN', L7a: 'NN', L7b: 'NN' },
-      managementKey: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NS', L7b: 'SS' },
-      allKey: { L1: 'NS', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NS', L7b: 'SS' },
+      managementKey: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NN', L7b: 'SS' },
+      allKey: { L1: 'NN', L2: 'SS', L3: 'SS', L4: 'SS', L7a: 'NN', L7b: 'SS' },
     };
 
-    it('Lists an unlisted pricing exactly where the private one is listed, and in the global search to who may read it. (CA-4, CA-5, CA-23.1)', { timeout: 240000 }, async () => {
+    it('Lists an unlisted pricing exactly where the private one is listed, and never in the global search but to a global ADMIN. (CA-4, CA-5, CA-23.1)', { timeout: 240000 }, async () => {
       const f = await presenceSetup();
       const names = (items: any[] | undefined) => new Set((items ?? []).map(item => item.name));
       const listing = async (profile: string, list: string): Promise<{ shown: Set<string>; total?: number; count?: number }> => {
@@ -519,7 +520,7 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(failures).toEqual([]);
     });
 
-    it('Never lets the price and size ranges of the search give away an unlisted pricing. (CA-4, T14)', async () => {
+    it('Never lets the price and size ranges of the search give away an unlisted pricing, not even to its owner. (CA-4, T14)', async () => {
       const owner = await newUser('owner');
       const organization = await newOrganization(owner);
       const tag = `ranges${randomSuffix()}`;
@@ -545,39 +546,42 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       expect(anonymous.ranges).not.toContain('987654');
       expect(anonymous.ranges).toContain('"max":3');
 
+      // Its owner finds it on its organization's page, not in the search.
       const asOwner = await search({ token: owner.token });
-      expect(asOwner.names.sort()).toEqual([`${tag}-listed`, `${tag}-unlisted`]);
-      expect(asOwner.ranges).toContain('987654');
+      expect(asOwner).toEqual(anonymous);
     });
 
-    it('Lists an unlisted pricing in the search through each way of reading it, and never through a slug of another organization or a sibling. (L-002 V1-V7, N1, N2)', async () => {
+    it('Leaves an unlisted pricing out of the global search for every way of reading it, which still finds it on its organization\'s page. (F6-1, CA-5)', async () => {
       const f = await presenceSetup();
-      const searched = async (auth: { token?: string; key?: string }) =>
-        ((await get(`${BASE_PATH}/pricings?name=${f.tag}&limit=50`, auth).expect(200)).body.pricings as any[]).map(item => item.name);
+      const searched = async (auth: { token?: string; key?: string }, query = `name=${f.tag}`) =>
+        ((await get(`${BASE_PATH}/pricings?${query}&limit=50`, auth).expect(200)).body.pricings as any[]).map(item => item.name);
+      const onItsPage = async (auth: { token?: string; key?: string }) =>
+        ((await get(`${BASE_PATH}/pricings/${f.organization.id}?name=${f.tag}&limit=50`, auth).expect(200)).body.pricings as any[]).map(item => item.name);
 
-      // V4: GET on the pricing only, with its collection not granted.
+      // GET on the pricing only, with its collection not granted.
       const onlyPricing = await newUser('onlypricing');
       await createMembership(onlyPricing.id, f.organization.id, 'MEMBER');
       await createEntityScopedPermission(onlyPricing.id, f.organization.id, f.slugs.unlisted, 'pricing', { ...NONE, GET: true });
-      expect(await searched({ token: onlyPricing.token })).toContain(f.names.unlisted);
 
-      // V7: the same owner and request, only the scope of the key changes.
-      expect(await searched({ key: f.keys.managementKey })).toContain(f.names.unlisted);
-      expect(await searched({ key: f.keys.viewKey })).not.toContain(f.names.unlisted);
-
-      // N1: GET on a pricing with the same slug in another organization.
-      const other = await newOrganization(f.profiles.owner, 'Other');
-      const sameSlug = await newUser('sameslug');
-      await createMembership(sameSlug.id, other.id, 'MEMBER');
-      await createEntityScopedPermission(sameSlug.id, other.id, f.slugs.unlisted, 'pricing', { ...NONE, GET: true });
-      await createEntityScopedPermission(sameSlug.id, other.id, f.collection.slug, 'collection', { ...NONE, GET: true });
-      expect(await searched({ token: sameSlug.token })).not.toContain(f.names.unlisted);
-
-      // N2: OWNER of a sibling of the organization, below the same parent.
-      const siblingOwner = await newUser('siblingowner');
-      const sibling = await newOrganization(siblingOwner, 'Sibling');
-      await OrganizationMongoose.updateOne({ _id: sibling.id }, { $set: { _parentId: new mongoose.Types.ObjectId(f.parent.id), ancestors: [new mongoose.Types.ObjectId(f.parent.id)] } });
-      expect(await searched({ token: siblingOwner.token })).not.toContain(f.names.unlisted);
+      const readers: Array<[string, { token?: string; key?: string }]> = [
+        ['owner', { token: f.profiles.owner.token }],
+        ['parent owner', { token: f.profiles.parentOwner.token }],
+        ['ADMIN', { token: f.profiles.admin.token }],
+        ['GET on the pricing', { token: onlyPricing.token }],
+        ['GET on the collection', { token: f.profiles.memberGetCollection.token }],
+        ['MANAGEMENT key', { key: f.keys.managementKey }],
+        ['ALL key', { key: f.keys.allKey }],
+      ];
+      const failures: string[] = [];
+      for (const [who, auth] of readers) {
+        const byName = await searched(auth);
+        if (byName.includes(f.names.unlisted)) failures.push(`${who}: in the search by name`);
+        if (!byName.includes(f.names.listed)) failures.push(`${who}: the listed control is missing`);
+        // The collection filter of the search too.
+        if ((await searched(auth, `collection=${f.collection.slug}&name=${f.tag}`)).includes(f.names.unlisted)) failures.push(`${who}: in the search by collection`);
+        if (!(await onItsPage(auth)).includes(f.names.unlisted)) failures.push(`${who}: missing from its organization's page`);
+      }
+      expect(failures).toEqual([]);
     });
 
     it('Reads an unlisted pricing like a public one by its URL, and its private versions still not. (CA-6, CA-8.1)', async () => {

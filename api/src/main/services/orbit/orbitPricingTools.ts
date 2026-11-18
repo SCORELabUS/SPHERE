@@ -22,7 +22,7 @@ export const PRICING_TOOLS: LlmTool[] = [
     type: 'function',
     function: {
       name: 'search_pricings',
-      description: `Search pricings by name: in one organization (with the private ones the user may see) or, without organizationId, in the public catalog. Up to ${MAX_PRICINGS_LISTED} results.`,
+      description: `Search pricings by name: in one organization (with the private and unlisted ones the user may see) or, without organizationId, in the public catalog, which never lists unlisted pricings. Up to ${MAX_PRICINGS_LISTED} results.`,
       parameters: {
         type: 'object',
         properties: {

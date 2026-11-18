@@ -1,4 +1,4 @@
-import { OrgUserPermissionsContext, UnlistedReaders } from "../../../../types/policies";
+import { OrgUserPermissionsContext } from "../../../../types/policies";
 
 /**
  * A pricing anyone sees in a listing: its shown version is public and the
@@ -7,11 +7,11 @@ import { OrgUserPermissionsContext, UnlistedReaders } from "../../../../types/po
 export const LISTED_PUBLIC = { private: false, unlisted: { $ne: true } };
 
 /**
- * `unlistedReaders` adds the unlisted pricings with a public version that the
- * caller may read the private versions of, where `permissions` is not the
- * caller's own context (the global search keeps private versions as they are).
+ * What a listing shows a caller who is not OWNER/ADMIN of the organization:
+ * listed public pricings, and the pricings they may read the private versions
+ * of. With the empty context of the global search, only the listed public ones.
  */
-export const considerUserPermissionsAggregator = (permissions: OrgUserPermissionsContext, unlistedReaders?: UnlistedReaders) => {
+export const considerUserPermissionsAggregator = (permissions: OrgUserPermissionsContext) => {
   return {
       $match: {
         $or: [
@@ -25,19 +25,6 @@ export const considerUserPermissionsAggregator = (permissions: OrgUserPermission
 
           // El pricing es público y aparece en los listados
           LISTED_PUBLIC,
-
-          // Unlisted, pero el usuario puede leer sus versiones privadas (buscador global)
-          ...(unlistedReaders
-            ? [{
-                private: false,
-                unlisted: true,
-                $or: [
-                  { $expr: { $in: [{ $toString: '$_organizationId' }, unlistedReaders.adminOrgIds] } },
-                  { $expr: grantedByKey('$collection.slug', unlistedReaders.collectionKeys, []) },
-                  { $expr: grantedByKey('$slug', unlistedReaders.pricingKeys, []) },
-                ],
-              }]
-            : []),
 
           // Está explícitamente en el array de slugs de pricings permitidos (de la misma organización)
           { $expr: grantedByKey('$slug', permissions.pricingKeys, permissions.pricings) },

@@ -892,7 +892,7 @@ class OrbitToolRunner {
       totalPeople: people.length,
       otherMembersWhoCanOnlyView: viewOnlyBecausePublic,
       note: (resource as { unlisted?: boolean }).unlisted === true
-        ? 'Unlisted: anyone with its link can view it, but search, the organization and its collections only list it to the people above. Platform administrators can access everything.'
+        ? 'Unlisted: anyone with its link can view it, but it never shows in search, and the organization and its collections only list it to the people above. Platform administrators can access everything.'
         : 'Platform administrators can access everything.',
     };
   }

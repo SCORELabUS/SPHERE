@@ -3928,12 +3928,11 @@ paths:
         **Authentication**: Public
 
         **Permission**:
-        - UNAUTHENTICATED: can only see PUBLIC pricings that are listed.
-        - USER: can only see PUBLIC pricings that are listed, plus the unlisted ones (`unlisted: true`)
-          they may read the private versions of: OWNER/ADMIN of their organization (also inherited),
-          GET on them or on their collection, within the scopes of an API key. Private versions are
-          still only shown to a global ADMIN.
-        - ADMIN: can see any pricing (PUBLIC or PRIVATE).
+        - UNAUTHENTICATED and USER: can only see PUBLIC pricings that are listed. Unlisted pricings
+          (`unlisted: true`) never show here, not even to their owners, who find them in their
+          organization's listing (`GET /pricings/{organizationId}`), its collections and
+          `GET /users/me/pricings`.
+        - ADMIN (with a token, never an API key): can see any pricing (PUBLIC, unlisted or PRIVATE).
 
       tags:
         - Pricings
@@ -8251,7 +8250,8 @@ components:
           description: |
             Whether the pricing is left out of listings ("anyone with the link"). It is the pricing's,
             not the version's: an unlisted pricing's public versions are read like any public version
-            by their URL (show, permanent links, YAML files, forks, follows), but search, its
+            by their URL (show, permanent links, YAML files, forks, follows), but it never shows in
+            the global search (`GET /pricings`) except to a global ADMIN with a token, and its
             organization and its collections only list it to who may read its private versions:
             OWNER/ADMIN of its organization (also inherited), members with GET on it or on its
             collection and a global ADMIN with a token, with API keys within their scopes. `private`

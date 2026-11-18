@@ -90,11 +90,10 @@ class PricingService {
         isGlobalAdmin: isAdmin ?? false,
         adminOrgIds: [],
       },
-      await this.permissionService.visiblePrivateCollections(reqUser),
-      // The context above keeps private versions out of the search for everyone
-      // but a global ADMIN; unlisted pricings are also shown to who may read
-      // their private versions, as on their organization's page.
-      reqUser && !isAdmin ? await this.permissionService.unlistedReaders(reqUser) : undefined
+      // The context above keeps private versions and unlisted pricings out of
+      // the search for everyone but a global ADMIN. Who may read an unlisted
+      // pricing finds it on its organization's page and in its collections.
+      await this.permissionService.visiblePrivateCollections(reqUser)
     );
     return pricings;
   }
