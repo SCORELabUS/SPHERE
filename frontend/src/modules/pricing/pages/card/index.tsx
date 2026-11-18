@@ -44,7 +44,7 @@ import RobotsMeta from '../../components/robots-meta';
 import AnonymousLinkDialog from '../../components/anonymous-link-dialog';
 import { useAnonymousLinksApi } from '../../api/anonymousLinksApi';
 import {
-  confirmVisibilityChange,
+  changeVisibility,
   pricingVisibility,
   visibilityChangeBody,
   type PricingVisibilityChoice,
@@ -451,13 +451,12 @@ export default function CardPage() {
     const target: PricingVisibilityChoice = value === 'Private' || value === 'Unlisted' ? value : 'Public';
     if (target === visibility) return;
     // Listing the pricing, and making every version visible, exposes who published it to whoever holds its links.
-    confirmVisibilityChange(target, {
+    void changeVisibility(target, {
       unlisted,
       versions: versions.length,
-      listLinks: pricingId ? () => listAnonymousLinks(pricingId).then(result => result.links) : undefined,
+      listLinks: pricingId ? () => listAnonymousLinks(pricingId) : undefined,
       confirm: customConfirm,
-    })
-      .then(async () => {
+      apply: async () => {
         try {
           const body = visibilityChangeBody(target);
           const result = await updatePricing(organizationId, slug, collectionSlug ?? '', body, etag);
@@ -472,8 +471,8 @@ export default function CardPage() {
           if (offerReloadIfChanged(error)) return;
           customAlert(`Error: ${(error as Error).message}`, 'error');
         }
-      })
-      .catch(() => {});
+      },
+    });
   };
 
   // The anonymous link dialog unlists the pricing, or makes a private version

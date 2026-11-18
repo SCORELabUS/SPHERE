@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import {
   PRICING_VISIBILITY_CHOICES,
   anonymousLinkStep,
-  confirmVisibilityChange,
+  changeVisibility,
   isListedWithPublicVersion,
   makePublicConfirmation,
   pricingVisibility,
@@ -93,18 +93,22 @@ test('counts every link before making a pricing public, also the suspended ones,
 async function askedFor(target: 'Public' | 'Unlisted' | 'Private', options: { unlisted: boolean; links?: unknown[] | 'unreadable' | 'none'; answer?: 'confirm' | 'cancel' }) {
   const asked: Array<{ text: string; confirmLabel?: string }> = [];
   let listed = 0;
+  // As the API answers: every link of the pricing, suspended or not.
   const listLinks = options.links === 'none' ? undefined : async () => {
     listed += 1;
     if (options.links === 'unreadable') throw new Error('offline');
-    return options.links ?? [];
+    return { links: options.links ?? [], limit: 20 };
   };
   const confirm = async (text: string, settings: { confirmLabel?: string }) => {
     asked.push({ text, confirmLabel: settings.confirmLabel });
     if (options.answer === 'cancel') throw new Error('cancelled');
   };
-  const result = await confirmVisibilityChange(target, { unlisted: options.unlisted, versions: 4, listLinks, confirm })
-    .then(() => 'apply', () => 'nothing sent');
-  return { asked, listed, result };
+  let applied = 0;
+  const changed = await changeVisibility(target, {
+    unlisted: options.unlisted, versions: 4, listLinks, confirm, apply: async () => { applied += 1; },
+  });
+  assert.equal(applied, changed ? 1 : 0);
+  return { asked, listed, result: changed ? 'apply' : 'nothing sent' };
 }
 
 test('asks once before changing the visibility, about the links when making it public, from every state (I2, N3, CA-25.1, CA-25.2)', async () => {
@@ -120,9 +124,16 @@ test('asks once before changing the visibility, about the links when making it p
   }
   // Links that could not be read still warn.
   assert.match((await askedFor('Public', { unlisted: true, links: 'unreadable' })).asked[0].text, /may have anonymous links/);
-  // No links: the usual question.
-  const plain = await askedFor('Public', { unlisted: false, links: [] });
-  assert.deepEqual(plain.asked.map(question => question.text), ['Make all 4 versions of this pricing public and list the pricing in search and on its organization\'s page?']);
+  // No links: the usual question, which says it lists the pricing only when it is unlisted (R3).
+  const fromUnlisted = await askedFor('Public', { unlisted: true, links: [] });
+  assert.deepEqual(fromUnlisted.asked.map(question => question.text), ['Make all 4 versions of this pricing public and list the pricing in search and on its organization\'s page?']);
+  const alreadyListed = await askedFor('Public', { unlisted: false, links: [] });
+  assert.deepEqual(alreadyListed.asked.map(question => question.text), ['Make all 4 versions of this pricing public?']);
+  // A pricing without an id yet has no links to look up (R4).
+  const noId = await askedFor('Public', { unlisted: true, links: 'none' });
+  assert.equal(noId.listed, 0);
+  assert.equal(noId.asked.length, 1);
+  assert.doesNotMatch(noId.asked[0].text, /anonymous link/);
   // Other targets never look the links up.
   for (const target of ['Unlisted', 'Private'] as const) {
     const { asked, listed } = await askedFor(target, { unlisted: false, links: [suspended] });

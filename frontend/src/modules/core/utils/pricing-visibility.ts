@@ -93,8 +93,8 @@ export interface VisibilityChangeQuestion {
   /** The pricing as it is now. */
   unlisted: boolean;
   versions: number;
-  /** Its anonymous links; absent when the pricing has none to ask about (no id yet). */
-  listLinks?: () => Promise<readonly unknown[]>;
+  /** Its anonymous links, as the API lists them; absent when the pricing has none to ask about (no id yet). */
+  listLinks?: () => Promise<{ links: readonly unknown[] }>;
   confirm: (text: string, options: { danger: true; confirmLabel?: string }) => Promise<unknown>;
 }
 
@@ -106,7 +106,7 @@ export interface VisibilityChangeQuestion {
 export async function confirmVisibilityChange(target: PricingVisibilityChoice, question: VisibilityChangeQuestion): Promise<void> {
   const scope = question.versions > 1 ? `all ${question.versions} versions of this pricing` : 'this pricing';
   if (target === 'Public' && question.listLinks) {
-    const links = await question.listLinks().then(found => found, () => null);
+    const links = await question.listLinks().then(found => found.links, () => null);
     const warning = publicSwitchWarning(links, question.unlisted);
     if (warning) {
       await question.confirm(warning, { danger: true, confirmLabel: 'Make public' });
@@ -116,7 +116,24 @@ export async function confirmVisibilityChange(target: PricingVisibilityChoice, q
   const text = target === 'Unlisted'
     ? `Make ${scope} visible to anyone with the link, but leave the pricing out of search and its organization's page?`
     : target === 'Public'
-      ? `Make ${scope} public and list the pricing in search and on its organization's page?`
+      ? (question.unlisted ? `Make ${scope} public and list the pricing in search and on its organization's page?` : `Make ${scope} public?`)
       : `Make ${scope} private?`;
   await question.confirm(text, { danger: true });
+}
+
+/**
+ * Asks, then applies the change only if the user agreed: cancelling never
+ * reaches `apply`. Resolves with whether it was applied.
+ */
+export async function changeVisibility(
+  target: PricingVisibilityChoice,
+  question: VisibilityChangeQuestion & { apply: () => Promise<void> }
+): Promise<boolean> {
+  try {
+    await confirmVisibilityChange(target, question);
+  } catch {
+    return false;
+  }
+  await question.apply();
+  return true;
 }
