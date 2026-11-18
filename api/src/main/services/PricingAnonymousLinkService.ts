@@ -96,12 +96,14 @@ class PricingAnonymousLinkService {
           const link = await this.repository.create({
             token: this.generateToken(), pricingId: family.pricingId, versionId: version._id, createdBy: reqUser.id,
           });
-          // A deletion of the version between reading it and this insert ran its
-          // cleanup before the link existed: take the link back, so it never holds
-          // one of the pricing's slots without showing in the list.
-          if (!(await this.repository.versionExists(version._id, family.pricingId))) {
+          // The version may have been deleted (its cleanup ran before the link
+          // existed) or made private since it was read: take the link back, so it
+          // never holds a slot unseen nor answers as active over a private version.
+          const current = await this.repository.versionState(version._id, family.pricingId);
+          if (!current || current.private) {
             await this.repository.deleteById(link._id);
-            throw new Error('NOT FOUND: Pricing version not found');
+            if (!current) throw new Error('NOT FOUND: Pricing version not found');
+            throw new Error('CONFLICT: A private version cannot be shared through an anonymous link. Make it visible first.');
           }
           return this._view(link, { version: version.version, private: false });
         } catch (err: any) {

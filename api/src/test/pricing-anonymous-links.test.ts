@@ -536,6 +536,25 @@ describe('Anonymous pricing links', { timeout: 60000 }, () => {
       expect(listed.map((link: any) => link.id)).toEqual([f.link.id]);
     });
 
+    it('Takes back a link whose version was made private while it was being created, and answers 409. (N7)', async () => {
+      const f = await setup();
+      const repository: any = (container.resolve('pricingAnonymousLinkService') as any).repository;
+      const original = repository.create;
+      // The version turns private after it was read as public, before the insert.
+      repository.create = async (data: unknown) => {
+        await PricingMongoose.collection.updateOne({ _id: f.version._id }, { $set: { private: true } });
+        return original.call(repository, data);
+      };
+      try {
+        const response = await createLink(String(f.version._id), { token: f.owner.token });
+        expect(response.status).toBe(409);
+        expect(response.body.error).toMatch(/private version/);
+      } finally {
+        repository.create = original;
+      }
+      expect(await PricingAnonymousLinkMongoose.countDocuments({ pricingId: f.pricingId })).toBe(1);
+    });
+
     it('Answers a pricing the caller may not read like a missing one. (CA-12.4, CA-13.4)', async () => {
       const owner = await newUser('owner');
       const organization = await newOrganization(owner);

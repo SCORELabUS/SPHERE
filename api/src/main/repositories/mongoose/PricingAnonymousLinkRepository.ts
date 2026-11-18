@@ -49,9 +49,10 @@ class PricingAnonymousLinkRepository extends RepositoryBase {
     await PricingAnonymousLinkMongoose.deleteOne({ _id: id });
   }
 
-  /** Whether the version is still stored in that pricing, whatever its visibility. */
-  async versionExists(versionId: unknown, pricingId: unknown): Promise<boolean> {
-    return Boolean(await PricingMongoose.exists({ _id: versionId, pricingId }));
+  /** Whether the version is still stored in that pricing, and if it is private; null when it is gone. */
+  async versionState(versionId: unknown, pricingId: unknown): Promise<{ private: boolean } | null> {
+    const version = await PricingMongoose.findOne({ _id: versionId, pricingId }).select('private').lean<{ private?: boolean }>();
+    return version ? { private: version.private === true } : null;
   }
 
   /** The label and visibility of these versions, by id. */
