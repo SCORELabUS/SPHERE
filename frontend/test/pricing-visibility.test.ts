@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   PRICING_VISIBILITY_CHOICES,
+  PRICING_VISIBILITY_DESCRIPTIONS,
   anonymousLinkStep,
   changeVisibility,
   isListedWithPublicVersion,
@@ -18,6 +19,13 @@ const hidden = { private: true };
 
 test('offers Public, Unlisted and Private, in that order', () => {
   assert.deepEqual(PRICING_VISIBILITY_CHOICES, ['Public', 'Unlisted', 'Private']);
+});
+
+test('the Unlisted help promises search to nobody, as the web search stays anonymous (F5-1, m6)', () => {
+  const help = PRICING_VISIBILITY_DESCRIPTIONS.Unlisted;
+  assert.match(help, /does not show in search, and only/);
+  assert.match(help, /organization's page, in its collections and in My pricings/);
+  assert.doesNotMatch(help, /search[^.]*except/);
 });
 
 test('private versions decide first: all of them is Private, some is Mixed, whatever the listing (S1-S3)', () => {

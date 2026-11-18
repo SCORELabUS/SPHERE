@@ -13,9 +13,9 @@ export const PRICING_VISIBILITY_CHOICES: PricingVisibilityChoice[] = ['Public', 
 export const PRICING_VISIBILITY_DESCRIPTIONS: Record<PricingVisibilityChoice, string> = {
   Public: 'Anyone can see it, and it shows in search and on its organization\'s page.',
   Unlisted:
-    'Anyone with the link can see it. It does not show in search, on its organization\'s page or in its collections, ' +
-    'except to its owners, admins and members who can view it. The link is not a secret: to share it without ' +
-    'showing who published it, use Get pricing → Anonymous link.',
+    'Anyone with the link can see it. It does not show in search, and only its owners, admins and members who can ' +
+    'view it find it on its organization\'s page, in its collections and in My pricings. The link is not a secret: ' +
+    'to share it without showing who published it, use Get pricing → Anonymous link.',
   Private: 'Only its owners, admins and members who can view it.',
 };
 
