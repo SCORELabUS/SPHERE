@@ -5,6 +5,7 @@ import {
   FiCheck,
   FiFilePlus,
   FiGlobe,
+  FiLink,
   FiLock,
   FiSearch,
   FiUploadCloud,
@@ -18,12 +19,28 @@ import OrgAvatar from '../../../core/components/org-avatar';
 import customConfirm from '../../../core/utils/custom-confirm';
 import { useEditorValue } from '../../hooks/useEditorValue';
 import { stampVersionMetadata, toDatetimeLocalValue } from '../../utils/publish-metadata';
+import { visibilityFormFields } from '../../../core/utils/pricing-visibility';
 
 interface PublishPricingModalProps {
   yaml: string;
   onClose: () => void;
 }
-type Visibility = 'Public' | 'Private';
+type Visibility = 'Public' | 'Unlisted' | 'Private';
+interface VisibilityChoice {
+  value: Visibility;
+  label: string;
+  description: string;
+  icon: typeof FiGlobe;
+}
+const PUBLIC_CHOICE: VisibilityChoice = { value: 'Public', label: 'Public', description: 'Visible in Explore', icon: FiGlobe };
+const UNLISTED_CHOICE: VisibilityChoice = { value: 'Unlisted', label: 'Unlisted', description: 'Anyone with the link', icon: FiLink };
+const PRIVATE_CHOICE: VisibilityChoice = { value: 'Private', label: 'Private', description: 'Organization only', icon: FiLock };
+/** A new pricing picks any of the three; a new version only whether it is private (the listing is its pricing's). */
+const NEW_PRICING_CHOICES = [PUBLIC_CHOICE, UNLISTED_CHOICE, PRIVATE_CHOICE];
+const versionChoices = (unlisted?: boolean): VisibilityChoice[] => [
+  unlisted ? { ...UNLISTED_CHOICE, value: 'Public' } : PUBLIC_CHOICE,
+  PRIVATE_CHOICE,
+];
 interface AccessiblePricing {
   id: string;
   name: string;
@@ -31,6 +48,8 @@ interface AccessiblePricing {
   version: string;
   createdAt: string;
   private: boolean;
+  /** Left out of listings for who may not read its private versions. */
+  unlisted?: boolean;
   organization: { id: string; name: string; displayName: string; avatar: string | null };
   collection: { id: string; name: string; slug: string } | null;
 }
@@ -297,7 +316,9 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
         formData.append('name', pricingName.trim());
         formData.append('saasName', parsedPricing.pricing.saasName);
         formData.append('version', parsedPricing.pricing.version);
-        formData.append('private', visibility === 'Private' ? 'true' : 'false');
+        const fields = visibilityFormFields(visibility);
+        formData.append('private', fields.private);
+        formData.append('unlisted', fields.unlisted);
         const createdPricing = await createPricing(formData, selectedOrg.id, publishErrors =>
           setErrors(publishErrors.map(formatPublishError))
         );
@@ -528,9 +549,10 @@ export default function PublishPricingModal({ yaml, onClose }: PublishPricingMod
                       <VisibilityPicker
                         value={versionVisibility}
                         onChange={setVersionVisibility}
+                        choices={versionChoices(selectedPricing.unlisted)}
                         hint={
                           (versionVisibility === 'Private') !== selectedPricing.private
-                            ? `This version will be ${versionVisibility.toLowerCase()}; the latest version of this pricing is ${selectedPricing.private ? 'private' : 'public'}.`
+                            ? `This version will be ${versionVisibility === 'Private' ? 'private' : selectedPricing.unlisted ? 'visible with the link' : 'public'}; the latest version of this pricing is ${selectedPricing.private ? 'private' : selectedPricing.unlisted ? 'visible with the link' : 'public'}.`
                             : undefined
                         }
                       />
@@ -704,7 +726,7 @@ function PricingTarget({
       <span
         className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${pricing.private ? 'bg-tp-surface text-tp-steel' : 'bg-emerald-50 text-emerald-700'}`}
       >
-        {pricing.private ? 'Private' : 'Public'}
+        {pricing.private ? 'Private' : pricing.unlisted ? 'Unlisted' : 'Public'}
       </span>
     </button>
   );
@@ -811,29 +833,18 @@ function VisibilityPicker({
   value,
   onChange,
   hint,
+  choices = NEW_PRICING_CHOICES,
 }: {
   value: Visibility;
   onChange: (visibility: Visibility) => void;
   hint?: string;
+  choices?: VisibilityChoice[];
 }) {
   return (
     <fieldset>
       <legend className="mb-1.5 text-sm text-tp-slate">Visibility</legend>
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-tp-surface p-1">
-        {[
-          {
-            value: 'Public' as const,
-            label: 'Public',
-            description: 'Visible in Explore',
-            icon: FiGlobe,
-          },
-          {
-            value: 'Private' as const,
-            label: 'Private',
-            description: 'Organization only',
-            icon: FiLock,
-          },
-        ].map(option => {
+      <div className={`grid gap-1 rounded-xl bg-tp-surface p-1 ${choices.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}>
+        {choices.map(option => {
           const Icon = option.icon;
           const selected = value === option.value;
           return (

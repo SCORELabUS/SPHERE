@@ -740,16 +740,18 @@ class OrbitToolRunner {
           const pricings = (await this.pricingRepository.findSummariesByOrganization(organizationId))
             .map(pricing => {
               const collection = collections.find(item => item.id === pricing.collectionId);
-              // Only the versions the user may read are counted, or the pricing is left out.
+              // Only the versions the user may read are counted, or the pricing is
+              // left out: an unlisted one too, as its organization lists it.
               return reader('pricing', pricing.slug, collection?.slug)
                 ? pricing
-                : { ...pricing, private: false, versions: pricing.publicVersions };
+                : { ...pricing, private: false, versions: pricing.unlisted ? 0 : pricing.publicVersions };
             })
             .filter(pricing => pricing.versions > 0 && matches(pricing));
           result.pricings = pricings.slice(0, MAX_RESOURCES_LISTED).map(pricing => ({
             name: pricing.name,
             slug: pricing.slug,
             private: pricing.private,
+            unlisted: pricing.unlisted,
             versions: pricing.versions,
             // A private collection the user may not see is not named.
             collection: visibleCollections.find(item => item.id === pricing.collectionId)?.name ?? null,
@@ -881,12 +883,17 @@ class OrbitToolRunner {
     }
 
     return {
-      resource: { type, name: resource.name, private: resource.private, collection: collection?.name ?? null },
+      resource: {
+        type, name: resource.name, private: resource.private, collection: collection?.name ?? null,
+        ...(type === 'pricing' ? { unlisted: (resource as { unlisted?: boolean }).unlisted === true } : {}),
+      },
       anyoneSignedInCanView: !resource.private,
       people: people.slice(0, 200),
       totalPeople: people.length,
       otherMembersWhoCanOnlyView: viewOnlyBecausePublic,
-      note: 'Platform administrators can access everything.',
+      note: (resource as { unlisted?: boolean }).unlisted === true
+        ? 'Unlisted: anyone with its link can view it, but it never shows in search, and the organization and its collections only list it to the people above. Platform administrators can access everything.'
+        : 'Platform administrators can access everything.',
     };
   }
 

@@ -3,10 +3,13 @@ import VisibilityOptions from '../visibility-options';
 import Iconify from '../../../core/components/iconify';
 import type { VersionData } from '../../types/card';
 import type { EntityPermissions } from '../../../organization/types/permissions';
+import { PRICING_VISIBILITY_CHOICES, PRICING_VISIBILITY_DESCRIPTIONS } from '../../../core/utils/pricing-visibility';
 
 interface PricingSettingsTabProps {
   entityPermissions: EntityPermissions | null;
   visibility: string;
+  /** Left out of listings for who may not read its private versions. */
+  unlisted?: boolean;
   pricingName: string;
   currentVersion: VersionData | null;
   versions: VersionData[];
@@ -20,6 +23,7 @@ interface PricingSettingsTabProps {
 export default function PricingSettingsTab({
   entityPermissions,
   visibility,
+  unlisted = false,
   pricingName,
   currentVersion,
   versions,
@@ -76,8 +80,8 @@ export default function PricingSettingsTab({
           {versions.length > 1 && (
             <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-tp-slate">
               <span>
-                {versions.length - privateCount} public · {privateCount} private
-                {visibility === 'Mixed' && ' (mixed)'}
+                {versions.length - privateCount} {unlisted ? 'visible with the link' : 'public'} · {privateCount} private
+                {visibility === 'Mixed' && ` (mixed · ${unlisted ? 'unlisted' : 'listed'})`}
               </span>
               <button
                 type="button"
@@ -89,7 +93,12 @@ export default function PricingSettingsTab({
             </div>
           )}
           <div className="pl-4">
-            <VisibilityOptions value={visibility} onChange={onVisibilityChange} />
+            <VisibilityOptions
+              value={visibility}
+              onChange={onVisibilityChange}
+              options={PRICING_VISIBILITY_CHOICES}
+              descriptions={PRICING_VISIBILITY_DESCRIPTIONS}
+            />
           </div>
         </div>
       )}

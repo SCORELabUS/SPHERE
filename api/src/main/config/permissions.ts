@@ -176,6 +176,25 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // What an anonymous link shows, to anyone (its credentials are dropped before
+  // authentication). PricingAnonymousLinkService answers alike for every token
+  // that shows nothing.
+  { path: '/anonymous-pricings/*', methods: ['GET'], isPublic: true },
+  { path: '/anonymous-pricings/*/yaml', methods: ['GET'], isPublic: true },
+
+  // Managing the anonymous links of a pricing. PricingAnonymousLinkService checks
+  // that the caller may edit the pricing; this only requires login.
+  {
+    path: '/pricing-anonymous-links',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/pricing-anonymous-links/*',
+    methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
   // Collection Management Routes
   // ============================================

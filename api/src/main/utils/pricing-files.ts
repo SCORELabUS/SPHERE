@@ -56,3 +56,15 @@ export function requirePricingFile(stored: unknown): string {
   if (!file) throw new Error('NOT FOUND: Pricing file not found');
   return file;
 }
+
+/**
+ * The bytes of a pricing file whose path the database stores, read only when
+ * it lands inside the pricing folders (`resolvePricingFile`) and is a file of
+ * at most `maxBytes`. Throws NOT FOUND otherwise.
+ */
+export async function readPricingFile(stored: unknown, maxBytes: number): Promise<Buffer> {
+  const file = requirePricingFile(stored);
+  const stat = await fs.promises.stat(file).catch(() => null);
+  if (!stat || !stat.isFile() || stat.size > maxBytes) throw new Error('NOT FOUND: Pricing file not found');
+  return fs.promises.readFile(file);
+}

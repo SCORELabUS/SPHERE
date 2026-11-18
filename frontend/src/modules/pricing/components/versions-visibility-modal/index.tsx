@@ -6,10 +6,12 @@ import type { VersionData } from '../../types/card';
 interface VersionsVisibilityModalProps {
   versions: VersionData[];
   currentVersionId?: string;
+  /** The pricing is unlisted: its non-private versions are visible with the link, not listed. */
+  unlisted?: boolean;
   onClose: () => void;
 }
 
-function VisibilityPill({ isPrivate }: { isPrivate: boolean }) {
+function VisibilityPill({ isPrivate, unlisted }: { isPrivate: boolean; unlisted: boolean }) {
   const Icon = isPrivate ? FiEyeOff : FiEye;
   return (
     <span
@@ -20,7 +22,7 @@ function VisibilityPill({ isPrivate }: { isPrivate: boolean }) {
       }`}
     >
       <Icon className="h-3.5 w-3.5" />
-      {isPrivate ? 'Private' : 'Public'}
+      {isPrivate ? 'Private' : unlisted ? 'Unlisted' : 'Public'}
     </span>
   );
 }
@@ -29,6 +31,7 @@ function VisibilityPill({ isPrivate }: { isPrivate: boolean }) {
 export default function VersionsVisibilityModal({
   versions,
   currentVersionId,
+  unlisted = false,
   onClose,
 }: VersionsVisibilityModalProps) {
   const privateCount = versions.filter(v => v.private).length;
@@ -63,7 +66,7 @@ export default function VersionsVisibilityModal({
               Versions visibility
             </h2>
             <p className="mt-0.5 text-sm text-tp-slate">
-              {publicCount} public · {privateCount} private
+              {publicCount} {unlisted ? 'unlisted' : 'public'} · {privateCount} private
             </p>
           </div>
           <button
@@ -94,7 +97,7 @@ export default function VersionsVisibilityModal({
                   {format(parseISO(version.createdAt), 'PP')}
                 </span>
               </span>
-              <VisibilityPill isPrivate={version.private} />
+              <VisibilityPill isPrivate={version.private} unlisted={unlisted} />
             </li>
           ))}
         </ul>
