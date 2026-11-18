@@ -26,6 +26,8 @@ test('index.html sets no-referrer before anything loads on an anonymous link, an
   assert.deepEqual(metasAddedAt(`/a/${token}`), ['referrer=no-referrer']);
   assert.deepEqual(metasAddedAt(`/a/${token}/`), ['referrer=no-referrer']);
   assert.deepEqual(metasAddedAt(`/sphere/a/${token}`), ['referrer=no-referrer']);
+  // The router matches paths case-insensitively.
+  assert.deepEqual(metasAddedAt(`/A/${token}`), ['referrer=no-referrer']);
   for (const other of ['/', '/pricings', '/a/short', `/orgs/x/a/${token}x`, `/p/${token}`]) {
     assert.deepEqual(metasAddedAt(other), [], other);
   }

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   PRICING_VISIBILITY_CHOICES,
   anonymousLinkStep,
+  confirmVisibilityChange,
   isListedWithPublicVersion,
   makePublicConfirmation,
   pricingVisibility,
@@ -75,7 +76,7 @@ test('warns how many anonymous links making the pricing public exposes (CA-25.1)
   assert.match(makePublicConfirmation(1), /1 anonymous link\b/);
 });
 
-test('counts every link before making a pricing public, also the suspended ones, and warns when they cannot be read (I2, CA-25.1, CA-25.2)', () => {
+test('counts every link before making a pricing public, also the suspended ones, and warns when they cannot be read (I2, CA-25.1)', () => {
   // Public makes every version visible, so a link suspended while its version is private serves again.
   const suspended = { active: false };
   const active = { active: true };
@@ -83,4 +84,53 @@ test('counts every link before making a pricing public, also the suspended ones,
   assert.match(publicSwitchWarning([active, suspended, suspended]) ?? '', /3 anonymous links/);
   assert.equal(publicSwitchWarning([]), null);
   assert.match(publicSwitchWarning(null) ?? '', /may have anonymous links/);
+  // An already listed pricing is not "listed" by it, but its versions become visible next to its organization (N9).
+  assert.match(publicSwitchWarning([active], false) ?? '', /makes every version visible in SPHERE's search/);
+  assert.doesNotMatch(publicSwitchWarning([active], false) ?? '', /lists it/);
+});
+
+/** What the Settings tab asks, in order, and whether it got through. */
+async function askedFor(target: 'Public' | 'Unlisted' | 'Private', options: { unlisted: boolean; links?: unknown[] | 'unreadable' | 'none'; answer?: 'confirm' | 'cancel' }) {
+  const asked: Array<{ text: string; confirmLabel?: string }> = [];
+  let listed = 0;
+  const listLinks = options.links === 'none' ? undefined : async () => {
+    listed += 1;
+    if (options.links === 'unreadable') throw new Error('offline');
+    return options.links ?? [];
+  };
+  const confirm = async (text: string, settings: { confirmLabel?: string }) => {
+    asked.push({ text, confirmLabel: settings.confirmLabel });
+    if (options.answer === 'cancel') throw new Error('cancelled');
+  };
+  const result = await confirmVisibilityChange(target, { unlisted: options.unlisted, versions: 4, listLinks, confirm })
+    .then(() => 'apply', () => 'nothing sent');
+  return { asked, listed, result };
+}
+
+test('asks once before changing the visibility, about the links when making it public, from every state (I2, N3, CA-25.1, CA-25.2)', async () => {
+  const suspended = { active: false };
+  // Private (links suspended) and Unlisted to Public: the warning about every link, and only it.
+  for (const unlisted of [true, false]) {
+    const { asked, listed, result } = await askedFor('Public', { unlisted, links: [suspended, suspended] });
+    assert.equal(listed, 1);
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].text, /2 anonymous links/);
+    assert.equal(asked[0].confirmLabel, 'Make public');
+    assert.equal(result, 'apply');
+  }
+  // Links that could not be read still warn.
+  assert.match((await askedFor('Public', { unlisted: true, links: 'unreadable' })).asked[0].text, /may have anonymous links/);
+  // No links: the usual question.
+  const plain = await askedFor('Public', { unlisted: false, links: [] });
+  assert.deepEqual(plain.asked.map(question => question.text), ['Make all 4 versions of this pricing public and list the pricing in search and on its organization\'s page?']);
+  // Other targets never look the links up.
+  for (const target of ['Unlisted', 'Private'] as const) {
+    const { asked, listed } = await askedFor(target, { unlisted: false, links: [suspended] });
+    assert.equal(listed, 0, target);
+    assert.equal(asked.length, 1, target);
+    assert.doesNotMatch(asked[0].text, /anonymous link/, target);
+  }
+  // Cancelling sends nothing (CA-25.2).
+  assert.equal((await askedFor('Public', { unlisted: true, links: [suspended], answer: 'cancel' })).result, 'nothing sent');
+  assert.equal((await askedFor('Private', { unlisted: true, answer: 'cancel' })).result, 'nothing sent');
 });

@@ -153,6 +153,13 @@ describe('AnonymousLinkDialog', () => {
     expect(api.createAnonymousLink).toHaveBeenCalledWith('1');
   });
 
+  it('says SPHERE could not be reached when the network fails, not "Failed to fetch" (m4)', async () => {
+    api.createAnonymousLink.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { view } = await render({ unlisted: true });
+    await click(button(view, 'Create link'));
+    expect(view.root.findByProps({ role: 'alert' }).props.children).toBe('SPHERE could not be reached. Check your connection and try again.');
+  });
+
   it('never shares a private version as it is, and makes it visible step by step with each new ETag (CA-11.1, CA-11.2, T11)', async () => {
     const order: string[] = [];
     const onMakeUnlisted = vi.fn(async () => { order.push('unlist'); return '"etag.2"'; });

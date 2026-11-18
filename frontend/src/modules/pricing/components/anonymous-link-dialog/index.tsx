@@ -108,10 +108,13 @@ export default function AnonymousLinkDialog({
     try {
       await action(done);
     } catch (failure) {
-      const reason = (failure as { message?: string })?.message;
+      // fetch rejects with a TypeError ("Failed to fetch") when SPHERE cannot be reached.
+      const reason = failure instanceof TypeError
+        ? 'SPHERE could not be reached. Check your connection and try again'
+        : (failure as { message?: string })?.message;
       setError(done.length > 0
         ? `${done.join(' and ')}, but the link was not created: ${reason?.replace(/\.$/, '') || 'something went wrong'}.`
-        : reason || 'Something went wrong. Nothing was shared.');
+        : reason ? (/[.!?]$/.test(reason) ? reason : `${reason}.`) : 'Something went wrong. Nothing was shared.');
     } finally {
       setBusy(false);
     }

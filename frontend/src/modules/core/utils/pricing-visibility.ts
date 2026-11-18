@@ -65,14 +65,17 @@ export function anonymousLinkStep(selected: VersionVisibility | null | undefined
 
 /**
  * The confirmation shown before making a pricing with anonymous links Public.
- * `links` is how many it has, or null when they could not be read.
+ * `links` is how many it has, or null when they could not be read; `unlisted`
+ * says whether making it public also lists it.
  */
-export function makePublicConfirmation(links: number | null): string {
+export function makePublicConfirmation(links: number | null, unlisted = true): string {
   const has = links === null
     ? 'This pricing may have anonymous links.'
     : `This pricing has ${links === 1 ? '1 anonymous link' : `${links} anonymous links`}.`;
-  return `${has} Making it public lists it in SPHERE's search and on its organization's page, next to the organization ` +
-    'that published it, and makes every version visible, so whoever opens those links could find out who published it.';
+  const change = unlisted
+    ? "Making it public lists it in SPHERE's search and on its organization's page, next to the organization that published it, and makes every version visible"
+    : "Making it public makes every version visible in SPHERE's search and on its organization's page, next to the organization that published it";
+  return `${has} ${change}, so whoever opens those links could find out who published it.`;
 }
 
 /**
@@ -81,7 +84,39 @@ export function makePublicConfirmation(links: number | null): string {
  * version is private: Public makes every version visible, so they all serve
  * again. Links that could not be read (null) still warn.
  */
-export function publicSwitchWarning(links: readonly unknown[] | null): string | null {
-  if (links === null) return makePublicConfirmation(null);
-  return links.length > 0 ? makePublicConfirmation(links.length) : null;
+export function publicSwitchWarning(links: readonly unknown[] | null, unlisted = true): string | null {
+  if (links === null) return makePublicConfirmation(null, unlisted);
+  return links.length > 0 ? makePublicConfirmation(links.length, unlisted) : null;
+}
+
+export interface VisibilityChangeQuestion {
+  /** The pricing as it is now. */
+  unlisted: boolean;
+  versions: number;
+  /** Its anonymous links; absent when the pricing has none to ask about (no id yet). */
+  listLinks?: () => Promise<readonly unknown[]>;
+  confirm: (text: string, options: { danger: true; confirmLabel?: string }) => Promise<unknown>;
+}
+
+/**
+ * Asks once before setting the visibility of every version, and rejects when
+ * the user cancels, so nothing is sent. Making the pricing Public asks about
+ * its anonymous links instead, when it has any or they could not be read.
+ */
+export async function confirmVisibilityChange(target: PricingVisibilityChoice, question: VisibilityChangeQuestion): Promise<void> {
+  const scope = question.versions > 1 ? `all ${question.versions} versions of this pricing` : 'this pricing';
+  if (target === 'Public' && question.listLinks) {
+    const links = await question.listLinks().then(found => found, () => null);
+    const warning = publicSwitchWarning(links, question.unlisted);
+    if (warning) {
+      await question.confirm(warning, { danger: true, confirmLabel: 'Make public' });
+      return;
+    }
+  }
+  const text = target === 'Unlisted'
+    ? `Make ${scope} visible to anyone with the link, but leave the pricing out of search and its organization's page?`
+    : target === 'Public'
+      ? `Make ${scope} public and list the pricing in search and on its organization's page?`
+      : `Make ${scope} private?`;
+  await question.confirm(text, { danger: true });
 }

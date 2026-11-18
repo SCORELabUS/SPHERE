@@ -44,7 +44,7 @@ import RobotsMeta from '../../components/robots-meta';
 import AnonymousLinkDialog from '../../components/anonymous-link-dialog';
 import { useAnonymousLinksApi } from '../../api/anonymousLinksApi';
 import {
-  publicSwitchWarning,
+  confirmVisibilityChange,
   pricingVisibility,
   visibilityChangeBody,
   type PricingVisibilityChoice,
@@ -450,22 +450,13 @@ export default function CardPage() {
     if (!slug || !organizationId) return;
     const target: PricingVisibilityChoice = value === 'Private' || value === 'Unlisted' ? value : 'Public';
     if (target === visibility) return;
-    const scope =
-      versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
     // Listing the pricing, and making every version visible, exposes who published it to whoever holds its links.
-    const linksWarning: Promise<string | null> = target === 'Public' && pricingId
-      ? listAnonymousLinks(pricingId).then(result => publicSwitchWarning(result.links), () => publicSwitchWarning(null))
-      : Promise.resolve(null);
-    const question = target === 'Unlisted'
-      ? `Make ${scope} visible to anyone with the link, but leave the pricing out of search and its organization's page?`
-      : target === 'Public'
-        ? `Make ${scope} public and list the pricing in search and on its organization's page?`
-        : `Make ${scope} private?`;
-    // One question: the warning about the links, when there are any, stands for the usual one.
-    linksWarning
-      .then(warning => (warning
-        ? customConfirm(warning, { danger: true, confirmLabel: 'Make public' })
-        : customConfirm(question, { danger: true })))
+    confirmVisibilityChange(target, {
+      unlisted,
+      versions: versions.length,
+      listLinks: pricingId ? () => listAnonymousLinks(pricingId).then(result => result.links) : undefined,
+      confirm: customConfirm,
+    })
       .then(async () => {
         try {
           const body = visibilityChangeBody(target);
