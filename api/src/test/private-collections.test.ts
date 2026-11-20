@@ -224,7 +224,7 @@ describe('Private collections are not revealed to callers without permission', {
       expect(authorized.body.pricings.map((item: any) => item.name)).toContain(pricing.serviceName);
     });
 
-    it('lists the public pricing without its private collection', async () => {
+    it('hides a public pricing when its collection is private', async () => {
       const { owner, organization, hidden, pricing, member, outsider } = await setup();
       const urls = [
         `${BASE_PATH}/pricings?name=${pricing.serviceName}`,
@@ -234,7 +234,7 @@ describe('Private collections are not revealed to callers without permission', {
         for (const auth of [undefined, { token: outsider.token }, { token: member.token }]) {
           const response = await get(url, auth);
           expect(response.status).toBe(200);
-          expect(response.body.pricings.map((item: any) => item.name)).toEqual([pricing.serviceName]);
+          expect(response.body.pricings).toEqual([]);
           expect(mentions(response.body, hidden)).toBe(false);
         }
         const authorized = await get(url, { token: owner.token });
@@ -243,16 +243,16 @@ describe('Private collections are not revealed to callers without permission', {
 
       const mine = await get(`${BASE_PATH}/users/me/pricings?name=${pricing.serviceName}`, { token: member.token });
       expect(mine.status).toBe(200);
-      expect(mine.body.pricings.map((item: any) => item.name)).toEqual([pricing.serviceName]);
+      expect(mine.body.pricings).toEqual([]);
       expect(mentions(mine.body, hidden)).toBe(false);
     });
 
-    it('treats a pricing in a hidden collection as one in no collection when excluding collected pricings', async () => {
+    it('does not list a pricing in a hidden collection when excluding collected pricings', async () => {
       const { owner, pricing } = await setup();
       const url = `${BASE_PATH}/pricings?name=${pricing.serviceName}&excludePricingsInCollection=true`;
 
       const anonymous = await get(url);
-      expect(anonymous.body.pricings.map((item: any) => item.name)).toEqual([pricing.serviceName]);
+      expect(anonymous.body.pricings).toEqual([]);
       const authorized = await get(url, { token: owner.token });
       expect(authorized.body.pricings).toEqual([]);
     });
@@ -262,14 +262,13 @@ describe('Private collections are not revealed to callers without permission', {
   // One pricing
   // ===========================================================================
   describe('GET /pricings/{organizationId}/{slug}', () => {
-    it('serves the public versions without the collection', async () => {
+    it('hides public versions when their collection is private', async () => {
       const { owner, organization, hidden, pricing, member, outsider } = await setup();
       const url = `${BASE_PATH}/pricings/${organization.id}/${pricing.serviceName}`;
 
       for (const auth of [undefined, { token: outsider.token }, { token: member.token }]) {
         const response = await get(url, auth);
-        expect(response.status).toBe(200);
-        expect(response.body.versions).toHaveLength(1);
+        expect(response.status).toBe(404);
         expect(mentions(response.body, hidden)).toBe(false);
       }
 
@@ -325,8 +324,13 @@ describe('Private collections are not revealed to callers without permission', {
       const ref = { id: String(collection!._id), slug: collection!.slug, name };
       const pricingUrl = `${BASE_PATH}/pricings/${organization.id}/${stored.slug}`;
 
-      const expectHiddenButServed = async () => {
+      const expectVisibility = async (inCollection: boolean) => {
         const anonymous = await get(pricingUrl);
+        if (inCollection) {
+          expect(anonymous.status).toBe(404);
+          expect((await get(pricingUrl, { token: owner.token })).status).toBe(200);
+          return;
+        }
         expect(anonymous.status).toBe(200);
         expect(mentions(anonymous.body, ref)).toBe(false);
         const yaml = await request(app).get(new URL(anonymous.body.versions[0].yaml).pathname);
@@ -338,14 +342,14 @@ describe('Private collections are not revealed to callers without permission', {
 
       // The uploaded pricing is in the collection.
       expect(String(stored._collectionId)).toBe(ref.id);
-      await expectHiddenButServed();
+      await expectVisibility(true);
 
       // Taken out of it, its file stays in the collection's folder.
       const removed = await request(app)
         .delete(`${BASE_PATH}/collections/${organization.id}/${ref.slug}/pricings/${stored.slug}`)
         .set('Authorization', `Bearer ${owner.token}`);
       expect(removed.status).toBe(200);
-      await expectHiddenButServed();
+      await expectVisibility(false);
     });
 
     it('denies individual PUT without revealing the private collection', async () => {
@@ -372,20 +376,20 @@ describe('Private collections are not revealed to callers without permission', {
   // Links, forks and moves
   // ===========================================================================
   describe('permanent links, forks and moves', () => {
-    it('resolves the permanent link of the pricing without naming the collection', async () => {
+    it('refuses the permanent link of a pricing in a hidden collection', async () => {
       const { owner, hidden, pricing, outsider } = await setup();
       const stored: any = await PricingMongoose.findById(pricing.id).lean();
       const url = `${BASE_PATH}/permalinks/pricing/${stored.pricingId}`;
 
       for (const auth of [undefined, { token: outsider.token }]) {
         const response = await get(url, auth);
-        expect(response.status).toBe(200);
+        expect(response.status).toBe(404);
         expect(mentions(response.body, hidden)).toBe(false);
       }
       expect((await get(url, { token: owner.token })).body.location).toContain(`collection=${hidden.slug}`);
     });
 
-    it('keeps the source collection out of a fork for whoever may not see it', async () => {
+    it('refuses forks of hidden pricings and hides the origin from other readers', async () => {
       const { owner, organization, hidden, pricing, outsider } = await setup();
       const fork = (user: any, targetOrganizationId: string) =>
         request(app)
@@ -402,7 +406,7 @@ describe('Private collections are not revealed to callers without permission', {
       const outsiderOrg = await createTestOrganization(outsider.token, { displayName: `Fork ${randomSuffix()}` });
       organizationsWithData.add(outsiderOrg.id);
       const byOutsider = await fork(outsider, outsiderOrg.id);
-      expect(byOutsider.status).toBe(200);
+      expect(byOutsider.status).toBe(404);
       expect(mentions(byOutsider.body, hidden)).toBe(false);
 
       // Forked by the owner, who may see the collection: readers of the fork may not.
@@ -413,7 +417,7 @@ describe('Private collections are not revealed to callers without permission', {
       const forkUrl = `${BASE_PATH}/pricings/${ownerOrg.id}/${byOwner.body.slug}`;
       const anonymous = await get(forkUrl);
       expect(anonymous.status).toBe(200);
-      expect(anonymous.body.versions[0].forkedFrom.name).toBe(pricing.serviceName);
+      expect(anonymous.body.versions[0].forkedFrom).toBeFalsy();
       expect(mentions(anonymous.body, hidden)).toBe(false);
       expect((await get(forkUrl, { token: owner.token })).body.versions[0].forkedFrom.collectionName).toBe(hidden.name);
     });
@@ -446,19 +450,19 @@ describe('Private collections are not revealed to callers without permission', {
         onPlan: () => {},
       }) as Promise<any>;
 
-    it('does not name the collection of a pricing to a member who may not see it', async () => {
+    it('does not expose a pricing in a collection the member cannot see', async () => {
       const { organization, hidden, pricing, member } = await setup();
 
       const resources = await run(member, 'list_resources', { organizationId: organization.id });
-      expect(resources.pricings.map((item: any) => item.name)).toContain(pricing.serviceName);
+      expect(resources.pricings.map((item: any) => item.name)).not.toContain(pricing.serviceName);
       expect(mentions(resources, hidden)).toBe(false);
 
       const search = await run(member, 'search_pricings', { organizationId: organization.id, query: pricing.serviceName });
-      expect(search.pricings.map((item: any) => item.name)).toEqual([pricing.serviceName]);
+      expect(search.pricings).toEqual([]);
       expect(mentions(search, hidden)).toBe(false);
 
       const detail = await run(member, 'get_pricing', { organizationId: organization.id, pricing: pricing.serviceName });
-      expect(detail.name).toBe(pricing.serviceName);
+      expect(detail.ok).toBe(false);
       expect(mentions(detail, hidden)).toBe(false);
     });
 
@@ -501,7 +505,7 @@ describe('Private collections are not revealed to callers without permission', {
         .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'search_pricings', arguments: { query: pricing.serviceName } } });
       expect(response.status).toBe(200);
       const data = JSON.parse(response.body.result.content[0].text);
-      expect(data.pricings.map((item: any) => item.name)).toEqual([pricing.serviceName]);
+      expect(data.pricings).toEqual([]);
       expect(mentions(data, hidden)).toBe(false);
     });
   });

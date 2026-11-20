@@ -20,6 +20,8 @@ export interface LeanOrganization {
   ancestors: string[];
   subOrganizations?: LeanOrganization[];
   isPersonal: boolean;
+  servicesPublic?: boolean;
+  visibility?: 'public' | 'unlisted' | 'private';
 }
 
 export interface CreateChildOrganizationInput {

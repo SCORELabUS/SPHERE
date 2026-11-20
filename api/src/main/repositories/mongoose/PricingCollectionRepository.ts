@@ -18,13 +18,14 @@ import { escapeRegex } from '../../utils/regex';
 class PricingCollectionRepository extends RepositoryBase {
   async findAll(
     queryParams: CollectionIndexQueryParams,
-    permissions: OrgUserPermissionsContext
+    permissions: OrgUserPermissionsContext,
+    publicOrganizationsOnly = false
   ): Promise<{ collections: RetrievedCollection[]; total: number }> {
     const { filteringPipeline, sortPipeline } = this._processCollectionQueryParams(queryParams);
     const paginationPipeline = this._processCollectionPagination(queryParams);
 
     try {
-      const pipeline: PipelineStage[] = getCollectionsAggregator(undefined, permissions, filteringPipeline, sortPipeline);
+      const pipeline: PipelineStage[] = getCollectionsAggregator(undefined, permissions, filteringPipeline, sortPipeline, publicOrganizationsOnly);
       pipeline.push(...paginationPipeline);
 
       const aggResult = await PricingCollectionMongoose.aggregate(pipeline);

@@ -24,6 +24,8 @@ const organizationSchema = new Schema(
       get: (v: mongoose.Types.ObjectId[]) => v?.map(id => id.toString()),
     },
     isPersonal: { type: Boolean, required: true, default: false },
+    servicesPublic: { type: Boolean, required: true, default: false },
+    visibility: { type: String, enum: ['public', 'unlisted', 'private'], required: true, default: 'public' },
   },
   {
     timestamps: true,

@@ -3,6 +3,9 @@ import path from 'path';
 import PricingMongoose, { YAML_PATH_COLLATION } from '../repositories/mongoose/models/PricingMongoose';
 import PricingCollectionMongoose from '../repositories/mongoose/models/PricingCollectionMongoose';
 import { resolveRequestUser } from './AuthenticationMiddleware';
+import { canReadPricingParents } from '../policies/organizationVisibility';
+import { canReadOrganization } from '../policies/organizationVisibility';
+import OrganizationMongoose from '../repositories/mongoose/models/OrganizationMongoose';
 
 /**
  * Folders whose files are written by users (pricing uploads and extracted
@@ -100,6 +103,17 @@ async function canReadPrivateVersion(caller: Caller, version: VersionReference):
 type StaticDecision = 'public' | 'private' | 'hidden';
 
 async function decide(req: Request, relativePath: string): Promise<StaticDecision> {
+  if (relativePath.toLowerCase().startsWith('static/avatars/orgs/')) {
+    const organizations = await OrganizationMongoose.find({ avatar: { $in: [relativePath, '/' + relativePath] } }).select('_id visibility').lean();
+    if (!organizations.length) return 'hidden';
+    if (organizations.some(org => org.visibility !== 'private')) return 'public';
+    const caller = await resolveRequestUser(req);
+    if (!caller) return 'hidden';
+    for (const org of organizations) {
+      if (await canReadOrganization(String(org._id), caller.user, caller.authType)) return 'private';
+    }
+    return 'hidden';
+  }
   const userUpload = isUserUpload(relativePath);
   if (!userUpload && !PRICING_FILE.test(relativePath)) return 'public';
 
@@ -108,11 +122,15 @@ async function decide(req: Request, relativePath: string): Promise<StaticDecisio
 
   // Every version that points at this file has the same bytes, so one public
   // version makes the file public.
-  if (versions.some(version => version.private !== true)) return 'public';
+  for (const version of versions) {
+    if (version.private !== true && await canReadPricingParents(String(version._organizationId), version._collectionId)) return 'public';
+  }
 
   const caller = await resolveRequestUser(req);
   if (!caller) return 'hidden';
   for (const version of versions) {
+    if (!await canReadPricingParents(String(version._organizationId), version._collectionId, caller.user, caller.authType)) continue;
+    if (version.private !== true) return 'private';
     if (await canReadPrivateVersion(caller, version)) return 'private';
   }
   return 'hidden';
@@ -145,7 +163,7 @@ export function protectedStatic(root: string, options?: Parameters<typeof expres
 
     if (decision === 'hidden') return next();
 
-    if (decision === 'private') {
+    if (decision === 'private' || PRICING_FILE.test(relativePath) || relativePath.toLowerCase().startsWith('static/avatars/orgs/')) {
       // `send` keeps a Cache-Control header that is already set.
       res.setHeader('Cache-Control', 'private, no-store');
     }
