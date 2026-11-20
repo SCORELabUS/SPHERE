@@ -18,6 +18,7 @@ class OrganizationRepository extends RepositoryBase {
     const filter: Record<string, any> = {
       isPersonal: false,
       _parentId: null,
+      visibility: { $nin: ['unlisted', 'private'] },
     };
 
     if (options.q) {
@@ -131,7 +132,7 @@ class OrganizationRepository extends RepositoryBase {
     const branch = await OrganizationMongoose.find({
       $or: [{ _id: rootObjectId }, { ancestors: rootObjectId }],
     })
-      .select('name displayName avatar isPersonal _parentId ancestors')
+      .select('name displayName avatar isPersonal _parentId ancestors visibility')
       .sort({ displayName: 1 })
       .lean();
 
@@ -141,6 +142,7 @@ class OrganizationRepository extends RepositoryBase {
       displayName: organization.displayName,
       avatar: organization.avatar ?? null,
       isPersonal: organization.isPersonal ?? false,
+      visibility: organization.visibility ?? 'public',
       _parentId: organization._parentId ? organization._parentId.toString() : null,
       ancestors: (organization.ancestors ?? []).map((id: any) => id.toString()),
     }));

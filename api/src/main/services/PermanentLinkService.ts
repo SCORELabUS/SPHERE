@@ -8,6 +8,7 @@ import Collection from '../repositories/mongoose/models/PricingCollectionMongoos
 import Identity from '../repositories/mongoose/models/PricingIdentityMongoose';
 import { privateReader } from '../policies/privateReadRule';
 import { VERSION_ORDER } from '../utils/version-order';
+import { canReadOrganization, canReadPricingParents } from '../policies/organizationVisibility';
 
 export function functionalHash(text: string): string {
   const value = yaml.load(text) as Record<string, unknown>;
@@ -23,6 +24,7 @@ export default class PermanentLinkService {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
     if (!identity) throw new Error('NOT FOUND');
+    if (!await canReadPricingParents(String(identity._organizationId), identity._collectionId)) throw new Error('NOT FOUND');
     const versions = await Pricing.find({ pricingId: id, private: false }).sort(VERSION_ORDER).lean();
     if (!versions.length) throw new Error('NOT FOUND');
     return { identity, versions };
@@ -75,6 +77,7 @@ export default class PermanentLinkService {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
     if (!identity) throw new Error('NOT FOUND');
+    if (!await canReadPricingParents(String(identity._organizationId), identity._collectionId, user, authType)) throw new Error('NOT FOUND');
     const includesPrivate = await this.canReadPrivateVersions(identity, user, authType);
     const versions = await Pricing.find({ pricingId: id, ...(includesPrivate ? {} : { private: false }) })
       .sort(VERSION_ORDER).lean();
@@ -121,6 +124,7 @@ export default class PermanentLinkService {
     if (!mongoose.isObjectIdOrHexString(id)) throw new Error('NOT FOUND');
     const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
     if (!identity) throw new Error('NOT FOUND');
+    if (!await canReadPricingParents(String(identity._organizationId), identity._collectionId, user, authType)) throw new Error('NOT FOUND');
     const allVersions = await Pricing.find({ pricingId: id }).sort(VERSION_ORDER).lean();
     if (!allVersions.length) throw new Error('NOT FOUND');
 
@@ -155,6 +159,7 @@ export default class PermanentLinkService {
     if (kind === 'pricing') {
       const identity = await Identity.findOne({ _id: id, deleted: false }).lean();
       if (!identity || !await Pricing.exists({ pricingId: id })) throw new Error('NOT FOUND');
+      if (!await canReadPricingParents(String(identity._organizationId), identity._collectionId, user, authType)) throw new Error('NOT FOUND');
       const collection = identity._collectionId ? await Collection.findById(identity._collectionId).lean() : null;
       if (!await Pricing.exists({ pricingId: id, private: false })) {
         await this.authorize(user, String(identity._organizationId), 'pricing', identity.slug, collection?.slug, authType);
@@ -170,6 +175,7 @@ export default class PermanentLinkService {
     if (kind === 'collection') {
       const collection = await Collection.findById(id).lean();
       if (!collection) throw new Error('NOT FOUND');
+      if (!await canReadOrganization(String(collection._organizationId), user, authType)) throw new Error('NOT FOUND');
       if (collection.private) await this.authorize(user, String(collection._organizationId), 'collection', collection.slug, undefined, authType);
       return { location: `/collections/${collection._organizationId}/${encodeURIComponent(collection.slug)}` };
     }
