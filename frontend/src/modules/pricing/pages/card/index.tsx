@@ -9,6 +9,7 @@ import {
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { permanentLinkUrl } from '../../../core/utils/permanent-link';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
@@ -347,7 +348,7 @@ export default function CardPage() {
     // read it, so a direct link would not work for anyone else. Offer the
     // pricing's permanent link instead.
     if (v.private && pricingId) {
-      setLinkUrl(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`);
+      setLinkUrl(permanentLinkUrl('p', pricingId));
       setLinkDescription(
         'This version is private, so its YAML file is only available to signed-in users who can see it. This is the permanent link to the pricing instead: people with access see every version, everyone else only the public ones.'
       );
@@ -1217,6 +1218,7 @@ export default function CardPage() {
                 entityPermissions={entityPermissions}
                 visibility={visibility}
                 unlisted={unlisted}
+                pricingId={pricingId}
                 pricingName={pricingName}
                 currentVersion={currentVersion}
                 versions={versions}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HiOutlineFolderDownload } from 'react-icons/hi';
+import { permanentLinkUrl } from '../../../core/utils/permanent-link';
 
 /** The menu's width (`w-72`) plus the page gutter it must keep. */
 const MENU_ROOM = 288 + 16;
@@ -46,7 +47,7 @@ export default function GetPricingMenu({
   }, [open]);
 
   if (!pricingId) return null;
-  const permanentLink = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`;
+  const permanentLink = permanentLinkUrl('p', pricingId);
 
   const copyPermanentLink = async () => {
     try {

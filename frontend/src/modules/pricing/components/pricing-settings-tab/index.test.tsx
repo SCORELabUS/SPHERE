@@ -59,6 +59,38 @@ describe('PricingSettingsTab visibility', () => {
     expect(text(listedMixed)).not.toContain('unlisted');
   });
 
+  it('offers the permanent link to share an unlisted pricing, as it does not show in search (F6-2)', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://sphere.test' }, prompt: vi.fn() });
+    const link = `https://sphere.test${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/pricing-1`;
+    const shared = (view: ReactTestRenderer) =>
+      view.root.findAll(node => node.type === 'input' && node.props['aria-label'] === 'Permanent link to share').map(input => input.props.value);
+
+    const unlisted = render({ visibility: 'Unlisted', unlisted: true, pricingId: 'pricing-1' });
+    expect(shared(unlisted)).toEqual([link]);
+    expect(text(unlisted)).toContain('Link to share');
+    // Mixed: anyone with the link still sees its public versions.
+    expect(shared(render({ visibility: 'Mixed', unlisted: true, pricingId: 'pricing-1', versions: [version('1', false), version('2', true)] }))).toEqual([link]);
+
+    // Listed, every version private, or no id yet: nothing to share this way.
+    expect(shared(render({ visibility: 'Public', unlisted: false, pricingId: 'pricing-1' }))).toEqual([]);
+    expect(shared(render({ visibility: 'Private', unlisted: true, pricingId: 'pricing-1', versions: [version('1', true)] }))).toEqual([]);
+    expect(shared(render({ visibility: 'Unlisted', unlisted: true }))).toEqual([]);
+    expect(shared(render({ visibility: 'Unlisted', unlisted: true, pricingId: 'pricing-1', entityPermissions: { ...ALL, PUT: false } }))).toEqual([]);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    vi.useFakeTimers();
+    try {
+      const button = unlisted.root.find(node => node.type === 'button' && JSON.stringify(node.children).includes('Copy link'));
+      await act(async () => { await button.props.onClick(); });
+      expect(writeText).toHaveBeenCalledWith(link);
+      expect(text(unlisted)).toContain('Permanent link copied');
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('hides the visibility to whoever may not edit the pricing (CA-1.6)', () => {
     const view = render({ entityPermissions: { ...ALL, PUT: false } });
     expect(text(view)).not.toContain('Visibility');

@@ -605,6 +605,13 @@ describe('Unlisted pricings', { timeout: 60000 }, () => {
       const permalink = await get(`${BASE_PATH}/permalinks/pricing/${pricingId}?version=${publicDoc._id}`).expect(200);
       expect(permalink.body.location).toContain(`/pricings/${organization.id}/`);
       expect(permalink.body.location).toContain(String(publicDoc._id));
+      // The permanent link Settings offers to share it (F6-2): it opens the pricing for
+      // anyone, signed in or not, and the page it leads to reads.
+      for (const auth of [undefined, { token: outsider.token }]) {
+        const shared = await get(`${BASE_PATH}/permalinks/pricing/${pricingId}`, auth).expect(200);
+        expect(shared.body.location).toBe(`/pricings/${organization.id}/${encodeURIComponent(pricing.slug)}`);
+        await get(`${BASE_PATH}${shared.body.location}`, auth).expect(200);
+      }
       await get(`${BASE_PATH}/public/pricings/${pricingId}`).expect(200);
       await get(`${BASE_PATH}/public/pricings/${pricingId}/versions/${publicDoc._id}/yaml`).expect(200);
       await get(`${BASE_PATH}/public/pricings/${pricingId}/download`).expect(200);

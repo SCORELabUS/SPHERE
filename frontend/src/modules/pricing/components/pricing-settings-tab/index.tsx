@@ -4,12 +4,15 @@ import Iconify from '../../../core/components/iconify';
 import type { VersionData } from '../../types/card';
 import type { EntityPermissions } from '../../../organization/types/permissions';
 import { PRICING_VISIBILITY_CHOICES, PRICING_VISIBILITY_DESCRIPTIONS } from '../../../core/utils/pricing-visibility';
+import { permanentLinkUrl } from '../../../core/utils/permanent-link';
 
 interface PricingSettingsTabProps {
   entityPermissions: EntityPermissions | null;
   visibility: string;
   /** Left out of listings for who may not read its private versions. */
   unlisted?: boolean;
+  /** For the permanent link an unlisted pricing is shared with. */
+  pricingId?: string;
   pricingName: string;
   currentVersion: VersionData | null;
   versions: VersionData[];
@@ -24,6 +27,7 @@ export default function PricingSettingsTab({
   entityPermissions,
   visibility,
   unlisted = false,
+  pricingId,
   pricingName,
   currentVersion,
   versions,
@@ -34,7 +38,22 @@ export default function PricingSettingsTab({
   onDeletePricing,
 }: PricingSettingsTabProps) {
   const [nameValue, setNameValue] = useState(pricingName);
+  const [copied, setCopied] = useState(false);
   const privateCount = versions.filter(v => v.private).length;
+  // An unlisted pricing is reached through a link, not search: its permanent
+  // link, while some version is visible to anyone who has it.
+  const shareLink = unlisted && pricingId && privateCount < versions.length ? permanentLinkUrl('p', pricingId) : null;
+
+  async function copyShareLink() {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt('Copy the permanent link', shareLink);
+    }
+  }
 
   useEffect(() => {
     setNameValue(pricingName);
@@ -100,6 +119,32 @@ export default function PricingSettingsTab({
               descriptions={PRICING_VISIBILITY_DESCRIPTIONS}
             />
           </div>
+          {shareLink && (
+            <div className="mt-4 rounded-lg bg-tp-surface p-3">
+              <p className="text-xs font-medium text-tp-ink">Link to share</p>
+              <p className="mt-0.5 text-[11px] text-tp-steel">
+                As it does not show in search, people reach it through this permanent link. It opens the latest version
+                they may see, also without signing in, and keeps working if the pricing is renamed or moved.
+              </p>
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-tp-input-border bg-tp-input-bg p-1">
+                <input
+                  aria-label="Permanent link to share"
+                  readOnly
+                  value={shareLink}
+                  onFocus={event => event.currentTarget.select()}
+                  className="min-w-0 flex-1 bg-transparent px-1.5 py-1 text-xs text-tp-steel outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={copyShareLink}
+                  className="cursor-pointer shrink-0 rounded-md bg-tp-primary px-3 py-1.5 text-xs font-medium text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
+                >
+                  {copied ? 'Copied' : 'Copy link'}
+                </button>
+              </div>
+              <span className="sr-only" role="status">{copied ? 'Permanent link copied' : ''}</span>
+            </div>
+          )}
         </div>
       )}
 
