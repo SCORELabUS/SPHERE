@@ -31,9 +31,10 @@ export interface ForkParentLocation {
 
 /**
  * The fork's latest version proposed to the pricing it came from: the three-way
- * merge against that pricing's latest public version, resolved here, with a
- * title and a description. When the caller already has a pull request open from
- * this fork, proposing again replaces its proposal.
+ * merge against that pricing's latest public version, resolved here (or typed
+ * by hand in the YAML view), with a title and a description. When the caller
+ * already has a pull request open from this fork, proposing again replaces its
+ * proposal.
  */
 function ForkProposalDialog({
   forkPricingId,
@@ -50,11 +51,13 @@ function ForkProposalDialog({
 }) {
   const { previewProposal, createPullRequest, getPullRequest } = usePricingPullRequestsApi();
   const readVersion = usePricingVersionReader();
+  // The author may type their proposal by hand in the YAML view; the fork does not change.
   const resolver = useMergeResolver(
     useCallback(
       (resolutions: ConflictResolutions) => previewProposal({ kind: 'fork', forkPricingId }, resolutions),
       [previewProposal, forkPricingId]
-    )
+    ),
+    { editable: true }
   );
   const { parent } = target;
   const loadLatestYaml = useCallback(
@@ -86,7 +89,8 @@ function ForkProposalDialog({
   }, [ownOpenId, getPullRequest]);
 
   let blockReason = resolver.blockReason;
-  if (!blockReason && preview?.outcome === 'no-changes' && resolver.state.manualYaml === null) {
+  // What the merge computed; a text typed by hand is checked by the server when it is sent.
+  if (!blockReason && !resolver.isManual && preview?.outcome === 'no-changes') {
     blockReason = `Nothing to propose: version ${preview.target.version} of ${parent.name} already has everything this fork changes.`;
   }
   if (!blockReason) blockReason = proposalFieldsError(title, description);
@@ -121,8 +125,8 @@ function ForkProposalDialog({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      // A click outside does not close it: the choices, the edited YAML, the title and the
-      // description would go with it. Close and Cancel do.
+      // A click outside does not close it: the choices, the title and the description would
+      // go with it. Close and Cancel do.
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-tp-ink/60 p-3 pt-[6dvh] sm:p-4"
       role="dialog"
       aria-modal="true"
@@ -133,10 +137,12 @@ function ForkProposalDialog({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="w-full max-w-[64rem] cursor-default space-y-5 rounded-2xl border border-tp-hairline bg-tp-canvas p-5 shadow-elevation-4 sm:p-6"
+        // One height whatever the view shows (from sm up; on phones the views share a fixed area),
+        // so switching views never moves the dialog: the views scroll inside it.
+        className="flex w-full max-w-[64rem] cursor-default flex-col gap-5 rounded-2xl border border-tp-hairline bg-tp-canvas p-5 shadow-elevation-4 sm:h-[min(88dvh,60rem)] sm:p-6"
         onClick={event => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex shrink-0 items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 id="fork-proposal-title" className="break-words font-display text-lg font-semibold text-tp-ink">
               Propose changes to {parent.name}
@@ -157,23 +163,27 @@ function ForkProposalDialog({
         </div>
 
         {replaces && (
-          <p className="flex items-start gap-2 rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">
+          <p className="flex shrink-0 items-start gap-2 rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">
             <FiInfo aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tp-severity-info" />
             <span>Replaces the current proposal of #{replaces.number}.</span>
           </p>
         )}
 
-        <PricingMergeResolver resolver={resolver} loadLatestYaml={loadLatestYaml} />
+        <div className="h-[30rem] min-h-0 sm:h-auto sm:min-h-[16rem] sm:flex-1">
+          <PricingMergeResolver resolver={resolver} loadLatestYaml={loadLatestYaml} purpose="propose" fill />
+        </div>
 
-        <ProposalFields title={title} description={description} onTitleChange={setTitle} onDescriptionChange={setDescription} />
+        <div className="shrink-0">
+          <ProposalFields title={title} description={description} onTitleChange={setTitle} onDescriptionChange={setDescription} />
+        </div>
 
         {error && (
-          <p role="alert" className="rounded-lg border border-tp-severity-error-border bg-tp-severity-error-bg px-3 py-2 text-sm text-tp-ink">
+          <p role="alert" className="shrink-0 rounded-lg border border-tp-severity-error-border bg-tp-severity-error-bg px-3 py-2 text-sm text-tp-ink">
             {error}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-tp-hairline pt-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-tp-hairline pt-4">
           {blockReason && (
             <p id="fork-proposal-block-reason" className="mr-auto text-xs text-tp-steel">
               {blockReason}
@@ -203,15 +213,17 @@ function ForkProposalDialog({
 
 /**
  * "Propose changes to <parent>" on a fork: shown to who may publish versions of
- * the fork, when one of its versions names the pricing it was forked from.
+ * the fork, when one of its versions names the pricing it was forked from and
+ * its latest version changes something of the parent's latest public one.
  * Whether it can propose now comes from the server, which answers only on the
- * versions of the fork the caller may read; when it cannot, the button stays
- * disabled with the reason written next to it.
+ * versions of the fork the caller may read; when it cannot for another reason,
+ * the button stays disabled with the reason written next to it.
  */
 export default function ForkProposal({
   forkPricingId,
   forkedFrom,
   canCreate,
+  latestVersionId,
   onProposed,
 }: {
   forkPricingId: string;
@@ -219,6 +231,8 @@ export default function ForkProposal({
   forkedFrom: ForkOrigin | null;
   /** CREATE on the fork, as the page's permissions say. */
   canCreate: boolean;
+  /** The fork's newest version on the page: a new one may change whether there is something to propose. */
+  latestVersionId?: string;
   onProposed: (pullRequest: CreatedPullRequest, parent: ForkParentLocation) => void;
 }) {
   const { getForkTarget } = usePricingPullRequestsApi();
@@ -241,9 +255,17 @@ export default function ForkProposal({
     return () => {
       active = false;
     };
-  }, [isCandidate, forkPricingId, getForkTarget]);
+  }, [isCandidate, forkPricingId, latestVersionId, getForkTarget]);
 
-  if (!isCandidate || !forkedFrom || target === null || target === 'hidden' || target.reason === 'NOT_A_FORK') {
+  // Hidden too while the fork has nothing the parent's latest public version lacks: there is nothing to propose.
+  if (
+    !isCandidate ||
+    !forkedFrom ||
+    target === null ||
+    target === 'hidden' ||
+    target.reason === 'NOT_A_FORK' ||
+    target.reason === 'NO_CHANGES'
+  ) {
     return null;
   }
 

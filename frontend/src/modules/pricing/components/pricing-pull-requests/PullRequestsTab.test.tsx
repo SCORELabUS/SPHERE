@@ -7,6 +7,7 @@ import FileUpload from '../../../core/components/file-upload-input';
 import { PullRequestApiError } from '../../api/pricingPullRequestsApi';
 import type {
   ForkTarget,
+  MergeConflict,
   PullRequestDetail,
   PullRequestList,
   PullRequestPreview,
@@ -24,12 +25,43 @@ const mocks = vi.hoisted(() => ({
   previewProposal: vi.fn(),
   createPullRequest: vi.fn(),
   getPricingBySlug: vi.fn(),
-  openEditor: vi.fn(),
   versionHref: vi.fn(),
   openVersion: vi.fn(),
   alert: vi.fn(),
+  confirm: vi.fn(),
+  editor: { createDecorationsCollection: () => ({ clear: () => {} }), revealLineInCenter: () => {}, setPosition: () => {}, focus: () => {} },
   user: { id: 'maintainer', username: 'maintainer' } as { id: string; username: string },
 }));
+vi.mock('../../../core/utils/custom-confirm', () => ({ default: mocks.confirm }));
+// The test renderer has no portals: the expanded resolver renders where it is, as the window would show it.
+vi.mock('react-dom', async importOriginal => ({
+  ...(await importOriginal<typeof import('react-dom')>()),
+  createPortal: (node: unknown) => node,
+}));
+// Monaco needs a browser: a text area stands in, read-only or not as the editor is.
+vi.mock('@monaco-editor/react', async () => {
+  const React = await import('react');
+  function MonacoEditor({
+    value,
+    onChange,
+    onMount,
+    options,
+  }: {
+    value: string;
+    onChange?: (value: string) => void;
+    onMount: (editor: unknown) => void;
+    options?: { readOnly?: boolean };
+  }) {
+    React.useEffect(() => onMount(mocks.editor), [onMount]);
+    return React.createElement('textarea', {
+      'data-editor': 'yaml',
+      value,
+      readOnly: options?.readOnly ?? false,
+      onChange: (event: { target: { value: string } }) => onChange?.(event.target.value),
+    });
+  }
+  return { default: MonacoEditor };
+});
 vi.mock('../../api/pricingPullRequestsApi', async importOriginal => ({
   ...(await importOriginal<typeof import('../../api/pricingPullRequestsApi')>()),
   usePricingPullRequestsApi: () => mocks,
@@ -67,7 +99,6 @@ const context = {
   versions: [],
   onMerged: () => {},
   onPricingChanged: () => false,
-  openEditor: mocks.openEditor,
   versionHref: mocks.versionHref,
   openVersion: mocks.openVersion,
 };
@@ -124,7 +155,8 @@ describe('Pull requests tab', () => {
   const onSelect = vi.fn();
   const text = () => textOf(view.root);
   const buttons = () => view.root.findAllByType('button');
-  const button = (label: string) => buttons().find(item => textOf(item).trim() === label)!;
+  const button = (label: string, root: ReactTestInstance = view.root) =>
+    root.findAllByType('button').find(item => textOf(item).trim() === label)!;
 
   async function render(selectedId: string | null = null) {
     await act(async () => {
@@ -232,7 +264,7 @@ describe('Pull requests tab', () => {
       proposed: { suggestedVersion: '2.1', yaml: proposed },
     }));
     await render(PR_ID);
-    expect(text()).toContain('Version 2.0 is written in an older Pricing2Yaml syntax');
+    expect(text()).toContain('Version 2.0 and the proposal are written in different Pricing2Yaml syntaxes.');
     expect(text()).toContain('PRO');
     expect(text()).not.toContain('syntaxVersion');
     expect(text()).not.toContain('subscriptionConstraints');
@@ -245,9 +277,36 @@ describe('Pull requests tab', () => {
     expect(marks.map(textOf)).toEqual(['~', '~']);
   });
 
+  it('keeps the proposal as written, comparing it upgraded when it is in an older syntax than the base', async () => {
+    const proposedRaw = "syntaxVersion: '2.1'\nsaasName: Demo\nversion: '2.1'\nplans:\n  PRO:\n    price: 12\n";
+    const proposedUpgraded = 'syntaxVersion: "3.1"\nsaasName: Demo\nversion: "2.1"\nplans:\n  PRO:\n    price: 12\n';
+    const base = 'syntaxVersion: "3.1"\nsaasName: Demo\nversion: "2.0"\nplans:\n  PRO:\n    price: 10\n';
+    mocks.getPullRequest.mockResolvedValue(detail({
+      base: { versionId: 'v2', version: '2.0', yaml: base },
+      proposed: { suggestedVersion: '2.1', yaml: proposedRaw, normalizedYaml: proposedUpgraded },
+    }));
+    await render(PR_ID);
+    expect(text().match(/different Pricing2Yaml syntaxes/g)).toHaveLength(1);
+    await act(async () => button('File').props.onClick());
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props).toMatchObject({ before: base, after: proposedUpgraded });
+    const marks = file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)));
+    expect(marks.map(textOf)).toEqual(['~', '~', '~', '~']);
+  });
+
+  it('does not count values the latest syntax reads as absent as changes, written or not', async () => {
+    mocks.getPullRequest.mockResolvedValue(detail({
+      base: { versionId: 'v2', version: '2.0', yaml: 'saasName: Demo\nvariables: {}\nbilling:\n  monthly: 1\nplans:\n  PRO:\n    price: 10\n' },
+      proposed: { suggestedVersion: '2.1', yaml: 'saasName: Demo\ntags: []\nplans:\n  PRO:\n    price: 12\n' },
+    }));
+    await render(PR_ID);
+    expect(text()).toContain('PRO');
+    expect(text()).not.toMatch(/variables|billing|tags/);
+  });
+
   it('says nothing about the syntax when the base is already in the latest one', async () => {
     await render(PR_ID);
-    expect(text()).not.toContain('older Pricing2Yaml syntax');
+    expect(text()).not.toContain('Pricing2Yaml syntax');
   });
 
   it('marks added and removed lines with + and − in the file view', async () => {
@@ -273,6 +332,26 @@ describe('Pull requests tab', () => {
     expect(file.props.after).toBe('saasName: Demo\nplans:\n  PRO:\n    price: 12\n');
     const marks = file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)));
     expect(marks.map(textOf)).toEqual(['~', '~']);
+  });
+
+  it('shows two versions formatted differently in one format in the file view, so the quotes are not changes', async () => {
+    mocks.getPullRequest.mockResolvedValue(detail({
+      base: { versionId: 'v2', version: '2.0', yaml: "saasName: Demo\nsyntaxVersion: '3.1'\nplans:\n  PRO:\n    unit: user/month\n    price: 10\n" },
+      proposed: { suggestedVersion: '2.1', yaml: 'saasName: "Demo"\nsyntaxVersion: "3.1"\nplans:\n  PRO:\n    unit: "user/month"\n    price: 12\n' },
+    }));
+    await render(PR_ID);
+    expect(text()).not.toContain('formatted differently');
+    await act(async () => button('File').props.onClick());
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props).toMatchObject({
+      before: "saasName: Demo\nsyntaxVersion: '3.1'\nplans:\n  PRO:\n    unit: user/month\n    price: 10\n",
+      after: "saasName: Demo\nsyntaxVersion: '3.1'\nplans:\n  PRO:\n    unit: user/month\n    price: 12\n",
+      beforeLabel: 'Version 2.0',
+      afterLabel: 'Proposal',
+    });
+    const marks = file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)));
+    expect(marks.map(textOf)).toEqual(['~', '~']);
+    expect(text()).toContain('Version 2.0 and the proposal are formatted differently (quotes, line breaks or comments).');
   });
 
   it('shows the suggested version and the fork it came from', async () => {
@@ -310,6 +389,12 @@ describe('Pull requests tab', () => {
     expect(click({})).toHaveBeenCalled();
     expect(mocks.openVersion).toHaveBeenCalledWith('v4');
 
+    // Without the version it was merged on, the changes are the proposal's, saying the result can differ.
+    expect(text()).toContain('Proposal compared with version 2.0');
+    expect(text()).toContain('What was published can differ where conflicts were resolved when merging.');
+    expect(button('Published')).toBeUndefined();
+    expect(text()).not.toContain('Suggested version');
+
     // Who may not read the merged version is not told which one it is, nor linked to it.
     act(() => view.unmount());
     mocks.getPullRequest.mockResolvedValue(merged({}));
@@ -323,7 +408,8 @@ describe('Pull requests tab', () => {
     mocks.getPullRequest.mockResolvedValue(detail({ pricingId: '6650f0c0c0c0c0c0c0c0c0ff' }));
     await render(PR_ID);
     expect(view.root.findByProps({ role: 'alert' }).children.map(textOf).join('')).toBe('This pull request is not available.');
-    expect(button('Merge…')).toBeUndefined();
+    expect(button('Resolve conflicts')).toBeUndefined();
+    expect(button('Merge pull request')).toBeUndefined();
     expect(text()).not.toContain('Raise PRO');
   });
 
@@ -446,17 +532,69 @@ describe('Pull requests tab', () => {
     beforeEach(() => {
       fetchMock.mockImplementation(async () => new Response(LATEST_YAML));
       vi.stubGlobal('fetch', fetchMock);
+      // The resolver's full window keeps the page behind from scrolling: a body stands in for the browser's.
+      vi.stubGlobal('document', { body: { style: { overflow: '' } } });
       mocks.previewPullRequestMerge.mockResolvedValue(mergePreview);
     });
     afterEach(() => vi.unstubAllGlobals());
 
+    it('puts the merge box of an open pull request right below its header: where it stands and the one thing to do next', async () => {
+      const box = () => view.root.find(node => node.type === 'section' && node.props['aria-label'] === 'Merge');
+      // Conflicts already known: resolving them comes first, and the changes stay in view.
+      await render(PR_ID);
+      // Above the description and the changes, however long they are.
+      const sections = view.root.findAll(node => node.type === 'section');
+      const description = sections.findIndex(node => textOf(node).startsWith('Description'));
+      expect(sections.indexOf(box())).toBeLessThan(description);
+      expect(sections.findIndex(node => textOf(node).startsWith('Changes'))).toBeGreaterThan(description);
+      expect(textOf(box())).toContain('2 conflicts with the latest version');
+      expect(textOf(box())).toContain('choose a side for each before merging');
+      expect(button('Resolve conflicts', box()).props.className).toContain('cursor-pointer');
+      expect(button('Merge pull request')).toBeUndefined();
+      expect(button('Close', box())).toBeDefined();
+      expect(text()).toContain('Proposal compared with version 2.0');
+      await act(async () => button('Resolve conflicts', box()).props.onClick());
+      await flush();
+      // The resolver opens over the whole window; the merge is confirmed back in the box.
+      expect(view.root.findAll(node => node.type === 'div' && node.props.role === 'dialog')).toHaveLength(1);
+      await act(async () => button('Done').props.onClick());
+      expect(textOf(box())).toContain('Merge pull request');
+      expect(button('Confirm merge')).toBeDefined();
+      await act(async () => button('Cancel', box()).props.onClick());
+      expect(button('Resolve conflicts', box())).toBeDefined();
+      act(() => view.unmount());
+
+      // Up to date: merging is one click away. Who may not merge is told who does.
+      mocks.getPullRequest.mockResolvedValue(detail({ state: { kind: 'up-to-date' } }));
+      await render(PR_ID);
+      expect(textOf(box())).toContain('It is based on version 2.0, the latest public one.');
+      expect(button('Merge pull request', box())).toBeDefined();
+      act(() => view.unmount());
+      mocks.getPullRequest.mockResolvedValue(detail({
+        state: { kind: 'up-to-date' },
+        permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
+      }));
+      await render(PR_ID);
+      expect(textOf(box())).toContain('A maintainer of this pricing reviews and merges it.');
+      expect(box().findAllByType('button')).toHaveLength(0);
+      act(() => view.unmount());
+
+      // Nothing to merge: no way to merge it.
+      mocks.getPullRequest.mockResolvedValue(detail({ state: { kind: 'no-changes' } }));
+      await render(PR_ID);
+      expect(textOf(box())).toContain('Nothing to merge');
+      expect(button('Merge pull request')).toBeUndefined();
+      expect(button('Resolve conflicts')).toBeUndefined();
+    });
+
     it('lets a maintainer merge with the page ETag, reading the version it follows from the page', async () => {
+      mocks.getPullRequest.mockResolvedValue(detail({ state: { kind: 'behind', conflicts: 0 } }));
       const onMerged = vi.fn();
       const result = {
         pullRequest: detail({
           status: 'merged',
           state: { kind: 'merged' },
-          merged: { at: new Date().toISOString(), versionId: 'v4', version: '2.1' },
+          merged: { at: new Date().toISOString(), versionId: 'v4', version: '2.1', followed: { versionId: 'v3', version: '3.0' } },
           permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
         }),
         version: { id: 'v4', version: '2.1', private: false },
@@ -473,17 +611,22 @@ describe('Pull requests tab', () => {
           />
         );
       });
-      expect(button('Update to latest')).toBeUndefined();
-      await act(async () => button('Merge…').props.onClick());
+      await flush();
+      expect(button('Update with latest version')).toBeUndefined();
+      expect(text()).toContain('both combine without conflicts');
+      await act(async () => button('Merge pull request').props.onClick());
       await flush();
       expect(mocks.previewPullRequestMerge).toHaveBeenCalledWith(PR_ID, 'merge', {});
+      expect(text()).toContain('No conflicts');
 
-      await act(async () => button('Compare').props.onClick());
+      // Without conflicts, the result opens for review on Compare.
+      await act(async () => button('Review the result').props.onClick());
       await flush();
       expect(fetchMock).toHaveBeenCalledWith('/api/v1/static/pricings/acme/demo/3.0.yml', {});
       expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: LATEST_YAML, after: PROPOSED_YAML });
+      await act(async () => button('Done').props.onClick());
 
-      await act(async () => button('Merge pull request').props.onClick());
+      await act(async () => button('Confirm merge').props.onClick());
       expect(mocks.mergePullRequest).toHaveBeenCalledWith(
         PR_ID,
         { resolutions: {}, previewToken: 'token-1', version: '2.1', private: false },
@@ -491,8 +634,139 @@ describe('Pull requests tab', () => {
       );
       expect(onMerged).toHaveBeenCalledWith(result);
       expect(text()).toContain('Merged as 2.1');
+      expect(button('Confirm merge')).toBeUndefined();
       expect(button('Merge pull request')).toBeUndefined();
-      expect(button('Merge…')).toBeUndefined();
+
+      // The page has not loaded the new version yet: what was published is on its way, not an error.
+      await flush();
+      expect(view.root.findAll(node => node.props.role === 'alert')).toHaveLength(0);
+      expect(text()).toContain('Reading versions 3.0 and 2.1…');
+      const merged: VersionData = { ...latest, id: 'v4', version: '2.1', yaml: '/static/pricings/acme/demo/2.1.yml' };
+      await act(async () => {
+        view.update(
+          <PricingPullRequestsTab
+            pricingId={PRICING}
+            selectedId={PR_ID}
+            onSelect={onSelect}
+            context={{ ...context, versions: [merged, latest], etag: '"e.5"', onMerged }}
+          />
+        );
+      });
+      await flush();
+      expect(text()).toContain('Version 2.1 as it was published, compared with version 3.0');
+    });
+
+    it('shows what a merged pull request published against the version it was merged on, and what it proposed', async () => {
+      const published: VersionData = { ...latest, id: 'v4', version: '2.1', yaml: '/static/pricings/acme/demo/2.1.yml' };
+      const PUBLISHED_YAML = 'saasName: Demo\nversion: "2.1"\nplans:\n  PRO:\n    price: 11\n';
+      fetchMock.mockImplementation(async (url: string) => new Response(url.endsWith('/2.1.yml') ? PUBLISHED_YAML : LATEST_YAML));
+      mocks.getPullRequest.mockResolvedValue(detail({
+        status: 'merged',
+        state: { kind: 'merged' },
+        merged: { at: new Date().toISOString(), versionId: 'v4', version: '2.1', followed: { versionId: 'v3', version: '3.0' } },
+        permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
+      }));
+      await act(async () => {
+        view = create(
+          <PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={{ ...context, versions: [published, latest] }} />
+        );
+      });
+      await flush();
+      expect(text()).toContain('Version 2.1 as it was published, compared with version 3.0, the version it was merged on.');
+      expect(button('Published').props['aria-pressed']).toBe(true);
+      await act(async () => button('File').props.onClick());
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({
+        before: LATEST_YAML, after: PUBLISHED_YAML, beforeLabel: 'Version 3.0', afterLabel: 'Version 2.1',
+      });
+
+      // The proposal as it was, one click away.
+      await act(async () => button('Proposed').props.onClick());
+      expect(text()).toContain('Proposal compared with version 2.0');
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: BASE_YAML, afterLabel: 'Proposal' });
+      [button('Published'), button('Proposed')].forEach(item => expect(item.props.className).toContain('cursor-pointer'));
+    });
+
+    it('compares what was published with the version it was merged on as SPHERE upgrades it from an older syntax', async () => {
+      const published: VersionData = { ...latest, id: 'v4', version: '2.1', yaml: '/static/pricings/acme/demo/2.1.yml' };
+      const UPGRADED = 'saasName: Demo\nsyntaxVersion: "3.1"\nversion: "3.0"\nplans:\n  PRO:\n    price: 10\n';
+      const PUBLISHED_YAML = UPGRADED.replace('version: "3.0"', 'version: "2.1"').replace('price: 10', 'price: 11');
+      fetchMock.mockImplementation(async (url: string) => new Response(url.endsWith('/2.1.yml') ? PUBLISHED_YAML : LATEST_YAML));
+      mocks.getPullRequest.mockResolvedValue(detail({
+        status: 'merged',
+        state: { kind: 'merged' },
+        merged: {
+          at: new Date().toISOString(), versionId: 'v4', version: '2.1',
+          followed: { versionId: 'v3', version: '3.0', normalizedYaml: UPGRADED },
+        },
+      }));
+      await act(async () => {
+        view = create(
+          <PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={{ ...context, versions: [published, latest] }} />
+        );
+      });
+      await flush();
+      expect(text()).toContain('Version 2.1 and version 3.0 are written in different Pricing2Yaml syntaxes.');
+      // The stored text of 3.0 is not read: the upgraded one is compared.
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/v1/static/pricings/acme/demo/2.1.yml']);
+      await act(async () => button('File').props.onClick());
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: UPGRADED, after: PUBLISHED_YAML });
+
+      // Back and forth between the two, the versions are not read again.
+      await act(async () => button('Proposed').props.onClick());
+      expect(text()).not.toContain('different Pricing2Yaml syntaxes');
+      await act(async () => button('Published').props.onClick());
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares a version published in an older syntax than the one it was merged on as SPHERE upgrades it', async () => {
+      const published: VersionData = { ...latest, id: 'v4', version: '2.1', yaml: '/static/pricings/acme/demo/2.1.yml' };
+      const MERGED_UPGRADED = 'saasName: Demo\nsyntaxVersion: "3.1"\nversion: "2.1"\nplans:\n  PRO:\n    price: 11\n';
+      fetchMock.mockImplementation(async () => new Response(LATEST_YAML));
+      mocks.getPullRequest.mockResolvedValue(detail({
+        status: 'merged',
+        state: { kind: 'merged' },
+        merged: {
+          at: new Date().toISOString(), versionId: 'v4', version: '2.1', normalizedYaml: MERGED_UPGRADED,
+          followed: { versionId: 'v3', version: '3.0' },
+        },
+      }));
+      await act(async () => {
+        view = create(
+          <PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={{ ...context, versions: [published, latest] }} />
+        );
+      });
+      await flush();
+      expect(text()).toContain('Version 2.1 and version 3.0 are written in different Pricing2Yaml syntaxes.');
+      // Only the version it was merged on is read: the merged one came upgraded.
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/v1/static/pricings/acme/demo/3.0.yml']);
+      await act(async () => button('File').props.onClick());
+      expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: LATEST_YAML, after: MERGED_UPGRADED });
+    });
+
+    it('reads the published version again once the page has loaded it, as after a merge', async () => {
+      const merged = detail({
+        status: 'merged',
+        state: { kind: 'merged' },
+        merged: { at: new Date().toISOString(), versionId: 'v4', version: '2.1', followed: { versionId: 'v3', version: '3.0' } },
+      });
+      mocks.getPullRequest.mockResolvedValue(merged);
+      const renderWith = (versions: VersionData[]) => (
+        <PricingPullRequestsTab pricingId={PRICING} selectedId={PR_ID} onSelect={onSelect} context={{ ...context, versions }} />
+      );
+      await act(async () => {
+        view = create(renderWith([latest]));
+      });
+      await flush();
+      expect(textOf(view.root.findByProps({ role: 'alert' }))).toBe(
+        'Version 2.1 could not be read: it is not loaded on this page. Reload the page and try again.'
+      );
+      await act(async () => {
+        view.update(renderWith([{ ...latest, id: 'v4', version: '2.1', yaml: '/static/pricings/acme/demo/2.1.yml' }, latest]));
+      });
+      await flush();
+      expect(view.root.findAll(node => node.props.role === 'alert')).toHaveLength(0);
+      expect(text()).toContain('Version 2.1 as it was published');
     });
 
     it('lets the author bring a pull request behind the latest version up to it', async () => {
@@ -501,31 +775,31 @@ describe('Pull requests tab', () => {
         permissions: { edit: true, editProposal: false, update: true, close: true, merge: false },
       }));
       await render(PR_ID);
-      expect(button('Merge…')).toBeUndefined();
-      await act(async () => button('Update to latest').props.onClick());
+      expect(button('Resolve conflicts')).toBeUndefined();
+      expect(button('Merge pull request')).toBeUndefined();
+      expect(text()).toContain('update your proposal to it, choosing a side for each');
+      expect(button('Withdraw')).toBeDefined();
+      // Its conflicts were known: the resolver opens at once over the whole window.
+      await act(async () => button('Update with latest version').props.onClick());
       await flush();
       expect(mocks.previewPullRequestMerge).toHaveBeenCalledWith(PR_ID, 'update', {});
+      expect(view.root.findAll(node => node.type === 'div' && node.props.role === 'dialog')).toHaveLength(1);
+      await act(async () => button('Done').props.onClick());
+      expect(text()).toContain('Update to the latest version');
       expect(button('Update pull request').props.disabled).toBe(false);
       await act(async () => button('Cancel').props.onClick());
+      expect(button('Update with latest version')).toBeDefined();
       expect(text()).toContain('Proposal compared with version 2.0');
     });
   });
-  it('lets the author edit an open proposal in the editor while it starts from the latest public version', async () => {
+  it('offers no way to edit a proposal: a pull request is reviewed here, not written', async () => {
     mocks.user = { id: 'author', username: 'alice' };
     mocks.getPullRequest.mockResolvedValue(detail({
       permissions: { edit: true, editProposal: true, update: false, close: true, merge: false },
     }));
     await render(PR_ID);
-    await act(async () => button('Edit proposal').props.onClick());
-    expect(mocks.openEditor).toHaveBeenCalledWith({ id: 'v2', version: '2.0' }, { mode: 'code', pullRequestId: PR_ID });
-
-    mocks.getPullRequest.mockResolvedValue(detail({
-      permissions: { edit: true, editProposal: false, update: true, close: true, merge: false },
-    }));
-    await act(async () => {
-      view.update(<PricingPullRequestsTab pricingId={PRICING} selectedId="6650f0c0c0c0c0c0c0c0c0bb" onSelect={onSelect} context={context} />);
-    });
     expect(button('Edit proposal')).toBeUndefined();
+    expect(text()).not.toMatch(/editor/i);
   });
 
   describe('proposing changes', () => {
@@ -546,8 +820,7 @@ describe('Pull requests tab', () => {
     }
 
     async function upload(name: string, text: string) {
-      await act(async () => button('Propose changes').props.onClick());
-      await act(async () => button('Upload YAMLPropose a file as the next version of 2.0').props.onClick());
+      await act(async () => button('Upload proposal').props.onClick());
       await flush();
       await act(async () => view.root.findByType(FileUpload).props.onSubmit(new File([text], name)));
       await flush();
@@ -561,9 +834,9 @@ describe('Pull requests tab', () => {
     });
     afterEach(() => vi.unstubAllGlobals());
 
-    it('disables "Propose changes" with the reason when there is no public version (CA-7)', async () => {
+    it('disables "Upload proposal" with the reason when there is no public version (CA-7)', async () => {
       await renderList(page([], { proposals: { canOpen: false, reason: 'NO_PUBLIC_VERSION', latest: null } }));
-      const propose = button('Propose changes');
+      const propose = button('Upload proposal');
       expect(propose.props.disabled).toBe(true);
       expect(propose.props.className).toContain('disabled:cursor-default');
       expect(view.root.findByProps({ id: 'propose-block-reason' }).children.map(textOf).join('')).toBe(
@@ -572,20 +845,20 @@ describe('Pull requests tab', () => {
 
       await act(async () => view.unmount());
       await renderList(page([], { proposals: { canOpen: false, reason: 'LIMIT_REACHED', latest: { id: 'v2', version: '2.0' } } }));
-      expect(button('Propose changes').props.disabled).toBe(true);
+      expect(button('Upload proposal').props.disabled).toBe(true);
       expect(text()).toContain('You cannot open more pull requests on this pricing for now.');
     });
 
-    it('opens the latest public version in the editor to propose changes', async () => {
+    it('proposes only uploaded files: there is no editor to write a proposal in', async () => {
       await renderList(page([]));
-      const propose = button('Propose changes');
+      const propose = button('Upload proposal');
       expect(propose.props.disabled).toBe(false);
+      expect(propose.props.title).toBe('Propose a YAML file as the next version of 2.0');
+      expect(view.root.findAll(node => node.props.role === 'menu' || node.props.role === 'menuitem')).toHaveLength(0);
+      expect(text()).not.toMatch(/editor/i);
       await act(async () => propose.props.onClick());
-      await act(async () => button('Code editorEdit the YAML of version 2.0').props.onClick());
-      expect(mocks.openEditor).toHaveBeenCalledWith({ id: 'v2', version: '2.0' }, { mode: 'code' });
-      await act(async () => button('Propose changes').props.onClick());
-      await act(async () => button('Visual editorEdit version 2.0 visually').props.onClick());
-      expect(mocks.openEditor).toHaveBeenLastCalledWith({ id: 'v2', version: '2.0' }, { mode: 'visual' });
+      await flush();
+      expect(view.root.findAllByType(FileUpload)).toHaveLength(1);
     });
 
     it('proposes an uploaded file on the latest public version, summarising it and warning about removals (CA-22)', async () => {
@@ -610,7 +883,7 @@ describe('Pull requests tab', () => {
         title: 'Raise PRO',
         source: { kind: 'text', pricingId: PRICING, baseVersionId: 'v2', proposedYaml: proposed },
       });
-      expect(mocks.alert).toHaveBeenCalledWith(expect.stringContaining('Pull request #8 opened. Some of these pricings'), 'success');
+      expect(mocks.alert).toHaveBeenCalledWith(expect.stringContaining('Pull request #8 opened. SPHERE writes it in the latest Pricing2Yaml syntax'), 'success');
       expect(onSelect).toHaveBeenCalledWith('new-pr');
       expect(view.root.findAllByType(FileUpload)).toHaveLength(0);
     });
@@ -703,7 +976,7 @@ describe('Pull requests tab', () => {
       expect(mocks.createPullRequest).toHaveBeenCalledTimes(1);
     });
 
-    it('gives every enabled button of the menu and the upload dialog a pointer cursor (CA-37)', async () => {
+    it('gives every enabled button of the list and the upload dialog a pointer cursor (CA-37)', async () => {
       await renderList(page([]));
       await upload('demo.yml', 'saasName: Demo\nplans:\n  PRO:\n    price: 12\n');
       const enabled = buttons().filter(item => !item.props.disabled);
@@ -773,6 +1046,27 @@ describe('Pull requests tab', () => {
     it('shows nothing when no readable version of the fork names a parent (CA-71)', async () => {
       await renderFork({ canPropose: false, reason: 'NOT_A_FORK' });
       expect(view.toJSON()).toBeNull();
+    });
+
+    it('shows nothing while the fork has nothing its parent lacks, as a fork just made', async () => {
+      await renderFork({ canPropose: false, reason: 'NO_CHANGES', parent });
+      expect(view.toJSON()).toBeNull();
+      expect(mocks.previewProposal).not.toHaveBeenCalled();
+    });
+
+    it('asks again when the page gets a new version of the fork, which may have something to propose', async () => {
+      mocks.getForkTarget.mockResolvedValue({ canPropose: false, reason: 'NO_CHANGES', parent });
+      const props = { forkPricingId: FORK, forkedFrom, canCreate: true, onProposed };
+      await act(async () => {
+        view = create(<ForkProposal {...props} latestVersionId="f1" />);
+      });
+      expect(view.toJSON()).toBeNull();
+      mocks.getForkTarget.mockResolvedValue({ canPropose: true, parent });
+      await act(async () => {
+        view.update(<ForkProposal {...props} latestVersionId="f2" />);
+      });
+      expect(mocks.getForkTarget).toHaveBeenCalledTimes(2);
+      expect(button('Propose changes to Demo').props.disabled).toBe(false);
     });
 
     it('disables the action with a neutral reason when the parent is gone or unreadable (CA-17)', async () => {
@@ -857,6 +1151,112 @@ describe('Pull requests tab', () => {
       expect(dialog()[0].props.className).not.toContain('cursor-pointer');
       await act(async () => button('Cancel').props.onClick());
       expect(dialog()).toHaveLength(0);
+    });
+
+    const openDialog = async (preview: PullRequestPreview) => {
+      mocks.previewProposal.mockResolvedValue(preview);
+      await renderFork({ canPropose: true, parent });
+      await act(async () => button('Propose changes to Demo').props.onClick());
+      await flush();
+    };
+    const plain = { ...forkPreview, warnings: [], existingPullRequest: undefined };
+    const editor = () => view.root.findByProps({ 'data-editor': 'yaml' });
+    const type = (yaml: string) => act(() => editor().props.onChange({ target: { value: yaml } }));
+    const PRICE_CONFLICT: MergeConflict = {
+      id: '["plans","PRO","price"]',
+      path: ['plans', 'PRO', 'price'],
+      label: 'plans.PRO.price',
+      section: 'plans',
+      entry: 'PRO',
+      scope: 'value',
+      base: { present: true, yaml: '10\n' },
+      current: { present: true, yaml: '15\n' },
+      proposal: { present: true, yaml: '12\n' },
+    };
+
+    it('keeps one height whatever the view shows, and each view shows only what it needs', async () => {
+      await openDialog(plain);
+      const classOf = (node: ReactTestInstance) => (typeof node.props.className === 'string' ? node.props.className : '');
+      // The dialog has one height; the views scroll inside the area between its header and the title.
+      const panel = view.root.find(node => node.type === 'div' && classOf(node).includes('sm:h-[min(88dvh,60rem)]'));
+      expect(panel.findAll(node => node.type === 'div' && classOf(node).includes('min-h-0 flex-1 overflow-y-auto'))).toHaveLength(1);
+
+      expect(text()).toContain('No conflicts');
+      expect(text()).not.toMatch(/Your changes start from|can be combined as they are/);
+      await act(async () => button('YAML').props.onClick());
+      expect(editor().props.value).toBe(PROPOSED_YAML);
+      // Only the file: no summary, no caption, no count of conflicts there are none of.
+      expect(text()).not.toMatch(/Your changes start from|read-only|No conflicts|Edited by hand/);
+    });
+
+    it('lets the author type the proposal in the YAML view, and sends what they typed', async () => {
+      mocks.createPullRequest.mockResolvedValue({ ...detail({ number: 8 }), warnings: [], updated: false });
+      await openDialog(plain);
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'Raise PRO' } }));
+      await act(async () => button('YAML').props.onClick());
+      expect(editor().props.readOnly).toBe(false);
+
+      type('plans: [\n');
+      expect(text()).toContain('Edited by hand: this text is what you propose.');
+      expect(button('Open pull request').props.disabled).toBe(true);
+      expect(view.root.findByProps({ id: 'fork-proposal-block-reason' }).children.map(textOf).join('')).toMatch(
+        /^The YAML has an error on line \d+/
+      );
+
+      const typed = PROPOSED_YAML.replace('price: 12', 'price: 13');
+      type(typed);
+      expect(button('Open pull request').props.disabled).toBe(false);
+      await act(async () => button('Open pull request').props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenCalledWith({
+        title: 'Raise PRO',
+        source: { kind: 'fork', forkPricingId: FORK },
+        resolutions: {},
+        manualYaml: typed,
+        previewToken: 'fork-token',
+      });
+    });
+
+    it('expands the views over the whole window and keeps what was typed when they come back', async () => {
+      vi.stubGlobal('document', { body: { style: { overflow: '' } } });
+      await openDialog(plain);
+      await act(async () => button('YAML').props.onClick());
+      await act(async () => button('Expand').props.onClick());
+      const layer = () => view.root.findAll(node => node.props['aria-label'] === 'Resolver, expanded');
+      expect(layer()).toHaveLength(1);
+      // The dialog keeps its place: the title and buttons stay behind the expanded views.
+      expect(button('Open pull request')).toBeDefined();
+      type('saasName: Demo\n');
+      expect(textOf(layer()[0])).toContain('Edited by hand');
+      await act(async () => button('Collapse').props.onClick());
+      expect(layer()).toHaveLength(0);
+      expect(editor().props.value).toBe('saasName: Demo\n');
+      vi.unstubAllGlobals();
+    });
+
+    it('goes back to the computed proposal by Discard my edits, or by choosing a side once the author agrees', async () => {
+      mocks.confirm.mockResolvedValue(undefined);
+      await openDialog({ ...plain, outcome: 'conflicts', conflicts: [PRICE_CONFLICT] });
+      await act(async () => button('YAML').props.onClick());
+      type('saasName: Demo\n');
+      await act(async () => button('Discard my edits').props.onClick());
+      expect(editor().props.value).toBe(PROPOSED_YAML);
+      expect(text()).not.toContain('Edited by hand');
+
+      // Typing the computed text back is not an edit.
+      type('saasName: Demo\n');
+      type(PROPOSED_YAML);
+      expect(text()).not.toContain('Edited by hand');
+
+      type('saasName: Demo\n');
+      await act(async () => button('Conflicts').props.onClick());
+      await act(async () => button('Use proposal').props.onClick());
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        'Choosing a side computes the result again and discards your edits to the YAML.',
+        { confirmLabel: 'Discard my edits', cancelLabel: 'Keep editing' }
+      );
+      expect(button('Use proposal').props['aria-pressed']).toBe(true);
+      await act(async () => button('YAML').props.onClick());
+      expect(editor().props.value).toBe(PROPOSED_YAML);
     });
   });
 });

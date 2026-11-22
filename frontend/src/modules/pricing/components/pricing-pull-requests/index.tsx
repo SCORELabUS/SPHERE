@@ -9,7 +9,8 @@ import { usePageVersionYaml } from './use-page-version-yaml';
 /**
  * The Pull requests tab of a pricing: the list, or the pull request picked in
  * it. Which one is open belongs to the page (`?pr=`), so links can open it.
- * Proposals start here too, in the editor or from an uploaded YAML file.
+ * It is for reviewing proposals: they come from an uploaded YAML file (here)
+ * or from a fork (its "Propose changes"), never from editing here.
  */
 export default function PricingPullRequestsTab({
   pricingId,
@@ -46,7 +47,6 @@ export default function PricingPullRequestsTab({
         onPageChange={setPage}
         onOpen={onSelect}
         onCountsChange={onCountsChange}
-        onProposeInEditor={(latest, mode) => context.openEditor(latest, { mode })}
         onUpload={setUploadOn}
       />
       <AnimatePresence>

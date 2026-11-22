@@ -3,32 +3,24 @@ import { test } from 'node:test';
 
 import {
   alignSaasNameLine,
-  canProposeFromEditor,
   describePullRequestState,
   proposalFieldsError,
   pullRequestMessage,
   pullRequestWarningMessage,
+  textsToCompare,
+  withoutSyntaxDefaults,
 } from '../src/modules/core/utils/pull-request-state.ts';
 import type { PullRequestState } from '../src/modules/pricing/types/pull-requests.ts';
 
-const latest = { id: '6650f0c0c0c0c0c0c0c0c002', version: '2.0' };
-
-test('the editor proposes only when it was opened on the latest public version, by id (CA-21)', () => {
-  assert.equal(canProposeFromEditor({ versionId: latest.id }, latest), true);
-  // Another version, a private one newer than the latest public included.
-  assert.equal(canProposeFromEditor({ versionId: '6650f0c0c0c0c0c0c0c0c003' }, latest), false);
-  // No latest public version: nothing to propose to.
-  assert.equal(canProposeFromEditor({ versionId: latest.id }, null), false);
-});
-
-test('a recreated label or the editor fallback to the newest version never enables proposing (CA-87)', () => {
-  // The same label "2.0", deleted and created again with another id.
-  const recreated = { versionId: '6650f0c0c0c0c0c0c0c0c009', version: latest.version };
-  assert.equal(canProposeFromEditor(recreated, latest), false);
-  // Opened from `?source=` without a version id: the editor falls back to versions[0].
-  assert.equal(canProposeFromEditor({}, latest), false);
-  assert.equal(canProposeFromEditor({ versionId: null }, latest), false);
-  assert.equal(canProposeFromEditor(null, latest), false);
+test('values the latest syntax reads as absent are left out, and only those', () => {
+  const doc = { saasName: 'Demo', variables: {}, billing: { monthly: 1 }, tags: [], plans: { PRO: { price: 1 } } };
+  assert.deepEqual(withoutSyntaxDefaults(doc), { saasName: 'Demo', plans: { PRO: { price: 1 } } });
+  // The input is not changed.
+  assert.deepEqual(doc.variables, {});
+  const meaningful = { variables: { seats: 3 }, billing: { monthly: 1, annual: 0.8 }, tags: ['team'] };
+  assert.deepEqual(withoutSyntaxDefaults(meaningful), meaningful);
+  assert.equal(withoutSyntaxDefaults(null), null);
+  assert.deepEqual(withoutSyntaxDefaults(['a']), ['a']);
 });
 
 test('each state has its own text, icon and tone', () => {
@@ -117,8 +109,71 @@ test('a file comparison does not show the quotes SPHERE writes around the same n
   assert.equal(alignSaasNameLine('saasName: [\n', 'saasName: "["\n'), 'saasName: "["\n');
 });
 
+test('two texts formatted differently are compared in one format, so only what changes in the pricing is marked', () => {
+  // As the target is stored, and as a tool wrote the fork's version after one change (STARTER's price).
+  const written = [
+    "saasName: Canva",
+    "syntaxVersion: '3.1'",
+    'version: "2024"',
+    '# The plans',
+    'features:',
+    '  assets:',
+    '    description: Free stock photos, fonts and audio',
+    '    defaultValue: 3.2+ million',
+    'plans:',
+    '  STARTER:',
+    '    price: 10',
+    "    unit: user/month",
+    '',
+  ].join('\n');
+  const tool = [
+    'saasName: "Canva"',
+    'syntaxVersion: "3.1"',
+    'version: "pr7"',
+    'features:',
+    '  assets:',
+    '    description: "Free stock photos, fonts and audio"',
+    '    defaultValue: "3.2+ million"',
+    'plans:',
+    '  STARTER:',
+    '    price: 12',
+    '    unit: "user/month"',
+    '',
+  ].join('\n');
+  const compared = textsToCompare(written, tool);
+  assert.equal(compared.reformatted, true);
+  const before = compared.before.split('\n');
+  const after = compared.after.split('\n');
+  assert.equal(before.length, after.length);
+  const changed = before.flatMap((line, index) => (line === after[index] ? [] : [[line, after[index]]]));
+  assert.deepEqual(changed, [
+    ['version: \'2024\'', 'version: pr7'],
+    ['    price: 10', '    price: 12'],
+  ]);
+  // A string that reads as a number stays a string; comments go.
+  assert.ok(compared.before.includes("syntaxVersion: '3.1'"));
+  assert.ok(!compared.before.includes('# The plans'));
+});
+
+test('two texts formatted alike are compared as written, comments included', () => {
+  const before = "# Kept\nsaasName: Pumble\ncreatedAt: 2024-09-01\nplans:\n  PRO:\n    price: 1.99\n";
+  const after = before.replace('1.99', '2.49');
+  assert.deepEqual(textsToCompare(before, after), { before, after, reformatted: false });
+  // The quotes SPHERE writes around the same name are aligned, as alignSaasNameLine does.
+  assert.deepEqual(textsToCompare('saasName: Pumble\nx: 1\n', 'saasName: "Pumble"\nx: 2\n'), {
+    before: 'saasName: Pumble\nx: 1\n',
+    after: 'saasName: Pumble\nx: 2\n',
+    reformatted: false,
+  });
+  // A comment moved is formatting too.
+  assert.equal(textsToCompare(before, 'saasName: Pumble\n# Kept\ncreatedAt: 2024-09-01\nplans:\n  PRO:\n    price: 2.49\n').reformatted, true);
+  // A text that does not load, or is not a mapping, is compared as written.
+  assert.deepEqual(textsToCompare('saasName: [\n', 'x: 1\n'), { before: 'saasName: [\n', after: 'x: 1\n', reformatted: false });
+  assert.deepEqual(textsToCompare('- a\n', '- "b"\n'), { before: '- a\n', after: '- "b"\n', reformatted: false });
+});
+
 test('each notice about a proposal has its own words', () => {
-  assert.match(pullRequestWarningMessage({ code: 'SYNTAX_UPGRADED' }), /older Pricing2Yaml syntax/);
+  assert.match(pullRequestWarningMessage({ code: 'SYNTAX_UPGRADED' }), /latest Pricing2Yaml syntax/);
   assert.match(pullRequestWarningMessage({ code: 'FORMAT_REGENERATED' }), /comments and the original layout/);
   assert.equal(pullRequestWarningMessage({ code: 'PREVIOUSLY_MERGED', number: 3 }), 'Pull request #3 from this fork was merged before.');
   assert.match(pullRequestWarningMessage({ code: 'GLOBAL_FIELD_CHANGED', fields: ['currency'] }), /changed currency/);

@@ -1,7 +1,10 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { FiAlertTriangle } from 'react-icons/fi';
-import PricingMergeResolver from '../../../core/components/pricing-merge-resolver';
+import { Warnings } from '../../../core/components/pricing-merge-resolver';
 import { useMergeResolver } from '../../../core/hooks/useMergeResolver';
+import ResolutionStatus from './resolution-status';
+import ResolverWorkspace from './resolver-workspace';
+import { useResolverWorkspace } from './use-resolver-workspace';
 import { usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import type {
   ConflictResolutions,
@@ -20,9 +23,10 @@ function Notice({ children }: { children: ReactNode }) {
 }
 
 /**
- * Merging a pull request: the resolver against the latest version of the
- * pricing, then the label and visibility of the version it publishes. The merge
- * carries the pricing's ETag as the page loaded it.
+ * Confirming the merge of a pull request, in its merge box: whether it has
+ * conflicts (resolved over the whole window, in `ResolverWorkspace`), then the
+ * label and visibility of the version it publishes. The merge carries the
+ * pricing's ETag as the page loaded it.
  */
 export default function MergePanel({
   pullRequest,
@@ -31,6 +35,7 @@ export default function MergePanel({
   onMerged,
   onPricingChanged,
   onCancel,
+  resolveFirst = false,
 }: {
   pullRequest: PullRequestDetail;
   etag?: string;
@@ -39,6 +44,8 @@ export default function MergePanel({
   /** Offers to reload when the pricing changed since the page loaded it (412); says whether it was that. */
   onPricingChanged: (error: unknown) => boolean;
   onCancel: () => void;
+  /** Opens the resolver at once, when the merge box already knew of conflicts. */
+  resolveFirst?: boolean;
 }) {
   const { previewPullRequestMerge, mergePullRequest } = usePricingPullRequestsApi();
   const resolver = useMergeResolver(
@@ -47,6 +54,7 @@ export default function MergePanel({
       [previewPullRequestMerge, pullRequest.id]
     )
   );
+  const workspace = useResolverWorkspace(resolver, resolveFirst);
   const { preview } = resolver;
   const [label, setLabel] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState<boolean | null>(null);
@@ -58,7 +66,7 @@ export default function MergePanel({
   const labelTaken = Boolean(preview?.versionTaken && version === preview.suggestedVersion);
 
   let blockReason = resolver.blockReason;
-  if (!blockReason && preview?.outcome === 'no-changes' && resolver.state.manualYaml === null) {
+  if (!blockReason && preview?.outcome === 'no-changes') {
     blockReason = 'Nothing to merge: the latest version already has everything this pull request proposes.';
   }
   if (!blockReason && !version) blockReason = 'Name the version to publish.';
@@ -78,18 +86,17 @@ export default function MergePanel({
   };
 
   return (
-    <section aria-labelledby="merge-panel-title" className="space-y-5 rounded-xl border border-tp-hairline bg-tp-canvas p-4 sm:p-5">
-      <div>
-        <h3 id="merge-panel-title" className="text-base font-semibold text-tp-ink">
-          Merge pull request #{pullRequest.number}
-        </h3>
-        <p className="text-xs text-tp-steel">Merging publishes the result as a new version of this pricing.</p>
-      </div>
-
-      <PricingMergeResolver resolver={resolver} loadLatestYaml={loadLatestYaml} />
+    <section aria-label={`Merge pull request #${pullRequest.number}`} className="space-y-4">
+      {/* While the resolver covers the window, it says all this itself. */}
+      {!workspace.isOpen && (
+        <>
+          <ResolutionStatus resolver={resolver} onOpen={workspace.open} buttonRef={workspace.opener} />
+          <Warnings resolver={resolver} />
+        </>
+      )}
 
       {preview && (
-        <div className="grid gap-4 border-t border-tp-hairline pt-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <label htmlFor="merge-version" className="block text-sm font-medium text-tp-slate">
               Version
@@ -101,6 +108,13 @@ export default function MergePanel({
               onChange={event => setLabel(event.target.value)}
               className="w-full rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-sm text-tp-ink outline-none focus:border-tp-primary"
             />
+            {label === null && preview.suggestedVersionFollows && (
+              <p className="text-xs text-tp-steel">
+                {preview.suggestedVersionFollows.proposal
+                  ? `The proposal names it ${preview.suggestedVersionFollows.proposal}, which reads as older than version ${preview.suggestedVersionFollows.latest}, the latest public one.`
+                  : `The proposal names no version: this one follows version ${preview.suggestedVersionFollows.latest}, the latest public one.`}
+              </p>
+            )}
             {labelTaken && <Notice>Version {version} already exists in this pricing.</Notice>}
           </div>
           <fieldset className="space-y-2">
@@ -163,9 +177,21 @@ export default function MergePanel({
           onClick={submit}
           className="cursor-pointer rounded-lg bg-tp-primary px-4 py-2 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep disabled:cursor-default disabled:opacity-50"
         >
-          {isSubmitting ? 'Merging…' : 'Merge pull request'}
+          {isSubmitting ? 'Merging…' : 'Confirm merge'}
         </button>
       </div>
+
+      {workspace.isOpen && (
+        <ResolverWorkspace
+          title={resolver.state.conflicts.length > 0 ? 'Resolve conflicts' : 'Review the merge'}
+          subtitle={`#${pullRequest.number} ${pullRequest.title}`}
+          resolver={resolver}
+          loadLatestYaml={loadLatestYaml}
+          purpose="merge"
+          initialView={workspace.initialView}
+          onDone={workspace.close}
+        />
+      )}
     </section>
   );
 }

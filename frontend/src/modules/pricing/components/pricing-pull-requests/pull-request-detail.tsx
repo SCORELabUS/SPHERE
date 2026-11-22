@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import jsYaml from 'js-yaml';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { FiArrowLeft, FiGitMerge } from 'react-icons/fi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { PullRequestApiError, usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
-import { alignSaasNameLine, pullRequestAuthorName, pullRequestMessage } from '../../../core/utils/pull-request-state';
+import {
+  pullRequestAuthorName,
+  pullRequestMessage,
+  textsToCompare,
+  withoutSyntaxDefaults,
+} from '../../../core/utils/pull-request-state';
+import FormatNote from '../../../core/components/format-note';
 import { diffPricings, type ChangeKind } from '../../utils/pricing-diff';
 import { DiffResult, ViewToggle, type ViewMode } from '../pricing-version-diff';
 import FileDiffView from '../pricing-version-diff/file-diff-view';
@@ -15,25 +21,33 @@ import type {
   PullRequestMergeResult,
   PullRequestVersionRef,
 } from '../../types/pull-requests';
-import { usePageVersionYaml } from './use-page-version-yaml';
+import { usePageVersionYaml, VersionNotOnPage } from './use-page-version-yaml';
 import StateChip from './state-chip';
 import CloseDialog from './close-dialog';
-import MergePanel from './merge-panel';
-import UpdatePanel from './update-panel';
+import MergeBox from './merge-box';
 
 const ago = (date: string) => `${formatDistanceToNow(parseISO(date))} ago`;
 
 /**
- * The base the proposal is compared with: as SPHERE upgrades it when it is stored in an
- * older syntax, since the proposal is stored upgraded and the upgrade is not the author's.
+ * Says that the two texts compared are written in different Pricing2Yaml
+ * syntaxes: the server sends both as it compares them, so the syntax is not
+ * shown as a change.
  */
-const comparedBase = (pullRequest: PullRequestDetailData) => pullRequest.base.normalizedYaml ?? pullRequest.base.yaml;
+function SyntaxNote({ first, second }: { first: string; second: string }) {
+  return (
+    <p className="mt-1 text-xs text-tp-steel">
+      {first} and {second} are written in different Pricing2Yaml syntaxes. Both are compared in the latest syntax, so
+      the syntax is not shown as a change.
+    </p>
+  );
+}
 
 /** The structured comparison, or null when either side is not a YAML mapping it can read. */
-function structuredDiff(pullRequest: PullRequestDetailData) {
+function structuredDiff(before: string, after: string) {
   try {
-    // SPHERE sets the pricing's name when it merges, so a different `saasName` is not a change.
-    return diffPricings(jsYaml.load(comparedBase(pullRequest)), jsYaml.load(pullRequest.proposed.yaml), {
+    // SPHERE sets the pricing's name when it merges, so a different `saasName` is not a change, and
+    // values the latest syntax reads as absent are not one either.
+    return diffPricings(withoutSyntaxDefaults(jsYaml.load(before)), withoutSyntaxDefaults(jsYaml.load(after)), {
       ignoreKeys: ['saasName'],
     });
   } catch {
@@ -41,48 +55,230 @@ function structuredDiff(pullRequest: PullRequestDetailData) {
   }
 }
 
-function Changes({ pullRequest }: { pullRequest: PullRequestDetailData }) {
-  const diff = useMemo(() => structuredDiff(pullRequest), [pullRequest]);
-  const upgraded = pullRequest.base.normalizedYaml !== undefined;
+/** Two texts compared, by structure or line by line. */
+interface Compared {
+  before: string;
+  after: string;
+  beforeLabel: string;
+  afterLabel: string;
+  /** `afterLabel` inside a sentence. */
+  afterName: string;
+}
+
+/** What a merged pull request published or proposed; while it is open, what it proposes. */
+type ChangesSource = 'published' | 'proposed';
+
+const SOURCES: { source: ChangesSource; label: string }[] = [
+  { source: 'published', label: 'Published' },
+  { source: 'proposed', label: 'Proposed' },
+];
+
+function SourceToggle({ value, onChange }: { value: ChangesSource; onChange: (source: ChangesSource) => void }) {
+  return (
+    <div role="group" aria-label="Changes shown" className="inline-grid grid-cols-2 gap-1 rounded-xl bg-tp-surface p-1">
+      {SOURCES.map(({ source, label }) => (
+        <button
+          key={source}
+          type="button"
+          aria-pressed={value === source}
+          onClick={() => onChange(source)}
+          className={`cursor-pointer rounded-lg border px-4 py-1.5 text-sm font-medium transition-all ${
+            value === source
+              ? 'border-tp-primary/30 bg-tp-canvas text-tp-ink shadow-sm'
+              : 'border-transparent text-tp-steel hover:text-tp-ink'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const readError = (caught: unknown) => (caught instanceof Error ? caught.message : 'it could not be read.');
+
+/** A version of the Published comparison that could not be read, and whether the page had not loaded it. */
+class VersionReadError extends Error {
+  readonly notOnPage: boolean;
+
+  constructor(version: string, caught: unknown) {
+    super(`Version ${version} could not be read: ${readError(caught)}`);
+    this.notOnPage = caught instanceof VersionNotOnPage;
+  }
+}
+
+/**
+ * The changes of a pull request. While it is open (or closed) they are what it
+ * proposes, compared with its base. Once merged, and when the caller may read
+ * both versions, they are first what the merge published, compared with the
+ * version it was merged on: the conflicts were resolved there, so it can differ
+ * from the proposal, which stays one click away. Each text is shown as it is
+ * written; when the two are in different syntaxes, the server sends both as it
+ * compares them, and those are compared. Line by line, two texts formatted
+ * differently are shown in one format (`textsToCompare`).
+ */
+function Changes({
+  pullRequest,
+  loadVersionYaml,
+  awaitingPage,
+}: {
+  pullRequest: PullRequestDetailData;
+  loadVersionYaml: (version: PullRequestVersionRef) => Promise<string>;
+  /** Merged here: the page is loading its versions again, so one it lacks is still on its way. */
+  awaitingPage: boolean;
+}) {
+  const { merged } = pullRequest;
+  const mergedId = merged?.versionId;
+  const mergedVersion = merged?.version;
+  const followedId = merged?.followed?.versionId;
+  const followedVersion = merged?.followed?.version;
+  const followedNormalized = merged?.followed?.normalizedYaml;
+  const mergedNormalized = merged?.normalizedYaml;
+  const canShowPublished = Boolean(mergedId && mergedVersion !== undefined && followedId && followedVersion !== undefined);
+  const [source, setSource] = useState<ChangesSource>(canShowPublished ? 'published' : 'proposed');
+  const shownSource: ChangesSource = canShowPublished ? source : 'proposed';
+  const publishedKey = canShowPublished ? `${followedId}:${mergedId}` : null;
+  const [published, setPublished] = useState<{
+    key: string;
+    texts?: Compared;
+    error?: VersionReadError;
+    /** The reader that failed: the page reloads its versions after a merge, and the new reader tries again. */
+    reader?: typeof loadVersionYaml;
+  } | null>(null);
+  // A version's text never changes: the pair already read is not read again.
+  const loadedKey = useRef<string | null>(null);
+
+  // Both versions are read from the page; a version it has not loaded yet is read again once it has.
+  useEffect(() => {
+    if (shownSource !== 'published' || !publishedKey || loadedKey.current === publishedKey) return;
+    let active = true;
+    const read = (id: string, version: string) =>
+      loadVersionYaml({ id, version }).catch((caught: unknown) => {
+        throw new VersionReadError(version, caught);
+      });
+    Promise.all([
+      followedNormalized ?? read(followedId!, followedVersion!),
+      mergedNormalized ?? read(mergedId!, mergedVersion!),
+    ])
+      .then(([before, after]) => {
+        if (!active) return;
+        loadedKey.current = publishedKey;
+        setPublished({
+          key: publishedKey,
+          texts: {
+            before,
+            after,
+            beforeLabel: `Version ${followedVersion}`,
+            afterLabel: `Version ${mergedVersion}`,
+            afterName: `version ${mergedVersion}`,
+          },
+        });
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        const error = caught instanceof VersionReadError ? caught : new VersionReadError(String(mergedVersion), caught);
+        setPublished({ key: publishedKey, error, reader: loadVersionYaml });
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    shownSource,
+    publishedKey,
+    followedId,
+    followedVersion,
+    followedNormalized,
+    mergedId,
+    mergedVersion,
+    mergedNormalized,
+    loadVersionYaml,
+  ]);
+
+  const proposedTexts = useMemo<Compared>(
+    () => ({
+      before: pullRequest.base.normalizedYaml ?? pullRequest.base.yaml,
+      after: pullRequest.proposed.normalizedYaml ?? pullRequest.proposed.yaml,
+      beforeLabel: `Version ${pullRequest.base.version}`,
+      afterLabel: 'Proposal',
+      afterName: 'the proposal',
+    }),
+    [pullRequest]
+  );
+  const publishedState =
+    published?.key === publishedKey && (published.texts || published.reader === loadVersionYaml) ? published : null;
+  const texts = shownSource === 'published' ? publishedState?.texts : proposedTexts;
+  const diff = useMemo(() => (texts ? structuredDiff(texts.before, texts.after) : null), [texts]);
+  // Right after a merge here the page has not loaded the new version yet: that is not an error.
+  const readFailure = publishedState?.error && !(publishedState.error.notOnPage && awaitingPage) ? publishedState.error : null;
   const [view, setView] = useState<ViewMode>('structured');
   const [filter, setFilter] = useState<ChangeKind | null>(null);
   const shown: ViewMode = diff ? view : 'file';
+  // Only the line-by-line view needs the texts as it shows them.
+  const compared = useMemo(
+    () => (texts && shown === 'file' ? textsToCompare(texts.before, texts.after) : null),
+    [texts, shown]
+  );
 
   return (
     <section className="space-y-4 rounded-xl border border-tp-hairline bg-tp-canvas p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-base font-semibold text-tp-ink">Changes</h3>
-          <p className="text-xs text-tp-steel">
-            Proposal compared with version {pullRequest.base.version}, the version it is based on.
-          </p>
-          {upgraded && (
-            <p className="mt-1 text-xs text-tp-steel">
-              Version {pullRequest.base.version} is written in an older Pricing2Yaml syntax. It is compared as SPHERE
-              upgrades it, like the proposal, so the upgrade is not shown as a change.
+          {shownSource === 'published' ? (
+            <p className="text-xs text-tp-steel">
+              Version {mergedVersion} as it was published, compared with version {followedVersion}, the version it was
+              merged on. It has the choices made when merging.
+            </p>
+          ) : (
+            <p className="text-xs text-tp-steel">
+              Proposal compared with version {pullRequest.base.version}, the version it is based on.
+              {merged && ' What was published can differ where conflicts were resolved when merging.'}
             </p>
           )}
+          {shownSource === 'proposed' &&
+            (pullRequest.base.normalizedYaml !== undefined || pullRequest.proposed.normalizedYaml !== undefined) && (
+              <SyntaxNote first={`Version ${pullRequest.base.version}`} second="the proposal" />
+            )}
+          {shownSource === 'published' && (followedNormalized !== undefined || mergedNormalized !== undefined) && (
+            <SyntaxNote first={`Version ${mergedVersion}`} second={`version ${followedVersion}`} />
+          )}
         </div>
-        {diff && <ViewToggle value={shown} onChange={setView} />}
+        <div className="flex flex-wrap items-center gap-2">
+          {canShowPublished && <SourceToggle value={shownSource} onChange={setSource} />}
+          {diff && <ViewToggle value={shown} onChange={setView} />}
+        </div>
       </div>
-      {shown === 'structured' && diff ? (
+      {!texts ? (
+        readFailure ? (
+          <p role="alert" className="rounded-xl border border-tp-severity-error-border bg-tp-severity-error-bg px-4 py-3 text-sm text-tp-ink">
+            {readFailure.message}
+          </p>
+        ) : (
+          <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-8 text-center text-sm text-tp-slate">
+            Reading versions {followedVersion} and {mergedVersion}…
+          </div>
+        )
+      ) : shown === 'structured' && diff ? (
         <DiffResult diff={diff} filter={filter && diff.totals[filter] > 0 ? filter : null} onFilterChange={setFilter} />
-      ) : (
-        <FileDiffView
-          before={comparedBase(pullRequest)}
-          after={alignSaasNameLine(comparedBase(pullRequest), pullRequest.proposed.yaml)}
-          beforeLabel={`Version ${pullRequest.base.version}`}
-          afterLabel="Proposal"
-          markers
-        />
-      )}
+      ) : compared ? (
+        <div className="space-y-2">
+          {compared.reformatted && <FormatNote first={texts.beforeLabel} second={texts.afterName} />}
+          <FileDiffView
+            before={compared.before}
+            after={compared.after}
+            beforeLabel={texts.beforeLabel}
+            afterLabel={texts.afterLabel}
+            markers
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
 
 /**
  * What the page shares with its pull requests: its versions, its ETag, how to
- * take a merge in and how to open the editor to propose or edit a proposal.
+ * take a merge in and where it shows a version.
  */
 export interface PullRequestPageContext {
   /** The versions of the pricing the page loaded, to read the one a merge or an update follows. */
@@ -91,8 +287,6 @@ export interface PullRequestPageContext {
   onMerged: (result: PullRequestMergeResult) => void;
   /** Offers to reload when the pricing changed since the page loaded it (412); says whether it was that. */
   onPricingChanged: (error: unknown) => boolean;
-  /** Opens the editor on a version of the pricing, or on an open pull request's proposal to edit it again. */
-  openEditor: (version: PullRequestVersionRef, options: { mode: 'visual' | 'code'; pullRequestId?: string }) => void;
   /** Where the page shows a version of the pricing, and how it goes there without leaving the app. */
   versionHref: (versionId: string) => string;
   openVersion: (versionId: string) => void;
@@ -103,10 +297,12 @@ const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /**
- * A pull request: what it proposes against the version it is based on, its
- * description and where it stands. Its author can edit its proposal again,
- * bring it up to the latest version or withdraw it; a maintainer can merge or
- * close it.
+ * A pull request: while it is open, its merge box right below its header (so
+ * what to do with it is in view however long its changes are), then its
+ * description and what it proposes against the version it is based on. It is
+ * reviewed here, not edited: from the merge box its author can bring it up to
+ * the latest version or withdraw it, and a maintainer can merge or close it,
+ * resolving conflicts by choosing a side.
  */
 export default function PullRequestDetail({
   id,
@@ -126,13 +322,13 @@ export default function PullRequestDetail({
   const [pullRequest, setPullRequest] = useState<PullRequestDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
-  const [panel, setPanel] = useState<'merge' | 'update' | null>(null);
+  // Merged from its merge box: the page loads its versions again, the new one included.
+  const [mergedHere, setMergedHere] = useState(false);
 
   useEffect(() => {
     let active = true;
     setPullRequest(null);
     setError(null);
-    setPanel(null);
     getPullRequest(id)
       .then(result => {
         if (!active) return;
@@ -186,7 +382,7 @@ export default function PullRequestDetail({
   }
 
   const isAuthor = Boolean(pullRequest.author && pullRequest.author.id === authUser.user?.id);
-  const { origin, closed, merged, permissions } = pullRequest;
+  const { origin, closed, merged } = pullRequest;
 
   return (
     <div className="space-y-5">
@@ -207,10 +403,13 @@ export default function PullRequestDetail({
           {closed ? ` · closed ${ago(closed.at)}` : ''}
         </p>
         <dl className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
-          <div>
-            <dt className="text-tp-steel">Suggested version</dt>
-            <dd className="mt-0.5 break-words font-medium text-tp-ink">{pullRequest.proposed.suggestedVersion}</dd>
-          </div>
+          {/* Once merged, the version it became is named below, when the caller may read it. */}
+          {!merged && (
+            <div>
+              <dt className="text-tp-steel">Suggested version</dt>
+              <dd className="mt-0.5 break-words font-medium text-tp-ink">{pullRequest.proposed.suggestedVersion}</dd>
+            </div>
+          )}
           {origin && (
             <div>
               <dt className="text-tp-steel">Proposed from the fork</dt>
@@ -224,54 +423,26 @@ export default function PullRequestDetail({
             </div>
           )}
         </dl>
-        {(permissions.merge || permissions.update || permissions.editProposal || permissions.close) && (
-          <div className="flex flex-wrap gap-2 border-t border-tp-hairline pt-3">
-            {permissions.merge && (
-              <button
-                type="button"
-                aria-pressed={panel === 'merge'}
-                onClick={() => setPanel(panel === 'merge' ? null : 'merge')}
-                className="cursor-pointer rounded-lg bg-tp-primary px-3 py-1.5 text-xs font-semibold text-tp-on-primary transition-colors hover:bg-tp-primary-deep"
-              >
-                Merge…
-              </button>
-            )}
-            {permissions.editProposal && (
-              <button
-                type="button"
-                onClick={() =>
-                  context.openEditor(
-                    { id: pullRequest.base.versionId, version: pullRequest.base.version },
-                    { mode: 'code', pullRequestId: pullRequest.id }
-                  )
-                }
-                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-              >
-                Edit proposal
-              </button>
-            )}
-            {permissions.update && (
-              <button
-                type="button"
-                aria-pressed={panel === 'update'}
-                onClick={() => setPanel(panel === 'update' ? null : 'update')}
-                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-              >
-                Update to latest
-              </button>
-            )}
-            {permissions.close && (
-              <button
-                type="button"
-                onClick={() => setIsClosing(true)}
-                className="cursor-pointer rounded-lg border border-tp-hairline-strong bg-tp-canvas px-3 py-1.5 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-              >
-                {isAuthor ? 'Withdraw' : 'Close'}
-              </button>
-            )}
-          </div>
-        )}
       </header>
+
+      {/* Right below the header: however long its changes are, what to do with it is in view. */}
+      {pullRequest.status === 'open' && (
+        <MergeBox
+          key={`${pullRequest.id}:${pullRequest.proposalRevision}`}
+          pullRequest={pullRequest}
+          isAuthor={isAuthor}
+          etag={context.etag}
+          loadLatestYaml={loadLatestYaml}
+          onPricingChanged={context.onPricingChanged}
+          onClose={() => setIsClosing(true)}
+          onMerged={result => {
+            setMergedHere(true);
+            setPullRequest(result.pullRequest);
+            context.onMerged(result);
+          }}
+          onUpdated={setPullRequest}
+        />
+      )}
 
       {merged && (
         <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-success-border bg-tp-severity-success-bg p-4 text-sm">
@@ -314,32 +485,12 @@ export default function PullRequestDetail({
         )}
       </section>
 
-      {panel === 'merge' && permissions.merge ? (
-        <MergePanel
-          pullRequest={pullRequest}
-          etag={context.etag}
-          loadLatestYaml={loadLatestYaml}
-          onPricingChanged={context.onPricingChanged}
-          onCancel={() => setPanel(null)}
-          onMerged={result => {
-            setPullRequest(result.pullRequest);
-            setPanel(null);
-            context.onMerged(result);
-          }}
-        />
-      ) : panel === 'update' && permissions.update ? (
-        <UpdatePanel
-          pullRequest={pullRequest}
-          loadLatestYaml={loadLatestYaml}
-          onCancel={() => setPanel(null)}
-          onUpdated={updated => {
-            setPullRequest(updated);
-            setPanel(null);
-          }}
-        />
-      ) : (
-        <Changes key={`${pullRequest.id}:${pullRequest.proposalRevision}`} pullRequest={pullRequest} />
-      )}
+      <Changes
+        key={`${pullRequest.id}:${pullRequest.proposalRevision}:${pullRequest.status}`}
+        pullRequest={pullRequest}
+        loadVersionYaml={loadLatestYaml}
+        awaitingPage={mergedHere}
+      />
 
       <AnimatePresence>
         {isClosing && (

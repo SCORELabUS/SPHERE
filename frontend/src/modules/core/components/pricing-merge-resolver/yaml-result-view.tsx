@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { FiAlertTriangle, FiCornerUpLeft } from 'react-icons/fi';
+import { FiCornerUpLeft } from 'react-icons/fi';
 import { useMode } from '../../hooks/useTheme';
 import GithubDarkTheme from '../../theme/editor-themes/GitHub-Dark.json';
 import TextmateTheme from '../../theme/editor-themes/Textmate.json';
@@ -14,20 +14,20 @@ function defineThemes(monaco: Monaco) {
 }
 
 /**
- * The YAML view: the result as it would be published, editable by hand. Lines
- * with a conflict that still needs a choice are marked in the editor and listed
- * below it. Typing takes over from the computed result until the edits are
- * discarded or a side is chosen.
+ * The YAML view: the result as it would be sent. Lines with a conflict that
+ * still needs a choice are marked (their hover names it). Read-only, unless the
+ * resolver is editable (an author proposing from their fork): typing then takes
+ * over from the computed result until the edits are discarded or a side is
+ * chosen. `fill` makes the editor take the height its container gives it.
  */
-export default function YamlResultEditor({ resolver }: { resolver: MergeResolver }) {
+export default function YamlResultView({ resolver, fill = false }: { resolver: MergeResolver; fill?: boolean }) {
   const { mode } = useMode();
-  const { state, resultYaml, manualError, preview } = resolver;
+  const { state, resultYaml, preview, editable, isManual, manualError } = resolver;
   const [codeEditor, setCodeEditor] = useState<editor.IStandaloneCodeEditor | null>(null);
-  const isManual = state.manualYaml !== null;
 
   const unresolved = useMemo(
-    () => state.conflicts.filter(conflict => !state.choices[conflict.id]),
-    [state.conflicts, state.choices]
+    () => (isManual ? [] : state.conflicts.filter(conflict => !state.choices[conflict.id])),
+    [isManual, state.conflicts, state.choices]
   );
   const locations = useMemo(() => conflictLocations(resultYaml, unresolved), [resultYaml, unresolved]);
 
@@ -59,16 +59,18 @@ export default function YamlResultEditor({ resolver }: { resolver: MergeResolver
     codeEditor.focus();
   };
 
-  // A hand-typed result is checked for syntax here; the server checks the rest when it is sent.
-  const problem = manualError ?? (!isManual && preview && !preview.validation.ok
-    ? { line: preview.validation.line, message: preview.validation.error ?? 'The result is not a valid pricing.' }
-    : null);
+  // A result typed by hand is checked for syntax here; the server checks the rest when it is sent.
+  const problem =
+    manualError ??
+    (!isManual && preview && !preview.validation.ok
+      ? { line: preview.validation.line, message: preview.validation.error ?? 'The result is not a valid pricing.' }
+      : null);
 
   return (
-    <div className="space-y-3">
+    <div className={fill ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-3'}>
       {isManual && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">
-          <span>You edited the result by hand: it replaces the computed merge. Choosing a side discards your edits.</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">
+          <span>Edited by hand: this text is what you propose.</span>
           <button
             type="button"
             onClick={resolver.discardManual}
@@ -79,20 +81,32 @@ export default function YamlResultEditor({ resolver }: { resolver: MergeResolver
           </button>
         </div>
       )}
-      <div className="h-[24rem] overflow-hidden rounded-xl border border-tp-hairline">
+      <div
+        className={`overflow-hidden rounded-xl border border-tp-hairline ${fill ? 'min-h-[12rem] flex-1' : 'h-[24rem]'}`}
+      >
         <Editor
           height="100%"
           defaultLanguage="yaml"
           value={resultYaml}
-          onChange={value => resolver.editManual(value ?? '')}
+          onChange={editable ? value => resolver.editManual(value ?? '') : undefined}
           theme={mode === 'light' ? 'textmate' : 'github-dark'}
           beforeMount={defineThemes}
           onMount={setCodeEditor}
-          options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false }}
+          options={{
+            readOnly: !editable,
+            domReadOnly: !editable,
+            ...(editable ? {} : { readOnlyMessage: { value: 'The result changes by choosing a side for each conflict.' } }),
+            minimap: { enabled: false },
+            fontSize: 14,
+            scrollBeyondLastLine: false,
+          }}
         />
       </div>
       {problem && (
-        <p role="alert" className="rounded-lg border border-tp-severity-error-border bg-tp-severity-error-bg px-3 py-2 text-xs text-tp-ink">
+        <p
+          role="alert"
+          className="shrink-0 rounded-lg border border-tp-severity-error-border bg-tp-severity-error-bg px-3 py-2 text-xs text-tp-ink"
+        >
           {problem.line ? (
             <button
               type="button"
@@ -104,26 +118,6 @@ export default function YamlResultEditor({ resolver }: { resolver: MergeResolver
           ) : null}
           {problem.message}
         </p>
-      )}
-      {locations.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-tp-slate">Conflicts still to choose in this result</p>
-          <ul className="flex flex-wrap gap-1.5">
-            {locations.map(({ conflict, position }) => (
-              <li key={conflict.id}>
-                <button
-                  type="button"
-                  onClick={() => reveal(position.startLineNumber)}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-tp-severity-warning-border bg-tp-severity-warning-bg px-2.5 py-0.5 text-xs text-tp-ink transition-colors hover:border-tp-severity-warning"
-                >
-                  <FiAlertTriangle aria-hidden="true" className="h-3 w-3 text-tp-severity-warning" />
-                  <span className="font-mono">{conflict.label}</span>
-                  <span className="text-tp-steel">line {position.startLineNumber}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
     </div>
   );

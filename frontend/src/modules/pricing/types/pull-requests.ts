@@ -22,7 +22,13 @@ export type PullRequestState =
 export type ProposalBlock = 'NO_PUBLIC_VERSION' | 'LIMIT_REACHED' | 'AUTHOR_LIMIT' | 'PRICING_LIMIT' | 'DAILY_LIMIT';
 
 /** Why a fork cannot propose to the pricing it was forked from now. */
-export type ForkProposalBlock = 'NOT_A_FORK' | 'PARENT_UNAVAILABLE' | 'NO_PUBLIC_VERSION' | 'PULL_REQUEST_EXISTS';
+export type ForkProposalBlock =
+  | 'NOT_A_FORK'
+  | 'PARENT_UNAVAILABLE'
+  | 'NO_PUBLIC_VERSION'
+  | 'PULL_REQUEST_EXISTS'
+  /** Merging the fork's latest version into the parent's latest public one would add nothing. */
+  | 'NO_CHANGES';
 
 export interface PullRequestVersionRef {
   id: string;
@@ -63,8 +69,22 @@ export interface PullRequestSummary {
   proposed: { suggestedVersion: string };
   proposalRevision: number;
   state: PullRequestState;
-  /** The merged version only for who may read it. */
-  merged?: { at: string; versionId?: string; version?: string };
+  /**
+   * The merged version only for who may read it, and the version it was merged
+   * on (`followed`) only for who may read that one too.
+   */
+  merged?: {
+    at: string;
+    versionId?: string;
+    version?: string;
+    /**
+     * Details only. When the merged version and the one it was merged on are
+     * written in different syntaxes, both come as the server compares them:
+     * `normalizedYaml` here and on `followed`.
+     */
+    normalizedYaml?: string;
+    followed?: { versionId: string; version: string; normalizedYaml?: string };
+  };
   closed?: { kind: PullRequestCloseKind; at: string; reason?: string };
   createdAt: string;
   updatedAt: string;
@@ -72,9 +92,13 @@ export interface PullRequestSummary {
 
 export interface PullRequestDetail extends Omit<PullRequestSummary, 'base' | 'proposed'> {
   description: string;
-  /** `normalizedYaml` only when the base is stored in an older syntax: upgraded, as the proposal is stored. */
+  /**
+   * Each as it is written. When the base and the proposal are in different
+   * syntaxes, both also come as the server compares them (`normalizedYaml`: in
+   * the latest syntax, without the values it reads as absent).
+   */
   base: { versionId: string; version: string; yaml: string; normalizedYaml?: string };
-  proposed: { suggestedVersion: string; yaml: string };
+  proposed: { suggestedVersion: string; yaml: string; normalizedYaml?: string };
   origin?: PullRequestOrigin;
   permissions: PullRequestPermissions;
 }
@@ -163,7 +187,11 @@ export interface PullRequestPreview {
   target: PullRequestVersionRef & { private?: boolean };
   outcome: MergeOutcome;
   conflicts: MergeConflict[];
+  /** In the syntax of the side it is whole; a combination of both sides is in the latest syntax. */
   resultYaml: string;
+  /** When the result and the target are written in different syntaxes: both as the server compares them. */
+  targetNormalizedYaml?: string;
+  resultNormalizedYaml?: string;
   regenerated: boolean;
   validation: PreviewValidation;
   warnings: PullRequestWarning[];
@@ -173,6 +201,11 @@ export interface PullRequestPreview {
   existingPullRequest?: { id: string; number: number; proposalRevision: number };
   /** Merge previews only: the suggested label is already a version of the pricing. */
   versionTaken?: boolean;
+  /**
+   * Merge previews only, when the suggested label is not the proposal's own: the
+   * proposal's label reads as older than the latest public version's, which the suggestion follows.
+   */
+  suggestedVersionFollows?: { proposal: string; latest: string };
   defaults?: { private: boolean };
 }
 
@@ -196,6 +229,7 @@ export interface NewForkPullRequest {
   description?: string;
   source: Extract<PullRequestSource, { kind: 'fork' }>;
   resolutions: ConflictResolutions;
+  /** The proposal typed by hand in the dialog's YAML view, which replaces the computed merge. */
   manualYaml?: string;
   previewToken: string;
 }
@@ -203,16 +237,9 @@ export interface NewForkPullRequest {
 /** The author's open pull request from the fork took the new proposal (200) instead of a new one (201). */
 export type CreatedPullRequest = PullRequestWithWarnings & { updated?: true };
 
-export interface PullRequestEdit {
-  title?: string;
-  description?: string;
-  proposedYaml?: string;
-}
-
 /** Bringing a pull request up to the latest public version, as its preview showed. */
 export interface PullRequestUpdate {
   resolutions: ConflictResolutions;
-  manualYaml?: string;
   previewToken: string;
 }
 
@@ -223,7 +250,6 @@ export interface PullRequestMergeRequest {
   version: string;
   private: boolean;
   resolutions: ConflictResolutions;
-  manualYaml?: string;
   previewToken: string;
 }
 

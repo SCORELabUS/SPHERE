@@ -53,14 +53,12 @@ describe('pricing pull requests API', () => {
     await api.previewProposal({ kind: 'fork', forkPricingId: 'f' }, { '["plans","PRO","price"]': 'current' });
     await api.previewPullRequestMerge(PR_ID, 'merge');
     await api.updatePullRequestToLatest(PR_ID, { resolutions: {}, previewToken: 't' });
-    await api.editPullRequest(PR_ID, { title: 'New title' });
     await api.closePullRequest(PR_ID, 'Not now');
     const calls = request.mock.calls.map(([url, init]) => [String(url).replace(/^.*\/pricing-pull-requests/, ''), init?.method, JSON.parse(String(init?.body))]);
     expect(calls).toEqual([
       ['/previews', 'POST', { source: { kind: 'fork', forkPricingId: 'f' }, resolutions: { '["plans","PRO","price"]': 'current' } }],
       [`/${PR_ID}/merge-preview`, 'POST', { purpose: 'merge' }],
       [`/${PR_ID}/update`, 'POST', { resolutions: {}, previewToken: 't' }],
-      [`/${PR_ID}`, 'PUT', { title: 'New title' }],
       [`/${PR_ID}/close`, 'POST', { reason: 'Not now' }],
     ]);
   });
@@ -103,8 +101,9 @@ describe('pricing pull requests API', () => {
     ];
     mount(() => answers.shift()!);
     const fork = { title: 't', source: { kind: 'fork' as const, forkPricingId: 'f' }, resolutions: {}, previewToken: 't' };
+    const text = { title: 't', source: { kind: 'text' as const, pricingId: 'p', baseVersionId: 'v', proposedYaml: 'x' } };
     await expect(api.createPullRequest(fork)).rejects.toMatchObject({ code: 'PULL_REQUEST_EXISTS', number: 3 });
-    await expect(api.editPullRequest(PR_ID, { proposedYaml: 'x' })).rejects.toMatchObject({ code: 'INVALID_PRICING', line: 12 });
+    await expect(api.createPullRequest(text)).rejects.toMatchObject({ code: 'INVALID_PRICING', line: 12 });
     await expect(api.createPullRequest(fork)).rejects.toMatchObject({ code: 'UNRESOLVED_CONFLICTS', conflictIds: ['["url"]'] });
   });
 

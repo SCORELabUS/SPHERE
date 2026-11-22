@@ -10,13 +10,6 @@ export interface EditorSourcePricing {
     collectionSlug: string | null;
     name: string;
     version: string;
-    pricingId?: string;
-    /** Only when the link named the version by id: a proposal is based on it. */
-    versionId?: string;
-    /** The YAML of that version, to say what a proposal changes. */
-    baseYaml?: string;
-    /** An open pull request whose proposal the editor holds, to update it. */
-    pullRequestId?: string;
 }
 
 export interface EditorValueContextInteface {

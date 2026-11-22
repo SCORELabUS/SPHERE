@@ -39,7 +39,7 @@ function countOf(counts: PullRequestPage['counts'] | undefined, filter: PullRequ
 /**
  * The pull requests of a pricing the caller may see (all of them for a
  * maintainer, their own for anyone else), filtered by status and paged, and
- * "Propose changes" on the latest public version.
+ * "Upload proposal" on the latest public version.
  */
 export default function PullRequestList({
   pricingId,
@@ -49,7 +49,6 @@ export default function PullRequestList({
   onPageChange,
   onOpen,
   onCountsChange,
-  onProposeInEditor,
   onUpload,
 }: {
   pricingId: string;
@@ -59,7 +58,6 @@ export default function PullRequestList({
   onPageChange: (page: number) => void;
   onOpen: (id: string) => void;
   onCountsChange?: (counts: PullRequestPage['counts']) => void;
-  onProposeInEditor: (latest: PullRequestVersionRef, mode: 'visual' | 'code') => void;
   onUpload: (latest: PullRequestVersionRef) => void;
 }) {
   const { listPullRequests } = usePricingPullRequestsApi();
@@ -104,7 +102,13 @@ export default function PullRequestList({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Filter pull requests" className="flex gap-1 overflow-x-auto border-b border-tp-hairline">
+        {/* The hairline is an inset shadow the active tab's underline covers: a border it overlapped (-mb-px)
+            would overflow the scroller by a pixel and show a vertical scrollbar. */}
+        <div
+          role="group"
+          aria-label="Filter pull requests"
+          className="flex gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-tp-hairline)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {FILTERS.map(({ value, label }) => {
             const count = countOf(list?.counts, value);
             const active = filter === value;
@@ -114,7 +118,7 @@ export default function PullRequestList({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onFilterChange(value)}
-                className={`-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                   active ? 'border-tp-primary text-tp-primary' : 'border-transparent text-tp-steel hover:text-tp-ink'
                 }`}
               >
@@ -126,7 +130,7 @@ export default function PullRequestList({
             );
           })}
         </div>
-        {list && <ProposeMenu proposals={list.proposals} onEditor={onProposeInEditor} onUpload={onUpload} />}
+        {list && <ProposeMenu proposals={list.proposals} onUpload={onUpload} />}
       </div>
       {list?.viewer.isMaintainer === false && (
         <p className="text-xs text-tp-steel">You see the pull requests you opened.</p>

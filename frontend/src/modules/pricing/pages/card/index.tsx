@@ -10,11 +10,11 @@ import {
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { parsePricingForRender, withVariables } from '../../../core/utils/pricing-render';
 import { isPullRequestId } from '../../../core/utils/pull-request-state';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
 import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
-import { editorPath } from '../../../pricing-editor/utils/editor-source';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from '../../../core/hooks/useRouter';
@@ -42,7 +42,7 @@ import ForkPricingModal from '../../components/fork-pricing-modal';
 import ForkProposal, { type ForkParentLocation } from '../../components/fork-proposal-modal';
 import PricingPullRequestsTab from '../../components/pricing-pull-requests';
 import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
-import type { CreatedPullRequest, PullRequestMergeResult, PullRequestVersionRef } from '../../types/pull-requests';
+import type { CreatedPullRequest, PullRequestMergeResult } from '../../types/pull-requests';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
@@ -229,21 +229,10 @@ export default function CardPage() {
       .then(async text => {
         setYamlText(text);
         try {
-          setPricing(retrievePricingFromYaml(text));
-        } catch {
-          try {
-            const response = await fetch('/api/v1/pricings', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pricing: text }),
-            });
-            if (!response.ok) throw new Error('Failed to parse pricing');
-            setPricing(await response.json());
-            setErrors([]);
-          } catch (err) {
-            setErrors([(err as Error).message]);
-            setPricing(null);
-          }
+          setPricing(await parsePricingForRender(text));
+        } catch (err) {
+          setErrors([(err as Error).message]);
+          setPricing(null);
         }
       })
       .catch(() => {
@@ -256,33 +245,10 @@ export default function CardPage() {
   const handleApplyVariables = async (variables: Record<string, unknown>) => {
     if (!yamlText) return;
     try {
-      const ser = (v: unknown) => {
-        if (typeof v === 'string') return JSON.stringify(v);
-        if (typeof v === 'boolean') return v ? 'true' : 'false';
-        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-        return JSON.stringify(v);
-      };
-      const lines = ['variables:'];
-      for (const k of Object.keys(variables)) lines.push(`  ${k}: ${ser(variables[k])}`);
-      const block = lines.join('\n');
-      const re = /^variables:\n(?:[ \t]+.+\n?)*/gm;
-      const newYaml = re.test(yamlText)
-        ? yamlText.replace(re, block + '\n')
-        : yamlText + '\n' + block + '\n';
+      const newYaml = withVariables(yamlText, variables);
       setYamlText(newYaml);
-      try {
-        setPricing(retrievePricingFromYaml(newYaml));
-        setErrors([]);
-      } catch {
-        const response = await fetch('/api/v1/pricings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pricing: newYaml }),
-        });
-        if (!response.ok) throw new Error('Failed to parse pricing');
-        setPricing(await response.json());
-        setErrors([]);
-      }
+      setPricing(await parsePricingForRender(newYaml));
+      setErrors([]);
     } catch (e) {
       setErrors([(e as Error).message]);
     }
@@ -343,13 +309,11 @@ export default function CardPage() {
       .catch(() => {});
   };
 
-  // The editor receives the pricing and version it starts from, so publishing
-  // can offer to continue from it and a proposal knows the version it is based on.
-  const buildEditorPath = (
-    v: PullRequestVersionRef,
-    mode: 'visual' | 'code',
-    pullRequestId?: string
-  ) => editorPath({ organizationId: organizationId ?? '', slug: slug ?? '', collectionSlug }, v, { mode, pullRequestId });
+  const buildEditorPath = (v: VersionData, mode: 'visual' | 'code') => {
+    const params = new URLSearchParams({ source: `${organizationId}/${slug}`, version: v.version, mode });
+    if (collectionSlug) params.set('collection', collectionSlug);
+    return `/editor?${params.toString()}`;
+  };
 
   const handleOpenInEditor = (v: VersionData) => {
     window.open(buildEditorPath(v, 'code'), '_blank');
@@ -832,6 +796,7 @@ export default function CardPage() {
                   forkPricingId={pricingId}
                   forkedFrom={versions.find(v => v.forkedFrom)?.forkedFrom ?? null}
                   canCreate={Boolean(entityPermissions?.CREATE)}
+                  latestVersionId={versions[0]?.id}
                   onProposed={handleForkProposed}
                 />
               )}
@@ -1301,8 +1266,6 @@ export default function CardPage() {
                   etag,
                   onMerged: handlePullRequestMerged,
                   onPricingChanged: offerReloadIfChanged,
-                  openEditor: (version, { mode, pullRequestId }) =>
-                    router.push(buildEditorPath(version, mode, pullRequestId)),
                   versionHref,
                   openVersion,
                 }}

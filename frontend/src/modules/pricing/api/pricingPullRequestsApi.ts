@@ -9,7 +9,6 @@ import type {
   NewForkPullRequest,
   NewTextPullRequest,
   PullRequestDetail,
-  PullRequestEdit,
   PullRequestErrorCode,
   PullRequestList,
   PullRequestMergeRequest,
@@ -144,12 +143,6 @@ export function usePricingPullRequestsApi() {
     [send]
   );
 
-  const editPullRequest = useCallback(
-    async (id: string, changes: PullRequestEdit) =>
-      (await send<PullRequestWithWarnings>(`/${encodeURIComponent(id)}`, { method: 'PUT', body: changes })).body,
-    [send]
-  );
-
   const previewPullRequestMerge = useCallback(
     async (id: string, purpose: MergePreviewPurpose, resolutions?: ConflictResolutions) =>
       (
@@ -196,7 +189,6 @@ export function usePricingPullRequestsApi() {
     getForkTarget,
     previewProposal,
     createPullRequest,
-    editPullRequest,
     previewPullRequestMerge,
     updatePullRequestToLatest,
     mergePullRequest,

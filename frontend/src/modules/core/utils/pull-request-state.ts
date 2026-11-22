@@ -6,6 +6,7 @@ import type {
   PullRequestSummary,
   PullRequestWarning,
 } from '../../pricing/types/pull-requests';
+import { diffSequences } from '../../pricing/utils/text-diff.ts';
 
 /** The colour family of a state chip: the `--color-tp-severity-*` tokens it maps to. */
 export type PullRequestTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral';
@@ -66,19 +67,6 @@ export function isPullRequestId(value: string | null | undefined): value is stri
   return typeof value === 'string' && /^[0-9a-f]{24}$/i.test(value);
 }
 
-/**
- * Whether the editor may propose its text as a pull request: only when it was
- * opened on the latest public version, compared by id. A label can be reused
- * by a version deleted and created again, and an editor opened without a
- * version id (it falls back to the newest version it can read) proposes nothing.
- */
-export function canProposeFromEditor(
-  source: { versionId?: string | null } | null | undefined,
-  latest: { id: string } | null | undefined
-): boolean {
-  return Boolean(source?.versionId && latest?.id && source.versionId === latest.id);
-}
-
 /** The longest title and description a pull request keeps, as the API checks them. */
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_DESCRIPTION_LENGTH = 10_000;
@@ -102,7 +90,7 @@ export function proposalFieldsError(title: string, description: string): string 
 export function pullRequestWarningMessage(warning: PullRequestWarning): string {
   switch (warning.code) {
     case 'SYNTAX_UPGRADED':
-      return 'Some of these pricings were written in an older Pricing2Yaml syntax: SPHERE compares them, and writes the result, in the latest one.';
+      return 'SPHERE writes it in the latest Pricing2Yaml syntax: the older syntax it was written in could not be kept.';
     case 'FORMAT_REGENERATED':
       return 'The result combines both sides, so SPHERE writes its YAML again: comments and the original layout are not kept.';
     case 'MANUAL_OVERRIDE':
@@ -190,6 +178,26 @@ function saasNameOf(line: string): string | null {
   }
 }
 
+const isMapping = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * A pricing document without the values the latest Pricing2Yaml syntax reads as
+ * absent (`variables: {}`, `billing: { monthly: 1 }`, `tags: []`), which the
+ * server also leaves out when it compares: pricing4ts writes some of them when
+ * it upgrades a file and people write them or not by hand, so they are never a
+ * change. Anything else is returned as it is.
+ */
+export function withoutSyntaxDefaults(doc: unknown): unknown {
+  if (!isMapping(doc)) return doc;
+  const copy = { ...doc };
+  const { variables, billing, tags } = copy;
+  if (variables === null || (isMapping(variables) && Object.keys(variables).length === 0)) delete copy.variables;
+  if (isMapping(billing) && Object.keys(billing).length === 1 && billing.monthly === 1) delete copy.billing;
+  if (Array.isArray(tags) && tags.length === 0) delete copy.tags;
+  return copy;
+}
+
 /**
  * `after` with its top-level `saasName` line written as `before` writes it, when both give the
  * same name. SPHERE stamps the pricing's name on what it stores (quoted), so a file comparison
@@ -201,4 +209,54 @@ export function alignSaasNameLine(before: string, after: string): string {
   if (!original || !stamped || original === stamped) return after;
   const name = saasNameOf(original);
   return name !== null && name === saasNameOf(stamped) ? after.replace(SAAS_NAME_LINE, () => original) : after;
+}
+
+const linesOf = (text: string) => {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines;
+};
+
+/** How many lines a line-by-line comparison of two texts marks as removed or added. */
+const changedLines = (before: string, after: string) =>
+  diffSequences(linesOf(before), linesOf(after)).filter(op => op.kind !== 'equal').length;
+
+/**
+ * A pricing text written again by js-yaml, keys in their order, or null when it
+ * is not a YAML mapping. The core schema keeps dates as they are written.
+ */
+function writtenAgain(text: string): string | null {
+  const doc = jsYaml.load(text, { schema: jsYaml.CORE_SCHEMA });
+  if (!isMapping(doc)) return null;
+  return jsYaml.dump(doc, { schema: jsYaml.CORE_SCHEMA, lineWidth: -1, noRefs: true });
+}
+
+/** The two texts a line-by-line comparison shows, and whether they were written again to be compared. */
+export interface ComparedTexts {
+  before: string;
+  after: string;
+  reformatted: boolean;
+}
+
+/**
+ * The two pricing texts a line-by-line comparison shows: as written, unless they
+ * are formatted differently (quotes, line breaks, comments), which would mark
+ * lines whose values did not change, as when one was written by hand
+ * and the other by a tool. Then both are shown written again in one format, so
+ * only what changes in the pricing is marked, and `reformatted` says so. As
+ * written, `after`'s `saasName` line is aligned with `before`'s
+ * (`alignSaasNameLine`).
+ */
+export function textsToCompare(before: string, after: string): ComparedTexts {
+  const aligned = alignSaasNameLine(before, after);
+  try {
+    const first = writtenAgain(before);
+    const second = writtenAgain(after);
+    if (first !== null && second !== null && changedLines(first, second) < changedLines(before, aligned)) {
+      return { before: first, after: second, reformatted: true };
+    }
+  } catch {
+    // A text that does not load is compared as written.
+  }
+  return { before, after: aligned, reformatted: false };
 }

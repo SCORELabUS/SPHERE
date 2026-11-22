@@ -25,12 +25,17 @@ const SCOPE_LABELS: Record<ConflictScope, string> = {
   order: 'Order',
 };
 
-function SideValue({ title, side }: { title: string; side: ConflictSide }) {
+/** One side of a conflict. Its version label is shown as written, apart from the uppercase title. */
+function SideValue({ title, label, side }: { title: string; label?: string; side: ConflictSide }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-tp-steel">{title}</p>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-tp-steel">
+        {title}
+        {label && <span className="break-all font-mono font-medium normal-case tracking-normal"> · {label}</span>}
+      </p>
       {side.present ? (
-        <pre className="max-h-48 overflow-auto whitespace-pre rounded-lg border border-tp-hairline bg-tp-surface px-2.5 py-2 font-mono text-xs text-tp-ink">
+        // Long lines wrap: the indentation that starts each line is kept, so the YAML still reads.
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-tp-hairline bg-tp-surface px-2.5 py-2 font-mono text-xs text-tp-ink [overflow-wrap:anywhere]">
           {side.yaml}
         </pre>
       ) : (
@@ -133,8 +138,9 @@ export function ConflictCard({
       aria-current={active ? 'true' : undefined}
       aria-label={conflict.label}
       tabIndex={-1}
-      className={`space-y-3 rounded-xl border p-3 outline-none focus-visible:ring-2 focus-visible:ring-tp-primary/40 sm:p-4 ${
-        active ? 'border-tp-primary/60 bg-tp-canvas shadow-sm' : 'border-tp-hairline bg-tp-canvas'
+      // The active conflict is marked while the keyboard is in the list (Alt+↑/↓ moves it), not before.
+      className={`space-y-3 rounded-xl border border-tp-hairline bg-tp-canvas p-3 outline-none focus-visible:ring-2 focus-visible:ring-tp-primary/40 sm:p-4 ${
+        active ? 'group-focus-within/conflicts:border-tp-primary/60 group-focus-within/conflicts:shadow-sm' : ''
       }`}
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
@@ -148,7 +154,7 @@ export function ConflictCard({
       </header>
       <div className="grid gap-2 sm:grid-cols-3">
         <SideValue title="Base" side={conflict.base} />
-        <SideValue title={`Current · ${currentLabel}`} side={conflict.current} />
+        <SideValue title="Current" label={currentLabel} side={conflict.current} />
         <SideValue title="Proposal" side={conflict.proposal} />
       </div>
       <div className="flex flex-wrap gap-2">
@@ -191,8 +197,9 @@ export default function ConflictList({ resolver, currentLabel }: { resolver: Mer
 
   if (conflicts.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-tp-hairline-strong px-4 py-8 text-center text-sm text-tp-slate">
-        No conflicts: the proposal and the current version can be combined as they are.
+      <div className="flex h-full min-h-[8rem] items-center justify-center gap-2 rounded-xl border border-dashed border-tp-hairline-strong px-4 py-8 text-sm text-tp-slate">
+        <FiCheck aria-hidden="true" className="h-4 w-4 text-tp-severity-success" />
+        No conflicts
       </div>
     );
   }
@@ -203,7 +210,7 @@ export default function ConflictList({ resolver, currentLabel }: { resolver: Mer
       aria-label="Conflicts"
       tabIndex={0}
       onKeyDown={onKeyDown}
-      className="space-y-5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-tp-primary/40"
+      className="group/conflicts space-y-5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-tp-primary/40"
     >
       <p className="text-xs text-tp-steel">
         Choose a side for each conflict. <kbd className="font-mono">Alt</kbd>+<kbd className="font-mono">↓</kbd> and{' '}

@@ -4,7 +4,6 @@ import MergePanel from '../../../pricing/components/pricing-pull-requests/merge-
 import UpdatePanel from '../../../pricing/components/pricing-pull-requests/update-panel';
 import FileDiffView from '../../../pricing/components/pricing-version-diff/file-diff-view';
 import { PullRequestApiError } from '../../../pricing/api/pricingPullRequestsApi';
-import { VisualEditorUnavailable } from '../../../pricing-editor/components/visual-editor/components/VisualEditorUnavailable';
 import { DEFAULT_RETRY_SECONDS, OPEN_CONFLICTS_DEBOUNCE_MS, PREVIEW_DEBOUNCE_MS } from '../../hooks/useMergeResolver';
 import { formatConflictPath } from '../../utils/pricing-merge-resolver';
 import type {
@@ -23,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   loadLatestYaml: vi.fn(),
   onMerged: vi.fn(),
   onPricingChanged: vi.fn(),
+  parsePricing: vi.fn(),
+  renderPricing: vi.fn(),
   editor: {
     createDecorationsCollection: vi.fn(),
     revealLineInCenter: vi.fn(),
@@ -35,29 +36,48 @@ vi.mock('../../../pricing/api/pricingPullRequestsApi', async importOriginal => (
   usePricingPullRequestsApi: () => mocks,
 }));
 vi.mock('../../utils/custom-confirm', () => ({ default: mocks.confirm }));
-// Monaco needs a browser: a text area stands in, and it hands the tests a fake editor once mounted.
+// The test renderer has no portals: the expanded resolver renders where it is, as the window would show it.
+vi.mock('react-dom', async importOriginal => ({
+  ...(await importOriginal<typeof import('react-dom')>()),
+  createPortal: (node: unknown) => node,
+}));
+// The pricing is read and drawn as the Overview does it: both stand in here, so the tests see what they get.
+vi.mock('../../utils/pricing-render', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../utils/pricing-render')>()),
+  parsePricingForRender: mocks.parsePricing,
+}));
+vi.mock('../../../pricing-editor/components/pricing-renderer', () => ({
+  PricingRenderer: (props: unknown) => {
+    mocks.renderPricing(props);
+    return null;
+  },
+}));
+// Monaco needs a browser: a text area stands in (read-only as the editor is), and it hands the tests a fake editor once mounted.
 vi.mock('@monaco-editor/react', async () => {
   const React = await import('react');
   function MonacoEditor({
     value,
     onChange,
     onMount,
+    options,
   }: {
     value: string;
-    onChange: (value: string) => void;
+    onChange?: (value: string) => void;
     onMount: (editor: unknown) => void;
+    options?: { readOnly?: boolean };
   }) {
     React.useEffect(() => onMount(mocks.editor), [onMount]);
     return React.createElement('textarea', {
       value,
-      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      readOnly: options?.readOnly ?? false,
+      onChange: (event: { target: { value: string } }) => onChange?.(event.target.value),
     });
   }
   return { default: MonacoEditor };
 });
 
 const PR_ID = '6650f0c0c0c0c0c0c0c0c0aa';
-const PULL_REQUEST = { id: PR_ID, number: 7 } as PullRequestDetail;
+const PULL_REQUEST = { id: PR_ID, number: 7, proposed: { suggestedVersion: '3.1', yaml: '' } } as PullRequestDetail;
 const ETAG = '"6650f0c0c0c0c0c0c0c0c001.4"';
 const LATEST_YAML = 'saasName: Demo\nversion: "3.0"\nplans:\n  PRO:\n    price: 15\n';
 const RESULT = `saasName: Demo
@@ -96,6 +116,9 @@ addOns:
       - PRO
 `;
 
+/** What the renderer draws, as `parsePricingForRender` would read `RESULT`. */
+const PRICING = { saasName: 'Demo', plans: { PRO: { price: 15 } } };
+
 const SECTIONS = new Set(['plans', 'features', 'addOns', 'usageLimits']);
 const side = (yaml?: string): ConflictSide => (yaml === undefined ? { present: false } : { present: true, yaml });
 
@@ -121,7 +144,7 @@ function conflict(
 const PRICE = conflict(['plans', 'PRO', 'price']);
 const SSO = conflict(['plans', 'PRO', 'features', 'sso', 'value'], { base: 'false\n', current: 'false\n', proposal: 'true\n' });
 
-/** One conflict for each place the Visual view draws, plus fields it has no place for. */
+/** Conflicts of every section, of fields the pricing does not draw and of an entry the result leaves out. */
 const EVERYWHERE = [
   PRICE,
   SSO,
@@ -166,7 +189,15 @@ describe('Merge resolver', () => {
     buttons(root).find(item => textOf(item).trim() === label)!;
   const card = (target: MergeConflict) =>
     view.root.find(node => node.type === 'article' && node.props['data-conflict-id'] === target.id);
-  const mergeButton = () => button('Merge pull request');
+  const mergeButton = () => button('Confirm merge');
+  /** The merge box's way into the resolver, which shows it over the whole window. */
+  const openWorkspace = async () => {
+    const opener = ['Resolve conflicts', 'Review the result', 'Review your choices']
+      .map(label => button(label))
+      .find(Boolean);
+    if (opener) await act(async () => opener.props.onClick());
+  };
+  const workspace = () => view.root.findAll(node => node.type === 'div' && node.props.role === 'dialog');
   const blockReason = () => textOf(view.root.findByProps({ id: 'merge-block-reason' }));
   const settle = (ms = PREVIEW_DEBOUNCE_MS) =>
     act(async () => {
@@ -177,11 +208,16 @@ describe('Merge resolver', () => {
     await act(async () => button(label, card(target)).props.onClick());
   };
 
-  async function renderMerge(options?: TestRendererOptions) {
+  /** The merge step of the merge box, with its resolver open over the whole window unless `open` is false. */
+  async function renderMerge(
+    options?: TestRendererOptions,
+    pullRequest: PullRequestDetail = PULL_REQUEST,
+    { open = true }: { open?: boolean } = {}
+  ) {
     await act(async () => {
       view = create(
         <MergePanel
-          pullRequest={PULL_REQUEST}
+          pullRequest={pullRequest}
           etag={ETAG}
           loadLatestYaml={mocks.loadLatestYaml}
           onMerged={mocks.onMerged}
@@ -192,19 +228,24 @@ describe('Merge resolver', () => {
       );
     });
     await settle(0);
+    if (open) await openWorkspace();
   }
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // The resolver's full window keeps the page behind from scrolling: a body stands in for the browser's.
+    vi.stubGlobal('document', { body: { style: { overflow: '' } } });
     mocks.previewPullRequestMerge.mockResolvedValue(preview());
     mocks.loadLatestYaml.mockResolvedValue(LATEST_YAML);
     mocks.onPricingChanged.mockReturnValue(false);
     mocks.editor.createDecorationsCollection.mockReturnValue({ clear: () => {} });
+    mocks.parsePricing.mockResolvedValue(PRICING);
   });
   afterEach(() => {
     act(() => view?.unmount());
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('lists each conflict with its label, its three values and how many are unresolved (CA-24)', async () => {
@@ -406,10 +447,30 @@ describe('Merge resolver', () => {
     expect(mergeButton().props.disabled).toBe(false);
   });
 
-  it('marks the conflicts in the YAML and blocks a result with a syntax error, naming its line (CA-30)', async () => {
+  it('names the current version as it is written, wraps long values and words what a merge combines', async () => {
+    const long = `description: ${'a long description '.repeat(12)}\n`;
+    mocks.previewPullRequestMerge.mockResolvedValue(
+      preview({
+        target: { id: 'v3', version: '2024-08-pr7', private: false },
+        conflicts: [conflict(['plans', 'PRO', 'description'], { base: 'a\n', current: long, proposal: 'b\n' })],
+      })
+    );
+    await renderMerge();
+    expect(text()).toContain('Merging into version 2024-08-pr7, from the base version 2.0.');
+    const [only] = view.root.findAll(node => node.type === 'article');
+    const label = only.find(node => node.type === 'span' && textOf(node) === ' · 2024-08-pr7');
+    // The title is in capitals; the label keeps its own case.
+    expect(label.props.className).toContain('normal-case');
+    for (const value of only.findAllByType('pre')) expect(value.props.className).toContain('whitespace-pre-wrap');
+  });
+
+  it('marks the conflicts in the YAML, read-only, and blocks an invalid result naming its line (CA-30)', async () => {
     await renderMerge();
     await showView('YAML');
-    expect(view.root.findByType('textarea').props.value).toBe(RESULT);
+    const textarea = view.root.findByType('textarea');
+    expect(textarea.props.value).toBe(RESULT);
+    // The result changes by choosing a side, never by typing.
+    expect(textarea.props.readOnly).toBe(true);
 
     const priceLine = RESULT.split('\n').indexOf('    price: 15') + 1;
     const ssoLine = RESULT.split('\n').indexOf('        value: true') + 1;
@@ -421,14 +482,18 @@ describe('Merge resolver', () => {
       [priceLine, 'Conflict: plans.PRO.price'],
       [ssoLine, 'Conflict: plans.PRO.features.sso.value'],
     ]);
-    expect(text()).toContain(`plans.PRO.priceline ${priceLine}`);
+    // Only the file: the marked lines name their conflict on hover, with no list or caption around it.
+    expect(text()).not.toMatch(/Conflicts still to choose|read-only|Edited by hand/);
 
-    await act(async () => view.root.findByType('textarea').props.onChange({ target: { value: 'plans:\n  PRO: [\n' } }));
-    const alert = textOf(view.root.findByProps({ role: 'alert' }));
-    expect(alert).toMatch(/^Line \d+:/);
+    act(() => view.unmount());
+    mocks.previewPullRequestMerge.mockResolvedValue(
+      preview({ conflicts: [], outcome: 'merged', validation: { ok: false, error: 'Plan PRO has no price', line: 17 } })
+    );
+    await renderMerge();
+    await showView('YAML');
+    expect(textOf(view.root.findByProps({ role: 'alert' }))).toBe('Line 17:Plan PRO has no price');
     expect(mergeButton().props.disabled).toBe(true);
-    expect(blockReason()).toMatch(/^The YAML has an error on line \d+: /);
-    expect(view.root.findAll(node => node.props['data-warning'] === 'MANUAL_OVERRIDE')).toHaveLength(1);
+    expect(blockReason()).toBe('The result is not a valid pricing (line 17): Plan PRO has no price');
   });
 
   it('shows the names in the YAML hovers as text, never as markdown images or links', async () => {
@@ -451,41 +516,96 @@ describe('Merge resolver', () => {
     expect(hovers[0].value.replace(/\\/g, '')).toBe(`Conflict: ${planted.label}`);
   });
 
-  it('asks before a choice replaces a result edited by hand (CA-35)', async () => {
+  it('never takes a result typed by hand: a choice asks nothing and a merge sends the choices and the preview token', async () => {
     await renderMerge();
-    await showView('YAML');
-    const edited = `${RESULT}# reviewed\n`;
-    await act(async () => view.root.findByType('textarea').props.onChange({ target: { value: edited } }));
-    await showView('Conflicts');
-
-    mocks.confirm.mockRejectedValueOnce(undefined);
     await choose(PRICE, 'Use proposal');
-    expect(mocks.confirm).toHaveBeenCalledTimes(1);
-    expect(button('Use proposal', card(PRICE)).props['aria-pressed']).toBe(false);
-    // With a manual result, open conflicts do not block: the server takes that result.
-    expect(mergeButton().props.disabled).toBe(false);
-
-    mocks.confirm.mockResolvedValueOnce(undefined);
-    await choose(PRICE, 'Use proposal');
-    expect(mocks.confirm).toHaveBeenCalledTimes(2);
-    expect(button('Use proposal', card(PRICE)).props['aria-pressed']).toBe(true);
-    await showView('YAML');
-    expect(view.root.findByType('textarea').props.value).toBe(RESULT);
-  });
-
-  it('sends the hand-typed result with the choices and the preview token', async () => {
-    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [], outcome: 'merged' }));
-    await renderMerge();
-    await showView('YAML');
-    const edited = `${RESULT}# reviewed\n`;
-    await act(async () => view.root.findByType('textarea').props.onChange({ target: { value: edited } }));
+    await choose(SSO, 'Keep current');
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    for (const label of ['YAML', 'Conflicts', 'Compare', 'Visual']) {
+      await showView(label);
+      expect(text()).not.toMatch(/by hand|Discard my edits/);
+    }
+    await settle(PREVIEW_DEBOUNCE_MS);
     mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v4', version: '3.1', private: false } });
     await act(async () => mergeButton().props.onClick());
     expect(mocks.mergePullRequest).toHaveBeenCalledWith(
       PR_ID,
-      { resolutions: {}, manualYaml: edited, previewToken: 'token-1', version: '3.1', private: false },
+      { resolutions: { [PRICE.id]: 'proposal', [SSO.id]: 'current' }, previewToken: 'token-1', version: '3.1', private: false },
       ETAG
     );
+  });
+
+  it('resolves the conflicts over the whole window, and confirms the merge back in the merge box with the choices made', async () => {
+    const body = { style: { overflow: 'auto' } };
+    vi.stubGlobal('document', { body });
+    await renderMerge(undefined, PULL_REQUEST, { open: false });
+    // The merge box says how many conflicts there are, with the way into the resolver; nothing to merge yet.
+    expect(workspace()).toHaveLength(0);
+    expect(text()).toContain('2 conflicts to resolve');
+    expect(button('Resolve conflicts').props.className).toContain('cursor-pointer');
+    expect(mergeButton().props.disabled).toBe(true);
+
+    await openWorkspace();
+    expect(workspace()).toHaveLength(1);
+    expect(workspace()[0].props['aria-label']).toBe('Resolve conflicts');
+    // The page behind does not scroll, and the resolver already has the whole window: no Expand.
+    expect(body.style.overflow).toBe('hidden');
+    expect(button('Expand')).toBeUndefined();
+    await choose(PRICE, 'Use proposal');
+    await act(async () => button('Done').props.onClick());
+    expect(workspace()).toHaveLength(0);
+    expect(body.style.overflow).toBe('auto');
+    expect(text()).toContain('1 of 2 conflicts still to resolve');
+
+    // Back in, the choice is there; Escape (one the editor did not take) also goes back.
+    await openWorkspace();
+    expect(button('Use proposal', card(PRICE)).props['aria-pressed']).toBe(true);
+    await choose(SSO, 'Keep current');
+    const stopPropagation = vi.fn();
+    await act(async () => workspace()[0].props.onKeyDown({ key: 'Escape', defaultPrevented: true, stopPropagation }));
+    expect(workspace()).toHaveLength(1);
+    await act(async () => workspace()[0].props.onKeyDown({ key: 'Escape', defaultPrevented: false, stopPropagation }));
+    expect(workspace()).toHaveLength(0);
+    expect(text()).toContain('2 conflicts resolved');
+    expect(button('Review your choices')).toBeDefined();
+
+    await settle(PREVIEW_DEBOUNCE_MS);
+    mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v4', version: '3.1', private: false } });
+    await act(async () => mergeButton().props.onClick());
+    expect(mocks.mergePullRequest).toHaveBeenCalledWith(
+      PR_ID,
+      { resolutions: { [PRICE.id]: 'proposal', [SSO.id]: 'current' }, previewToken: 'token-1', version: '3.1', private: false },
+      ETAG
+    );
+  });
+
+  it('opens the result for review, on Compare, when there are no conflicts', async () => {
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [], outcome: 'merged' }));
+    await renderMerge(undefined, PULL_REQUEST, { open: false });
+    expect(text()).toContain('No conflicts');
+    expect(mergeButton().props.disabled).toBe(false);
+    await openWorkspace();
+    expect(workspace()[0].props['aria-label']).toBe('Review the merge');
+    expect(button('Compare').props['aria-pressed']).toBe(true);
+  });
+
+  it('opens the resolver at once when the merge box already knew of conflicts', async () => {
+    await act(async () => {
+      view = create(
+        <MergePanel
+          pullRequest={PULL_REQUEST}
+          etag={ETAG}
+          loadLatestYaml={mocks.loadLatestYaml}
+          onMerged={mocks.onMerged}
+          onPricingChanged={mocks.onPricingChanged}
+          onCancel={() => {}}
+          resolveFirst
+        />
+      );
+    });
+    await settle(0);
+    expect(workspace()).toHaveLength(1);
+    expect(button('Conflicts').props['aria-pressed']).toBe(true);
   });
 
   it('compares the result with the version it follows, with + − ~ marks (CA-31)', async () => {
@@ -498,6 +618,25 @@ describe('Merge resolver', () => {
     expect(new Set(marks.map(textOf))).toEqual(new Set(['+', '~']));
   });
 
+  it('compares in the latest syntax when the result and the version it follows are written in different ones', async () => {
+    const upgraded = `${LATEST_YAML}syntaxVersion: "3.1"\n`;
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ targetNormalizedYaml: upgraded }));
+    await renderMerge();
+    await showView('Compare');
+    // The server sent the target upgraded: it is not read again.
+    expect(mocks.loadLatestYaml).not.toHaveBeenCalled();
+    expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: upgraded, after: RESULT });
+    expect(text()).toContain('Version 3.0 and the result are written in different Pricing2Yaml syntaxes.');
+
+    act(() => view.unmount());
+    const resultUpgraded = `${RESULT}upgraded: true\n`;
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ targetNormalizedYaml: upgraded, resultNormalizedYaml: resultUpgraded }));
+    await renderMerge();
+    await showView('Compare');
+    expect(view.root.findByType(FileDiffView).props).toMatchObject({ before: upgraded, after: resultUpgraded });
+    expect(text().match(/different Pricing2Yaml syntaxes/g)).toHaveLength(1);
+  });
+
   it('does not show the quotes SPHERE writes around the same name as a change in Compare', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ resultYaml: LATEST_YAML.replace('saasName: Demo', "saasName: 'Demo'") }));
     await renderMerge();
@@ -507,69 +646,92 @@ describe('Merge resolver', () => {
     expect(file.findAll(node => node.type === 'span' && ['+', '−', '~'].includes(textOf(node)))).toHaveLength(0);
   });
 
-  it('marks conflicts where the visual layout draws them, each once, and shares the choices (CA-32, CA-33, CA-83)', async () => {
+  it('marks only what changes in Compare when the result is formatted differently from the version it follows', async () => {
+    // The version as stored, and the fork's version as a tool wrote it after one change: every string quoted.
+    mocks.loadLatestYaml.mockResolvedValue("saasName: Demo\nversion: '3.0'\n# Plans\nplans:\n  PRO:\n    description: For teams, with SSO\n    price: 15\n");
+    mocks.previewPullRequestMerge.mockResolvedValue(
+      preview({ resultYaml: 'saasName: "Demo"\nversion: "3.1"\nplans:\n  PRO:\n    description: "For teams, with SSO"\n    price: 18\n' })
+    );
+    await renderMerge();
+    await showView('Compare');
+    const file = view.root.findByType(FileDiffView);
+    expect(file.props.before).toBe("saasName: Demo\nversion: '3.0'\nplans:\n  PRO:\n    description: For teams, with SSO\n    price: 15\n");
+    expect(file.props.after).toBe("saasName: Demo\nversion: '3.1'\nplans:\n  PRO:\n    description: For teams, with SSO\n    price: 18\n");
+    expect(file.findAll(node => node.type === 'span' && textOf(node) === '~')).toHaveLength(4);
+    expect(text()).toContain('Version 3.0 and the result are formatted differently (quotes, line breaks or comments).');
+    expect(text()).not.toContain('different Pricing2Yaml syntaxes');
+  });
+
+  it('draws the result with the Overview\'s renderer and lists every conflict above it, sharing the choices (CA-32, CA-33)', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
     await renderMerge();
     await showView('Visual');
+    expect(mocks.parsePricing).toHaveBeenCalledWith(RESULT);
+    expect(mocks.renderPricing.mock.lastCall![0]).toMatchObject({ pricing: PRICING });
 
-    const markers = view.root.findAll(node => node.type === 'button' && node.props['data-conflicts'] !== undefined);
-    expect(markers.reduce((sum, marker) => sum + marker.props['data-conflicts'], 0)).toBe(EVERYWHERE.length);
+    // Every conflict once, named, with whether it is resolved; the first open one is shown with its choices.
+    const chips = view.root.findByProps({ 'aria-label': 'Conflicts' }).findAllByType('button');
+    expect(chips.map(chip => chip.props['aria-label'])).toEqual(EVERYWHERE.map(item => `${item.label}: unresolved`));
+    expect(card(PRICE)).toBeDefined();
 
-    // A plan's value of a feature is a cell of the table.
-    const cell = view.root.findAll(node => node.type === 'td' && textOf(node).includes('Conflict'));
-    expect(cell).toHaveLength(1);
-    expect(textOf(cell[0])).toBe('YesConflict');
-    // The order of the plans goes to the header of its section.
-    const plansHeader = view.root.find(node => node.type === 'h4' && textOf(node) === 'Plans').parent!;
-    expect(textOf(plansHeader)).toBe('PlansConflict');
-    // What the layout does not draw is listed as text under "Other fields".
-    const others = view.root.find(node => node.type === 'section' && textOf(node).startsWith('Other fields'));
-    const labels = others.findAllByType('code').map(textOf);
-    expect(labels).toEqual(['billing', 'url', 'tags', 'custom.x', 'plans.GONE.price']);
-    expect(textOf(others)).toContain('javascript:alert(1)');
-    expect(textOf(others)).toContain('Not in the result');
-
-    await act(async () => cell[0].findByType('button').props.onClick());
+    await act(async () => chips[1].props.onClick());
     await choose(SSO, 'Use proposal');
+    const chip = () => view.root.findByProps({ 'aria-label': 'Conflicts' }).findAllByType('button')[1];
+    expect(chip().props['aria-label']).toBe(`${SSO.label}: resolved`);
     await showView('Conflicts');
     expect(button('Use proposal', card(SSO)).props['aria-pressed']).toBe(true);
     expect(text()).toContain(`${EVERYWHERE.length} conflicts · ${EVERYWHERE.length - 1} unresolved`);
   });
 
-  it('names in each visual mark the conflicts it stands for and whether they are resolved', async () => {
-    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
+  it('draws the result again when a choice changes it, and the variables simulator changes only the drawing', async () => {
+    const chosen = RESULT.replace('price: 15', 'price: 12');
+    mocks.previewPullRequestMerge.mockImplementation(async (_id: string, _purpose: string, resolutions: Record<string, string>) =>
+      preview(resolutions[PRICE.id] ? { resultYaml: chosen } : {})
+    );
     await renderMerge();
     await showView('Visual');
-    // The plan's value of a feature: the only mark inside a cell of the table.
-    const cellMark = () => view.root.find(node => node.type === 'td' && node.findAllByType('button').length > 0).findByType('button');
-    expect(cellMark().props['aria-label']).toBe(`${SSO.label}: 1 unresolved`);
+    await choose(PRICE, 'Use proposal');
+    await settle(OPEN_CONFLICTS_DEBOUNCE_MS);
+    expect(mocks.parsePricing).toHaveBeenLastCalledWith(chosen);
+
+    const { onApplyVariables } = mocks.renderPricing.mock.lastCall![0] as { onApplyVariables: (values: Record<string, unknown>) => void };
+    await act(async () => onApplyVariables({ seats: 3 }));
+    expect(mocks.parsePricing.mock.lastCall![0]).toBe(`${chosen}\nvariables:\n  seats: 3\n`);
+    // Nothing of it reaches the merge.
     await showView('Conflicts');
-    await choose(SSO, 'Use proposal');
-    await showView('Visual');
-    expect(cellMark().props['aria-label']).toBe(`${SSO.label}: resolved`);
-    // Every mark says which conflicts it is about.
-    const marks = view.root.findAll(node => node.type === 'button' && node.props['data-conflicts'] !== undefined);
-    marks.forEach(mark => expect(mark.props['aria-label']).toMatch(/^.+: (\d+ unresolved|resolved)$/));
+    await choose(SSO, 'Keep current');
+    await settle(PREVIEW_DEBOUNCE_MS);
+    mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v4', version: '3.1', private: false } });
+    await act(async () => mergeButton().props.onClick());
+    expect(mocks.mergePullRequest.mock.lastCall![1]).toEqual({
+      resolutions: { [PRICE.id]: 'proposal', [SSO.id]: 'current' }, previewToken: 'token-1', version: '3.1', private: false,
+    });
   });
 
   it('shows values as text, never as links or markup (CA-80)', async () => {
     mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: EVERYWHERE }));
     await renderMerge();
+    const url = EVERYWHERE.find(item => item.label === 'url')!;
     for (const label of ['Conflicts', 'Visual']) {
       await showView(label);
+      if (label === 'Visual') {
+        const chips = view.root.findByProps({ 'aria-label': 'Conflicts' }).findAllByType('button');
+        await act(async () => chips.find(chip => chip.props['aria-label'].startsWith('url:'))!.props.onClick());
+        expect(card(url)).toBeDefined();
+      }
       expect(text()).toContain('javascript:alert(1)');
       expect(view.root.findAll(node => node.type === 'a' || node.type === 'img')).toHaveLength(0);
       expect(view.root.findAll(node => 'href' in node.props || 'dangerouslySetInnerHTML' in node.props)).toHaveLength(0);
     }
   });
 
-  it('stands in for the visual layout while the result cannot be read (CA-34)', async () => {
+  it('says when the result cannot be drawn and points to its YAML (CA-34)', async () => {
+    mocks.parsePricing.mockRejectedValue(new Error('Failed to parse pricing'));
     await renderMerge();
-    await showView('YAML');
-    await act(async () => view.root.findByType('textarea').props.onChange({ target: { value: 'plans: [\n' } }));
     await showView('Visual');
-    expect(view.root.findAllByType(VisualEditorUnavailable)).toHaveLength(1);
-    await act(async () => button('Back to the code editor').props.onClick());
+    expect(textOf(view.root.findByProps({ role: 'alert' }))).toContain('The result cannot be drawn: Failed to parse pricing');
+    expect(mocks.renderPricing).not.toHaveBeenCalled();
+    await act(async () => button('See its YAML').props.onClick());
     expect(view.root.findAllByType('textarea')).toHaveLength(1);
   });
 
@@ -601,6 +763,26 @@ describe('Merge resolver', () => {
     mocks.mergePullRequest.mockResolvedValue({ pullRequest: { id: PR_ID }, version: { id: 'v4', version: '3.1', private: false } });
     await act(async () => mergeButton().props.onClick());
     expect(mocks.mergePullRequest.mock.lastCall![1]).toMatchObject({ private: false, version: '3.1' });
+  });
+
+  it('says why the label it suggests is not the proposal\'s own, until another one is typed', async () => {
+    mocks.previewPullRequestMerge.mockResolvedValue(
+      preview({
+        conflicts: [], outcome: 'merged', suggestedVersion: '2.5-pr7', suggestedVersionFollows: { proposal: '2.4', latest: '2.5' },
+      })
+    );
+    await renderMerge();
+    expect(view.root.findByProps({ id: 'merge-version' }).props.value).toBe('2.5-pr7');
+    // The latest public version, which may not be the one merged into (3.0 here, private or not).
+    expect(text()).toContain('The proposal names it 2.4, which reads as older than version 2.5, the latest public one.');
+    await act(async () => view.root.findByProps({ id: 'merge-version' }).props.onChange({ target: { value: '3.5' } }));
+    expect(text()).not.toContain('The proposal names it');
+
+    // The proposal's own label needs no word.
+    act(() => view.unmount());
+    mocks.previewPullRequestMerge.mockResolvedValue(preview({ conflicts: [], outcome: 'merged' }));
+    await renderMerge();
+    expect(text()).not.toContain('The proposal names');
   });
 
   it('warns about a label that is already a version and lets another one be typed', async () => {
@@ -636,6 +818,10 @@ describe('Merge resolver', () => {
     });
     const list = view.root.findByProps({ role: 'group', 'aria-label': 'Conflicts' });
     const active = () => view.root.find(node => node.type === 'article' && node.props['aria-current'] === 'true').props['data-conflict-id'];
+    // The active conflict is drawn as such only while the keyboard is in the list, not on arrival.
+    expect(list.props.className).toContain('group/conflicts');
+    expect(card(EVERYWHERE[0]).props.className).toContain('group-focus-within/conflicts:border-tp-primary/60');
+    expect(card(EVERYWHERE[0]).props.className).not.toMatch(/(^|\s)border-tp-primary\/60/);
     const key = (key: string, altKey = true) => act(async () => list.props.onKeyDown({ key, altKey, preventDefault: () => {} }));
     expect(active()).toBe(EVERYWHERE[0].id);
     expect(focused).toBeNull();
@@ -678,8 +864,13 @@ describe('Merge resolver', () => {
       );
     });
     await settle(0);
+    await openWorkspace();
+    expect(workspace()[0].props['aria-label']).toBe('Review the update');
     expect(mocks.previewPullRequestMerge).toHaveBeenCalledWith(PR_ID, 'update', {});
     expect(text()).toContain('after updating, the pull request has no changes');
+    // The author brings their proposal up to date: nothing is merged.
+    expect(text()).toContain('Bringing your proposal up to version 3.0, from the base version 2.0.');
+    expect(text()).not.toContain('Merging into');
     await act(async () => button('Update pull request').props.onClick());
     expect(mocks.updatePullRequestToLatest).toHaveBeenCalledWith(PR_ID, { resolutions: {}, previewToken: 'token-1' });
     expect(onUpdated).toHaveBeenCalledWith({ id: PR_ID, warnings: [] });

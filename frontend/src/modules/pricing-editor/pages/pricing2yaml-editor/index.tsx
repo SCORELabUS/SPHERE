@@ -34,8 +34,6 @@ import ErrorBoundary from '../../../core/components/error-boundary';
 import { VisualEditorUnavailable } from '../../components/visual-editor/components/VisualEditorUnavailable';
 import TemplatesMenu from '../../components/templates-menu';
 import { usePricingsApi } from '../../../pricing/api/pricingsApi';
-import { usePricingPullRequestsApi } from '../../../pricing/api/pricingPullRequestsApi';
-import { pickSourceVersion } from '../../utils/editor-source';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
 import { usePricing2YamlLinter } from '../../hooks/usePricing2YamlLinter';
@@ -111,7 +109,6 @@ export default function EditorPage() {
   const { editorValue, setEditorValue, editorMode, setEditorMode, isDirty, setIsDirty, setPendingVisualDraft, saveDraft, setSourcePricing } = useEditorValue();
   const {getFromCache} = useCacheApi();
   const { getPricingBySlug } = usePricingsApi();
-  const { getPullRequest } = usePricingPullRequestsApi();
   const { authUser } = useAuth();
 
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
@@ -308,47 +305,23 @@ export default function EditorPage() {
         if (fragment.status === 'ok') {
           templatePricing = fragment.yaml;
         } else if (sourceParam) {
-          // `source=<organizationId>/<slug>`: a published version opened for editing,
-          // or with `pr=<id>` the proposal of an open pull request on that pricing.
+          // `source=<organizationId>/<slug>`: a published version opened for editing.
           const [organizationId, slug] = sourceParam.split('/');
           const collectionSlug = queryParams.get('collection');
-          const pullRequestParam = queryParams.get('pr');
+          const requestedVersion = queryParams.get('version');
           const data = await getPricingBySlug(slug, organizationId, collectionSlug);
-          const source = {
+          const versions: { version: string; yaml: string }[] = data.versions ?? [];
+          const sourceVersion = versions.find(v => v.version === requestedVersion) ?? versions[0];
+          if (!sourceVersion) throw new Error('The pricing to edit has no versions.');
+          const yamlUrl = sourceVersion.yaml.startsWith('http') ? sourceVersion.yaml : `${import.meta.env.VITE_API_URL}${sourceVersion.yaml}`;
+          templatePricing = await (await fetch(yamlUrl, pricingYamlRequestInit(yamlUrl, authUser?.token))).text();
+          setSourcePricing({
             organizationId,
             slug,
             collectionSlug: collectionSlug && collectionSlug !== 'undefined' ? collectionSlug : null,
             name: data.name ?? slug,
-            pricingId: data.pricingId,
-          };
-          if (pullRequestParam) {
-            const pullRequest = await getPullRequest(pullRequestParam);
-            if (pullRequest.pricingId !== data.pricingId) throw new Error('The pull request is not on this pricing.');
-            templatePricing = pullRequest.proposed.yaml;
-            setSourcePricing({
-              ...source,
-              version: pullRequest.base.version,
-              versionId: pullRequest.base.versionId,
-              baseYaml: pullRequest.base.yaml,
-              pullRequestId: pullRequest.id,
-            });
-          } else {
-            const versions: { id: string; version: string; yaml: string }[] = data.versions ?? [];
-            const { version: sourceVersion, byId } = pickSourceVersion(versions, {
-              versionId: queryParams.get('versionId'),
-              version: queryParams.get('version'),
-            });
-            if (!sourceVersion) throw new Error('The pricing to edit has no versions.');
-            const yamlUrl = sourceVersion.yaml.startsWith('http') ? sourceVersion.yaml : `${import.meta.env.VITE_API_URL}${sourceVersion.yaml}`;
-            templatePricing = await (await fetch(yamlUrl, pricingYamlRequestInit(yamlUrl, authUser?.token))).text();
-            setSourcePricing({
-              ...source,
-              version: sourceVersion.version,
-              // A version found only by its label (or the newest one) is not proposed on.
-              ...(byId ? { versionId: sourceVersion.id } : {}),
-              baseYaml: templatePricing,
-            });
-          }
+            version: sourceVersion.version,
+          });
           if (queryParams.get('mode') === 'visual') {
             templatePricing = ensureSyntaxVersion31(templatePricing);
             setEditorMode('visual');

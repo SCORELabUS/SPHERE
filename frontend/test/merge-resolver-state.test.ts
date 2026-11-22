@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  choiceNeedsConfirmation,
   initialResolverState,
   rebaseChoices,
   resolutionsOf,
@@ -82,23 +81,11 @@ test('a choice is dropped when any one of base, current or proposal changed, or 
   assert.deepEqual(rebaseChoices(previous, []), { choices: {}, changed: [] });
 });
 
-test('after a manual edit a choice needs confirmation: confirmed it drops the edit, otherwise nothing changes (CA-35)', () => {
-  const edited = resolverReducer(chosen([price, 'current']), { type: 'edit-manual', yaml: 'saasName: Edited\n' });
-  assert.equal(edited.manualYaml, 'saasName: Edited\n');
-  assert.equal(choiceNeedsConfirmation(edited), true);
-
-  // Cancelled: the same state, manual text included.
-  const cancelled = resolverReducer(edited, { type: 'choose', id: description.id, side: 'proposal' });
-  assert.equal(cancelled, edited);
-
-  const confirmed = resolverReducer(edited, { type: 'choose', id: description.id, side: 'proposal', confirmed: true });
-  assert.equal(confirmed.manualYaml, null);
-  assert.equal(choiceNeedsConfirmation(confirmed), false);
-  assert.deepEqual(confirmed.choices, { [price.id]: 'current', [description.id]: 'proposal' });
-
-  // Without a manual edit no confirmation is asked.
-  assert.equal(choiceNeedsConfirmation(chosen()), false);
-  assert.equal(resolverReducer(edited, { type: 'discard-manual' }).manualYaml, null);
+test('a choice is taken at once: the result is never typed by hand, so there is nothing to confirm or discard (CA-35)', () => {
+  const state = chosen([price, 'current']);
+  const next = resolverReducer(state, { type: 'choose', id: description.id, side: 'proposal' });
+  assert.deepEqual(next.choices, { [price.id]: 'current', [description.id]: 'proposal' });
+  assert.equal('manualYaml' in next, false);
 });
 
 test('Alt+arrows move between conflicts and stop at the ends; a new preview keeps the active one if it is still there', () => {

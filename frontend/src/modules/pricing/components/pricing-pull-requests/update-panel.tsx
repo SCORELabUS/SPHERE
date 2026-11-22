@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import PricingMergeResolver from '../../../core/components/pricing-merge-resolver';
+import { Warnings } from '../../../core/components/pricing-merge-resolver';
 import { useMergeResolver } from '../../../core/hooks/useMergeResolver';
 import { usePricingPullRequestsApi } from '../../api/pricingPullRequestsApi';
 import type {
@@ -8,21 +8,28 @@ import type {
   PullRequestVersionRef,
   PullRequestWithWarnings,
 } from '../../types/pull-requests';
+import ResolutionStatus from './resolution-status';
+import ResolverWorkspace from './resolver-workspace';
+import { useResolverWorkspace } from './use-resolver-workspace';
 
 /**
- * Bringing a pull request up to the latest public version: its author resolves
- * the proposal against that version, which becomes the new base.
+ * Confirming, in the merge box, that a pull request is brought up to the latest
+ * public version: its author resolves the proposal against that version (over
+ * the whole window, in `ResolverWorkspace`), which becomes the new base.
  */
 export default function UpdatePanel({
   pullRequest,
   loadLatestYaml,
   onUpdated,
   onCancel,
+  resolveFirst = false,
 }: {
   pullRequest: PullRequestDetail;
   loadLatestYaml: (target: PullRequestVersionRef) => Promise<string>;
   onUpdated: (pullRequest: PullRequestWithWarnings) => void;
   onCancel: () => void;
+  /** Opens the resolver at once, when the merge box already knew of conflicts. */
+  resolveFirst?: boolean;
 }) {
   const { previewPullRequestMerge, updatePullRequestToLatest } = usePricingPullRequestsApi();
   const resolver = useMergeResolver(
@@ -31,6 +38,7 @@ export default function UpdatePanel({
       [previewPullRequestMerge, pullRequest.id]
     )
   );
+  const workspace = useResolverWorkspace(resolver, resolveFirst);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { blockReason, preview } = resolver;
@@ -49,19 +57,16 @@ export default function UpdatePanel({
   };
 
   return (
-    <section aria-labelledby="update-panel-title" className="space-y-5 rounded-xl border border-tp-hairline bg-tp-canvas p-4 sm:p-5">
-      <div>
-        <h3 id="update-panel-title" className="text-base font-semibold text-tp-ink">
-          Update to the latest version
-        </h3>
-        <p className="text-xs text-tp-steel">
-          Your proposal is combined with the latest public version, which becomes the version it is based on.
-        </p>
-      </div>
+    <section aria-label={`Update pull request #${pullRequest.number}`} className="space-y-4">
+      {/* While the resolver covers the window, it says all this itself. */}
+      {!workspace.isOpen && (
+        <>
+          <ResolutionStatus resolver={resolver} onOpen={workspace.open} buttonRef={workspace.opener} />
+          <Warnings resolver={resolver} />
+        </>
+      )}
 
-      <PricingMergeResolver resolver={resolver} loadLatestYaml={loadLatestYaml} />
-
-      {preview?.outcome === 'no-changes' && resolver.state.manualYaml === null && (
+      {preview?.outcome === 'no-changes' && (
         <p className="rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">
           The latest version already has everything you propose: after updating, the pull request has no changes.
         </p>
@@ -96,6 +101,18 @@ export default function UpdatePanel({
           {isSubmitting ? 'Updating…' : 'Update pull request'}
         </button>
       </div>
+
+      {workspace.isOpen && (
+        <ResolverWorkspace
+          title={resolver.state.conflicts.length > 0 ? 'Resolve conflicts' : 'Review the update'}
+          subtitle={`#${pullRequest.number} ${pullRequest.title}`}
+          resolver={resolver}
+          loadLatestYaml={loadLatestYaml}
+          purpose="update"
+          initialView={workspace.initialView}
+          onDone={workspace.close}
+        />
+      )}
     </section>
   );
 }

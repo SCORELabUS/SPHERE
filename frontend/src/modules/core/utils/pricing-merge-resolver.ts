@@ -7,8 +7,9 @@ import type {
 
 /**
  * The state of the merge resolver, shared by its Conflicts, YAML, Compare and
- * Visual views. The server computes the result from `choices` (or takes
- * `manualYaml` instead), so this only keeps what the user decided.
+ * Visual views. The server computes the result from `choices`, so this only
+ * keeps what the user decided. The result is never typed by hand: conflicts are
+ * resolved by choosing a side.
  */
 export interface ResolverState {
   /** The conflicts of the latest preview. */
@@ -17,23 +18,18 @@ export interface ResolverState {
   choices: ConflictResolutions;
   /** Conflicts whose values changed after the user chose a side: the choice was dropped. */
   changed: string[];
-  /** A result typed by hand, which replaces the computed one while it is set. */
-  manualYaml: string | null;
   /** The conflict the keyboard is on. */
   activeId: string | null;
 }
 
 export type ResolverAction =
   | { type: 'conflicts-loaded'; conflicts: MergeConflict[] }
-  /** `confirmed` once the user agreed to drop their manual edits (see `choiceNeedsConfirmation`). */
-  | { type: 'choose'; id: string; side: ConflictChoice; confirmed?: boolean }
-  | { type: 'edit-manual'; yaml: string }
-  | { type: 'discard-manual' }
+  | { type: 'choose'; id: string; side: ConflictChoice }
   | { type: 'focus'; id: string }
   | { type: 'move'; step: 1 | -1 };
 
 export function initialResolverState(conflicts: MergeConflict[] = []): ResolverState {
-  return { conflicts, choices: {}, changed: [], manualYaml: null, activeId: conflicts[0]?.id ?? null };
+  return { conflicts, choices: {}, changed: [], activeId: conflicts[0]?.id ?? null };
 }
 
 const sameSide = (a: ConflictSide, b: ConflictSide) =>
@@ -66,11 +62,6 @@ export function rebaseChoices(
   return { choices, changed };
 }
 
-/** Choosing a side recomputes the result, which would replace what the user typed by hand. */
-export function choiceNeedsConfirmation(state: ResolverState): boolean {
-  return state.manualYaml !== null;
-}
-
 export function resolverReducer(state: ResolverState, action: ResolverAction): ResolverState {
   switch (action.type) {
     case 'conflicts-loaded': {
@@ -82,19 +73,13 @@ export function resolverReducer(state: ResolverState, action: ResolverAction): R
     }
     case 'choose': {
       if (!state.conflicts.some(conflict => conflict.id === action.id)) return state;
-      if (choiceNeedsConfirmation(state) && !action.confirmed) return state;
       return {
         ...state,
         choices: { ...state.choices, [action.id]: action.side },
         changed: state.changed.filter(id => id !== action.id),
-        manualYaml: null,
         activeId: action.id,
       };
     }
-    case 'edit-manual':
-      return { ...state, manualYaml: action.yaml };
-    case 'discard-manual':
-      return { ...state, manualYaml: null };
     case 'focus':
       return state.conflicts.some(conflict => conflict.id === action.id) ? { ...state, activeId: action.id } : state;
     case 'move': {
@@ -146,119 +131,4 @@ export function formatConflictPath(path: readonly string[]): string {
       return index === 0 ? key : `.${key}`;
     })
     .join('');
-}
-
-export type PricingSectionKey = 'plans' | 'features' | 'addOns' | 'usageLimits';
-export type RowSection = 'features' | 'usageLimits';
-
-/**
- * Where the Visual view shows a conflict: the header of a section (its order,
- * or the whole section), the header of a plan's column, a cell of the plans ×
- * features and usage limits table, the row of a feature or a usage limit, the
- * card of an add-on, or "Other fields" for everything the table does not draw.
- */
-export type ConflictTarget =
-  | { kind: 'section'; section: PricingSectionKey }
-  | { kind: 'plan'; plan: string }
-  | { kind: 'cell'; plan: string; section: RowSection; name: string }
-  | { kind: 'row'; section: RowSection; name: string }
-  | { kind: 'addOn'; addOn: string }
-  | { kind: 'other' };
-
-/** The fields the Visual view draws for each kind of entry (`pricing2yaml/types.ts`). */
-const PLAN_FIELDS = new Set(['description', 'price', 'unit', 'private', 'features', 'usageLimits']);
-const ROW_FIELDS: Record<RowSection, Set<string>> = {
-  features: new Set([
-    'description',
-    'tag',
-    'valueType',
-    'defaultValue',
-    'type',
-    'expression',
-    'serverExpression',
-    'integrationType',
-    'automationType',
-    'paymentType',
-    'docUrl',
-    'pricingUrls',
-    'render',
-  ]),
-  usageLimits: new Set([
-    'description',
-    'valueType',
-    'defaultValue',
-    'unit',
-    'type',
-    'trackable',
-    'period',
-    'linkedFeatures',
-    'render',
-  ]),
-};
-const ADD_ON_FIELDS = new Set([
-  'description',
-  'price',
-  'unit',
-  'availableFor',
-  'dependsOn',
-  'excludes',
-  'private',
-  'subscriptionConstraints',
-  'features',
-  'usageLimits',
-  'usageLimitsExtensions',
-]);
-
-const SECTION_KEYS = new Set<string>(['plans', 'features', 'addOns', 'usageLimits']);
-
-const isSection = (key: string | undefined): key is PricingSectionKey => key !== undefined && SECTION_KEYS.has(key);
-const isRowSection = (key: string | undefined): key is RowSection => key === 'features' || key === 'usageLimits';
-
-function planTarget(plan: string, rest: readonly string[]): ConflictTarget {
-  const [field, name, ...below] = rest;
-  if (field === undefined) return { kind: 'plan', plan };
-  if (!PLAN_FIELDS.has(field)) return { kind: 'other' };
-  if (!isRowSection(field) || name === undefined) return { kind: 'plan', plan };
-  // A plan's value of a feature or usage limit is `{ value }`.
-  if (below.length === 0 || (below.length === 1 && below[0] === 'value')) return { kind: 'cell', plan, section: field, name };
-  return { kind: 'other' };
-}
-
-/** Places a conflict, by its path, where the Visual view draws it. */
-export function conflictTarget(path: readonly string[]): ConflictTarget {
-  const [section, entry, field] = path;
-  if (!isSection(section)) return { kind: 'other' };
-  if (entry === undefined) return { kind: 'section', section };
-  if (section === 'plans') return planTarget(entry, path.slice(2));
-  const fields = section === 'addOns' ? ADD_ON_FIELDS : ROW_FIELDS[section];
-  if (field !== undefined && !fields.has(field)) return { kind: 'other' };
-  return section === 'addOns' ? { kind: 'addOn', addOn: entry } : { kind: 'row', section, name: entry };
-}
-
-/** A key for grouping conflicts by where they are drawn. */
-export function targetKey(target: ConflictTarget): string {
-  switch (target.kind) {
-    case 'section':
-      return JSON.stringify(['section', target.section]);
-    case 'plan':
-      return JSON.stringify(['plan', target.plan]);
-    case 'cell':
-      return JSON.stringify(['cell', target.plan, target.section, target.name]);
-    case 'row':
-      return JSON.stringify(['row', target.section, target.name]);
-    case 'addOn':
-      return JSON.stringify(['addOn', target.addOn]);
-    case 'other':
-      return JSON.stringify(['other']);
-  }
-}
-
-/** Every conflict, once, under the key of the place the Visual view draws it, in the order given. */
-export function groupConflictsByTarget(conflicts: readonly MergeConflict[]): Map<string, MergeConflict[]> {
-  const groups = new Map<string, MergeConflict[]>();
-  for (const conflict of conflicts) {
-    const key = targetKey(conflictTarget(conflict.path));
-    groups.set(key, [...(groups.get(key) ?? []), conflict]);
-  }
-  return groups;
 }
