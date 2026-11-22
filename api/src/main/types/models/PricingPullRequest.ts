@@ -258,16 +258,28 @@ export interface ForkParentDTO {
   organizationId: string;
 }
 
+/** A version of a fork that can be proposed to its parent. */
+export interface ForkVersionOptionDTO {
+  id: string;
+  version: string;
+  private: boolean;
+  /** When SPHERE received it (ISO 8601); null for versions older than that field. */
+  addedAt: string | null;
+}
+
 /**
- * Whether the caller may propose the fork's latest version to its parent. The
+ * Whether the caller may propose a version of the fork to its parent. The
  * open pull request from the fork is named in full only to its author; anyone
- * else only learns its number.
+ * else only learns its number. `versions` are the ones it may propose, newest
+ * first: those it may read that were added after the version the parent last
+ * took in (the first is proposed when none is named).
  */
 export interface ForkTargetDTO {
   canPropose: boolean;
   reason?: ForkProposalBlock;
   parent?: ForkParentDTO;
   openPullRequest?: { id?: string; number: number; proposalRevision?: number };
+  versions?: ForkVersionOptionDTO[];
 }
 
 /** Whether the result the server computed passes the pricing parser. */
@@ -336,6 +348,7 @@ export type PullRequestErrorCode =
   | 'PREVIEW_STALE'
   | 'NOT_A_FORK'
   | 'PARENT_UNAVAILABLE'
+  | 'VERSION_NOT_PROPOSABLE'
   | 'VERSION_TAKEN'
   | 'PRICING_CHANGED_DURING_MERGE'
   | 'MERGE_FAILED';

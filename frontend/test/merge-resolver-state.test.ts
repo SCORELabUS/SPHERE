@@ -65,6 +65,13 @@ test('after the preview is computed again, only choices whose three values did n
   assert.equal(rechosen.choices[price.id], 'proposal');
 });
 
+test('another merge altogether (another version of a fork) starts over, with no choices or conflicts left', () => {
+  const state = chosen([price, 'proposal'], [description, 'current']);
+  const reset = resolverReducer(state, { type: 'reset' });
+  assert.deepEqual(reset, initialResolverState());
+  assert.deepEqual(resolutionsOf(reset), {});
+});
+
 test('a choice is dropped when any one of base, current or proposal changed, or the side became absent', () => {
   const previous = { conflicts: [price], choices: { [price.id]: 'proposal' as const }, changed: [] };
   const variants = [

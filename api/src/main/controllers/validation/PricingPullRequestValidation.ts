@@ -38,7 +38,7 @@ const list = [
 const isText = body('source.kind').equals('text');
 const isFork = body('source.kind').equals('fork');
 
-/** Where a proposal comes from: a text written on a version of P, or a fork's latest version. */
+/** Where a proposal comes from: a text written on a version of P, or a version of a fork (its newest by default). */
 const source = [
   check('source').isObject().withMessage('The source of the proposal is required'),
   check('source.kind').isIn(['text', 'fork']).withMessage('The source kind must be text or fork'),
@@ -46,6 +46,7 @@ const source = [
   check('source.baseVersionId').if(isText).isMongoId().withMessage('The source baseVersionId must be a version id'),
   check('source.proposedYaml').if(isText).isString().withMessage('The proposed YAML must be a text'),
   check('source.forkPricingId').if(isFork).isMongoId().withMessage('The source forkPricingId must be a pricing id'),
+  check('source.versionId').if(isFork).optional().isMongoId().withMessage('The source versionId must be a version id'),
 ];
 
 /** The side chosen for each conflict, by conflict id (which conflicts and sides exist is checked by the merge). */

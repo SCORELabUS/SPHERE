@@ -139,7 +139,7 @@ function fixture(options: { blind?: string[] } = {}) {
       return row ? stored(row) : null;
     },
     findForkVersions: async (id: string) =>
-      newestFirst(id).map(row => ({ ...stored(row), forkedFromPricingId: row.forkedFrom ?? null })),
+      newestFirst(id).map(row => ({ ...stored(row), forkedFromPricingId: row.forkedFrom ?? null, addedAt: null })),
     hasPrivateVersion: async (id: string) => versions.some(row => row.pricingId === id && row.private),
     hasVersionLabel: async (id: string, label: string) => {
       await run('hasVersionLabel');

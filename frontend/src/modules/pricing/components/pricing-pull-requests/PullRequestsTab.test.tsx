@@ -1258,5 +1258,66 @@ describe('Pull requests tab', () => {
       await act(async () => button('YAML').props.onClick());
       expect(editor().props.value).toBe(PROPOSED_YAML);
     });
+
+    it('proposes the newest version of the fork by default and lets the author pick another one', async () => {
+      const versions = [
+        { id: 'f3', version: '1.2', private: false, addedAt: '2026-11-20T10:00:00.000Z' },
+        { id: 'f2', version: '1.1', private: true, addedAt: null },
+      ];
+      mocks.previewProposal.mockResolvedValue({ ...plain, outcome: 'conflicts', conflicts: [PRICE_CONFLICT] });
+      mocks.createPullRequest.mockResolvedValue({ ...detail({ number: 8 }), warnings: [], updated: false });
+      mocks.confirm.mockRejectedValueOnce(undefined);
+      await renderFork({ canPropose: true, parent, versions });
+      await act(async () => button('Propose changes to Demo').props.onClick());
+      await flush();
+      const picker = () => view.root.findByProps({ id: 'fork-proposal-version' });
+      expect(picker().props.value).toBe('f3');
+      expect(picker().props.className).toContain('cursor-pointer');
+      expect(picker().findAllByType('option').map(option => option.children.map(textOf).join(''))).toEqual([
+        expect.stringMatching(/^1\.2 · latest · /),
+        '1.1 · private',
+      ]);
+      expect(mocks.previewProposal).toHaveBeenLastCalledWith({ kind: 'fork', forkPricingId: FORK, versionId: 'f3' }, {});
+
+      // A choice made on one version is not carried to another.
+      await act(async () => button('Use proposal').props.onClick());
+      mocks.previewProposal.mockResolvedValue(plain);
+      await act(async () => picker().props.onChange({ target: { value: 'f2' } }));
+      await flush();
+      expect(mocks.previewProposal).toHaveBeenLastCalledWith({ kind: 'fork', forkPricingId: FORK, versionId: 'f2' }, {});
+      expect(picker().props.value).toBe('f2');
+
+      // With the YAML typed by hand, another version asks first; kept edits keep the version.
+      await act(async () => button('YAML').props.onClick());
+      type('saasName: Demo\n');
+      await act(async () => picker().props.onChange({ target: { value: 'f3' } }));
+      await flush();
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        'Proposing another version computes the proposal again and discards your edits to the YAML.',
+        { confirmLabel: 'Discard my edits', cancelLabel: 'Keep editing' }
+      );
+      expect(picker().props.value).toBe('f2');
+      expect(editor().props.value).toBe('saasName: Demo\n');
+      await act(async () => button('Discard my edits').props.onClick());
+
+      act(() => view.root.findByType('input').props.onChange({ target: { value: 'From 1.1' } }));
+      await act(async () => button('Open pull request').props.onClick());
+      expect(mocks.createPullRequest).toHaveBeenCalledWith({
+        title: 'From 1.1',
+        source: { kind: 'fork', forkPricingId: FORK, versionId: 'f2' },
+        resolutions: {},
+        previewToken: 'fork-token',
+      });
+    });
+
+    it('shows no version picker when the fork has one version to propose', async () => {
+      await renderFork({ canPropose: true, parent, versions: [{ id: 'f2', version: '1.1', private: false, addedAt: null }] });
+      mocks.previewProposal.mockResolvedValue(plain);
+      await act(async () => button('Propose changes to Demo').props.onClick());
+      await flush();
+      expect(view.root.findAllByProps({ id: 'fork-proposal-version' })).toHaveLength(0);
+      expect(text()).toContain('The latest version of this fork');
+      expect(mocks.previewProposal).toHaveBeenLastCalledWith({ kind: 'fork', forkPricingId: FORK, versionId: 'f2' }, {});
+    });
   });
 });

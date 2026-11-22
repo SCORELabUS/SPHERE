@@ -1604,6 +1604,7 @@ describe('Pricing pull requests', () => {
       expect(target.body).toEqual({
         canPropose: true,
         parent: { pricingId: scene.pricingId, name: scene.name, slug: scene.slug, organizationId: scene.organizationId },
+        versions: [{ id: scene.f2.id, version: '1.1.0', private: false, addedAt: expect.any(String) }],
       });
 
       const preview = await previewFork(scene.forker.token, scene.forkId);
@@ -2191,6 +2192,92 @@ describe('Pricing pull requests', () => {
       expect(fromCopy.body.base.id).toBe(scene.fork.id);
       expect(fromCopy.body.conflicts.map((conflict: any) => conflict.id)).toEqual([GOLD_PRICE]);
       expect(fromCopy.body.warnings).toContainEqual({ code: 'PREVIOUSLY_MERGED', number: second.number });
+    });
+  });
+
+  describe('Choosing the version of the fork to propose', { timeout: 30000 }, () => {
+    const forkSourceAt = (forkPricingId: string, versionId: string) => ({ kind: 'fork', forkPricingId, versionId });
+    const previewForkAt = (token: string, forkPricingId: string, versionId: string) =>
+      previews(token, { source: forkSourceAt(forkPricingId, versionId) });
+
+    it('Lists the versions added after the base, newest first, and proposes the one chosen.', async () => {
+      const scene = await forkScene({ proposal: goldAt(30) });
+      const f3 = await publishFork(scene, '1.2.0', goldAt(40));
+      const f4 = await publishFork(scene, '1.3.0', goldAt(50));
+
+      const target = await forkTarget(scene.forker.token, scene.forkId);
+      expect(target.body.canPropose).toBe(true);
+      expect(target.body.versions).toEqual([
+        { id: f4.id, version: '1.3.0', private: false, addedAt: expect.any(String) },
+        { id: f3.id, version: '1.2.0', private: false, addedAt: expect.any(String) },
+        { id: scene.f2.id, version: '1.1.0', private: false, addedAt: expect.any(String) },
+      ]);
+
+      // Without a version, the newest; with one, that one, from the same base.
+      const newest = await previewFork(scene.forker.token, scene.forkId);
+      expect(docOf(newest.body.resultYaml).plans.GOLD.price).toBe(50);
+      const chosen = await previewForkAt(scene.forker.token, scene.forkId, f3.id);
+      expect(chosen.status, JSON.stringify(chosen.body)).toBe(200);
+      expect(chosen.body).toMatchObject({ base: { id: scene.fork.id }, suggestedVersion: '1.2.0' });
+      expect(docOf(chosen.body.resultYaml).plans.GOLD.price).toBe(40);
+
+      // A preview of one version does not open a pull request on another.
+      const mixed = await open(scene.forker.token, {
+        title: 'From the fork', source: forkSourceAt(scene.forkId, f4.id), previewToken: chosen.body.previewToken,
+      });
+      expect(mixed.status).toBe(409);
+      expect(mixed.body.code).toBe('PREVIEW_STALE');
+
+      const created = await open(scene.forker.token, {
+        title: 'From the fork', source: forkSourceAt(scene.forkId, f3.id), previewToken: chosen.body.previewToken,
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      expect(created.body.origin).toMatchObject({ versionId: f3.id, version: '1.2.0' });
+      expect(docOf(created.body.proposed.yaml).plans.GOLD.price).toBe(40);
+    });
+
+    it('Refuses the version the parent last took in, and one the caller may not read.', async () => {
+      const scene = await forkScene();
+      const hidden = await publishFork(scene, `1.9.0-hidden-${randomSuffix()}`, goldAt(99), true);
+      const colleague = await memberOf(scene.forkOrganizationId, scene.fork.slug, { GET: false, PUT: false, DELETE: false, CREATE: true });
+
+      // The copy of P is the base: there is nothing after it to take from it.
+      for (const response of [
+        await previewForkAt(scene.forker.token, scene.forkId, scene.fork.id),
+        await open(scene.forker.token, { title: 'From the fork', source: forkSourceAt(scene.forkId, scene.fork.id), previewToken: 'x.y' }),
+      ]) {
+        expect(response.status, JSON.stringify(response.body)).toBe(422);
+        expect(response.body).toEqual({ error: expect.stringContaining(scene.name), code: 'VERSION_NOT_PROPOSABLE' });
+      }
+
+      // Who may not read the private version is told it does not exist, as for an unknown one.
+      const target = await forkTarget(colleague.token, scene.forkId);
+      expect(target.body.versions.map((version: any) => version.id)).toEqual([scene.f2.id]);
+      for (const versionId of [hidden.id, String(new mongoose.Types.ObjectId())]) {
+        const response = await previewForkAt(colleague.token, scene.forkId, versionId);
+        expect(response.status).toBe(404);
+        expect(response.body.code).toBe('NOT_FOUND');
+      }
+      // Its owner may propose it.
+      expect((await forkTarget(scene.forker.token, scene.forkId)).body.versions[0]).toMatchObject({ id: hidden.id, private: true });
+      expect((await previewForkAt(scene.forker.token, scene.forkId, hidden.id)).status).toBe(200);
+
+      const malformed = await previews(scene.forker.token, { source: forkSourceAt(scene.forkId, 'not-an-id') });
+      expect(malformed.status).toBe(422);
+    });
+
+    it('Has something to propose while an earlier version does, though the latest undid it.', async () => {
+      const scene = await forkScene({ proposal: goldAt(30) });
+      // Back to what the fork copied from P.
+      const undone = await publishFork(scene, '1.2.0', () => undefined);
+
+      const target = await forkTarget(scene.forker.token, scene.forkId);
+      expect(target.body).toMatchObject({ canPropose: true });
+      expect(target.body.versions.map((version: any) => version.id)).toEqual([undone.id, scene.f2.id]);
+      expect((await previewFork(scene.forker.token, scene.forkId)).body.outcome).toBe('no-changes');
+      const earlier = await previewForkAt(scene.forker.token, scene.forkId, scene.f2.id);
+      expect(earlier.body.outcome).toBe('merged');
+      expect(docOf(earlier.body.resultYaml).plans.GOLD.price).toBe(30);
     });
   });
 

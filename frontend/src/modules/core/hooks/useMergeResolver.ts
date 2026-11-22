@@ -77,6 +77,12 @@ export interface MergeResolverOptions {
    * proposing from their fork edits it; merges and updates choose sides only.
    */
   editable?: boolean;
+  /**
+   * What the preview is computed from, such as the version of a fork being
+   * proposed: when it changes, the resolver starts over, without choices or a
+   * text typed by hand, and asks for the preview at once.
+   */
+  source?: string;
 }
 
 export interface MergeResolver {
@@ -160,7 +166,7 @@ function errorMessage(caught: unknown): string {
  */
 export function useMergeResolver(
   loadPreview: (resolutions: ConflictResolutions) => Promise<PullRequestPreview>,
-  { editable = false }: MergeResolverOptions = {}
+  { editable = false, source = '' }: MergeResolverOptions = {}
 ): MergeResolver {
   const [state, dispatch] = useReducer(resolverReducer, undefined, () => initialResolverState());
   const [manualYaml, setManualYaml] = useState<string | null>(null);
@@ -171,12 +177,24 @@ export function useMergeResolver(
   const [rateLimited, setRateLimited] = useState<{ request: string; seconds: number } | null>(null);
   const load = useRef(loadPreview);
   load.current = loadPreview;
-  // The choices of the last preview asked for; null before the first one.
+  // The choices and the source of the last preview asked for; null before the first one.
   const lastChoices = useRef<string | null>(null);
+  const lastSource = useRef(source);
+
+  // Another source starts over: its conflicts, and so the choices made on them, are others.
+  const [shownSource, setShownSource] = useState(source);
+  if (shownSource !== source) {
+    setShownSource(source);
+    dispatch({ type: 'reset' });
+    setManualYaml(null);
+    setPreview(null);
+    setSettled(null);
+    setRateLimited(null);
+  }
 
   const resolutions = useMemo(() => resolutionsOf(state), [state]);
   const resolutionsKey = JSON.stringify(resolutions);
-  const request = `${refreshes}:${resolutionsKey}`;
+  const request = `${source}:${refreshes}:${resolutionsKey}`;
   const unresolved = unresolvedConflicts(state).length;
   // Read when a request is scheduled, without asking again when only the conflicts' count changes.
   const hasOpenConflicts = useRef(false);
@@ -184,11 +202,12 @@ export function useMergeResolver(
 
   useEffect(() => {
     let active = true;
-    // The first preview, and one asked again with the same choices, go at once; after a
-    // choice the preview waits until the choices settle, longer while a conflict is open.
-    const sameChoices = lastChoices.current === null || lastChoices.current === resolutionsKey;
-    const delay = sameChoices ? 0 : hasOpenConflicts.current ? OPEN_CONFLICTS_DEBOUNCE_MS : PREVIEW_DEBOUNCE_MS;
+    // The first preview, one of another source and one asked again with the same choices go at
+    // once; after a choice the preview waits until the choices settle, longer while a conflict is open.
+    const atOnce = lastChoices.current === null || lastSource.current !== source || lastChoices.current === resolutionsKey;
+    const delay = atOnce ? 0 : hasOpenConflicts.current ? OPEN_CONFLICTS_DEBOUNCE_MS : PREVIEW_DEBOUNCE_MS;
     lastChoices.current = resolutionsKey;
+    lastSource.current = source;
     const timer = setTimeout(() => {
       load
         .current(JSON.parse(resolutionsKey) as ConflictResolutions)
@@ -211,7 +230,7 @@ export function useMergeResolver(
       active = false;
       clearTimeout(timer);
     };
-  }, [request, resolutionsKey]);
+  }, [request, resolutionsKey, source]);
 
   // After a 429 the same preview is asked again once the limit lets it through, counting down
   // the seconds; a new choice meanwhile asks by itself and drops the countdown.

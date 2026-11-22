@@ -4967,14 +4967,18 @@ paths:
         **Fork.** Sends what `POST /pricing-pull-requests/previews` showed: its `previewToken`, the
         side chosen for each conflict (`resolutions`) or a result typed by hand (`manualYaml`,
         which takes precedence, warning `MANUAL_OVERRIDE`). It needs `CREATE` on the fork, and
-        only the fork's versions the caller may read count. At most one pull request from a fork
+        only the fork's versions the caller may read count. `source.versionId` names the version
+        of the fork to propose, one of the `versions` of `GET /pricing-pull-requests/fork-target`;
+        without it the newest of them is proposed. At most one pull request from a fork
         to its parent is open: if it is the caller's, it takes the new proposal and the answer is
         200 with `updated: true` (same number, `proposalRevision` moved on, base set to the latest
         public version); this does not count as opening one. Errors: 404 (the fork cannot be
         read), 403 `FORBIDDEN` (no `CREATE` on the fork), 422 `NOT_A_FORK`, 404
         `PARENT_UNAVAILABLE` (the parent is gone or cannot be read), 429 `LIMIT_REACHED`, 409
         `NO_PUBLIC_VERSION`, 409 `PULL_REQUEST_EXISTS` (with the `number` of another author's
-        open pull request), 413/422/400 for `manualYaml`, 409 `BASE_NOT_LATEST` (a newer public
+        open pull request), 404 (a `versionId` of the fork the caller may not read), 422
+        `VERSION_NOT_PROPOSABLE` (the version the parent last took in, or an older one),
+        413/422/400 for `manualYaml`, 409 `BASE_NOT_LATEST` (a newer public
         version, with `latest`) or `PREVIEW_STALE` (anything else the preview was computed from
         changed, or a token that is not this server's, this caller's or this fork's), 409
         `UNRESOLVED_CONFLICTS` and 422 `UNKNOWN_RESOLUTION` (with `conflictIds`), 400
@@ -5066,7 +5070,8 @@ paths:
         '422':
           description: |
             Invalid fields, a proposal too complex or with forbidden keys, a fork that names no pricing
-            it was forked from (`NOT_A_FORK`), or resolutions of conflicts the merge does not have
+            it was forked from (`NOT_A_FORK`), a version of the fork it cannot propose
+            (`VERSION_NOT_PROPOSABLE`), or resolutions of conflicts the merge does not have
             (`UNKNOWN_RESOLUTION`)
         '429':
           description: A pull request limit (`code` `LIMIT_REACHED`) or the rate limit was reached
@@ -5080,11 +5085,15 @@ paths:
         order: 404 when the caller may not read F, 403 when they may not publish versions of it
         (`CREATE`), and then 200 with `canPropose: false` and `reason` `NOT_A_FORK`,
         `PARENT_UNAVAILABLE` (P is gone or the caller may not read it: the same answer),
-        `NO_PUBLIC_VERSION`, `NO_CHANGES` (merging F's latest version into P's latest public one
-        would add nothing, compared in the latest syntax, so a fork that only differs in it has
-        nothing to propose) or `PULL_REQUEST_EXISTS` (another author's pull request from F is
-        open: only its `number` is given). The author of the open pull request from F gets its
-        `id`, `number` and `proposalRevision`: proposing again replaces its proposal.
+        `NO_PUBLIC_VERSION`, `NO_CHANGES` (merging any of F's proposable versions into P's latest
+        public one would add nothing, compared in the latest syntax, so a fork that only differs
+        in it has nothing to propose; the 20 newest are tried) or `PULL_REQUEST_EXISTS` (another
+        author's pull request from F is open: only its `number` is given). The author of the open
+        pull request from F gets its `id`, `number` and `proposalRevision`: proposing again
+        replaces its proposal. With `canPropose: true`, `versions` lists the versions of F the
+        caller may propose, newest first: the ones they may read that were added after the
+        version P last took in (the one the latest merged pull request from F proposed, while F
+        keeps it; otherwise the newest version of F copied from P).
 
         **Authentication**: SPHERE web session only.
       tags:
@@ -5130,8 +5139,8 @@ paths:
           submit `resultYaml` on the latest public version.
         - `fork`: from the version of the fork its parent last took in (the one the latest merged
           pull request from the fork proposed, while the fork keeps it; otherwise the newest
-          version of the fork copied from the parent) to the newest version of the fork the
-          caller may read. Needs `CREATE` on the fork, as opening the pull request does.
+          version of the fork copied from the parent) to `versionId`, or to the newest version of
+          the fork the caller may read. Needs `CREATE` on the fork, as opening the pull request does.
 
         `version`, `createdAt` and `saasName` are never compared, and the result always carries the
         pricing's name. `conflicts` lists every conflict; `resolutions` (conflict id → `current` or
@@ -5180,7 +5189,7 @@ paths:
         '413':
           $ref: '#/components/responses/PricingPullRequestRefused'
         '422':
-          description: Invalid fields, a proposal too complex, `NOT_A_FORK` or `UNKNOWN_RESOLUTION`
+          description: Invalid fields, a proposal too complex, `NOT_A_FORK`, `VERSION_NOT_PROPOSABLE` or `UNKNOWN_RESOLUTION`
         '429':
           description: The rate limit was reached
 
@@ -7885,6 +7894,7 @@ components:
             - PREVIEW_STALE
             - NOT_A_FORK
             - PARENT_UNAVAILABLE
+            - VERSION_NOT_PROPOSABLE
             - UNRESOLVED_CONFLICTS
             - UNKNOWN_RESOLUTION
             - VERSION_TAKEN
@@ -7910,7 +7920,8 @@ components:
       required: [kind]
       description: |
         `text`: a YAML written on a version of the pricing (`pricingId`, `baseVersionId`,
-        `proposedYaml`). `fork`: the latest version of the fork `forkPricingId`.
+        `proposedYaml`). `fork`: the version `versionId` of the fork `forkPricingId`, or its
+        newest proposable one.
       properties:
         kind:
           type: string
@@ -7923,6 +7934,9 @@ components:
           type: string
         forkPricingId:
           type: string
+        versionId:
+          type: string
+          description: Fork only. The version of the fork to propose (default, its newest proposable one)
 
     PricingPullRequestResolutions:
       type: object
@@ -8086,6 +8100,24 @@ components:
               type: integer
             proposalRevision:
               type: integer
+        versions:
+          type: array
+          description: >-
+            Only with `canPropose: true`. The versions of the fork the caller may propose, newest
+            first; the first is proposed when `source.versionId` is not sent.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              version:
+                type: string
+              private:
+                type: boolean
+              addedAt:
+                type: string
+                format: date-time
+                nullable: true
 
     PricingPullRequestVersionRef:
       type: object

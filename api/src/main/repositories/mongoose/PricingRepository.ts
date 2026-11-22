@@ -253,17 +253,21 @@ class PricingRepository extends RepositoryBase {
 
   /**
    * Every version of a pricing, newest first (`VERSION_ORDER`), with the pricing
-   * each one was forked from, if any. Proposals from a fork are computed on them.
+   * each one was forked from, if any, and when SPHERE received it. Proposals
+   * from a fork are computed on them.
    */
-  async findForkVersions(pricingId: string): Promise<Array<StoredVersion & { forkedFromPricingId: string | null }>> {
+  async findForkVersions(
+    pricingId: string
+  ): Promise<Array<StoredVersion & { forkedFromPricingId: string | null; addedAt: string | null }>> {
     if (!mongoose.isValidObjectId(pricingId)) return [];
     const versions = await PricingMongoose.find({ pricingId: new mongoose.Types.ObjectId(pricingId) })
       .sort(VERSION_ORDER)
-      .select('version private yaml forkedFrom.pricingId')
+      .select('version private yaml forkedFrom.pricingId addedAt')
       .lean();
     return versions.map(version => ({
       ...toStoredVersion(version),
       forkedFromPricingId: version.forkedFrom?.pricingId ? String(version.forkedFrom.pricingId) : null,
+      addedAt: version.addedAt ? new Date(version.addedAt).toISOString() : null,
     }));
   }
 

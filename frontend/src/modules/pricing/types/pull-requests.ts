@@ -135,15 +135,27 @@ export interface ForkParent {
   organizationId: string;
 }
 
+/** A version of a fork that can be proposed to its parent. */
+export interface ForkVersionOption {
+  id: string;
+  version: string;
+  private: boolean;
+  /** When SPHERE received it; null for versions older than that field. */
+  addedAt: string | null;
+}
+
 /**
- * Whether the caller may propose the fork's latest version to its parent. The
- * open pull request from the fork is named in full only to its author.
+ * Whether the caller may propose a version of the fork to its parent. The open
+ * pull request from the fork is named in full only to its author. `versions`
+ * are the ones it may propose, newest first (the first by default): those added
+ * after the version the parent last took in.
  */
 export interface ForkTarget {
   canPropose: boolean;
   reason?: ForkProposalBlock;
   parent?: ForkParent;
   openPullRequest?: { id?: string; number: number; proposalRevision?: number };
+  versions?: ForkVersionOption[];
 }
 
 /** A side of a conflict: absent, or its value written as YAML (so absent and `null` differ). */
@@ -209,10 +221,10 @@ export interface PullRequestPreview {
   defaults?: { private: boolean };
 }
 
-/** A proposal written on a version of the pricing, or a fork's latest version. */
+/** A proposal written on a version of the pricing, or a version of a fork (its newest proposable one by default). */
 export type PullRequestSource =
   | { kind: 'text'; pricingId: string; baseVersionId: string; proposedYaml: string }
-  | { kind: 'fork'; forkPricingId: string };
+  | { kind: 'fork'; forkPricingId: string; versionId?: string };
 
 /** The side chosen for each conflict, by conflict id. */
 export type ConflictResolutions = Record<string, ConflictChoice>;
@@ -281,6 +293,7 @@ export type PullRequestErrorCode =
   | 'PREVIEW_STALE'
   | 'NOT_A_FORK'
   | 'PARENT_UNAVAILABLE'
+  | 'VERSION_NOT_PROPOSABLE'
   | 'UNRESOLVED_CONFLICTS'
   | 'UNKNOWN_RESOLUTION'
   | 'VERSION_TAKEN'

@@ -8,6 +8,7 @@ import PricingRepository, { PricingIdentityRef, StoredVersion } from '../reposit
 import UserRepository from '../repositories/mongoose/UserRepository';
 import {
   ForkTargetDTO,
+  ForkVersionOptionDTO,
   PreviewValidation,
   PricingPullRequest,
   ProposalBlock,
@@ -114,6 +115,8 @@ export interface TextSource {
 export interface ForkSource {
   kind: 'fork';
   forkPricingId: string;
+  /** The version of the fork to propose; its newest proposable one when none is named. */
+  versionId?: string;
 }
 
 export interface NewPullRequestBody {
@@ -239,7 +242,17 @@ interface PreviewPayload {
   proposalRef: string;
 }
 
-type ForkVersion = StoredVersion & { forkedFromPricingId: string | null };
+type ForkVersion = StoredVersion & { forkedFromPricingId: string | null; addedAt: string | null };
+
+/** How many of a fork's proposable versions, newest first, are merged to tell whether it has something to propose. */
+const FORK_CHANGE_CHECKS = 20;
+
+const forkVersionOption = (version: ForkVersion): ForkVersionOptionDTO => ({
+  id: version.id,
+  version: version.version,
+  private: version.private,
+  addedAt: version.addedAt,
+});
 
 /** A fork the caller may propose from, the versions of it they may read (newest first) and its parent P. */
 interface ForkContext {
@@ -532,10 +545,11 @@ class PricingPullRequestService {
   }
 
   /**
-   * Whether the caller may propose the latest version of the fork F they may read
-   * to the pricing it was forked from, and why not. Computed only on the versions
-   * of F the caller may read: who may not read F is told it does not exist, and
-   * who may read it but not publish versions of it is refused.
+   * Whether the caller may propose a version of the fork F they may read to the
+   * pricing it was forked from, and why not, with the versions they may propose
+   * (newest first). Computed only on the versions of F the caller may read: who
+   * may not read F is told it does not exist, and who may read it but not
+   * publish versions of it is refused.
    */
   async forkTarget(user: LeanUser, forkPricingId: string): Promise<ForkTargetDTO> {
     const context = await this.forkContext(user, forkPricingId);
@@ -543,7 +557,8 @@ class PricingPullRequestService {
     const { pricing } = context;
     const parent = { pricingId: pricing.pricingId, name: pricing.name, slug: pricing.slug, organizationId: pricing.organizationId };
     if (!pricing.latestPublic) return { canPropose: false, reason: 'NO_PUBLIC_VERSION', parent };
-    if (!(await this.forkHasChanges(context, pricing.latestPublic))) return { canPropose: false, reason: 'NO_CHANGES', parent };
+    const sides = await this.forkSides(context);
+    if (!(await this.forkHasChanges(sides, pricing.latestPublic))) return { canPropose: false, reason: 'NO_CHANGES', parent };
     const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, context.fork.pricingId);
     if (open && open.authorId !== user.id) {
       return { canPropose: false, reason: 'PULL_REQUEST_EXISTS', parent, openPullRequest: { number: open.number } };
@@ -552,6 +567,7 @@ class PricingPullRequestService {
       canPropose: true,
       parent,
       ...(open ? { openPullRequest: { id: open.id, number: open.number, proposalRevision: open.proposalRevision } } : {}),
+      versions: (sides.candidates.length > 0 ? sides.candidates : [sides.proposal]).map(forkVersionOption),
     };
   }
 
@@ -566,13 +582,14 @@ class PricingPullRequestService {
   ): Promise<PullRequestPreviewDTO> {
     const resolutions = body.resolutions ?? {};
     if (body.source.kind === 'fork') {
-      const context = await this.requireForkContext(user, body.source.forkPricingId);
+      const { forkPricingId, versionId } = body.source;
+      const context = await this.requireForkContext(user, forkPricingId);
       return this.inForkQueue(context, async () => {
         const { pricing } = context;
         const latestPublic = this.requireLatestPublic(pricing);
         const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, context.fork.pricingId);
         if (open && open.authorId !== user.id) throw this.pullRequestExists(open);
-        const sides = await this.forkSides(context);
+        const sides = await this.forkSides(context, versionId);
         const inputs = await this.inputsOf(sides.base, latestPublic, sides.proposal);
         const result = this.computeResult(pricing, inputs.inputs, resolutions, undefined, false);
         return {
@@ -633,7 +650,7 @@ class PricingPullRequestService {
       const latestPublic = this.requireLatestPublic(pricing);
       if (open && !own) throw this.pullRequestExists(open);
 
-      const sides = await this.forkSides(context);
+      const sides = await this.forkSides(context, body.source.versionId);
       const { inputs, currentRaw } = await this.inputsOf(sides.base, latestPublic, sides.proposal);
       const manual = body.manualYaml === undefined ? undefined : this.loadManual(body.manualYaml, pricing.name);
       const token = readPreview(body.previewToken);
@@ -1045,42 +1062,65 @@ class PricingPullRequestService {
   }
 
   /**
-   * The versions of F a proposal merges: the newest one the caller may read is
-   * the proposal; the base is the version of F the parent last took in (the one
-   * the latest merged pull request from F proposed, while F keeps it), or else
-   * the newest version of F copied from P. `previouslyMerged` names the latest
-   * pull request from F that was merged.
+   * The versions of F a proposal merges. The base is the version of F the parent
+   * last took in (the one the latest merged pull request from F proposed, while F
+   * keeps it), or else the newest version of F copied from P. `candidates` are
+   * the versions the caller may read that were added after it, newest first: the
+   * proposal is `versionId` when it names one of them (404 for a version they may
+   * not read, 422 `VERSION_NOT_PROPOSABLE` for the base or an older one), or else
+   * the newest. `previouslyMerged` names the latest pull request from F that was merged.
    */
-  private async forkSides(context: ForkContext): Promise<{ base: ForkVersion; proposal: ForkVersion; previouslyMerged?: number }> {
+  private async forkSides(
+    context: ForkContext,
+    versionId?: string
+  ): Promise<{ base: ForkVersion; proposal: ForkVersion; candidates: ForkVersion[]; previouslyMerged?: number }> {
     const { fork, versions, pricing } = context;
-    const proposal = versions[0];
     const merged = await this.pricingPullRequestRepository.findMergedFromFork(pricing.pricingId, fork.pricingId);
     const previouslyMerged = merged[0]?.number;
-    for (const pullRequest of merged) {
-      const taken = versions.find(version => version.id === pullRequest.origin?.versionId);
-      if (taken) return { base: taken, proposal, previouslyMerged };
+    const taken = merged
+      .map(pullRequest => versions.find(version => version.id === pullRequest.origin?.versionId))
+      .find(version => version !== undefined);
+    const base = taken ?? versions.find(version => version.forkedFromPricingId === pricing.pricingId)!;
+    const candidates = versions.slice(0, versions.indexOf(base));
+    if (versionId === undefined) return { base, proposal: candidates[0] ?? versions[0], candidates, previouslyMerged };
+    const chosen = versions.find(version => version.id === versionId);
+    if (!chosen) throw notFound('Version');
+    if (!candidates.includes(chosen)) {
+      throw new PullRequestError(
+        422,
+        'VERSION_NOT_PROPOSABLE',
+        `Only versions of the fork added after ${base.version}, the one ${pricing.name} last took in, can be proposed`
+      );
     }
-    const copied = versions.find(version => version.forkedFromPricingId === pricing.pricingId)!;
-    return { base: copied, proposal, previouslyMerged };
+    return { base, proposal: chosen, candidates, previouslyMerged };
   }
 
   /**
-   * Whether the latest version of the fork would change the latest public version
-   * of P: the merge a proposal would make adds something. Compared in the latest
-   * syntax, so a fork that only differs in it has nothing to propose. A fork whose
-   * files cannot be read is taken to have changes: proposing says why it cannot.
+   * Whether some version of the fork would change the latest public version of P:
+   * the merge proposing it would make adds something. The newest proposable
+   * versions are tried in turn (at most `FORK_CHANGE_CHECKS`), so a fork whose
+   * latest version undid its changes can still propose an earlier one. Compared in
+   * the latest syntax, so a fork that only differs in it has nothing to propose. A
+   * fork whose files cannot be read is taken to have changes: proposing says why it cannot.
    */
-  private async forkHasChanges(context: ForkContext, latestPublic: StoredVersion): Promise<boolean> {
+  private async forkHasChanges(
+    sides: { base: ForkVersion; proposal: ForkVersion; candidates: ForkVersion[] },
+    latestPublic: StoredVersion
+  ): Promise<boolean> {
     try {
-      const sides = await this.forkSides(context);
-      // The fork's page asks on every visit: the answer for three versions, whose files never change, is kept.
-      const key = `${sides.base.id}:${latestPublic.id}:${sides.proposal.id}`;
-      const cached = this.forkChanges.get(key);
-      if (cached !== undefined) return cached;
-      const { inputs } = await this.inputsOf(sides.base, latestPublic, sides.proposal);
-      const changes = mergePricingDocs(inputs.base.doc, inputs.current.doc, inputs.proposal.doc).outcome !== 'no-changes';
-      this.forkChanges.set(key, changes);
-      return changes;
+      const proposals = sides.candidates.length > 0 ? sides.candidates.slice(0, FORK_CHANGE_CHECKS) : [sides.proposal];
+      for (const proposal of proposals) {
+        // The fork's page asks on every visit: the answer for three versions, whose files never change, is kept.
+        const key = `${sides.base.id}:${latestPublic.id}:${proposal.id}`;
+        let changes = this.forkChanges.get(key);
+        if (changes === undefined) {
+          const { inputs } = await this.inputsOf(sides.base, latestPublic, proposal);
+          changes = mergePricingDocs(inputs.base.doc, inputs.current.doc, inputs.proposal.doc).outcome !== 'no-changes';
+          this.forkChanges.set(key, changes);
+        }
+        if (changes) return true;
+      }
+      return false;
     } catch {
       return true;
     }

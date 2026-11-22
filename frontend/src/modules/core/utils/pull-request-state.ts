@@ -146,6 +146,7 @@ const MESSAGES: Record<MessageCode, (details: PullRequestMessageDetails) => stri
   PREVIEW_STALE: () => 'Something changed since the preview was computed. Review the new preview and try again.',
   NOT_A_FORK: () => 'This pricing is not a fork of another pricing.',
   PARENT_UNAVAILABLE: () => 'The pricing this fork comes from is not available.',
+  VERSION_NOT_PROPOSABLE: serverOr('That version of the fork cannot be proposed: pick a newer one.'),
   UNRESOLVED_CONFLICTS: () => 'Choose a side for every conflict.',
   UNKNOWN_RESOLUTION: () => 'Some choices no longer match the conflicts. Review them again.',
   VERSION_TAKEN: serverOr('That version already exists. Choose another label.'),

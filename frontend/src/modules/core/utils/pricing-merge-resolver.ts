@@ -26,7 +26,9 @@ export type ResolverAction =
   | { type: 'conflicts-loaded'; conflicts: MergeConflict[] }
   | { type: 'choose'; id: string; side: ConflictChoice }
   | { type: 'focus'; id: string }
-  | { type: 'move'; step: 1 | -1 };
+  | { type: 'move'; step: 1 | -1 }
+  /** Another merge altogether (another version proposed): no conflicts or choices until its preview. */
+  | { type: 'reset' };
 
 export function initialResolverState(conflicts: MergeConflict[] = []): ResolverState {
   return { conflicts, choices: {}, changed: [], activeId: conflicts[0]?.id ?? null };
@@ -86,6 +88,8 @@ export function resolverReducer(state: ResolverState, action: ResolverAction): R
       const activeId = movedActiveId(state, action.step);
       return activeId === null ? state : { ...state, activeId };
     }
+    case 'reset':
+      return initialResolverState();
   }
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FiGitPullRequest, FiInfo, FiX } from 'react-icons/fi';
 import PricingMergeResolver from '../../../core/components/pricing-merge-resolver';
@@ -6,6 +6,7 @@ import ProposalFields from '../../../core/components/proposal-fields';
 import { useMergeResolver } from '../../../core/hooks/useMergeResolver';
 import { usePricingVersionReader } from '../../../core/hooks/usePricingVersionReader';
 import customAlert from '../../../core/utils/custom-alert';
+import customConfirm from '../../../core/utils/custom-confirm';
 import {
   proposalFieldsError,
   pullRequestMessage,
@@ -17,10 +18,20 @@ import type {
   ConflictResolutions,
   CreatedPullRequest,
   ForkTarget,
+  ForkVersionOption,
+  NewForkPullRequest,
   PullRequestVersionRef,
 } from '../../types/pull-requests';
 
 type ForkOrigin = NonNullable<VersionData['forkedFrom']>;
+
+/** A version of the fork as the version picker names it: its label, whether it is the newest or private, and when it came. */
+function forkVersionLabel(option: ForkVersionOption, isNewest: boolean): string {
+  const added = option.addedAt
+    ? new Date(option.addedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })
+    : null;
+  return [option.version, isNewest ? 'latest' : null, option.private ? 'private' : null, added].filter(Boolean).join(' · ');
+}
 
 /** Where the pricing a fork proposes to lives, to open its pull request once proposed. */
 export interface ForkParentLocation {
@@ -30,11 +41,12 @@ export interface ForkParentLocation {
 }
 
 /**
- * The fork's latest version proposed to the pricing it came from: the three-way
- * merge against that pricing's latest public version, resolved here (or typed
- * by hand in the YAML view), with a title and a description. When the caller
- * already has a pull request open from this fork, proposing again replaces its
- * proposal.
+ * A version of the fork proposed to the pricing it came from: its newest by
+ * default, or another one added since the pricing last took one in, picked
+ * here. The three-way merge against that pricing's latest public version is
+ * resolved here (or typed by hand in the YAML view), with a title and a
+ * description. When the caller already has a pull request open from this fork,
+ * proposing again replaces its proposal.
  */
 function ForkProposalDialog({
   forkPricingId,
@@ -51,14 +63,31 @@ function ForkProposalDialog({
 }) {
   const { previewProposal, createPullRequest, getPullRequest } = usePricingPullRequestsApi();
   const readVersion = usePricingVersionReader();
+  const versions = target.versions ?? [];
+  // The newest version by default; picking another one computes the proposal again.
+  const [versionId, setVersionId] = useState(versions[0]?.id);
+  const source = useMemo<NewForkPullRequest['source']>(
+    () => ({ kind: 'fork', forkPricingId, ...(versionId ? { versionId } : {}) }),
+    [forkPricingId, versionId]
+  );
   // The author may type their proposal by hand in the YAML view; the fork does not change.
   const resolver = useMergeResolver(
-    useCallback(
-      (resolutions: ConflictResolutions) => previewProposal({ kind: 'fork', forkPricingId }, resolutions),
-      [previewProposal, forkPricingId]
-    ),
-    { editable: true }
+    useCallback((resolutions: ConflictResolutions) => previewProposal(source, resolutions), [previewProposal, source]),
+    { editable: true, source: versionId }
   );
+  const pickVersion = (next: string) => {
+    if (next === versionId) return;
+    if (!resolver.isManual) {
+      setVersionId(next);
+      return;
+    }
+    customConfirm('Proposing another version computes the proposal again and discards your edits to the YAML.', {
+      confirmLabel: 'Discard my edits',
+      cancelLabel: 'Keep editing',
+    })
+      .then(() => setVersionId(next))
+      .catch(() => {});
+  };
   const { parent } = target;
   const loadLatestYaml = useCallback(
     (version: PullRequestVersionRef) => readVersion({ ...location, pricingId: parent.pricingId }, version),
@@ -104,7 +133,7 @@ function ForkProposalDialog({
       const proposed = await createPullRequest({
         title: title.trim(),
         ...(description.trim() ? { description } : {}),
-        source: { kind: 'fork', forkPricingId },
+        source,
         ...submission,
       });
       const notices = proposed.warnings.map(pullRequestWarningMessage).join(' ');
@@ -148,8 +177,8 @@ function ForkProposalDialog({
               Propose changes to {parent.name}
             </h2>
             <p className="mt-0.5 text-xs text-tp-steel">
-              The latest version of this fork, merged with the latest public version of {parent.name}. The fork does not
-              change.
+              {versions.length > 1 ? 'A version' : 'The latest version'} of this fork, merged with the latest public
+              version of {parent.name}. The fork does not change.
             </p>
           </div>
           <button
@@ -161,6 +190,27 @@ function ForkProposalDialog({
             <FiX aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Only when there is a choice: the versions added since the parent last took one in, newest first. */}
+        {versions.length > 1 && (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <label htmlFor="fork-proposal-version" className="text-xs font-medium text-tp-ink">
+              Version to propose
+            </label>
+            <select
+              id="fork-proposal-version"
+              value={versionId}
+              onChange={event => pickVersion(event.target.value)}
+              className="h-8 min-w-0 max-w-full cursor-pointer rounded-lg border border-tp-input-border bg-tp-input-bg px-2.5 text-xs text-tp-ink outline-none transition-colors focus:border-tp-primary focus:ring-1 focus:ring-tp-primary/20"
+            >
+              {versions.map((option, index) => (
+                <option key={option.id} value={option.id}>
+                  {forkVersionLabel(option, index === 0)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {replaces && (
           <p className="flex shrink-0 items-start gap-2 rounded-lg border border-tp-severity-info-border bg-tp-severity-info-bg px-3 py-2 text-xs text-tp-ink">

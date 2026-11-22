@@ -1,5 +1,5 @@
 import container from '../config/container';
-import PricingPullRequestService from '../services/PricingPullRequestService';
+import PricingPullRequestService, { ForkSource } from '../services/PricingPullRequestService';
 import { PullRequestError } from '../types/models/PricingPullRequest';
 import { parseIfMatch, PreconditionFailedError } from '../utils/pricing-etag';
 import { PricingMergeError } from '../utils/pricing-merge';
@@ -25,6 +25,13 @@ function sendError(res: any, err: unknown) {
   const { status, message } = handleError(err);
   return res.status(status).json({ error: message });
 }
+
+/** A fork source as the service takes it: the fork and, when named, the version of it to propose. */
+const forkSourceOf = (source: { forkPricingId: string; versionId?: string }): ForkSource => ({
+  kind: 'fork',
+  forkPricingId: source.forkPricingId,
+  ...(source.versionId !== undefined ? { versionId: source.versionId } : {}),
+});
 
 class PricingPullRequestController {
   private pricingPullRequestService: PricingPullRequestService;
@@ -77,7 +84,7 @@ class PricingPullRequestController {
         const result = await this.pricingPullRequestService.proposeFromFork(req.user, {
           title,
           description,
-          source: { kind: 'fork', forkPricingId: source.forkPricingId },
+          source: forkSourceOf(source),
           resolutions,
           manualYaml,
           previewToken,
@@ -109,8 +116,8 @@ class PricingPullRequestController {
     try {
       const { source, resolutions } = req.body;
       const normalized = source.kind === 'fork'
-        ? { kind: 'fork' as const, forkPricingId: source.forkPricingId }
-        : { kind: 'text' as const, pricingId: source.pricingId, baseVersionId: source.baseVersionId, proposedYaml: source.proposedYaml };
+        ? forkSourceOf(source)
+        :{ kind: 'text' as const, pricingId: source.pricingId, baseVersionId: source.baseVersionId, proposedYaml: source.proposedYaml };
       res.json(await this.pricingPullRequestService.preview(req.user, { source: normalized, resolutions }));
     } catch (err) {
       sendError(res, err);
