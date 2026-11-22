@@ -168,23 +168,33 @@ function regenerate(original: PricingDoc, values: Array<[Field, string]>): Stamp
 export interface StampInputs {
   /** The document `loadPricingDoc` gives for the text. */
   loaded?: PricingDoc;
+  /**
+   * Stamps the lines of a text in an older syntax too, keeping it: for texts
+   * SPHERE publishes by parsing them as text (a pull request's merge), which
+   * pricing4ts therefore never rewrites.
+   */
+  keepSyntax?: boolean;
 }
 
 /**
  * Sets the top-level `saasName`, `version` and `createdAt` of a pricing YAML
  * changing only their lines, so comments and layout survive, and inserting the
- * ones that are missing. A text that is not in the latest syntax, or whose
- * stamped lines do not load back to exactly the requested change (a multi-line
- * `saasName: >`, a flow mapping, a quoted key...), is regenerated instead:
- * pricing4ts rewrites any file it reads in an older syntax, so only a text in
- * the latest one can be published as written. Only the stamped text is parsed:
+ * ones that are missing. A text whose stamped lines do not load back to
+ * exactly the requested change (a multi-line `saasName: >`, a flow mapping, a
+ * quoted key...) is regenerated instead, in the latest syntax, and so is one in
+ * an older syntax unless `keepSyntax`: pricing4ts rewrites any file it reads by
+ * path in an older syntax, so such a text is only kept where SPHERE parses it as
+ * text before publishing it. A text up to syntax 2.0, whose `version` is its
+ * syntax, is always regenerated when it gets a new `version`. Only the stamped text is parsed:
  * the result carries the parser's result for it, so the caller need not parse
  * it again, and a text the parser refuses throws a `StampRefusedError`.
  */
 export function stampTopLevel(text: string, fields: TopLevelFields, inputs: StampInputs = {}): StampResult {
   const original = inputs.loaded ?? loadPricingDoc(text, STORED_PRICING_MAX_BYTES);
   const values = expectedValues(fields);
-  if (original.syntaxVersion === LATEST_SYNTAX_VERSION) {
+  // Up to syntax 2.0 there is no `syntaxVersion`: `version` names the syntax, so a new label cannot keep it.
+  const versionIsSyntax = original.syntaxVersion === undefined && values.some(([key]) => key === 'version');
+  if ((inputs.keepSyntax && !versionIsSyntax) || original.syntaxVersion === LATEST_SYNTAX_VERSION) {
     const stamped = stampLines(text, values);
     const pricing = stampIsExact(original, stamped, values);
     if (pricing) return { text: stamped, regenerated: false, pricing };

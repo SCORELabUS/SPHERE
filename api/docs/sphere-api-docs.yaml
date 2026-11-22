@@ -4980,9 +4980,11 @@ paths:
         `UNRESOLVED_CONFLICTS` and 422 `UNKNOWN_RESOLUTION` (with `conflictIds`), 400
         `INVALID_PRICING` for a result the parser refuses and 400 `NO_CHANGES`.
 
-        The proposal is stored in the latest Pricing2Yaml syntax with the pricing's name as
-        `saasName`: one in an older syntax is upgraded and written again (warning
-        `SYNTAX_UPGRADED`). The author is always the caller.
+        The proposal is stored in the Pricing2Yaml syntax it was written in, with the pricing's
+        name as `saasName` stamped on its line; merges compare it in the latest syntax, so the
+        syntax is never a change. Only a text whose name cannot be stamped line by line is
+        written again, in the latest syntax (warning `SYNTAX_UPGRADED`, or `FORMAT_REGENERATED`
+        for one already in it). The author is always the caller.
 
         Rate limited per user (`PRICING_PR_RATE_LIMIT_MAX_REQUESTS` every
         `PRICING_PR_RATE_LIMIT_WINDOW_SECONDS`, 20 a minute by default).
@@ -5078,7 +5080,9 @@ paths:
         order: 404 when the caller may not read F, 403 when they may not publish versions of it
         (`CREATE`), and then 200 with `canPropose: false` and `reason` `NOT_A_FORK`,
         `PARENT_UNAVAILABLE` (P is gone or the caller may not read it: the same answer),
-        `NO_PUBLIC_VERSION` or `PULL_REQUEST_EXISTS` (another author's pull request from F is
+        `NO_PUBLIC_VERSION`, `NO_CHANGES` (merging F's latest version into P's latest public one
+        would add nothing, compared in the latest syntax, so a fork that only differs in it has
+        nothing to propose) or `PULL_REQUEST_EXISTS` (another author's pull request from F is
         open: only its `number` is given). The author of the open pull request from F gets its
         `id`, `number` and `proposalRevision`: proposing again replaces its proposal.
 
@@ -5297,7 +5301,13 @@ paths:
         - `merge`: for a maintainer, the latest version, private or not. It adds `target.private`,
           `versionTaken` (the suggested label is already a version of the pricing) and
           `defaults.private` (a merge into a private latest version is private by default). The
-          author who is not a maintainer gets 403.
+          author who is not a maintainer gets 403. Its `suggestedVersion` is the proposal's label,
+          unless a public version was published after the pull request's base and that label
+          reads as older than it (numbers compared as numbers, case and accents aside; only an
+          identical label stays): then it is the latest public version's label followed by
+          `-pr<number>` (replacing a `-pr<n>` that label already ends with when the result still
+          follows it), as long as that fits in 100 characters, and `suggestedVersionFollows` says
+          so. A private version's label is never used, since it would be published with the result.
 
         Anyone else gets 404. 409 `PULL_REQUEST_NOT_OPEN` or `PULL_REQUEST_MERGING` when the pull
         request is not open or is being merged. The answer is as `POST /pricing-pull-requests/previews`.
@@ -7982,6 +7992,19 @@ components:
             $ref: '#/components/schemas/PricingPullRequestConflict'
         resultYaml:
           type: string
+          description: |
+            In the syntax of the side it is when it is one side whole (the proposal, or the target
+            when merging adds nothing); a combination of both is written in the latest syntax.
+        targetNormalizedYaml:
+          type: string
+          description: |
+            Only when the result and the target are written in different Pricing2Yaml syntaxes:
+            the target as SPHERE compares it (in the latest syntax, without the values that syntax
+            reads as absent: `variables: {}`, `billing: {monthly: 1}`, `tags: []`). Compare it
+            with `resultNormalizedYaml`, so a syntax is not shown as a change.
+        resultNormalizedYaml:
+          type: string
+          description: The same for the result, sent with `targetNormalizedYaml`.
         regenerated:
           type: boolean
           description: The result is not the text of the proposal or of the target as written
@@ -8015,6 +8038,17 @@ components:
         versionTaken:
           type: boolean
           description: Merge previews only
+        suggestedVersionFollows:
+          type: object
+          description: >-
+            Merge previews only, when `suggestedVersion` is not the proposal's own label: the
+            proposal's label (`proposal`) reads as older than the latest public version's
+            (`latest`), which the suggestion follows.
+          properties:
+            proposal:
+              type: string
+            latest:
+              type: string
         defaults:
           type: object
           description: Merge previews only
@@ -8030,7 +8064,7 @@ components:
           type: boolean
         reason:
           type: string
-          enum: [NOT_A_FORK, PARENT_UNAVAILABLE, NO_PUBLIC_VERSION, PULL_REQUEST_EXISTS]
+          enum: [NOT_A_FORK, PARENT_UNAVAILABLE, NO_PUBLIC_VERSION, PULL_REQUEST_EXISTS, NO_CHANGES]
         parent:
           type: object
           properties:
@@ -8151,6 +8185,24 @@ components:
               type: string
             version:
               type: string
+            normalizedYaml:
+              type: string
+              description: Details only. See `followed`.
+            followed:
+              type: object
+              description: >-
+                Details only. The version the merge was made on (the latest one when it was
+                merged), so what the merge published can be compared with it. Only with the
+                merged version, and only to who may read both. When the two are written in
+                different Pricing2Yaml syntaxes, both come as SPHERE compares them (see the
+                detail's `base.normalizedYaml`): `normalizedYaml` here and on `merged`.
+              properties:
+                versionId:
+                  type: string
+                version:
+                  type: string
+                normalizedYaml:
+                  type: string
         closed:
           type: object
           properties:
@@ -8189,9 +8241,11 @@ components:
                 normalizedYaml:
                   type: string
                   description: |
-                    Only when `yaml` is in an older Pricing2Yaml syntax: the base upgraded to the latest
-                    one, as proposals are stored. Compare the proposal with it, so the upgrade is not
-                    shown as a change of the author's.
+                    Only when the base and the proposal are written in different Pricing2Yaml
+                    syntaxes, and then with the proposal's: the base as SPHERE compares it, in the
+                    latest syntax and without the values that syntax reads as absent (`variables: {}`,
+                    `billing: {monthly: 1}`, `tags: []`). Compare it with `proposed.normalizedYaml`,
+                    so a syntax is not shown as a change of the author's.
             proposed:
               type: object
               properties:
@@ -8199,6 +8253,10 @@ components:
                   type: string
                 yaml:
                   type: string
+                  description: The proposal in the syntax it was written in (merges compare it in the latest one).
+                normalizedYaml:
+                  type: string
+                  description: The same for the proposal, sent with `base.normalizedYaml`.
             origin:
               type: object
               description: |

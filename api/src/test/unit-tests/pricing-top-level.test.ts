@@ -165,6 +165,25 @@ describe('stampTopLevel', () => {
     expect(yaml.load(text)).toMatchObject({ syntaxVersion: '3.1', version: '2.0.0', saasName: 'Target "Pricing"' });
   });
 
+  it('with keepSyntax stamps a 3.0 text line by line and keeps its syntax', () => {
+    const { text, regenerated } = stampTopLevel(PRICING_30, FIELDS, { keepSyntax: true });
+    expect(regenerated).toBe(false);
+    expect(text).toContain('# Pricing of Demo, edited by hand');
+    expect(yaml.load(text)).toMatchObject({ syntaxVersion: '3.0', version: '2.0.0', saasName: 'Target "Pricing"' });
+    expect(retrievePricingFromText(text).version).toBe('2.0.0');
+  });
+
+  it('with keepSyntax still regenerates a 2.0 text given a new label, since its version is its syntax', () => {
+    const { text, regenerated } = stampTopLevel(PRICING_20, FIELDS, { keepSyntax: true });
+    expect(regenerated).toBe(true);
+    expect(yaml.load(text)).toMatchObject({ syntaxVersion: '3.1', version: '2.0.0' });
+    expect(retrievePricingFromText(text).version).toBe('2.0.0');
+    // Only its name: its lines are stamped and its syntax kept.
+    const named = stampTopLevel(PRICING_20, { saasName: 'Renamed' }, { keepSyntax: true });
+    expect(named.regenerated).toBe(false);
+    expect(yaml.load(named.text)).toMatchObject({ version: '2.0', saasName: 'Renamed' });
+  });
+
   it('gives a text pricing4ts publishes without rewriting it, unlike the 2.0 and 3.0 originals', () => {
     for (const source of [PRICING_20, PRICING_30]) {
       const original = tempFile(source);

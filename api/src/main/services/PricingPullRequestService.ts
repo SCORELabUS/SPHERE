@@ -15,6 +15,7 @@ import {
   PullRequestChanges,
   PullRequestDetailDTO,
   PullRequestError,
+  PullRequestFollowed,
   PullRequestListDTO,
   PullRequestMergeDTO,
   PullRequestOriginDTO,
@@ -30,14 +31,18 @@ import { formatPricingEtag, PreconditionFailedError, PricingPrecondition, Pricin
 import { requirePricingFile, writeUploadedPricingFile } from '../utils/pricing-files';
 import { applyResolutions, MergeOutcome, MergeOutput, mergePricingDocs } from '../utils/pricing-merge';
 import { withPricingRevisionLock } from '../utils/pricing-revision-lock';
+import { suggestMergeLabel } from '../utils/pull-request-label';
 import {
   dumpPricingDoc,
+  LATEST_SYNTAX_VERSION,
+  loadPricingDoc,
   normalizeProposalText,
   PricingDoc,
   PricingYamlError,
   PROPOSAL_DEFAULT_MAX_BYTES,
   PROPOSAL_MAX_BYTES_CEILING,
   STORED_PRICING_MAX_BYTES,
+  upgradeToLatestSyntax,
 } from '../utils/pricing-syntax';
 import { ParsedPricing, StampRefusedError, StampResult, stampTopLevel } from '../utils/pricing-top-level';
 import { serverHmac } from '../utils/users/helpers';
@@ -161,6 +166,8 @@ export interface MergeResult extends PullRequestMergeDTO {
  * in an older one. `loaded` (the text as loaded, when it was kept as written)
  * spares stamping the text loading it again, and `named` (the text already
  * stamped with a pricing's name, and parsed) spares stamping it with that name.
+ * `original` is the text as written, in its own syntax, which is what a pull
+ * request keeps and shows of it.
  */
 interface LoadedText {
   text: string;
@@ -168,6 +175,27 @@ interface LoadedText {
   regenerated: boolean;
   loaded?: PricingDoc;
   named?: { name: string; stamped: StampResult };
+  original?: { text: string; doc: PricingDoc };
+}
+
+/** The syntax a text is written in (none for 2.0, which named none). */
+const writtenSyntax = (text: LoadedText) => (text.original?.doc ?? text.doc).syntaxVersion as string | undefined;
+
+/** A text as SPHERE compares it: its document in the latest syntax, defaults left out. */
+const comparedText = (loaded: LoadedText) => dumpPricingDoc(loaded.doc);
+
+/** The same for a text not loaded yet (a stamped result). */
+const comparedTextOf = (text: string) =>
+  dumpPricingDoc(upgradeToLatestSyntax(loadPricingDoc(text, STORED_PRICING_MAX_BYTES)).doc);
+
+/**
+ * What two texts are compared by in one syntax: nothing when they are written
+ * in the same one (they are compared as written), or else both as SPHERE
+ * compares them, so neither the syntax nor what its upgrade writes is a change.
+ */
+function inOneSyntax(a: LoadedText, b: LoadedText): [string | undefined, string | undefined] {
+  if (writtenSyntax(a) === writtenSyntax(b)) return [undefined, undefined];
+  return [comparedText(a), comparedText(b)];
 }
 
 /** A stored version's file as read from disk (`raw`), and in the latest syntax. */
@@ -191,6 +219,10 @@ interface ComputedResult {
   validation: PreviewValidation;
   suggestedVersion: string;
   warnings: PullRequestWarning[];
+  /** The syntax `text` is written in. */
+  syntaxVersion: string | undefined;
+  /** The result and the target in one syntax, when they are written in different ones. */
+  compare: { targetNormalizedYaml?: string; resultNormalizedYaml?: string };
 }
 
 /**
@@ -339,9 +371,11 @@ class PricingPullRequestService {
   private notifier: PricingPullRequestNotifier;
   private permissionEngine = new PermissionEngine();
   private states = new LruCache<MergeSummary>(STATE_CACHE_ENTRIES);
-  private normalizedBases = new LruCache<{ normalizedYaml?: string }>(
+  /** Whether a fork has something to propose, by its base, the parent's latest public version and its proposal. */
+  private forkChanges = new LruCache<boolean>(STATE_CACHE_ENTRIES);
+  private comparisons = new LruCache<{ base?: string; proposed?: string }>(
     NORMALIZED_BASE_CACHE_ENTRIES,
-    value => value.normalizedYaml?.length ?? 0,
+    value => (value.base?.length ?? 0) + (value.proposed?.length ?? 0),
     NORMALIZED_BASE_CACHE_CHARACTERS
   );
 
@@ -394,9 +428,9 @@ class PricingPullRequestService {
   }
 
   /**
-   * Opens a pull request on P with a proposal written by hand (the editor or an
+   * Opens a pull request on P with a proposal written by hand (in the web, an
    * uploaded file). It must start from the latest public version of P and
-   * change something; it is stored in the latest syntax with P's name.
+   * change something; it is stored in its own syntax with P's name.
    */
   async create(user: LeanUser, body: NewPullRequestBody): Promise<PullRequestDetailDTO & { warnings: PullRequestWarning[] }> {
     const { source } = body;
@@ -509,6 +543,7 @@ class PricingPullRequestService {
     const { pricing } = context;
     const parent = { pricingId: pricing.pricingId, name: pricing.name, slug: pricing.slug, organizationId: pricing.organizationId };
     if (!pricing.latestPublic) return { canPropose: false, reason: 'NO_PUBLIC_VERSION', parent };
+    if (!(await this.forkHasChanges(context, pricing.latestPublic))) return { canPropose: false, reason: 'NO_CHANGES', parent };
     const open = await this.pricingPullRequestRepository.findOpenFromFork(pricing.pricingId, context.fork.pricingId);
     if (open && open.authorId !== user.id) {
       return { canPropose: false, reason: 'PULL_REQUEST_EXISTS', parent, openPullRequest: { number: open.number } };
@@ -711,10 +746,20 @@ class PricingPullRequestService {
       proposalRef: String(pullRequest.proposalRevision),
     });
     if (body.purpose === 'update') return preview;
+    // A label that reads as older than a public version published after the base gives way to one that follows it.
+    // Only a public one: the label of a private version would be published with the result.
+    const latestPublic = pricing.latestPublic;
+    const suggestedVersion = latestPublic
+      ? suggestMergeLabel(preview.suggestedVersion, latestPublic.version, pullRequest.number, latestPublic.id !== pullRequest.base.versionId)
+      : preview.suggestedVersion;
     return {
       ...preview,
+      suggestedVersion,
+      ...(latestPublic && suggestedVersion !== preview.suggestedVersion
+        ? { suggestedVersionFollows: { proposal: preview.suggestedVersion, latest: latestPublic.version } }
+        : {}),
       target: { ...preview.target, private: target.private },
-      versionTaken: await this.pricingRepository.hasVersionLabel(pricing.pricingId, preview.suggestedVersion),
+      versionTaken: await this.pricingRepository.hasVersionLabel(pricing.pricingId, suggestedVersion),
       defaults: { private: target.private },
     };
   }
@@ -818,9 +863,19 @@ class PricingPullRequestService {
     });
     if (!target || String(target.pricingId) !== pricing.pricingId) throw changedDuringMerge();
     const now = new Date();
-    const stamped = stampTopLevel(result.text, { version: label, saasName: pricing.name, createdAt: now });
+    // In the result's own syntax: the published file is parsed as text, so pricing4ts does not rewrite it.
+    const stamped = stampTopLevel(result.text, { version: label, saasName: pricing.name, createdAt: now }, { keepSyntax: true });
+    const publishedSyntax = stamped.regenerated ? LATEST_SYNTAX_VERSION : result.syntaxVersion;
 
-    const lock = await this.pricingPullRequestRepository.reserveForMerge(id, proposalRevision, user.id, now);
+    // The version it is made on goes with the reservation, so whoever finishes the merge keeps it,
+    // with both texts as SPHERE compares them when they are written in different syntaxes.
+    const differ = publishedSyntax !== writtenSyntax(current);
+    const followed: PullRequestFollowed = {
+      followedVersionId: latest.id,
+      followedVersion: latest.version,
+      ...(differ ? { followedYaml: comparedText(current), mergedYaml: comparedTextOf(stamped.text) } : {}),
+    };
+    const lock = await this.pricingPullRequestRepository.reserveForMerge(id, proposalRevision, user.id, now, followed);
     if (!lock) throw await this.refusalOf(id, true);
     const file = writeUploadedPricingFile(pricing.organizationId, pricing.slug, label, stamped.text, 'pr');
     // The revision read with the latest version, which the caller may read: they maintain P.
@@ -859,6 +914,7 @@ class PricingPullRequestService {
         versionId: version.id,
         version: label,
         proposalRevision,
+        ...followed,
       })) ??
       (await this.pricingPullRequestRepository.findById(id)) ??
       pullRequest;
@@ -896,6 +952,14 @@ class PricingPullRequestService {
       versionId: published.id,
       version: published.version,
       proposalRevision: lock.revision,
+      ...(lock.followedVersionId
+        ? {
+          followedVersionId: lock.followedVersionId,
+          followedVersion: lock.followedVersion,
+          ...(lock.followedYaml !== undefined ? { followedYaml: lock.followedYaml } : {}),
+          ...(lock.mergedYaml !== undefined ? { mergedYaml: lock.mergedYaml } : {}),
+        }
+        : {}),
     });
     return merged ?? (await this.pricingPullRequestRepository.findById(pullRequest.id)) ?? pullRequest;
   }
@@ -1000,6 +1064,28 @@ class PricingPullRequestService {
     return { base: copied, proposal, previouslyMerged };
   }
 
+  /**
+   * Whether the latest version of the fork would change the latest public version
+   * of P: the merge a proposal would make adds something. Compared in the latest
+   * syntax, so a fork that only differs in it has nothing to propose. A fork whose
+   * files cannot be read is taken to have changes: proposing says why it cannot.
+   */
+  private async forkHasChanges(context: ForkContext, latestPublic: StoredVersion): Promise<boolean> {
+    try {
+      const sides = await this.forkSides(context);
+      // The fork's page asks on every visit: the answer for three versions, whose files never change, is kept.
+      const key = `${sides.base.id}:${latestPublic.id}:${sides.proposal.id}`;
+      const cached = this.forkChanges.get(key);
+      if (cached !== undefined) return cached;
+      const { inputs } = await this.inputsOf(sides.base, latestPublic, sides.proposal);
+      const changes = mergePricingDocs(inputs.base.doc, inputs.current.doc, inputs.proposal.doc).outcome !== 'no-changes';
+      this.forkChanges.set(key, changes);
+      return changes;
+    } catch {
+      return true;
+    }
+  }
+
   /** Reads the files of a merge's three versions, each once. */
   private async inputsOf(base: StoredVersion, current: StoredVersion, proposal: StoredVersion) {
     const read = new Map<string, Promise<StoredText>>();
@@ -1044,6 +1130,8 @@ class PricingPullRequestService {
     let source: LoadedText;
     // The proposal's label, stamped on the target's text when that is the result.
     let label: string | undefined;
+    // Combining both sides writes the result again, in the latest syntax; a whole side keeps its own.
+    let combined = false;
     if (manual) source = manual;
     else if (resolved.outcome === 'proposal-only') source = inputs.proposal;
     else if (resolved.outcome === 'no-changes') {
@@ -1055,6 +1143,7 @@ class PricingPullRequestService {
       // The merge keeps the current version's label; the proposal names its own.
       const doc = proposalVersion === undefined ? resolved.doc : { ...resolved.doc, version: proposalVersion };
       source = { text: dumpPricingDoc(doc), doc, regenerated: true };
+      combined = true;
     }
     const stamped = this.withName(source, pricing.name, label);
     // Stamping parsed the text it returns, and says why when the parser refused it.
@@ -1063,19 +1152,30 @@ class PricingPullRequestService {
       : { validation: stamped.validation };
 
     const warnings: PullRequestWarning[] = [];
-    if ([inputs.base, inputs.current, inputs.proposal, manual].some(text => text?.regenerated)) warnings.push({ code: 'SYNTAX_UPGRADED' });
+    // Written in the latest syntax from texts in older ones: a combination, or a side whose lines could not be stamped.
+    const olderInputs = [inputs.base, inputs.current, inputs.proposal, manual].some(text => text?.regenerated);
+    const upgraded = combined ? olderInputs : source.regenerated && stamped.regenerated;
+    if (upgraded) warnings.push({ code: 'SYNTAX_UPGRADED' });
     warnings.push(...resolved.warnings);
     if (stamped.regenerated && !warnings.some(warning => warning.code === 'FORMAT_REGENERATED')) {
       warnings.push({ code: 'FORMAT_REGENERATED' });
     }
+    const syntaxVersion = combined || stamped.regenerated ? LATEST_SYNTAX_VERSION : writtenSyntax(source);
+    // Written in different syntaxes, the result and the target are both compared as SPHERE compares them.
+    const compare: ComputedResult['compare'] =
+      syntaxVersion !== writtenSyntax(inputs.current)
+        ? { targetNormalizedYaml: comparedText(inputs.current), resultNormalizedYaml: comparedTextOf(stamped.text) }
+        : {};
     return {
       output,
       outcome: resolved.outcome,
       text: stamped.text,
-      regenerated: source.regenerated || stamped.regenerated,
+      regenerated: combined || stamped.regenerated,
       validation,
       suggestedVersion: version ?? String(proposalVersion ?? ''),
       warnings,
+      syntaxVersion,
+      compare,
     };
   }
 
@@ -1089,9 +1189,20 @@ class PricingPullRequestService {
     name: string,
     version?: string
   ): { text: string; regenerated: boolean; pricing?: ParsedPricing; validation: PreviewValidation } {
-    if (version === undefined && source.named?.name === name) return { ...source.named.stamped, validation: { ok: true } };
+    // The text as written, in its own syntax when its lines can be stamped.
+    const written = source.original ?? { text: source.text, doc: source.loaded };
+    const doc = written.doc ?? loadPricingDoc(written.text, STORED_PRICING_MAX_BYTES);
+    // Up to syntax 2.0 `version` is the syntax, and a merge stamps its label there: such a result is
+    // written in the latest syntax from the start, so the preview shows what is published.
+    const keepSyntax = doc.syntaxVersion !== undefined;
+    if (keepSyntax && version === undefined && source.named?.name === name) {
+      return { ...source.named.stamped, validation: { ok: true } };
+    }
     try {
-      return { ...stampTopLevel(source.text, { saasName: name, version }, { loaded: source.loaded }), validation: { ok: true } };
+      return {
+        ...stampTopLevel(written.text, { saasName: name, version }, { loaded: doc, keepSyntax }),
+        validation: { ok: true },
+      };
     } catch (error) {
       if (!(error instanceof StampRefusedError)) throw error;
       return { text: error.text, regenerated: error.regenerated, validation: { ok: false, error: error.message } };
@@ -1111,6 +1222,7 @@ class PricingPullRequestService {
       outcome: result.outcome,
       conflicts: result.output.conflicts,
       resultYaml: result.text,
+      ...result.compare,
       regenerated: result.regenerated,
       validation: result.validation,
       warnings: previouslyMerged === undefined ? result.warnings : [...result.warnings, { code: 'PREVIOUSLY_MERGED', number: previouslyMerged }],
@@ -1245,15 +1357,16 @@ class PricingPullRequestService {
   }
 
   /**
-   * A proposal as it is stored: loaded within the limits, in the latest syntax,
-   * accepted by the parser and with P's name.
+   * A proposal as it is stored: loaded within the limits, accepted by the parser,
+   * with P's name and in the syntax it was written in. It is merged in the
+   * latest one (`doc`), so the syntax is never a change.
    */
   private prepareProposal(text: string, pricing: TargetPricing) {
     const normalized = normalizeProposalText(text, limits().proposalBytes);
     const stamped = this.stampProposal(normalized, pricing.name);
     const warnings: PullRequestWarning[] = [];
-    if (normalized.regenerated) warnings.push({ code: 'SYNTAX_UPGRADED' });
-    else if (stamped.regenerated) warnings.push({ code: 'FORMAT_REGENERATED' });
+    // Only a text whose name could not be stamped line by line is written again, in the latest syntax.
+    if (stamped.regenerated) warnings.push({ code: normalized.regenerated ? 'SYNTAX_UPGRADED' : 'FORMAT_REGENERATED' });
     return { text: stamped.text, doc: normalized.doc, suggestedVersion: String(stamped.pricing.version), warnings };
   }
 
@@ -1266,8 +1379,9 @@ class PricingPullRequestService {
    * `saasName` is accepted with P's.
    */
   private stampProposal(normalized: LoadedText, name: string): StampResult {
+    const written = normalized.original ?? { text: normalized.text, doc: normalized.loaded };
     try {
-      return stampTopLevel(normalized.text, { saasName: name }, { loaded: normalized.loaded });
+      return stampTopLevel(written.text, { saasName: name }, { loaded: written.doc, keepSyntax: true });
     } catch (error) {
       if (error instanceof StampRefusedError) throw new PullRequestError(400, 'INVALID_PRICING', error.message);
       throw error;
@@ -1352,10 +1466,11 @@ class PricingPullRequestService {
     pricing: TargetPricing,
     viewer: Viewer,
     authors: Map<string, string>,
-    targetDoc: () => Promise<PricingDoc>
+    targetDoc: () => Promise<PricingDoc>,
+    withFollowed = false
   ): Promise<PullRequestSummaryDTO> {
     const username = authors.get(pullRequest.authorId);
-    const merged = await this.mergedOf(pullRequest, pricing, viewer);
+    const merged = await this.mergedOf(pullRequest, pricing, viewer, withFollowed);
     return {
       id: pullRequest.id,
       pricingId: pullRequest.pricingId,
@@ -1384,45 +1499,69 @@ class PricingPullRequestService {
 
   private async detailOf({ pullRequest, pricing, viewer }: LoadedPullRequest): Promise<PullRequestDetailDTO> {
     const authors = await this.authorsOf([pullRequest]);
-    const summary = await this.summaryOf(pullRequest, pricing, viewer, authors, this.targetDocOf(pricing, viewer));
+    const summary = await this.summaryOf(pullRequest, pricing, viewer, authors, this.targetDocOf(pricing, viewer), true);
+    const comparison = this.comparisonOf(pullRequest);
     const origin = await this.originOf(pullRequest, viewer);
     return {
       ...summary,
       description: pullRequest.description,
-      base: { ...summary.base, yaml: pullRequest.base.yaml, ...this.normalizedBaseOf(pullRequest) },
-      proposed: { ...summary.proposed, yaml: pullRequest.proposed.yaml },
+      base: { ...summary.base, yaml: pullRequest.base.yaml, ...(comparison.base !== undefined ? { normalizedYaml: comparison.base } : {}) },
+      proposed: {
+        ...summary.proposed,
+        yaml: pullRequest.proposed.yaml,
+        ...(comparison.proposed !== undefined ? { normalizedYaml: comparison.proposed } : {}),
+      },
       ...(origin ? { origin } : {}),
       permissions: this.permissionsOf(pullRequest, pricing, viewer, summary.state),
     };
   }
 
   /**
-   * A base stored in an older syntax, as the proposal is stored (upgraded): what the
-   * detail compares the proposal with, so the upgrade is not shown as the author's change.
-   * Computed once per base: the stored base only changes with the proposal revision.
+   * What the detail compares the base and the proposal by, in one syntax, so a
+   * syntax is never shown as the author's change: when they are written in
+   * different ones, both as SPHERE compares them (`inOneSyntax`). Computed once
+   * per proposal revision, which is when either changes.
    */
-  private normalizedBaseOf(pullRequest: PricingPullRequest): { normalizedYaml?: string } {
+  private comparisonOf(pullRequest: PricingPullRequest): { base?: string; proposed?: string } {
     const key = [pullRequest.id, pullRequest.proposalRevision, pullRequest.base.versionId].join(':');
-    const cached = this.normalizedBases.get(key);
+    const cached = this.comparisons.get(key);
     if (cached) return cached;
-    let normalized: { normalizedYaml?: string } = {};
+    let comparison: { base?: string; proposed?: string } = {};
     try {
-      const loaded = this.loadStored(pullRequest.base.yaml);
-      if (loaded.regenerated) normalized = { normalizedYaml: loaded.text };
+      const [base, proposed] = inOneSyntax(this.loadStored(pullRequest.base.yaml), this.loadStored(pullRequest.proposed.yaml));
+      comparison = { ...(base !== undefined ? { base } : {}), ...(proposed !== undefined ? { proposed } : {}) };
     } catch {
-      // A base that does not load is shown as stored.
+      // Texts that do not load are shown as stored.
     }
-    this.normalizedBases.set(key, normalized);
-    return normalized;
+    this.comparisons.set(key, comparison);
+    return comparison;
   }
 
-  /** The merged version is named only to who may read it now. */
-  private async mergedOf(pullRequest: PricingPullRequest, pricing: TargetPricing, viewer: Viewer) {
+  /**
+   * The merged version is named only to who may read it now. A detail
+   * (`withFollowed`) adds the version it was merged on, to show what the merge
+   * published, only if they may read both; listings do not need it.
+   */
+  private async mergedOf(pullRequest: PricingPullRequest, pricing: TargetPricing, viewer: Viewer, withFollowed = false) {
     if (!pullRequest.merged) return undefined;
-    const { at, versionId, version } = pullRequest.merged;
-    const stored = await this.pricingRepository.findVersionOf(pricing.pricingId, versionId);
-    const readable = stored !== null && (!stored.private || viewer.readsPrivate);
-    return readable ? { at, versionId, version } : { at };
+    const { at, versionId, version, followedVersionId, followedVersion, followedYaml, mergedYaml } = pullRequest.merged;
+    const readable = async (id: string) => {
+      const stored = await this.pricingRepository.findVersionOf(pricing.pricingId, id);
+      return stored !== null && (!stored.private || viewer.readsPrivate);
+    };
+    if (!(await readable(versionId))) return { at };
+    const followed =
+      withFollowed && followedVersionId && followedVersion !== undefined && (await readable(followedVersionId))
+        ? {
+          ...(mergedYaml !== undefined ? { normalizedYaml: mergedYaml } : {}),
+          followed: {
+            versionId: followedVersionId,
+            version: followedVersion,
+            ...(followedYaml !== undefined ? { normalizedYaml: followedYaml } : {}),
+          },
+        }
+        : {};
+    return { at, versionId, version, ...followed };
   }
 
   /**

@@ -692,7 +692,7 @@ describe('Pricing pull requests', () => {
       expect(await pullRequestCount(scene.pricingId)).toBe(before);
     });
 
-    it('Stores a proposal in an older syntax in the latest one, and says so.', async () => {
+    it('Keeps a proposal in the syntax it was written in, comparing it with the base in the latest one.', async () => {
       const external = await outsider();
       const doc: any = loadPricingDoc(pricingYaml(scene.name, '2.1.0', both(V2, goldAt(6))), STORED_PRICING_MAX_BYTES);
       doc.syntaxVersion = '3.0';
@@ -702,11 +702,14 @@ describe('Pricing pull requests', () => {
       });
 
       expect(response.status).toBe(201);
-      expect(response.body.warnings).toEqual([{ code: 'SYNTAX_UPGRADED' }]);
-      expect(loadPricingDoc(response.body.proposed.yaml, STORED_PRICING_MAX_BYTES).syntaxVersion).toBe('3.1');
+      expect(response.body.warnings).toEqual([]);
+      expect(loadPricingDoc(response.body.proposed.yaml, STORED_PRICING_MAX_BYTES).syntaxVersion).toBe('3.0');
+      // Written in different syntaxes: both come as SPHERE compares them, in the latest one.
+      expect(docOf(response.body.proposed.normalizedYaml)).toEqual(upgradeToLatestSyntax(docOf(response.body.proposed.yaml)).doc);
+      expect(docOf(response.body.base.normalizedYaml)).toEqual(upgradeToLatestSyntax(docOf(response.body.base.yaml)).doc);
     });
 
-    it('Sends a base stored in an older syntax also upgraded, so the detail shows only the author\'s changes.', async () => {
+    it('Compares base and proposal as written when they share a syntax, and upgraded when they do not.', async () => {
       const own = await publicScene();
       const external = await outsider();
       // v2's file as the seeded pricings keep theirs: in syntax 2.1, which the updater changes beyond its number.
@@ -723,19 +726,29 @@ describe('Pricing pull requests', () => {
       expect(created.status, JSON.stringify(created.body)).toBe(201);
       const shown = await detail(external.token, created.body.id);
 
+      // Both in 2.1: compared as written, and the proposal changes GOLD's price and nothing else.
       expect(shown.status).toBe(200);
       expect(shown.body.base.yaml).toBe(olderText);
-      const normalized = docOf(shown.body.base.normalizedYaml);
-      expect(normalized.syntaxVersion).toBe('3.1');
-      expect(normalized).toEqual(upgradeToLatestSyntax(docOf(olderText)).doc);
-      // Against it, the proposal changes GOLD's price and nothing else.
+      expect(shown.body.base).not.toHaveProperty('normalizedYaml');
+      expect(shown.body.proposed).not.toHaveProperty('normalizedYaml');
       const comparable = (doc: any) => {
         const { saasName, version, createdAt, ...rest } = doc;
         void saasName; void version; void createdAt;
         return rest;
       };
-      expect(comparable(docOf(shown.body.proposed.yaml))).toEqual(comparable(goldAtNormalized(normalized, 7.5)));
-      expect(comparable(docOf(shown.body.proposed.yaml))).not.toEqual(comparable(docOf(olderText)));
+      expect(docOf(shown.body.proposed.yaml).syntaxVersion).toBe('2.1');
+      expect(comparable(docOf(shown.body.proposed.yaml))).toEqual(comparable(proposal));
+
+      // A proposal in the latest syntax is compared with the base upgraded, so the upgrade is not the author's change.
+      const normalized = upgradeToLatestSyntax(docOf(olderText)).doc;
+      const upgraded = await open(external.token, {
+        title: 'From 3.1 on 2.1', source: textSource(own.pricingId, own.v2.id, dumpPricingDoc(goldAtNormalized(normalized, 8))),
+      });
+      expect(upgraded.status, JSON.stringify(upgraded.body)).toBe(201);
+      const against = (await detail(external.token, upgraded.body.id)).body;
+      expect(docOf(against.base.normalizedYaml)).toEqual(normalized);
+      expect(comparable(docOf(against.proposed.normalizedYaml))).toEqual(comparable(goldAtNormalized(normalized, 8)));
+      expect(comparable(docOf(against.proposed.yaml))).toEqual(comparable(goldAtNormalized(normalized, 8)));
 
       // A base in the latest syntax is sent once.
       const current = await open(external.token, {
@@ -1696,9 +1709,99 @@ describe('Pricing pull requests', () => {
       });
       const grandchildId = String((await PricingMongoose.findById(grandchild.id).lean())!.pricingId);
 
+      // Just made, it has nothing to propose to the fork it came from.
+      expect((await forkTarget(third.token, grandchildId)).body).toEqual({
+        canPropose: false, reason: 'NO_CHANGES', parent: expect.objectContaining({ pricingId: scene.forkId }),
+      });
+      await publishFork({ forker: third, forkOrganizationId: thirdOrganizationId, fork: grandchild }, '1.2.0', both(goldAt(30), platinumAt(60)));
+
       const target = await forkTarget(third.token, grandchildId);
 
       expect(target.body).toMatchObject({ canPropose: true, parent: { pricingId: scene.forkId } });
+    });
+
+    it('Keeps the syntax of the version it copies, so a fork of a version in 2.1 has nothing to propose until it changes.', async () => {
+      const own = await publicScene();
+      // v2's file as the seeded pricings keep theirs: in syntax 2.1, which the updater changes beyond its number.
+      const file = await fileOf(own.v2.id);
+      const older: any = { ...docOf(readFileSync(file, 'utf8')), syntaxVersion: '2.1' };
+      older.usageLimits.maxVisitsPerMonthAndPet = { ...older.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete older.usageLimits.maxVisitsPerMonthAndPet.period;
+      older.billing = { monthly: 1, annual: 0.8 };
+      const olderText = yaml.dump(older);
+      await fsp.writeFile(file, olderText);
+      const { user: forker, organizationId: forkOrganizationId } = await createAndLoginUser('USER');
+      const fork = await forkPricingIntoOrganization({
+        token: forker.token, sourceOrganizationId: own.organizationId, sourceSlug: own.slug, sourceVersion: '2.0.0',
+        targetOrganizationId: forkOrganizationId, name: `fork_${randomSuffix()}`,
+      });
+      const forkId = String((await PricingMongoose.findById(fork.id).lean())!.pricingId);
+
+      // The copy is the original in 2.1, billing included, with the fork's name and date: nothing for pricing4ts to rewrite.
+      const withoutNameAndDate = (doc: any) => {
+        const { saasName, createdAt, ...rest } = doc;
+        void saasName; void createdAt;
+        return rest;
+      };
+      expect(withoutNameAndDate(docOf(readFileSync(await fileOf(fork.id), 'utf8')))).toEqual(withoutNameAndDate(older));
+      expect(readFileSync(file, 'utf8')).toBe(olderText);
+      expect((await forkTarget(forker.token, forkId)).body).toMatchObject({ canPropose: false, reason: 'NO_CHANGES' });
+    });
+
+    it('Counts only the author\'s changes when a later version of the fork is upgraded on disk, as an upload in 2.1 is.', async () => {
+      const own = await publicScene();
+      // In 2.1 with the default billing, which pricing4ts leaves out when it writes the upgraded file.
+      const file = await fileOf(own.v2.id);
+      const older: any = { ...docOf(readFileSync(file, 'utf8')), syntaxVersion: '2.1', billing: { monthly: 1 } };
+      older.usageLimits.maxVisitsPerMonthAndPet = { ...older.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete older.usageLimits.maxVisitsPerMonthAndPet.period;
+      await fsp.writeFile(file, yaml.dump(older));
+      const { user: forker, organizationId: forkOrganizationId } = await createAndLoginUser('USER');
+      const fork = await forkPricingIntoOrganization({
+        token: forker.token, sourceOrganizationId: own.organizationId, sourceSlug: own.slug, sourceVersion: '2.0.0',
+        targetOrganizationId: forkOrganizationId, name: `fork_${randomSuffix()}`,
+      });
+      const forkId = String((await PricingMongoose.findById(fork.id).lean())!.pricingId);
+      const forkSlug = (await PricingMongoose.findById(fork.id).lean())!.slug;
+      const copy = readFileSync(await fileOf(fork.id), 'utf8');
+      // A new version of the fork through the ordinary upload, in 2.1: pricing4ts writes it again in 3.1.
+      const upload = async (version: string, text: string) => {
+        const upload = path.join(os.tmpdir(), `pull_request_${randomSuffix()}.yml`);
+        await fsp.writeFile(upload, text.replace(/^version:.*$/m, `version: ${version}`), 'utf8');
+        generatedFilesToDelete.add(upload);
+        const response = await request(app())
+          .post(`${BASE_PATH}/pricings/${forkOrganizationId}/${forkSlug}/${version}`)
+          .set(bearer(forker.token))
+          .field('private', 'false')
+          .attach('yaml', upload);
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+        pricingsToDelete.add(response.body.id);
+        return response.body.id as string;
+      };
+
+      const same = docOf(readFileSync(await fileOf(await upload('2.0.1', copy)), 'utf8'));
+      expect(same).toMatchObject({ syntaxVersion: '3.1', variables: {} });
+      expect(same).not.toHaveProperty('billing');
+      expect((await forkTarget(forker.token, forkId)).body).toMatchObject({ canPropose: false, reason: 'NO_CHANGES' });
+
+      await upload('2.0.2', yaml.dump({ ...older, saasName: docOf(copy).saasName, plans: { ...older.plans, GOLD: { ...older.plans.GOLD, price: 42 } } }));
+      expect((await forkTarget(forker.token, forkId)).body).toMatchObject({ canPropose: true });
+      const preview = await previewFork(forker.token, forkId);
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      const created = await proposeFork(forker.token, forkId, preview.body);
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const shown = (await detail(forker.token, created.body.id)).body;
+      // The base is in 2.1 and the proposal in 3.1: compared in 3.1, they differ in GOLD's price alone.
+      const comparable = (doc: any) => {
+        const { saasName, version, createdAt, ...rest } = doc;
+        void saasName; void version; void createdAt;
+        return rest;
+      };
+      const base = comparable(docOf(shown.base.normalizedYaml));
+      const proposed = comparable(docOf(shown.proposed.normalizedYaml));
+      expect(proposed).toEqual(goldAtNormalized(base, 42));
+      // As stored, the proposal keeps what pricing4ts wrote; compared, that is no change.
+      expect(docOf(shown.proposed.yaml)).toMatchObject({ variables: {} });
     });
 
     it('Answers the same whether the parent is gone or cannot be read (CA-17).', async () => {
@@ -2522,6 +2625,121 @@ describe('Pricing pull requests', () => {
   // ---------------------------------------------------------------------------
 
   describe('Merging a pull request', { timeout: 30000 }, () => {
+    it('Suggests a label that follows a version published after the proposal, when the proposal\'s own reads as older.', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const created = await open(author.token, {
+        title: 'Raise GOLD', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '2.1.0', both(V2, goldAt(7.5)))),
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      // Another proposal on the same base, whose label reads as newer than the version published after both.
+      const newer = await open(author.token, {
+        title: 'Raise PLATINUM', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '3.0.0', both(V2, goldAt(9)))),
+      });
+      expect(newer.status, JSON.stringify(newer.body)).toBe(201);
+      const v3 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '2.10.0', change: both(V2, platinumAt(21)),
+      });
+
+      const preview = await mergePreviewOf(scene.owner.token, created.body.id);
+      const following = `2.10.0-pr${created.body.number}`;
+      expect(preview).toMatchObject({
+        target: { id: v3.id }, outcome: 'merged', suggestedVersion: following, versionTaken: false,
+        suggestedVersionFollows: { proposal: '2.1.0', latest: '2.10.0' },
+      });
+      // The proposal and its detail keep the label the author gave it.
+      expect((await detail(author.token, created.body.id)).body.proposed.suggestedVersion).toBe('2.1.0');
+
+      const response = await mergeAs(scene.owner.token, created.body.id, preview);
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      const followed = { versionId: v3.id, version: '2.10.0' };
+      expect(response.body.pullRequest.merged).toMatchObject({ version: following, followed });
+      expect((await detail(author.token, created.body.id)).body.merged).toMatchObject({ version: following, followed });
+
+      // A label that reads as newer than the latest version is the proposal's own.
+      const own = await mergePreviewOf(scene.owner.token, newer.body.id);
+      expect(own.suggestedVersion).toBe('3.0.0');
+      expect(own.suggestedVersionFollows).toBeUndefined();
+    });
+
+    it('Never builds the suggested label from a private version, which would be published with it.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const created = await open(author.token, {
+        title: 'Older label', source: textSource(scene.pricingId, scene.v2.id, pricingYaml(scene.name, '1.5.0', both(V2, platinumAt(12)))),
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      // The private v3 is the newest, but the pull request starts from the latest public version.
+      const preview = await mergePreviewOf(scene.owner.token, created.body.id);
+      expect(preview).toMatchObject({ target: { id: scene.v3.id, private: true }, suggestedVersion: '1.5.0' });
+      expect(preview.suggestedVersionFollows).toBeUndefined();
+
+      // A public version published after the base is followed, never the private one.
+      const v4 = await publish(scene.owner.token, scene.organizationId, {
+        name: scene.name, slug: scene.slug, version: '2.5.0', change: both(V2, goldAt(3)),
+      });
+      const behind = await mergePreviewOf(scene.owner.token, created.body.id);
+      expect(behind).toMatchObject({
+        target: { id: v4.id }, suggestedVersion: `2.5.0-pr${created.body.number}`,
+        suggestedVersionFollows: { proposal: '1.5.0', latest: '2.5.0' },
+      });
+      const response = await mergeAs(scene.owner.token, created.body.id, behind, { private: false });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(leaks(await detail(author.token, created.body.id), scene.markers)).toEqual([]);
+    });
+
+    it('Sends the version a merge was made on upgraded when it is in an older syntax than the merged one.', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      // v2's file as the seeded pricings keep theirs: in syntax 2.1, which the updater changes beyond its number.
+      const file = await fileOf(scene.v2.id);
+      const older: any = { ...docOf(readFileSync(file, 'utf8')), syntaxVersion: '2.1' };
+      older.usageLimits.maxVisitsPerMonthAndPet = { ...older.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete older.usageLimits.maxVisitsPerMonthAndPet.period;
+      const olderText = yaml.dump(older);
+      await fsp.writeFile(file, olderText);
+      // A proposal in the latest syntax: the merge publishes it in it, and the version it follows is in 2.1.
+      const proposal = { ...goldAtNormalized(upgradeToLatestSyntax(older).doc, 7.5), version: '2.1.0' };
+      const created = await open(author.token, { title: 'From 3.1', source: textSource(scene.pricingId, scene.v2.id, dumpPricingDoc(proposal)) });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+      const { response } = await mergeAsShown(scene.owner.token, created.body.id);
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      const merged = (await detail(author.token, created.body.id)).body.merged;
+      expect(merged.followed).toMatchObject({ versionId: scene.v2.id, version: '2.0.0' });
+      expect(docOf(merged.followed.normalizedYaml)).toEqual(upgradeToLatestSyntax(docOf(olderText)).doc);
+      // The merged version, in the latest syntax, as SPHERE compares it too: GOLD's price is all that differs.
+      const comparable = (doc: any) => {
+        const { saasName, version, createdAt, ...rest } = doc;
+        void saasName; void version; void createdAt;
+        return rest;
+      };
+      expect(comparable(docOf(merged.normalizedYaml))).toEqual(comparable(goldAtNormalized(docOf(merged.followed.normalizedYaml), 7.5)));
+      // Listings leave it out: only the detail compares what the merge published.
+      const listed = await list(author.token, scene.pricingId, '&status=merged');
+      expect(listed.body.items[0].merged).toMatchObject({ versionId: response.body.version.id });
+      expect(listed.body.items[0].merged.followed).toBeUndefined();
+    });
+
+    it('Names the version a merge was made on only to who may read it.', async () => {
+      const scene = await pricingWithPrivateLatest();
+      const author = await outsider();
+      const created = await openOn(author, scene, scene.v2, platinumAt(12));
+      const { preview, response } = await mergeAsShown(scene.owner.token, created.id, { private: false });
+      expect(preview).toMatchObject({ target: { id: scene.v3.id, private: true }, suggestedVersion: '9.0.0' });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+      const ownerView = await detail(scene.owner.token, created.id);
+      expect(ownerView.body.merged).toMatchObject({ version: '9.0.0', followed: { versionId: scene.v3.id, version: scene.v3.version } });
+      // The author may read the public version the merge published, but not the private one it was made on.
+      const authorView = await detail(author.token, created.id);
+      expect(authorView.body.merged).toMatchObject({ versionId: response.body.version.id, version: '9.0.0' });
+      expect(authorView.body.merged.followed).toBeUndefined();
+      const listed = await list(author.token, scene.pricingId, '&status=merged');
+      expect(listed.body.items[0].merged.followed).toBeUndefined();
+      expect([authorView, listed].map(answer => leaks(answer, scene.markers)).flat()).toEqual([]);
+    });
+
     it('Publishes an up-to-date proposal as written but for its name, version and date, in a file of its own (CA-38).', async () => {
       const scene = await publicScene();
       const author = await outsider();
@@ -2543,9 +2761,13 @@ describe('Pricing pull requests', () => {
       expect(response.status, JSON.stringify(response.body)).toBe(200);
       expect(response.body.version).toEqual({ id: expect.any(String), version: '2.1.0', private: false });
       expect(response.body.pullRequest).toMatchObject({
-        status: 'merged', state: { kind: 'merged' }, merged: { versionId: response.body.version.id, version: '2.1.0' },
+        status: 'merged', state: { kind: 'merged' },
+        // With the version it was merged on, so what the merge published can be compared with it.
+        merged: { versionId: response.body.version.id, version: '2.1.0', followed: { versionId: scene.v2.id, version: '2.0.0' } },
         permissions: { edit: false, editProposal: false, update: false, close: false, merge: false },
       });
+      // Already in the latest syntax: nothing to upgrade.
+      expect(response.body.pullRequest.merged.followed.normalizedYaml).toBeUndefined();
       const stored: any = await PricingMongoose.findById(response.body.version.id).lean();
       expect({ number: stored.mergedFrom.number, prId: String(stored.mergedFrom.prId) }).toEqual({ number: created.body.number, prId: created.body.id });
       expect(stored.forkedFrom).toBeUndefined();
@@ -2566,7 +2788,7 @@ describe('Pricing pull requests', () => {
       expect(new Date(docOf(published).createdAt).getTime()).toBe(stored.createdAt.getTime());
     });
 
-    it('Publishes proposals written in older syntaxes in the latest one, which publishing does not rewrite (CA-95).', async () => {
+    it('Publishes a proposal in the syntax it was written in, which publishing does not rewrite, and a combination in the latest one (CA-95).', async () => {
       const scene = await publicScene();
       const author = await outsider();
       const raw: any = yaml.load(readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'));
@@ -2585,25 +2807,56 @@ describe('Pricing pull requests', () => {
       for (const [index, text] of [yaml.dump(older), yaml.dump(oldest)].entries()) {
         const created = await open(author.token, { title: `Old syntax ${index}`, source: textSource(scene.pricingId, scene.v2.id, text) });
         expect(created.status, JSON.stringify(created.body)).toBe(201);
-        expect(created.body.warnings).toEqual([{ code: 'SYNTAX_UPGRADED' }]);
-        expect(docOf(created.body.proposed.yaml).syntaxVersion).toBe('3.1');
+        expect(created.body.warnings).toEqual([]);
+        expect(docOf(created.body.proposed.yaml).syntaxVersion).toBe(index === 0 ? '2.1' : undefined);
         opened.push(created);
       }
-      // The first one is up to date; the second is merged with it.
+      // The first one is up to date: it is the result, published in 2.1. The second is combined with it, in 3.1.
+      const published = [];
       for (const [index, created] of opened.entries()) {
         const watched = watchPublishedFiles();
         try {
           const preview = await mergePreviewOf(scene.owner.token, created.body.id);
+          expect(preview.warnings.some((warning: { code: string }) => warning.code === 'SYNTAX_UPGRADED')).toBe(index === 1);
           const response = await mergeAs(scene.owner.token, created.body.id, preview, { version: `2.${index + 1}.5` });
           expect(response.status, JSON.stringify(response.body)).toBe(200);
+          published.push(response.body.version.id);
         } finally {
           watched.restore();
         }
+        // Written once by the merge: publishing it did not rewrite it, not even the one in 2.1.
         expect(watched.hashes).toHaveLength(1);
         expect(watched.hashes[0].after).toBe(watched.hashes[0].before);
       }
+      const first = docOf(readFileSync(await fileOf(published[0]), 'utf8'));
+      expect(first).toMatchObject({ syntaxVersion: '2.1', version: '2.1.5', plans: { GOLD: { price: 7.5 } } });
+      expect(first.usageLimits.maxVisitsPerMonthAndPet.type).toBe('TIME_DRIVEN');
       const latest = docOf(readFileSync(await fileOf((await list(scene.owner.token, scene.pricingId)).body.proposals.latest.id), 'utf8'));
       expect(latest).toMatchObject({ syntaxVersion: '3.1', version: '2.2.5', plans: { GOLD: { price: 7.5 }, PLATINUM: { price: 99 } } });
+    });
+
+    it('Merges a proposal in syntax 2.0 on its own, writing it in the latest syntax: its version is its syntax.', async () => {
+      const scene = await publicScene();
+      const author = await outsider();
+      const raw: any = yaml.load(readFileSync(path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'));
+      const oldest = { ...structuredClone(raw), saasName: scene.name, version: '2.0' };
+      delete oldest.syntaxVersion;
+      oldest.plans.BASIC.price = 1;
+      oldest.plans.PLATINUM.price = 99;
+      oldest.usageLimits.maxVisitsPerMonthAndPet = { ...oldest.usageLimits.maxVisitsPerMonthAndPet, type: 'TIME_DRIVEN' };
+      delete oldest.usageLimits.maxVisitsPerMonthAndPet.period;
+      const created = await open(author.token, { title: 'Syntax 2.0', source: textSource(scene.pricingId, scene.v2.id, yaml.dump(oldest)) });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      // Kept as written, version line included.
+      expect(docOf(created.body.proposed.yaml)).toMatchObject({ version: '2.0' });
+
+      const preview = await mergePreviewOf(scene.owner.token, created.body.id);
+      expect(preview).toMatchObject({ outcome: 'proposal-only', validation: { ok: true } });
+      expect(preview.warnings).toContainEqual({ code: 'SYNTAX_UPGRADED' });
+      const response = await mergeAs(scene.owner.token, created.body.id, preview, { version: '2.0.9' });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      const published = docOf(readFileSync(await fileOf(response.body.version.id), 'utf8'));
+      expect(published).toMatchObject({ syntaxVersion: '3.1', version: '2.0.9', plans: { BASIC: { price: 1 }, PLATINUM: { price: 99 } } });
     });
 
     it('Merges into a newer private version privately by default, combining both (CA-39, CA-40).', async () => {
@@ -2882,7 +3135,9 @@ describe('Pricing pull requests', () => {
       const scene = await publicScene();
       const author = await outsider();
       const created = await openOn(author, scene, scene.v2, goldAt(7.5));
-      const lock = await repository.reserveForMerge(created.id, 1, scene.owner.id);
+      const lock = await repository.reserveForMerge(created.id, 1, scene.owner.id, new Date(), {
+        followedVersionId: scene.v2.id, followedVersion: '2.0.0',
+      });
       // The version the interrupted merge published.
       const published = await publish(scene.owner.token, scene.organizationId, {
         name: scene.name, slug: scene.slug, version: '9.0.0', change: both(V2, goldAt(7.5)),
@@ -2894,7 +3149,10 @@ describe('Pricing pull requests', () => {
 
       const shown = await detail(author.token, created.id);
 
-      expect(shown.body).toMatchObject({ status: 'merged', merged: { versionId: published.id, version: '9.0.0' } });
+      // The version the merge was made on comes with the reservation.
+      expect(shown.body).toMatchObject({
+        status: 'merged', merged: { versionId: published.id, version: '9.0.0', followed: { versionId: scene.v2.id, version: '2.0.0' } },
+      });
       const stored = await PricingPullRequestMongoose.findById(created.id).lean();
       expect(stored!.mergeLock).toBeUndefined();
       expect(lock).not.toBeNull();

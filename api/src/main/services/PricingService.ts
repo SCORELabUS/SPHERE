@@ -572,7 +572,10 @@ class PricingService {
       configurationSpace = cachedConfigurationSpace;
     } else {
       // Configuariton space calculation
-      const pricingInfo: Pricing = retrievePricingFromPath(requirePricingFile(retrievedPricing.versions[0].yaml));
+      // Parsed as text: pricing4ts rewrites a file in an older syntax that it reads by path.
+      const pricingInfo: Pricing = retrievePricingFromText(
+        fs.readFileSync(requirePricingFile(retrievedPricing.versions[0].yaml), 'utf8')
+      );
       const pricingAnalytics = new PricingAnalytics(pricingInfo);
       configurationSpace = await pricingAnalytics.getConfigurationSpace();
       await this.cacheService.set(key, configurationSpace, 60 * 60 * 24);
@@ -805,7 +808,11 @@ class PricingService {
       );
 
       const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
-      uploadedPricing = retrievePricingFromPath(filePath);
+      // A fork's copy and a merged pull request are published as written, in their own syntax:
+      // read by path, pricing4ts would rewrite a file in an older one, and not always faithfully.
+      uploadedPricing = forkedFrom || mergedFrom
+        ? retrievePricingFromText(fs.readFileSync(filePath, 'utf8'))
+        : retrievePricingFromPath(filePath);
 
       // A fork already knows which pricing (if any) it should attach a new version to,
       // resolved by origin rather than by name/slug: skip the usual name-based lookup.

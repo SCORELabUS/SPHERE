@@ -8,6 +8,7 @@ import {
   PricingPullRequest,
   PullRequestChanges,
   PullRequestClosed,
+  PullRequestFollowed,
   PullRequestListFilter,
   PullRequestMergeLock,
   PullRequestMerged,
@@ -47,6 +48,20 @@ const noActiveLock = (now: Date) => ({
   $or: [{ mergeLock: { $exists: false } }, { 'mergeLock.until': { $lt: now } }],
 });
 
+/** The version a merge was made on, as stored with its reservation or its result. */
+function followedOf(stored: any): PullRequestFollowed {
+  if (!stored?.followedVersionId) return {};
+  return {
+    followedVersionId: String(stored.followedVersionId),
+    followedVersion: stored.followedVersion,
+    ...(stored.followedYaml !== undefined ? { followedYaml: stored.followedYaml } : {}),
+    ...(stored.mergedYaml !== undefined ? { mergedYaml: stored.mergedYaml } : {}),
+  };
+}
+
+const storedFollowed = (followed: PullRequestFollowed) =>
+  followed.followedVersionId ? { ...followed, followedVersionId: objectId(followed.followedVersionId) } : {};
+
 function toPricingPullRequest(doc: any): PricingPullRequest {
   return {
     id: String(doc._id),
@@ -74,6 +89,7 @@ function toPricingPullRequest(doc: any): PricingPullRequest {
         byId: String(doc.mergeLock.byId),
         until: doc.mergeLock.until,
         revision: doc.mergeLock.revision,
+        ...followedOf(doc.mergeLock),
       },
     } : {}),
     ...(doc.merged ? {
@@ -83,6 +99,7 @@ function toPricingPullRequest(doc: any): PricingPullRequest {
         versionId: String(doc.merged.versionId),
         version: doc.merged.version,
         proposalRevision: doc.merged.proposalRevision,
+        ...followedOf(doc.merged),
       },
     } : {}),
     ...(doc.closed ? {
@@ -252,12 +269,18 @@ class PricingPullRequestRepository extends RepositoryBase {
    * Reserves the pull request for a merge of its proposal at `revision`, if it is
    * open, still at that revision and no other merge holds a live reservation.
    */
-  async reserveForMerge(id: string, revision: number, byId: string, now = new Date()): Promise<PullRequestMergeLock | null> {
+  async reserveForMerge(
+    id: string,
+    revision: number,
+    byId: string,
+    now = new Date(),
+    followed: PullRequestFollowed = {}
+  ): Promise<PullRequestMergeLock | null> {
     if (!this.isValidObjectId(id)) return null;
-    const lock = { id: randomUUID(), byId, until: new Date(now.getTime() + MERGE_LOCK_MS), revision };
+    const lock = { id: randomUUID(), byId, until: new Date(now.getTime() + MERGE_LOCK_MS), revision, ...followed };
     const doc = await PricingPullRequestMongoose.findOneAndUpdate(
       { _id: objectId(id), status: 'open', proposalRevision: revision, ...noActiveLock(now) },
-      { $set: { mergeLock: { ...lock, byId: objectId(byId) } } },
+      { $set: { mergeLock: { ...lock, byId: objectId(byId), ...storedFollowed(followed) } } },
       { new: true, timestamps: false }
     ).lean();
     return doc ? lock : null;
@@ -285,7 +308,12 @@ class PricingPullRequestRepository extends RepositoryBase {
       {
         $set: {
           status: 'merged',
-          merged: { ...merged, byId: objectId(merged.byId), versionId: objectId(merged.versionId) },
+          merged: {
+            ...merged,
+            byId: objectId(merged.byId),
+            versionId: objectId(merged.versionId),
+            ...storedFollowed(merged),
+          },
         },
         $unset: { mergeLock: '' },
       },

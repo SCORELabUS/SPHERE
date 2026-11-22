@@ -73,12 +73,18 @@ interface VersionManager {
   update(extractedPricing: unknown, useCheckpoints: boolean, pricingPath?: string): unknown;
 }
 
-// pricing4ts only exports `.` and `./server`, and the updater is not re-exported
-// by either, so it is required by its path inside the package.
+interface PricingSerializer {
+  serializePricing(pricing: unknown): unknown;
+}
+
+// pricing4ts only exports `.` and `./server`, and neither re-exports the updater
+// or the serializer, so they are required by their paths inside the package.
 const requireFromHere = createRequire(import.meta.url);
-const versionManager = requireFromHere(
-  path.join(path.dirname(requireFromHere.resolve('pricing4ts/server')), 'utils', 'version-manager.js')
-) as VersionManager;
+const pricing4tsServer = path.dirname(requireFromHere.resolve('pricing4ts/server'));
+const versionManager = requireFromHere(path.join(pricing4tsServer, 'utils', 'version-manager.js')) as VersionManager;
+const pricingSerializer = requireFromHere(
+  path.join(pricing4tsServer, '..', 'main', 'utils', 'pricing-formatting', 'pricing-serializer.js')
+) as PricingSerializer;
 
 export const LATEST_SYNTAX_VERSION = versionManager.LATEST_PRICING2YAML_VERSION;
 
@@ -185,20 +191,44 @@ function dropUndefined(value: unknown): void {
 }
 
 /**
- * A copy of the document in the latest Pricing2Yaml syntax, through pricing4ts's
- * own updaters (in memory: no path, so nothing is written). The input is not
- * modified. `upgraded` tells whether it was in an older syntax.
+ * Drops the values the latest syntax reads as absent: `variables: {}`, the
+ * default `billing: { monthly: 1 }` and `tags: []`. pricing4ts writes the first
+ * and leaves out the other two when it upgrades a file, and people write them
+ * or not by hand, so whether they are there is never a change.
+ */
+function dropDefaults(doc: PricingDoc): void {
+  const { variables, billing, tags } = doc;
+  if (variables === null || (isMapping(variables) && Object.keys(variables).length === 0)) delete doc.variables;
+  if (isMapping(billing) && Object.keys(billing).length === 1 && billing.monthly === 1) delete doc.billing;
+  if (Array.isArray(tags) && tags.length === 0) delete doc.tags;
+}
+
+/**
+ * A copy of the document in the latest Pricing2Yaml syntax, as SPHERE compares
+ * pricings. A document in an older syntax goes through pricing4ts's own updaters
+ * (in memory: no path, so nothing is written) and its serializer, so it is what
+ * pricing4ts writes when it upgrades a file (`writePricingToYaml`), read back as
+ * SPHERE reads files: a version upgraded on disk and the same text upgraded here
+ * are equal. Defaults are dropped from every document (`dropDefaults`). The input
+ * is not modified. `upgraded` tells whether it was in an older syntax.
  */
 export function upgradeToLatestSyntax(doc: PricingDoc): { doc: PricingDoc; upgraded: boolean } {
   const copy = structuredClone(doc);
   const upgraded = copy.syntaxVersion !== LATEST_SYNTAX_VERSION;
+  let result = copy;
   try {
     versionManager.update(copy, false);
+    if (upgraded) {
+      const written = pricingSerializer.serializePricing(copy);
+      dropUndefined(written);
+      result = yaml.load(yaml.dump(written, { noRefs: true }), { schema: yaml.DEFAULT_SCHEMA }) as PricingDoc;
+    }
   } catch (error) {
     throw new PricingYamlError(422, 'PRICING_SYNTAX_UNSUPPORTED', (error as Error)?.message ?? String(error));
   }
-  dropUndefined(copy);
-  return { doc: copy, upgraded };
+  dropUndefined(result);
+  dropDefaults(result);
+  return { doc: result, upgraded };
 }
 
 /** The YAML text SPHERE writes when it has to regenerate a pricing. */
@@ -207,18 +237,21 @@ export function dumpPricingDoc(doc: PricingDoc): string {
 }
 
 /**
- * A proposal as SPHERE stores it: in the latest syntax. A text already in it is
- * returned as is (comments and layout kept), with `loaded`, the document
- * `loadPricingDoc` gave for it, so stamping the text does not load it again;
- * any other is upgraded and regenerated, with `regenerated: true`. `doc` is the
- * normalized document (a copy: `loaded` is never changed).
+ * A pricing text in the latest syntax, which is how SPHERE compares and merges
+ * pricings. A text already in it is returned as is (comments and layout kept),
+ * with `loaded`, the document `loadPricingDoc` gave for it, so stamping the text
+ * does not load it again; any other is upgraded and regenerated, with
+ * `regenerated: true`. `doc` is the normalized document (a copy: `loaded` is
+ * never changed). `original` is the text as written and its document, which is
+ * what SPHERE keeps and shows: the syntax is never the author's change.
  */
 export function normalizeProposalText(
   text: string,
   maxBytes: number
-): { text: string; doc: PricingDoc; regenerated: boolean; loaded?: PricingDoc } {
+): { text: string; doc: PricingDoc; regenerated: boolean; loaded?: PricingDoc; original: { text: string; doc: PricingDoc } } {
   const loaded = loadPricingDoc(text, maxBytes);
   const { doc, upgraded } = upgradeToLatestSyntax(loaded);
-  if (!upgraded) return { text, doc, regenerated: false, loaded };
-  return { text: dumpPricingDoc(doc), doc, regenerated: true };
+  const original = { text, doc: loaded };
+  if (!upgraded) return { text, doc, regenerated: false, loaded, original };
+  return { text: dumpPricingDoc(doc), doc, regenerated: true, original };
 }

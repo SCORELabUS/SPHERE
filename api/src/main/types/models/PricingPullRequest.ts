@@ -20,7 +20,7 @@ export interface PullRequestBase {
   yaml: string;
 }
 
-/** The proposed pricing, always stored in the latest Pricing2Yaml syntax. */
+/** The proposed pricing, stored in the Pricing2Yaml syntax it was written in. */
 export interface PullRequestProposal {
   yaml: string;
   suggestedVersion: string;
@@ -40,17 +40,32 @@ export interface PullRequestOrigin {
 }
 
 /**
+ * The version a merge is made on. When it and the merged version are written in
+ * different syntaxes, both texts as SPHERE compares them (`followedYaml`,
+ * `mergedYaml`), so the syntax is not shown as a change.
+ */
+export interface PullRequestFollowed {
+  followedVersionId?: string;
+  followedVersion?: string;
+  followedYaml?: string;
+  mergedYaml?: string;
+}
+
+/**
  * The reservation a merge takes before publishing, so the proposal cannot
  * change or be closed meanwhile. It lapses at `until` (internal, never returned).
+ * The version the merge is made on goes with it, so a later load that finishes
+ * the merge keeps it.
  */
-export interface PullRequestMergeLock {
+export interface PullRequestMergeLock extends PullRequestFollowed {
   id: string;
   byId: string;
   until: Date;
   revision: number;
 }
 
-export interface PullRequestMerged {
+/** `followed*` is the version the merge was made on (the latest one then); missing on merges made before it was kept. */
+export interface PullRequestMerged extends PullRequestFollowed {
   byId: string;
   at: Date;
   versionId: string;
@@ -179,8 +194,19 @@ export interface PullRequestSummaryDTO {
   proposed: { suggestedVersion: string };
   proposalRevision: number;
   state: PullRequestState;
-  /** The merged version only for who may read it. */
-  merged?: { at: Date; versionId?: string; version?: string };
+  /**
+   * The merged version only for who may read it. A detail adds the version it
+   * was merged on, only if they may read that too, with its text in the latest
+   * syntax when it is stored in an older one (`normalizedYaml`).
+   */
+  merged?: {
+    at: Date;
+    versionId?: string;
+    version?: string;
+    /** With `followed`, when the two are written in different syntaxes and this one is in an older one. */
+    normalizedYaml?: string;
+    followed?: { versionId: string; version: string; normalizedYaml?: string };
+  };
   closed?: { kind: PullRequestCloseKind; at: Date; reason?: string };
   createdAt: Date;
   updatedAt: Date;
@@ -193,7 +219,8 @@ export interface PullRequestDetailDTO extends Omit<PullRequestSummaryDTO, 'base'
    * stored text is in an older one; the proposal is compared with it.
    */
   base: { versionId: string; version: string; yaml: string; normalizedYaml?: string };
-  proposed: { suggestedVersion: string; yaml: string };
+  /** `normalizedYaml` as the base's: when the two are written in different syntaxes and the proposal is in an older one. */
+  proposed: { suggestedVersion: string; yaml: string; normalizedYaml?: string };
   origin?: PullRequestOriginDTO;
   permissions: PullRequestPermissions;
 }
@@ -221,7 +248,7 @@ export type PullRequestWarning =
   | { code: 'PREVIOUSLY_MERGED'; number: number };
 
 /** Why a fork cannot propose to the pricing it was forked from now. */
-export type ForkProposalBlock = 'NOT_A_FORK' | 'PARENT_UNAVAILABLE' | 'NO_PUBLIC_VERSION' | 'PULL_REQUEST_EXISTS';
+export type ForkProposalBlock = 'NOT_A_FORK' | 'PARENT_UNAVAILABLE' | 'NO_PUBLIC_VERSION' | 'PULL_REQUEST_EXISTS' | 'NO_CHANGES';
 
 /** The pricing a fork proposes to. */
 export interface ForkParentDTO {
@@ -261,6 +288,12 @@ export interface PullRequestPreviewDTO {
   outcome: MergeOutcome;
   conflicts: MergeConflict[];
   resultYaml: string;
+  /**
+   * When the result and the target are written in different syntaxes, the text
+   * in the latest syntax of whichever is in an older one, so they are compared in one.
+   */
+  targetNormalizedYaml?: string;
+  resultNormalizedYaml?: string;
   regenerated: boolean;
   validation: PreviewValidation;
   warnings: PullRequestWarning[];
@@ -270,6 +303,12 @@ export interface PullRequestPreviewDTO {
   existingPullRequest?: { id: string; number: number; proposalRevision: number };
   /** Merge previews only: the suggested label is already a version of P. */
   versionTaken?: boolean;
+  /**
+   * Merge previews only, when the suggested label is not the proposal's own: the
+   * proposal's label reads as older than the latest public version's, which
+   * the suggestion follows.
+   */
+  suggestedVersionFollows?: { proposal: string; latest: string };
   defaults?: { private: boolean };
 }
 

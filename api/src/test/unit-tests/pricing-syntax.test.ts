@@ -1,8 +1,9 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import yaml from 'js-yaml';
-import { retrievePricingFromText } from 'pricing4ts/server';
+import { retrievePricingFromPath, retrievePricingFromText } from 'pricing4ts/server';
 import {
   loadPricingDoc,
   normalizeProposalText,
@@ -256,6 +257,36 @@ describe('upgradeToLatestSyntax', () => {
     expect(upgraded).toBe(false);
     expect(doc).toEqual(input);
     expect(doc).not.toBe(input);
+  });
+
+  it('upgrades a document to what pricing4ts writes when it upgrades the file, so the two compare equal', () => {
+    const text = `${pricing('2.1', 'TIME_DRIVEN')}billing:\n  monthly: 1\n`;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pricing-syntax-'));
+    const file = path.join(dir, 'pricing.yml');
+    try {
+      fs.writeFileSync(file, text);
+      // pricing4ts upgrades the file it reads in place, and leaves the default billing out of it.
+      retrievePricingFromPath(file);
+      const written = loadPricingDoc(fs.readFileSync(file, 'utf8'), MIB);
+      expect(written).toMatchObject({ syntaxVersion: '3.1', variables: {} });
+      expect(written).not.toHaveProperty('billing');
+      expect(upgradeToLatestSyntax(loadPricingDoc(text, MIB)).doc).toEqual(upgradeToLatestSyntax(written).doc);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the defaults of the latest syntax as absent, written or not', () => {
+    const plain = upgradeToLatestSyntax(loadPricingDoc(pricing('3.1'), MIB)).doc;
+    const withDefaults = upgradeToLatestSyntax(
+      loadPricingDoc(`${pricing('3.1')}variables: {}\nbilling:\n  monthly: 1\ntags: []\n`, MIB)
+    ).doc;
+    expect(withDefaults).toEqual(plain);
+    // Values that say something stay.
+    const meaningful = upgradeToLatestSyntax(
+      loadPricingDoc(`${pricing('3.1')}variables:\n  seats: 3\nbilling:\n  monthly: 1\n  annual: 0.8\ntags:\n  - team\n`, MIB)
+    ).doc;
+    expect(meaningful).toMatchObject({ variables: { seats: 3 }, billing: { monthly: 1, annual: 0.8 }, tags: ['team'] });
   });
 
   it('refuses a syntax pricing4ts does not know with 422 PRICING_SYNTAX_UNSUPPORTED', () => {
