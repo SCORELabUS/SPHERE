@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import Iconify from '../../../core/components/iconify';
 import { useNotificationsContext } from '../../hooks/useNotificationsContext';
 import { Notification } from '../../api/notificationsApi';
+import { notificationLink } from '../../utils/notification-link';
 
 const kindLabels: Record<string, string> = {
   OrganizationInvitation: 'Organization Invitations',
   System: 'System',
   PricingUpdated: 'Pricing Updates',
+  PricingPullRequest: 'Pull Requests',
 };
 
 const kindIcons: Record<string, string> = {
@@ -15,6 +17,7 @@ const kindIcons: Record<string, string> = {
   System: 'mdi:information',
   CollectionShared: 'mdi:folder-shared',
   PricingUpdated: 'mdi:file-replace',
+  PricingPullRequest: 'mdi:source-pull',
 };
 
 function timeAgo(dateString: string): string {
@@ -50,15 +53,8 @@ export default function InboxPage() {
     if (!notification.read) {
       await markAsRead(notification.id);
 
-      if (notification.kind === 'OrganizationInvitation' && notification.data?.invitationCode) {
-        navigate(`/orgs/join/${notification.data.invitationCode}`);
-      } else if (
-        notification.kind === 'PricingUpdated' &&
-        notification.data?.organizationId &&
-        notification.data?.pricingSlug
-      ) {
-        navigate(`/pricings/${notification.data.organizationId}/${notification.data.pricingSlug}`);
-      }
+      const link = notificationLink(notification);
+      if (link) navigate(link);
     }
   };
 

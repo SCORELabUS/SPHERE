@@ -30,6 +30,15 @@ function generateUserTokenDTO() {
       };
 };
 
+/**
+ * A MAC of `data` for one `purpose`, keyed by the server's secret, so values the
+ * server hands out (for example pull request preview tokens) can be checked when
+ * they come back. The secret itself never leaves this module.
+ */
+function serverHmac(purpose: string, data: string): Buffer {
+  return crypto.createHmac('sha256', JWT_SECRET).update(`${purpose.length}:${purpose}:`).update(data).digest();
+}
+
 async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(5);
   const hash = await bcrypt.hash(password, salt);
@@ -69,4 +78,4 @@ function handleError(err: any): {status: number, message: string} {
   }
 }
 
-export { generateUserTokenDTO, generateJwtToken, verifyJwtToken, handleError, hashPassword };
+export { generateUserTokenDTO, generateJwtToken, verifyJwtToken, handleError, hashPassword, serverHmac };

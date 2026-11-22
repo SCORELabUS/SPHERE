@@ -15,6 +15,7 @@ import {
   createAndTrackPricingYaml,
   createPricingForOrganization,
   createValidPricingYaml,
+  forkPricingIntoOrganization,
 } from './utils/pricings/pricingTestUtils';
 import {
   createCollectionForOrganization,
@@ -23,9 +24,15 @@ import {
 import { randomSuffix } from './utils/helpers';
 import { createOrgScopedPermission, createMembership, createTestOrganizationDirect } from './utils/organizations';
 import PricingMongoose from '../main/repositories/mongoose/models/PricingMongoose';
+import PricingPullRequestMongoose from '../main/repositories/mongoose/models/PricingPullRequestMongoose';
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createEntityScopedPermission } from './utils/organizations/organizationTestUtils';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
+import mongoose from 'mongoose';
+import appContainer from '../main/config/container';
+import PricingService from '../main/services/PricingService';
+import PricingPullRequestRepository from '../main/repositories/mongoose/PricingPullRequestRepository';
+import { PricingPullRequest } from '../main/types/models/PricingPullRequest';
 
 dotenv.config();
 
@@ -3503,11 +3510,14 @@ describe('Pricings API integration', () => {
       expect(source).toMatchObject({ role: 'source', name: original.serviceName, available: true });
       expect(source.versions.map((v: any) => v.version).sort()).toEqual(['1.0.0', '1.1.0']);
       expect(source.organization.id).toBe(originalOrg);
+      // Without merged versions, no version carries the key (CA-63).
+      expect([...own.versions, ...source.versions].some((v: any) => 'mergedFrom' in v)).toBe(false);
 
       // From the original, anonymously: only its own lane; the forks made of it are not drawn.
       const fromOriginal = await graphOf(originalOrg, original.serviceName);
       expect(fromOriginal.status).toBe(200);
       expect(fromOriginal.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
+      expect(fromOriginal.body.lanes[0].versions.some((v: any) => 'mergedFrom' in v)).toBe(false);
     });
 
     it('Names a source the caller may not read only by what the fork says.', async () => {
@@ -3540,6 +3550,228 @@ describe('Pricings API integration', () => {
 
       expect((await graphOf(organizationId, hidden.serviceName, outsider.token)).status).toBe(404);
       expect((await graphOf(organizationId, `missing-${randomSuffix()}`)).status).toBe(404);
+    });
+  });
+
+  describe('Versions merged from a pull request', { timeout: 30000 }, () => {
+    const pullRequests = (): PricingPullRequestRepository => appContainer.resolve('pricingPullRequestRepository');
+    const pricingService = (): PricingService => appContainer.resolve('pricingService');
+    const versionsByLabel = (versions: any[]) => Object.fromEntries(versions.map(version => [version.version, version]));
+    const identityOf = async (versionId: string) => String((await PricingMongoose.findById(versionId).lean())!.pricingId);
+
+    /**
+     * Merges an open pull request as the merge does: it reserves it, publishes
+     * `version` through `createVersion` with its `mergedFrom`, and marks it merged.
+     */
+    async function publishMerged(params: {
+      owner: LeanUser;
+      organizationId: string;
+      name: string;
+      version: string;
+      pullRequest: PricingPullRequest;
+    }) {
+      const { pullRequest } = params;
+      const lock = await pullRequests().reserveForMerge(pullRequest.id, pullRequest.proposalRevision, params.owner.id);
+      const fixture = await createValidPricingYaml(params.name, params.version);
+      const file = path.resolve(
+        process.env.SERVER_STATICS_FOLDER || 'public',
+        'static', 'pricings', 'uploaded', `merged-${randomSuffix()}.yml`
+      );
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.copyFile(fixture.filePath, file);
+      generatedFilesToDelete.add(file);
+      const [created] = await pricingService().createVersion(
+        { path: file }, params.organizationId, params.name, false, params.owner,
+        undefined, undefined, undefined, { number: pullRequest.number, prId: pullRequest.id }
+      );
+      const versionId = String(created._id);
+      pricingsToDelete.add(versionId);
+      await pullRequests().markMerged(pullRequest.id, lock!.id, {
+        byId: params.owner.id, at: new Date(), versionId, version: params.version, proposalRevision: pullRequest.proposalRevision,
+      });
+      return versionId;
+    }
+
+    /** P in its owner's organization, a fork F of it, and three merged pull requests. */
+    async function mergedScenario() {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { user: forker, organizationId: forkOrganizationId } = await createAndLoginUser('USER');
+      const pricing = await createPricingForOrganization({ organizationId, version: '1.0.0' });
+      const fork = await forkPricingIntoOrganization({
+        token: forker.token,
+        sourceOrganizationId: organizationId,
+        sourceSlug: pricing.serviceName,
+        sourceVersion: '1.0.0',
+        targetOrganizationId: forkOrganizationId,
+        name: `fork_${randomSuffix()}`,
+      });
+      const pricingId = await identityOf(pricing.id);
+      const forkId = await identityOf(fork.id);
+
+      const open = (origin?: { edited: boolean }) => pullRequests().create({
+        pricingId,
+        title: 'Change PRO',
+        description: '',
+        authorId: forker.id,
+        base: { versionId: pricing.id, version: '1.0.0', yaml: 'saasName: P\n' },
+        proposed: { yaml: 'saasName: P\n', suggestedVersion: '2.0.0' },
+        ...(origin ? {
+          origin: { pricingId: forkId, versionId: fork.id, version: '1.0.0', baseVersionId: fork.id, edited: origin.edited },
+        } : {}),
+      });
+      // A fork has one open pull request at a time, so each is merged before the next is opened.
+      const proposals: Array<[string, { edited: boolean } | undefined]> = [
+        ['2.0.0', { edited: false }],
+        // Edited by hand after it was proposed from the fork.
+        ['3.0.0', { edited: true }],
+        // Proposed from the editor.
+        ['4.0.0', undefined],
+      ];
+      const merged: Record<string, { number: number; prId: string }> = {};
+      const versionIds: Record<string, string> = { '1.0.0': pricing.id };
+      for (const [version, origin] of proposals) {
+        const pullRequest = await open(origin);
+        versionIds[version] = await publishMerged({ owner, organizationId, name: pricing.serviceName, version, pullRequest });
+        merged[version] = { number: pullRequest.number, prId: pullRequest.id };
+      }
+      return { owner, forker, organizationId, forkOrganizationId, pricing, pricingId, fork, forkId, merged, versionIds };
+    }
+
+    const graphOf = (organizationId: string, slug: string, token?: string) => {
+      const call = request(app).get(`${BASE_PATH}/pricing-graphs/${organizationId}/${slug}`);
+      return token ? call.set('Authorization', `Bearer ${token}`) : call;
+    };
+
+    it('Marks merged versions in the graph, naming the fork only to who reads it and never drawing its lane.', async () => {
+      const { forker, organizationId, forkOrganizationId, pricing, fork, forkId, merged } = await mergedScenario();
+      // Only its own organization reads the fork from now on.
+      await PricingMongoose.updateMany({ pricingId: forkId }, { $set: { private: true } });
+      const { user: outsider } = await createAndLoginUser('USER');
+
+      // The three merged pull requests are read in one query, not one each.
+      const byId = vi.spyOn(PricingPullRequestMongoose, 'findById');
+      const find = vi.spyOn(PricingPullRequestMongoose, 'find');
+      const asForker = await graphOf(organizationId, pricing.serviceName, forker.token);
+      expect(byId).not.toHaveBeenCalled();
+      expect(find).toHaveBeenCalledTimes(1);
+      byId.mockRestore();
+      find.mockRestore();
+      expect(asForker.status).toBe(200);
+      expect(asForker.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
+      const seen = versionsByLabel(asForker.body.lanes[0].versions);
+      expect('mergedFrom' in seen['1.0.0']).toBe(false);
+      expect(seen['2.0.0'].mergedFrom).toEqual({
+        ...merged['2.0.0'],
+        from: {
+          pricingId: forkId,
+          name: fork.name,
+          slug: fork.slug,
+          organization: { id: forkOrganizationId, name: expect.any(String), displayName: expect.any(String) },
+        },
+      });
+      // Edited by hand after it was proposed from the fork, the version is not the fork's (CA-105).
+      expect(seen['3.0.0'].mergedFrom).toEqual({ ...merged['3.0.0'], from: null });
+      // Proposed from the editor: there is no fork to name.
+      expect(seen['4.0.0'].mergedFrom).toEqual({ ...merged['4.0.0'], from: null });
+
+      for (const token of [outsider.token, undefined]) {
+        const response = await graphOf(organizationId, pricing.serviceName, token);
+        expect(response.status).toBe(200);
+        expect(response.body.lanes.map((lane: any) => lane.role)).toEqual(['current']);
+        expect(versionsByLabel(response.body.lanes[0].versions)['2.0.0'].mergedFrom).toEqual({ ...merged['2.0.0'], from: null });
+        expect(JSON.stringify(response.body)).not.toContain(forkId);
+      }
+    });
+
+    it('Show, listings and permanent links give only the number and id of the pull request.', async () => {
+      const { owner, forker, organizationId, pricing, pricingId, forkId, merged, versionIds } = await mergedScenario();
+
+      for (const token of [owner.token, forker.token, undefined]) {
+        const call = request(app).get(`${BASE_PATH}/pricings/${organizationId}/${pricing.serviceName}`);
+        const shown = await (token ? call.set('Authorization', `Bearer ${token}`) : call);
+        expect(shown.status).toBe(200);
+        const versions = versionsByLabel(shown.body.versions);
+        expect('mergedFrom' in versions['1.0.0']).toBe(false);
+        for (const label of ['2.0.0', '3.0.0', '4.0.0']) {
+          expect(versions[label].mergedFrom).toEqual(merged[label]);
+        }
+        expect(JSON.stringify(shown.body)).not.toContain(forkId);
+      }
+
+      const listed = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(listed.status).toBe(200);
+      const entry = listed.body.pricings.find((item: any) => item.name === pricing.serviceName);
+      // The listing shows the newest version with its own fields, as it does with forkedFrom: never the fork.
+      expect(entry.version).toBe('4.0.0');
+      expect(entry).not.toHaveProperty('mergedFrom.from');
+      expect(JSON.stringify(listed.body)).not.toContain(forkId);
+
+      const permalink = await request(app).get(`${BASE_PATH}/permalinks/pricing/${pricingId}?version=${versionIds['2.0.0']}`);
+      expect(permalink.status).toBe(200);
+      expect(permalink.body).toEqual({ location: `/pricings/${organizationId}/${pricing.serviceName}?version=${versionIds['2.0.0']}` });
+    });
+
+    it('Publishing through the API never sets mergedFrom, whatever the request says (CA-61).', async () => {
+      const { user: owner, organizationId } = await createAndLoginUser('USER');
+      const { serviceName } = await createPricingForOrganization({ organizationId, version: '1.0.0' });
+      const forged = { number: '7', prId: new mongoose.Types.ObjectId().toString() };
+
+      const added = await createValidPricingYaml(serviceName, '2.0.0');
+      const addVersion = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/2.0.0`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .field('mergedFrom[number]', forged.number)
+        .field('mergedFrom[prId]', forged.prId)
+        .attach('yaml', added.filePath);
+      expect(addVersion.status).toBe(200);
+      pricingsToDelete.add(addVersion.body.id);
+      expect('mergedFrom' in addVersion.body).toBe(false);
+
+      const created = await createValidPricingYaml(`pricing_${randomSuffix()}`, '1.0.0');
+      const createPricing = await request(app)
+        .post(`${BASE_PATH}/pricings/${organizationId}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .field('private', 'false')
+        .field('mergedFrom[number]', forged.number)
+        .field('mergedFrom[prId]', forged.prId)
+        .attach('yaml', created.filePath);
+      expect(createPricing.status).toBe(200);
+      pricingsToDelete.add(createPricing.body.id);
+
+      const updated = await request(app)
+        .put(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send({ url: 'https://example.com/pricing', mergedFrom: forged });
+      // A field the server manages is refused, as before.
+      expect(updated.status).toBe(422);
+      expect(updated.body.error).toContain('mergedFrom cannot be changed');
+
+      const stored = await PricingMongoose.find({ _id: { $in: [addVersion.body.id, createPricing.body.id] } }).lean();
+      expect(stored).toHaveLength(2);
+      expect(stored.every(version => !('mergedFrom' in version))).toBe(true);
+      expect(await PricingMongoose.countDocuments({ _organizationId: organizationId, mergedFrom: { $exists: true } })).toBe(0);
+
+      const shown = await request(app)
+        .get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`)
+        .set('Authorization', `Bearer ${owner.token}`);
+      expect(shown.status).toBe(200);
+      expect(shown.body.versions).toHaveLength(2);
+      expect(shown.body.versions.every((version: any) => !('mergedFrom' in version))).toBe(true);
+    });
+
+    it('A merged version keeps the pull request it came from.', async () => {
+      const { versionIds, merged } = await mergedScenario();
+
+      await PricingMongoose.updateOne(
+        { _id: versionIds['2.0.0'] },
+        { $set: { mergedFrom: { number: 99, prId: new mongoose.Types.ObjectId() } } }
+      );
+
+      const stored = await PricingMongoose.findById(versionIds['2.0.0']).lean();
+      expect({ number: stored!.mergedFrom!.number, prId: String(stored!.mergedFrom!.prId) }).toEqual(merged['2.0.0']);
     });
   });
 });

@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
 import path from 'path';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { shutdownApp, TestApp } from './utils/testApp';
 import { createAndLoginUser, deleteTestUser } from './utils/users/userTestUtils';
 import { BASE_PATH } from './utils/config/variables';
@@ -16,6 +16,7 @@ import OrganizationMembershipMongoose from '../main/repositories/mongoose/models
 import EntityPermissionMongoose from '../main/repositories/mongoose/models/EntityPermissionMongoose';
 import { createMembership } from './utils/organizations';
 import { createEntityPermission } from './utils/permissions/permissionTestUtils';
+import appContainer from '../main/config/container';
 
 dotenv.config();
 
@@ -640,6 +641,111 @@ describe('Pricing ETag and If-Match', () => {
       expect(moved.status).toBe(200);
 
       expect(await currentEtag(target.pricingUrl, target.token)).not.toBe(before);
+    });
+  });
+
+  describe('Pull requests', { timeout: 30000 }, () => {
+    it('Opening, editing and closing pull requests leave the ETag alone (CA-64).', async () => {
+      const target = await ownedPricing();
+      const { user: author } = await createAndLoginUser('USER');
+      const latest = (await PricingMongoose.findOne({ _organizationId: target.organizationId, slug: target.slug }).lean())!;
+      const proposal = (await fs.readFile(
+        path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'
+      ))
+        .replace(/^saasName:.*$/m, `saasName: ${target.name}`)
+        .replace(/price: 5\.0$/m, 'price: 7.5');
+      const before = await currentEtag(target.pricingUrl, target.token);
+      const pullRequests = `${BASE_PATH}/pricing-pull-requests`;
+
+      const created = await request(app)
+        .post(pullRequests)
+        .set('Authorization', `Bearer ${author.token}`)
+        .send({
+          title: 'Raise GOLD',
+          source: { kind: 'text', pricingId: String(latest.pricingId), baseVersionId: String(latest._id), proposedYaml: proposal },
+        });
+      expect(created.status).toBe(201);
+      const id = created.body.id;
+      const steps = [
+        request(app).get(`${pullRequests}?pricingId=${latest.pricingId}`).set('Authorization', `Bearer ${target.token}`),
+        request(app).get(`${pullRequests}/${id}`).set('Authorization', `Bearer ${author.token}`),
+        request(app).put(`${pullRequests}/${id}`).set('Authorization', `Bearer ${author.token}`).send({ title: 'Raise GOLD more' }),
+        request(app)
+          .put(`${pullRequests}/${id}`)
+          .set('Authorization', `Bearer ${author.token}`)
+          .send({ proposedYaml: proposal.replace('price: 7.5', 'price: 8.5') }),
+        request(app).post(`${pullRequests}/${id}/close`).set('Authorization', `Bearer ${target.token}`).send({ reason: 'No' }),
+      ];
+      for (const step of steps) expect((await step).status).toBe(200);
+
+      expect(await currentEtag(target.pricingUrl, target.token)).toBe(before);
+    });
+
+    it('A merge that takes the pull request and fails leaves the ETag alone; one that publishes moves it on (CA-64, CA-50).', async () => {
+      const target = await ownedPricing();
+      const { user: author } = await createAndLoginUser('USER');
+      const latest = (await PricingMongoose.findOne({ _organizationId: target.organizationId, slug: target.slug }).lean())!;
+      const proposal = (await fs.readFile(
+        path.resolve(process.cwd(), 'public', 'static', 'pricings', 'templates', 'petclinic.yml'), 'utf8'
+      ))
+        .replace(/^saasName:.*$/m, `saasName: ${target.name}`)
+        .replace(/price: 5\.0$/m, 'price: 7.5');
+      const pullRequests = `${BASE_PATH}/pricing-pull-requests`;
+      const created = await request(app)
+        .post(pullRequests)
+        .set('Authorization', `Bearer ${author.token}`)
+        .send({
+          title: 'Raise GOLD',
+          source: { kind: 'text', pricingId: String(latest.pricingId), baseVersionId: String(latest._id), proposedYaml: proposal },
+        });
+      expect(created.status).toBe(201);
+      const id = created.body.id;
+      const before = await currentEtag(target.pricingUrl, target.token);
+      const preview = await request(app)
+        .post(`${pullRequests}/${id}/merge-preview`)
+        .set('Authorization', `Bearer ${target.token}`)
+        .send({ purpose: 'merge' });
+      expect(preview.status).toBe(200);
+      const merge = (version: string, ifMatch?: string) => {
+        const call = request(app).post(`${pullRequests}/${id}/merge`).set('Authorization', `Bearer ${target.token}`);
+        if (ifMatch) call.set('If-Match', ifMatch);
+        return call.send({ version, private: false, previewToken: preview.body.previewToken });
+      };
+
+      // The label looks free when checked and is taken when publishing: the pull request is reserved, then given back.
+      const pricingRepository = appContainer.resolve('pricingRepository');
+      const labelCheck = vi.spyOn(pricingRepository, 'hasVersionLabel').mockResolvedValueOnce(false);
+      let failed;
+      try {
+        failed = await merge(target.version);
+      } finally {
+        labelCheck.mockRestore();
+      }
+      expect(failed.status).toBe(409);
+      expect(failed.body.code).toBe('VERSION_TAKEN');
+      expect(await currentEtag(target.pricingUrl, target.token)).toBe(before);
+
+      // A rename moves the ETag on without making the preview stale.
+      const renamed = await request(app)
+        .put(target.pricingUrl)
+        .set('Authorization', `Bearer ${target.token}`)
+        .send({ name: `renamed_${Date.now()}` });
+      expect(renamed.status).toBe(200);
+      const identity = (await PricingIdentityMongoose.findById(latest.pricingId).lean())!;
+      const pricingUrl = `${BASE_PATH}/pricings/${target.organizationId}/${identity.slug}`;
+      const current = await currentEtag(pricingUrl, target.token);
+      const stale = await merge('99.0.0', before);
+      expect(stale.status).toBe(412);
+      expect(stale.headers.etag).toBe(current);
+
+      const merged = await merge('99.0.0', current);
+      expect(merged.status).toBe(200);
+      pricingsToDelete.add(merged.body.version.id);
+      const published = (await PricingMongoose.findById(merged.body.version.id).lean())!;
+      generatedFilesToDelete.add(path.resolve(process.cwd(), 'public', published.yaml));
+      const after = await currentEtag(pricingUrl, target.token);
+      expect(after).not.toBe(current);
+      expect(merged.headers.etag).toBe(after);
     });
   });
 });

@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { sanitizePathSegment } from './path-utils';
 
 /** The folder the stored paths of pricing files are relative to. */
 function staticsFolder(): string {
@@ -54,5 +56,32 @@ export function resolvePricingFile(stored: unknown): string | null {
 export function requirePricingFile(stored: unknown): string {
   const file = resolvePricingFile(stored);
   if (!file) throw new Error('NOT FOUND: Pricing file not found');
+  return file;
+}
+
+/**
+ * Writes a pricing file the server made (the merge of a pull request) where
+ * uploads go, `static/pricings/uploaded/<organization>/<pricing>`, under a name
+ * no other write can take: a UUID, and `wx` refuses a file that already exists.
+ * Returns its absolute path.
+ */
+export function writeUploadedPricingFile(
+  organizationId: string,
+  pricingSlug: string,
+  version: string,
+  content: string,
+  tag: string
+): string {
+  const relative = [
+    'static',
+    'pricings',
+    'uploaded',
+    sanitizePathSegment(organizationId, 'unknown-organization'),
+    sanitizePathSegment(pricingSlug, 'unknown-saas'),
+    `${sanitizePathSegment(version, '0.0.0')}-${tag}-${Date.now()}-${randomUUID()}.yml`,
+  ].join('/');
+  const file = requirePricingFile(relative);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, { encoding: 'utf8', flag: 'wx' });
   return file;
 }

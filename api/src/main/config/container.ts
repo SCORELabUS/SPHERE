@@ -43,6 +43,9 @@ import OAuthService from '../services/OAuthService';
 import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
 import ServiceTreeService from '../services/ServiceTreeService';
+import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
+import PricingPullRequestService from '../services/PricingPullRequestService';
+import PricingPullRequestNotifier from '../services/PricingPullRequestNotifier';
 
 dotenv.config();
 
@@ -83,6 +86,7 @@ function initContainer(databaseType: string): AwilixContainer {
     entityPermissionRepository: asValue(entityPermissionRepository),
     notificationRepository: asValue(notificationRepository),
     pricingFollowRepository: asValue(pricingFollowRepository),
+    pricingPullRequestRepository: asValue(new PricingPullRequestRepository()),
     orbitConversationRepository: asValue(orbitConversationRepository),
     orbitPlanRepository: asValue(orbitPlanRepository),
     orbitAuditLogRepository: asValue(orbitAuditLogRepository),
@@ -96,6 +100,8 @@ function initContainer(databaseType: string): AwilixContainer {
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),
     pricingFollowService: asClass(PricingFollowService).singleton(),
+    pricingPullRequestService: asClass(PricingPullRequestService).singleton(),
+    pricingPullRequestNotifier: asClass(PricingPullRequestNotifier).singleton(),
     apiKeyService: asClass(ApiKeyService).singleton(),
     authProviderService: asClass(AuthProviderService).singleton(),
     scoretechIdentityService: asClass(ScoretechIdentityService).singleton(),

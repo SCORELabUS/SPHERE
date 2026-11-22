@@ -34,7 +34,7 @@ interface PricingVersionDiffProps {
   initialPair: { from: string; to: string };
 }
 
-type ViewMode = 'structured' | 'file';
+export type ViewMode = 'structured' | 'file';
 
 const KIND_STYLES: Record<
   ChangeKind,
@@ -251,7 +251,7 @@ function Section({ section }: { section: SectionDiff }) {
   );
 }
 
-function DiffResult({
+export function DiffResult({
   diff,
   filter,
   onFilterChange,
@@ -327,7 +327,7 @@ function DiffResult({
   );
 }
 
-function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (mode: ViewMode) => void }) {
+export function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (mode: ViewMode) => void }) {
   const options: { mode: ViewMode; label: string; icon: IconType }[] = [
     { mode: 'structured', label: 'Structured', icon: FiList },
     { mode: 'file', label: 'File', icon: FiCode },

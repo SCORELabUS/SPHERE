@@ -9,6 +9,8 @@ export interface VersionData {
   collection: { id: string; name: string; slug: string } | null;
   analytics: Record<string, number> | null;
   forkedFrom: {
+    /** The pricing it was forked from. */
+    pricingId?: string;
     organizationId: string;
     organizationName: string;
     organizationDisplayName: string;
@@ -21,7 +23,7 @@ export interface VersionData {
   } | null;
 }
 
-export type Tab = 'overview' | 'analytics' | 'config-space' | 'versions' | 'settings';
+export type Tab = 'overview' | 'analytics' | 'config-space' | 'versions' | 'pull-requests' | 'settings';
 
 export interface TreeAnalytics {
   numberOfPlans: number; numberOfFeatures: number; numberOfAddOns: number; numberOfUsageLimits: number;

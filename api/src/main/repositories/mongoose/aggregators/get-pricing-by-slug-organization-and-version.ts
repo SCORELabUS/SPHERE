@@ -101,6 +101,8 @@ export function getPricingBySlugOrganizationAndVersionAggregator(
             yaml: '$yaml',
             analytics: '$analytics',
             forkedFrom: { $ifNull: ['$forkedFrom', null] },
+            // No $ifNull: a version that was not merged from a pull request has no such key.
+            mergedFrom: '$mergedFrom',
             organization: {
               id: { $toString: '$organization._id' },
               name: '$organization.name',

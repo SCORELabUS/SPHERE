@@ -9,6 +9,7 @@ import {
   baseVersionOf,
   isLongLink,
   layoutGraph,
+  mergedFromLabel,
   nodeKey,
   routeEdge,
   type GraphEdge,
@@ -35,6 +36,9 @@ const DOT_RADIUS = 6;
 const FOLD_FROM = 13;
 /** Longer version names are shortened under their dot (the full name is in the tooltip). */
 const LABEL_CHARS = 11;
+/** The "M" of a merged version sits on the upper right of its dot. */
+const MERGE_MARK_OFFSET = 8;
+const MERGE_MARK_RADIUS = 6;
 
 const ROLE_LABEL: Record<PricingGraphLane['role'], string> = {
   current: 'This pricing',
@@ -225,6 +229,7 @@ export default function PricingVersionGraph({
   const width = Math.max(x(layout.columns - 1) + PAD_X, viewWidth - labelsWidth, 240);
   const height = layout.lanes.length * LANE_HEIGHT;
   const totalVersions = graph.lanes.reduce((count, lane) => count + lane.versions.length, 0);
+  const anyMerged = layout.nodes.some(node => node.version.mergedFrom);
   const foldedVersions = layout.gaps.reduce((count, gap) => count + gap.versions.length, 0);
 
   // While the viewer picks a version, its own branches stand out and the rest step
@@ -303,6 +308,17 @@ export default function PricingVersionGraph({
               />
               Private
             </li>
+            {anyMerged && (
+              <li className="flex items-center gap-1.5">
+                <span
+                  className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-tp-primary font-mono text-[8px] font-bold leading-none text-tp-primary"
+                  aria-hidden="true"
+                >
+                  M
+                </span>
+                Merged pull request
+              </li>
+            )}
           </ul>
           {!small && (foldedVersions > 0 || expanded === 'all') && (
             <button
@@ -521,13 +537,14 @@ export default function PricingVersionGraph({
               const date = node.version.createdAt
                 ? format(parseISO(node.version.createdAt), 'PP')
                 : 'date not visible';
+              const merged = mergedFromLabel(node.version);
               return (
                 <g
                   key={node.key}
                   role="button"
                   tabIndex={0}
                   aria-pressed={isSelected}
-                  aria-label={`${lane.name} ${node.version.version}, ${date}${node.version.private ? ', private' : ''}`}
+                  aria-label={`${lane.name} ${node.version.version}, ${date}${node.version.private ? ', private' : ''}${merged ? `, ${merged}` : ''}`}
                   onClick={() => setSelectedKey(node.key)}
                   onMouseEnter={event => {
                     setHoveredKey(node.key);
@@ -592,6 +609,26 @@ export default function PricingVersionGraph({
                   >
                     {shortLabel(node.version.version)}
                   </text>
+                  {merged && (
+                    <g aria-label={merged}>
+                      <title>{merged}</title>
+                      <circle
+                        cx={cx + MERGE_MARK_OFFSET}
+                        cy={cy - MERGE_MARK_OFFSET}
+                        r={MERGE_MARK_RADIUS}
+                        className="fill-tp-canvas stroke-tp-primary"
+                        strokeWidth={1.25}
+                      />
+                      <text
+                        x={cx + MERGE_MARK_OFFSET}
+                        y={cy - MERGE_MARK_OFFSET + 2.75}
+                        textAnchor="middle"
+                        className="fill-tp-primary font-mono text-[8px] font-bold"
+                      >
+                        M
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -605,6 +642,7 @@ export default function PricingVersionGraph({
           version={cardNode.version.version}
           createdAt={cardNode.version.createdAt}
           firstVersion={!cardBase}
+          mergedFrom={mergedFromLabel(cardNode.version) ?? undefined}
           heading={
             cardBase
               ? `Changes since ${cardBase.version.version}${cardBase.lane.pricingId === cardLane.pricingId ? '' : ` in ${cardBase.lane.name}`}`

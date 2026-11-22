@@ -72,6 +72,21 @@ export const createRateLimiter = (options: RateLimitOptions) => {
   };
 };
 
+/**
+ * The pull request routes that parse proposals and compute merges cost CPU,
+ * so each user gets its own, smaller budget there: 20 requests a minute by
+ * default. They need a web session, so there is always a user.
+ */
+export const pricingPullRequestRateLimiter = createRateLimiter({
+  name: 'pricing-pr',
+  max: numberFromEnv('PRICING_PR_RATE_LIMIT_MAX_REQUESTS', defaultMax(20)),
+  windowSeconds: numberFromEnv('PRICING_PR_RATE_LIMIT_WINDOW_SECONDS', 60) || 60,
+  keyOf: req => {
+    const user = (req as any).user;
+    return user?.id ? `user:${user.id}` : null;
+  },
+});
+
 const AUTH_PATH = /\/users\/(login|register|password\/forgot|password\/reset|email-verification\/resend)$/;
 
 /**

@@ -2,7 +2,7 @@ import { formatPricingEtag, PreconditionFailedError, PricingRevisionContext } fr
 import { withPricingRevisionLock, withPricingRevisionLocks } from '../utils/pricing-revision-lock';
 import { Pricing } from 'pricing4ts';
 import { Pricing as PricingModel } from '../types/database/Pricing';
-import { ForkedFrom, PricingGraphLane } from '../types/models/Pricing';
+import { ForkedFrom, MergedFrom, PricingGraphLane, PricingGraphMergeSource } from '../types/models/Pricing';
 import container from '../config/container';
 import { processFileUris } from './FileService';
 import { sanitizePathSegment } from '../utils/path-utils';
@@ -17,8 +17,10 @@ import {
 import { PricingIndexQueryParams } from '../types/services/PricingService';
 import PricingCollectionService from './PricingCollectionService';
 import PricingRepository from '../repositories/mongoose/PricingRepository';
+import PricingPullRequestRepository from '../repositories/mongoose/PricingPullRequestRepository';
 import CacheService, { INTERNAL_CACHE_PREFIX } from './CacheService';
 import { LeanUser } from '../types/models/User';
+import type { PricingPullRequest } from '../types/models/PricingPullRequest';
 import { PermissionEngine } from '../policies/PermissionEngine';
 import { generateSlug, generateTextFromSlug, deduplicateSlug } from '../utils/slug-manager';
 import { OrgRole } from '../types/models/Organization';
@@ -51,6 +53,7 @@ const GRAPH_MAX_LANES = 20;
 
 class PricingService {
   private pricingRepository: PricingRepository;
+  private pricingPullRequestRepository: PricingPullRequestRepository;
   private pricingCollectionService: PricingCollectionService;
   private cacheService: CacheService;
   private permissionEngine: PermissionEngine;
@@ -60,6 +63,7 @@ class PricingService {
 
   constructor() {
     this.pricingRepository = container.resolve('pricingRepository');
+    this.pricingPullRequestRepository = container.resolve('pricingPullRequestRepository');
     this.pricingCollectionService = container.resolve('pricingCollectionService');
     this.cacheService = container.resolve('cacheService');
     this.permissionEngine = new PermissionEngine();
@@ -179,7 +183,7 @@ class PricingService {
       name: string;
       slug: string;
       collection?: { id?: string | null; name?: string; slug?: string };
-      versions: (PricingModel & { id?: string; private?: boolean; collectionName?: string | null; forkedFrom?: any })[];
+      versions: (PricingModel & { id?: string; private?: boolean; collectionName?: string | null; forkedFrom?: any; mergedFrom?: MergedFrom })[];
     } | null = await this.pricingRepository.findOne(slug, organizationId, {
       ...lookup,
       // A slug can belong to different pricing identities in different collections.
@@ -242,6 +246,26 @@ class PricingService {
       lanes.push((await this._graphLaneOf(id, 'source', reqUser)) ?? this._unavailableSourceLane(id, current.versions));
     }
 
+    // The merged pull requests of every lane, read in one query.
+    const prIds = lanes.flatMap(lane => lane.versions.flatMap(version => (version.mergedFrom ? [version.mergedFrom.prId] : [])));
+    const pullRequests = new Map(
+      (await this.pricingPullRequestRepository.findByIds(prIds)).map(pullRequest => [pullRequest.id, pullRequest])
+    );
+    // Forks already looked up, so several merges from one fork read it once.
+    const forkLanes = new Map<string, Promise<PricingGraphLane | null>>();
+    for (const lane of lanes) {
+      for (const version of lane.versions) {
+        if (version.mergedFrom) {
+          version.mergedFrom.from = await this._mergeSource(
+            pullRequests.get(version.mergedFrom.prId) ?? null,
+            lane.pricingId,
+            forkLanes,
+            reqUser
+          );
+        }
+      }
+    }
+
     return {
       pricingId: currentId,
       lanes,
@@ -286,8 +310,33 @@ class PricingService {
         forkedFrom: version.forkedFrom?.pricingId
           ? { pricingId: String(version.forkedFrom.pricingId), version: String(version.forkedFrom.version) }
           : null,
+        // Only on merged versions; `graph()` resolves where the proposal came from.
+        ...(version.mergedFrom
+          ? { mergedFrom: { number: version.mergedFrom.number, prId: String(version.mergedFrom.prId), from: null } }
+          : {}),
       })),
     };
+  }
+
+  /**
+   * The fork a merged pull request of `pricingId` was proposed from, as `show()`
+   * lets the caller read it. Null when the pull request is gone, was not made
+   * from a fork, or its author edited the proposal by hand (the version is then
+   * not the fork's), and when the fork is gone or the caller may not read it.
+   */
+  private async _mergeSource(
+    pullRequest: Pick<PricingPullRequest, 'pricingId' | 'origin'> | null,
+    pricingId: string,
+    forkLanes: Map<string, Promise<PricingGraphLane | null>>,
+    reqUser?: LeanUser
+  ): Promise<PricingGraphMergeSource | null> {
+    if (!pullRequest || pullRequest.pricingId !== pricingId || !pullRequest.origin || pullRequest.origin.edited) return null;
+    const forkId = pullRequest.origin.pricingId;
+    if (!forkLanes.has(forkId)) forkLanes.set(forkId, this._graphLaneOf(forkId, 'source', reqUser));
+    const lane = await forkLanes.get(forkId);
+    // A slug can name another pricing of the organization in another collection.
+    if (!lane || lane.pricingId !== pullRequest.origin.pricingId) return null;
+    return { pricingId: lane.pricingId, name: lane.name, slug: lane.slug, organization: lane.organization };
   }
 
   /** A source the caller may not read: only what its forks already say about it. */
@@ -523,7 +572,10 @@ class PricingService {
       configurationSpace = cachedConfigurationSpace;
     } else {
       // Configuariton space calculation
-      const pricingInfo: Pricing = retrievePricingFromPath(requirePricingFile(retrievedPricing.versions[0].yaml));
+      // Parsed as text: pricing4ts rewrites a file in an older syntax that it reads by path.
+      const pricingInfo: Pricing = retrievePricingFromText(
+        fs.readFileSync(requirePricingFile(retrievedPricing.versions[0].yaml), 'utf8')
+      );
       const pricingAnalytics = new PricingAnalytics(pricingInfo);
       configurationSpace = await pricingAnalytics.getConfigurationSpace();
       await this.cacheService.set(key, configurationSpace, 60 * 60 * 24);
@@ -573,7 +625,9 @@ class PricingService {
     reqUser: LeanUser,
     collectionId?: string,
     createdAt?: Date,
-    revisionContext?: PricingRevisionContext
+    revisionContext?: PricingRevisionContext,
+    // Only the merge of a pull request passes it; no request field reaches it.
+    mergedFrom?: MergedFrom
   ) {
     return this._createPricingVersion(
       pricingFile,
@@ -586,7 +640,8 @@ class PricingService {
       undefined,
       undefined,
       createdAt,
-      revisionContext
+      revisionContext,
+      mergedFrom
     );
   }
 
@@ -734,7 +789,8 @@ class PricingService {
     forkedFrom?: ForkedFrom,
     previousPricingOverride?: any,
     createdAtOverride?: Date,
-    revisionContext?: PricingRevisionContext
+    revisionContext?: PricingRevisionContext,
+    mergedFrom?: MergedFrom
   ) {
     if (!pricingFile) {
       throw new Error('INVALID DATA: Pricing file is required');
@@ -752,7 +808,11 @@ class PricingService {
       );
 
       const filePath = typeof pricingFile === 'string' ? pricingFile : pricingFile.path;
-      uploadedPricing = retrievePricingFromPath(filePath);
+      // A fork's copy and a merged pull request are published as written, in their own syntax:
+      // read by path, pricing4ts would rewrite a file in an older one, and not always faithfully.
+      uploadedPricing = forkedFrom || mergedFrom
+        ? retrievePricingFromText(fs.readFileSync(filePath, 'utf8'))
+        : retrievePricingFromPath(filePath);
 
       // A fork already knows which pricing (if any) it should attach a new version to,
       // resolved by origin rather than by name/slug: skip the usual name-based lookup.
@@ -872,6 +932,7 @@ class PricingService {
       const pricingData = {
         ...(isAddingVersion && previousPricing.pricingId ? { pricingId: previousPricing.pricingId } : {}),
         ...(forkedFrom ? { forkedFrom } : {}),
+        ...(mergedFrom ? { mergedFrom } : {}),
         name: pricingName,
         slug: pricingSlug,
         version: uploadedPricing.version,
