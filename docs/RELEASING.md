@@ -45,6 +45,21 @@ git commit -m "feat: add sphere-changelog workflow"
 git push
 ```
 
+## Pin the AI services
+
+HARVEY, A-MINT, the analysis engines and the pricing MCP server come from
+[isa-group/Pricing-Intelligence-Interpretation-Process](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process)
+and are pinned by version and digest in the Docker Compose files. Before tagging a SPHERE release,
+check that they point to the release of that repository you want to ship. If they do not, pin it
+(the GHCR packages must be public):
+
+```bash
+scripts/pin-ai-images.sh 1.2.0
+git add docker && git commit -m "chore(docker): pin AI services to 1.2.0"
+```
+
+Never ship a release with floating tags such as `main` or `latest`.
+
 ## Release process
 
 Create and push a Git tag to trigger the `Generate changelog` workflow, which automatically creates a draft release with a `changelog-<tag>.json` asset.

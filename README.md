@@ -23,6 +23,7 @@ A collaborative platform to model, version, analyze and govern SaaS pricings.
 - [Architecture](#architecture)
 - [Quick start with Docker](#quick-start-with-docker)
 - [Published container images](#published-container-images)
+- [AI services](#ai-services)
 - [Local development](#local-development)
 - [Testing](#testing)
 - [Documentation](#documentation)
@@ -56,6 +57,7 @@ A public instance is available at **[sphere.score.us.es](https://sphere.score.us
 | Cache, rate limiting, OAuth state | Redis 7 | — |
 | Analytics solver | MiniZinc with Gecode | bundled in the API image |
 | Reverse proxy | nginx | [`nginx/`](nginx) |
+| AI services (HARVEY, A-MINT, analysis engines, pricing MCP server) | Python, Node.js, Java | [Pricing Intelligence repository](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process), see [AI services](#ai-services) |
 
 The API serves under `/api/v1` and also exposes the pricing files under `/static`. In production, nginx routes both paths to the API and everything else to the web client.
 
@@ -96,6 +98,44 @@ docker pull ghcr.io/scorelabus/sphere-client:latest  # Static web client served 
 ```
 
 These images still need MongoDB, Redis and a reverse proxy that routes `/api/v1` and `/static` to the API and everything else to the client. Use [`docker/testing/docker-compose.yml`](docker/testing/docker-compose.yml) and [`nginx/`](nginx) as a reference. The API reads the same environment variables as [`api/.env.testing`](api/.env.testing); the client is built with `VITE_API_URL=/api/v1`.
+
+## AI services
+
+HARVEY and the services it relies on are developed in a separate repository, [isa-group/Pricing-Intelligence-Interpretation-Process](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process), released under the MIT License. Each of its releases publishes the images to GHCR, and SPHERE pins them by version and digest in [`docker/production`](docker/production/docker-compose.yml), [`docker/pre-production`](docker/pre-production/docker-compose.yml) and [`docker/testing/docker-compose.ai.yml`](docker/testing/docker-compose.ai.yml).
+
+| Service | Role | Image | Source |
+| --- | --- | --- | --- |
+| HARVEY | Conversational assistant about pricings | `ghcr.io/isa-group/harvey` | [`harvey_api/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/harvey_api) |
+| A-MINT | Extracts Pricing2Yaml models from pricing web pages | `ghcr.io/isa-group/a-mint` | [`src/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/src) |
+| Analysis engine | Pricing analysis used by HARVEY | `ghcr.io/isa-group/pricing-analysis-engine` | [`analysis_api/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/analysis_api) |
+| CSP engine | Choco constraint solver behind the analysis engine | `ghcr.io/isa-group/choco-pricing-analysis-engine` | [`csp/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/csp) |
+| Pricing MCP server | Tools that HARVEY calls | `ghcr.io/isa-group/pi-mcp-server` | [`mcp_server/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/mcp_server) |
+
+ORBIT is part of the SPHERE API and is not one of these services.
+
+To add them to the [quick-start stack](#quick-start-with-docker), put an OpenAI key in `docker/testing/.env` and start both Compose files:
+
+```bash
+cd docker/testing
+echo "OPENAI_API_KEY=sk-..." > .env
+docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+```
+
+The same key enables ORBIT's chat. To move to a new release of the AI services, run `scripts/pin-ai-images.sh <version>`, which resolves the digests and updates the three Compose files.
+
+### What works without them
+
+Neither the AI services nor an OpenAI key are needed for the rest of SPHERE:
+
+| Feature | Without AI services or OpenAI key |
+| --- | --- |
+| Pricing editor, versioning, collections, organizations and permissions | Available |
+| Analytics (configuration space and optimization, computed with MiniZinc in the API) | Available: open a pricing with several versions and go to its Analytics tab |
+| REST API and permanent links | Available |
+| ORBIT's MCP server (`/api/v1/orbit/mcp`) | Available: it calls no language model. Connect your own assistant with an API key (user menu → API Keys) or through OAuth, managed in Settings → Connected applications |
+| ORBIT's chat in the web client | Needs an OpenAI key (`ORBIT_OPENAI_API_KEY`); without one it reports that it is unavailable |
+| HARVEY's chat | Needs the AI services and an OpenAI key |
+| Extraction of pricings from web pages (A-MINT) | Needs the AI services and an OpenAI key |
 
 ## Local development
 
