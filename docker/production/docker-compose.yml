@@ -33,7 +33,7 @@ services:
     networks:
       - sphere-network
   choco-analysis-engine:
-    image: aleexgf/choco-pricing-analysis-engine:main
+    image: ghcr.io/isa-group/choco-pricing-analysis-engine:1.2.0
     container_name: choco-analysis-engine
     ports:
       - "8000:8000"
@@ -53,7 +53,7 @@ services:
     networks:
       - sphere-network
   analysis-engine:
-    image: aleexgf/pricing-analysis-engine:main
+    image: ghcr.io/isa-group/pricing-analysis-engine:1.2.0
     container_name: pricing-analysis-engine
     init: true
     ports:
@@ -78,7 +78,7 @@ services:
     networks:
       - sphere-network
   a-mint:
-    image: aleexgf/a-mint:main
+    image: ghcr.io/isa-group/a-mint:1.2.0
     container_name: a-mint
     init: true
     ports:
@@ -106,7 +106,7 @@ services:
     networks:
       - sphere-network
   mcp-server:
-    image: aleexgf/pi-mcp-server:main
+    image: ghcr.io/isa-group/pi-mcp-server:1.2.0
     container_name: mcp-server
     environment:
       - AMINT_BASE_URL=http://a-mint:8000
@@ -131,7 +131,7 @@ services:
     networks:
       - sphere-network
   harvey:
-    image: aleexgf/harvey:main
+    image: ghcr.io/isa-group/harvey:1.2.0
     container_name: harvey
     env_file: .env
     ports:
