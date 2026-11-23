@@ -1,0 +1,97 @@
+# Optional AI services for the testing stack: HARVEY and the pricing
+# intelligence services it uses (A-MINT, the analysis engines and the MCP
+# server). Their source code is in
+# https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process (MIT).
+# The images are pinned by version and digest; update them with
+# scripts/pin-ai-images.sh.
+#
+#   echo "OPENAI_API_KEY=sk-..." > .env
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+#
+# The same key also enables ORBIT's chat in the API. Without a key the
+# services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
+services:
+  choco-analysis-engine:
+    image: ghcr.io/isa-group/choco-pricing-analysis-engine:1.2.0
+    container_name: choco-analysis-engine
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    networks:
+      - testing-network
+  analysis-engine:
+    image: ghcr.io/isa-group/pricing-analysis-engine:1.2.0
+    container_name: pricing-analysis-engine
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHOCO_API=http://choco-analysis-engine:8000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - choco-analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  a-mint:
+    image: ghcr.io/isa-group/a-mint:1.2.0
+    container_name: a-mint
+    init: true
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANALYSIS_API=http://analysis-engine:3000/api/v1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  mcp-server:
+    image: ghcr.io/isa-group/pi-mcp-server:1.2.0
+    container_name: mcp-server
+    environment:
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - LOG_LEVEL=INFO
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8085
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8085
+      - MCP_TRANSPORT=sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  harvey:
+    image: ghcr.io/isa-group/harvey:1.2.0
+    container_name: harvey
+    # The testing web client calls HARVEY directly (VITE_HARVEY_URL in
+    # frontend/.env.testing).
+    ports:
+      - "8086:8086"
+    environment:
+      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_URL=http://mcp-server:8085/sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+      - mcp-server
+    restart: unless-stopped
+    networks:
+      - testing-network
+  server:
+    environment:
+      - ORBIT_OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
