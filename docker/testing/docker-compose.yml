@@ -4,7 +4,10 @@ services:
       ports:
         - "27017:27017"
       env_file:
-        - ../../api/.env.testing
+        # raw: values such as the admin password hash contain '$' and must not
+        # be interpolated by Compose.
+        - path: ../../api/.env.testing
+          format: raw
       volumes:
         - 'sphere-mongodb:/data/db'
         - '../../api/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh'
@@ -29,7 +32,10 @@ services:
     ports:
       - 8080:8080
     env_file:
-      - ../../api/.env.testing
+      # raw: values such as the admin password hash contain '$' and must not
+      # be interpolated by Compose.
+      - path: ../../api/.env.testing
+        format: raw
     volumes:
       - 'sphere-statics:/usr/src/server/public'
     depends_on:
