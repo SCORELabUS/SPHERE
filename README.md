@@ -63,27 +63,21 @@ The API serves under `/api/v1` and also exposes the pricing files under `/static
 
 ## Quick start with Docker
 
-**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose v2.
+**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose 2.30 or later.
 
 ```bash
 git clone https://github.com/SCORELabUS/SPHERE.git
 cd SPHERE
 ```
 
-The web client image generates its changelog from GitHub at build time, so the build needs a GitHub personal access token with read access to public repositories. Save it in `docker/gh_pat.txt` (it is ignored by Git):
-
-```bash
-echo "<your-github-token>" > docker/gh_pat.txt
-```
-
-Then start the stack:
+Start the stack:
 
 ```bash
 cd docker/testing
 docker compose up -d
 ```
 
-SPHERE is then available at [http://localhost](http://localhost). The stack runs MongoDB, Redis, the API, the web client and nginx, configured with [`api/.env.testing`](api/.env.testing) and [`frontend/.env.testing`](frontend/.env.testing).
+SPHERE is then available at [http://localhost](http://localhost). The web client shows the changelog committed in the repository; the production build refreshes it from GitHub with a token in `docker/gh_pat.txt` (see [`docs/RELEASING.md`](docs/RELEASING.md)). The stack runs MongoDB, Redis, the API, the web client and nginx, configured with [`api/.env.testing`](api/.env.testing) and [`frontend/.env.testing`](frontend/.env.testing).
 
 > [!WARNING]
 > The `testing` configuration ships with default credentials and secrets. Change them before exposing the instance to a network.

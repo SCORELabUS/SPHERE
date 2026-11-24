@@ -52,8 +52,6 @@ services:
     build:
       context: ../../frontend
       dockerfile: ./docker/Dockerfile
-      secrets:
-        - gh_token
     ports:
       - 5173:5173
     env_file:
@@ -83,6 +81,3 @@ volumes:
 networks:
   testing-network:
     driver: bridge
-secrets:
-  gh_token:
-    file: ../gh_pat.txt
