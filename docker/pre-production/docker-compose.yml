@@ -21,7 +21,7 @@ services:
     networks:
       - testing-network
   choco-analysis-engine:
-    image: ghcr.io/isa-group/choco-pricing-analysis-engine:1.2.0
+    image: ghcr.io/isa-group/choco-pricing-analysis-engine:1.2.0@sha256:c08ceca7c599f2e34538fe415dae733ca90707b7e4211e9d933df2a619f674d1
     container_name: choco-analysis-engine
     ports:
       - "8000:8000"
@@ -37,7 +37,7 @@ services:
     networks:
       - testing-network
   analysis-engine:
-    image: ghcr.io/isa-group/pricing-analysis-engine:1.2.0
+    image: ghcr.io/isa-group/pricing-analysis-engine:1.2.0@sha256:223e9f0046915430c87d48476c57b2f967a4f29bc70457f20cdd23f47d3c704b
     container_name: pricing-analysis-engine
     ports:
       - "8002:3000"
@@ -57,7 +57,7 @@ services:
     networks:
       - testing-network
   a-mint:
-    image: ghcr.io/isa-group/a-mint:1.2.0
+    image: ghcr.io/isa-group/a-mint:1.2.0@sha256:ecd45cd21f50261a4842433f6b6e5a5a10e20924c74eef64c82cdf0ef8d72a56
     container_name: a-mint
     ports:
       - "8001:8000"
@@ -80,7 +80,7 @@ services:
     networks:
       - testing-network
   mcp-server:
-    image: ghcr.io/isa-group/pi-mcp-server:1.2.0
+    image: ghcr.io/isa-group/pi-mcp-server:1.2.0@sha256:13662a931fcb3bc5d97427f979e0b4ad95f05d21ef6d5e7f617dd7ac047a2bdc
     container_name: mcp-server
     environment:
       - AMINT_BASE_URL=http://a-mint:8000
@@ -98,7 +98,7 @@ services:
     networks:
       - testing-network
   harvey:
-    image: ghcr.io/isa-group/harvey:1.2.0
+    image: ghcr.io/isa-group/harvey:1.2.0@sha256:1a2aaf4318ff6abdea22752fdc5791c7b2642ab8d1511451c34fbf0ef254fa4c
     container_name: harvey
     env_file: .env
     ports:
