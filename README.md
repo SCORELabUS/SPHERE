@@ -121,7 +121,7 @@ echo "OPENAI_API_KEY=sk-..." > .env
 docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
 ```
 
-The same key enables ORBIT's chat. To move to a new release of the AI services, run `scripts/pin-ai-images.sh <version>`, which resolves the digests and updates the three Compose files.
+The same key enables ORBIT's chat. The images are built for `linux/amd64`; on Apple Silicon, Docker runs them under emulation. To move to a new release of the AI services, run `scripts/pin-ai-images.sh <version>`, which resolves the digests and updates the three Compose files.
 
 ### What works without them
 
