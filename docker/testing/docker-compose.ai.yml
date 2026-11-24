@@ -13,7 +13,7 @@
 # services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
 services:
   choco-analysis-engine:
-    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.2.1
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.2.1@sha256:28adc8f3f1770176a6939521b22d526fad69eb18a48c11ca1e5d19578fe24424
     platform: linux/amd64
     container_name: choco-analysis-engine
     environment:
@@ -23,7 +23,7 @@ services:
     networks:
       - testing-network
   analysis-engine:
-    image: ghcr.io/scorelabus/pricing-analysis-engine:1.2.1
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.2.1@sha256:a3fff780acc47eb64f66b67a7a29c68a20916932c7afadeeccbfaa772fc33e37
     platform: linux/amd64
     container_name: pricing-analysis-engine
     init: true
@@ -38,7 +38,7 @@ services:
     networks:
       - testing-network
   a-mint:
-    image: ghcr.io/scorelabus/a-mint:1.2.1
+    image: ghcr.io/scorelabus/a-mint:1.2.1@sha256:603a6ad8e7174973a23259b53c24186ae5fff133d4369b6233548a2807deeb78
     platform: linux/amd64
     container_name: a-mint
     init: true
@@ -54,7 +54,7 @@ services:
     networks:
       - testing-network
   mcp-server:
-    image: ghcr.io/scorelabus/pi-mcp-server:1.2.1
+    image: ghcr.io/scorelabus/pi-mcp-server:1.2.1@sha256:012abd8a640fe32310feab57af42aec2a7109d76ce749b3f4513376a5be35f59
     platform: linux/amd64
     container_name: mcp-server
     environment:
@@ -74,7 +74,7 @@ services:
     networks:
       - testing-network
   harvey:
-    image: ghcr.io/scorelabus/harvey:1.2.1
+    image: ghcr.io/scorelabus/harvey:1.2.1@sha256:e89c2927ae19050da5e7b352514a4011462d194bd8b330008e25b842521807f5
     platform: linux/amd64
     container_name: harvey
     # The testing web client calls HARVEY directly (VITE_HARVEY_URL in
