@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Pins SPHERE's AI service images to a release of
-# https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process.
+# https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process.
 # It resolves each image's digest in GHCR and rewrites the Docker Compose
-# files as ghcr.io/isa-group/<service>:<version>@sha256:<digest>.
+# files as ghcr.io/scorelabus/<service>:<version>@sha256:<digest>.
 #
-#   scripts/pin-ai-images.sh 1.2.0
+#   scripts/pin-ai-images.sh 1.2.1
 set -euo pipefail
 
 VERSION="${1:?usage: $0 <version, e.g. 1.2.0>}"
 VERSION="${VERSION#v}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OWNER="isa-group"
+OWNER="scorelabus"
 SERVICES=(choco-pricing-analysis-engine pricing-analysis-engine a-mint pi-mcp-server harvey)
 FILES=(
   "$ROOT/docker/production/docker-compose.yml"

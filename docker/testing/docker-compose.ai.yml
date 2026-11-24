@@ -1,7 +1,7 @@
 # Optional AI services for the testing stack: HARVEY and the pricing
 # intelligence services it uses (A-MINT, the analysis engines and the MCP
 # server). Their source code is in
-# https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process (MIT).
+# https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process (MIT).
 # The images are pinned by version and digest; update them with
 # scripts/pin-ai-images.sh. They are built for linux/amd64 only, so on
 # Apple Silicon Docker runs them under emulation (platform: linux/amd64).
@@ -13,7 +13,7 @@
 # services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
 services:
   choco-analysis-engine:
-    image: ghcr.io/isa-group/choco-pricing-analysis-engine:1.2.0@sha256:c08ceca7c599f2e34538fe415dae733ca90707b7e4211e9d933df2a619f674d1
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.2.1
     platform: linux/amd64
     container_name: choco-analysis-engine
     environment:
@@ -23,7 +23,7 @@ services:
     networks:
       - testing-network
   analysis-engine:
-    image: ghcr.io/isa-group/pricing-analysis-engine:1.2.0@sha256:223e9f0046915430c87d48476c57b2f967a4f29bc70457f20cdd23f47d3c704b
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.2.1
     platform: linux/amd64
     container_name: pricing-analysis-engine
     init: true
@@ -38,7 +38,7 @@ services:
     networks:
       - testing-network
   a-mint:
-    image: ghcr.io/isa-group/a-mint:1.2.0@sha256:ecd45cd21f50261a4842433f6b6e5a5a10e20924c74eef64c82cdf0ef8d72a56
+    image: ghcr.io/scorelabus/a-mint:1.2.1
     platform: linux/amd64
     container_name: a-mint
     init: true
@@ -54,7 +54,7 @@ services:
     networks:
       - testing-network
   mcp-server:
-    image: ghcr.io/isa-group/pi-mcp-server:1.2.0@sha256:13662a931fcb3bc5d97427f979e0b4ad95f05d21ef6d5e7f617dd7ac047a2bdc
+    image: ghcr.io/scorelabus/pi-mcp-server:1.2.1
     platform: linux/amd64
     container_name: mcp-server
     environment:
@@ -74,7 +74,7 @@ services:
     networks:
       - testing-network
   harvey:
-    image: ghcr.io/isa-group/harvey:1.2.0@sha256:1a2aaf4318ff6abdea22752fdc5791c7b2642ab8d1511451c34fbf0ef254fa4c
+    image: ghcr.io/scorelabus/harvey:1.2.1
     platform: linux/amd64
     container_name: harvey
     # The testing web client calls HARVEY directly (VITE_HARVEY_URL in

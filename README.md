@@ -57,7 +57,7 @@ A public instance is available at **[sphere.score.us.es](https://sphere.score.us
 | Cache, rate limiting, OAuth state | Redis 7 | — |
 | Analytics solver | MiniZinc with Gecode | bundled in the API image |
 | Reverse proxy | nginx | [`nginx/`](nginx) |
-| AI services (HARVEY, A-MINT, analysis engines, pricing MCP server) | Python, Node.js, Java | [Pricing Intelligence repository](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process), see [AI services](#ai-services) |
+| AI services (HARVEY, A-MINT, analysis engines, pricing MCP server) | Python, Node.js, Java | [Pricing Intelligence repository](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process), see [AI services](#ai-services) |
 
 The API serves under `/api/v1` and also exposes the pricing files under `/static`. In production, nginx routes both paths to the API and everything else to the web client.
 
@@ -101,15 +101,15 @@ These images still need MongoDB, Redis and a reverse proxy that routes `/api/v1`
 
 ## AI services
 
-HARVEY and the services it relies on are developed in a separate repository, [isa-group/Pricing-Intelligence-Interpretation-Process](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process), released under the MIT License. Each of its releases publishes the images to GHCR, and SPHERE pins them by version and digest in [`docker/production`](docker/production/docker-compose.yml), [`docker/pre-production`](docker/pre-production/docker-compose.yml) and [`docker/testing/docker-compose.ai.yml`](docker/testing/docker-compose.ai.yml).
+HARVEY and the services it relies on are developed in a separate repository, [SCORELabUS/Pricing-Intelligence-Interpretation-Process](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process), released under the MIT License. Each of its releases publishes the images to GHCR, and SPHERE pins them by version and digest in [`docker/production`](docker/production/docker-compose.yml), [`docker/pre-production`](docker/pre-production/docker-compose.yml) and [`docker/testing/docker-compose.ai.yml`](docker/testing/docker-compose.ai.yml).
 
 | Service | Role | Image | Source |
 | --- | --- | --- | --- |
-| HARVEY | Conversational assistant about pricings | `ghcr.io/isa-group/harvey` | [`harvey_api/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/harvey_api) |
-| A-MINT | Extracts Pricing2Yaml models from pricing web pages | `ghcr.io/isa-group/a-mint` | [`src/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/src) |
-| Analysis engine | Pricing analysis used by HARVEY | `ghcr.io/isa-group/pricing-analysis-engine` | [`analysis_api/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/analysis_api) |
-| CSP engine | Choco constraint solver behind the analysis engine | `ghcr.io/isa-group/choco-pricing-analysis-engine` | [`csp/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/csp) |
-| Pricing MCP server | Tools that HARVEY calls | `ghcr.io/isa-group/pi-mcp-server` | [`mcp_server/`](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/mcp_server) |
+| HARVEY | Conversational assistant about pricings | `ghcr.io/scorelabus/harvey` | [`harvey_api/`](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/harvey_api) |
+| A-MINT | Extracts Pricing2Yaml models from pricing web pages | `ghcr.io/scorelabus/a-mint` | [`src/`](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/src) |
+| Analysis engine | Pricing analysis used by HARVEY | `ghcr.io/scorelabus/pricing-analysis-engine` | [`analysis_api/`](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/analysis_api) |
+| CSP engine | Choco constraint solver behind the analysis engine | `ghcr.io/scorelabus/choco-pricing-analysis-engine` | [`csp/`](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/csp) |
+| Pricing MCP server | Tools that HARVEY calls | `ghcr.io/scorelabus/pi-mcp-server` | [`mcp_server/`](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/mcp_server) |
 
 ORBIT is part of the SPHERE API and is not one of these services.
 
