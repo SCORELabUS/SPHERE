@@ -81,6 +81,15 @@ class PricingCollectionService {
     return collections;
   }
 
+  /** The organization's collections as any plain member lists them: no private one. */
+  async indexByOrganizationIdAsPlainMember(organizationId: string, queryParams?: CollectionIndexQueryParams) {
+    return this.pricingCollectionRepository.findByOrganizationId(
+      organizationId,
+      this.permissionService.plainMemberContext(),
+      queryParams ?? { limit: 10, offset: 0 }
+    );
+  }
+
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: CollectionIndexQueryParams) {
     if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
       throw new Error(

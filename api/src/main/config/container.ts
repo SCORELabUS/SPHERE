@@ -43,6 +43,7 @@ import OAuthService from '../services/OAuthService';
 import OAuthRepository from '../repositories/mongoose/OAuthRepository';
 import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
 import ServiceTreeService from '../services/ServiceTreeService';
+import OrganizationMemberViewService from '../services/OrganizationMemberViewService';
 
 dotenv.config();
 
@@ -92,6 +93,7 @@ function initContainer(databaseType: string): AwilixContainer {
     pricingCollectionService: asClass(PricingCollectionService).singleton(),
     cacheService: asClass(CacheService).singleton(),
     organizationService: asClass(OrganizationService).singleton(),
+    organizationMemberViewService: asClass(OrganizationMemberViewService).singleton(),
     permissionService: asClass(PermissionService).singleton(),
     userSettingsService: asClass(UserSettingsService).singleton(),
     notificationService: asClass(NotificationService).singleton(),

@@ -308,6 +308,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },
+  // Reading the organization as one of its members is for its owners and admins
+  // (the service also checks it, and that the one looked at is a member).
+  {
+    path: '/orgs/*/member-views/**',
+    methods: ['GET'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
   // Everything under /orgs/:organizationId/** requires membership context.
   // Global ADMIN bypasses membership checks.
   {

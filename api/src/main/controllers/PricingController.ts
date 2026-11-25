@@ -4,6 +4,7 @@ import PricingService from '../services/PricingService';
 import path from 'path';
 import { PricingIndexQueryParams, SortByType } from '../types/services/PricingService.js';
 import { handleError } from '../utils/users/helpers';
+import { memberAudience } from '../services/OrganizationMemberViewService';
 import {
   isIfMatchRequired,
   parseIfMatch,
@@ -18,6 +19,7 @@ class PricingController {
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
     this.indexByOrganization = this.indexByOrganization.bind(this);
+    this.indexByOrganizationAsMember = this.indexByOrganizationAsMember.bind(this);
     this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
     this.show = this.show.bind(this);
     this.getConfigurationSpace = this.getConfigurationSpace.bind(this);
@@ -49,6 +51,24 @@ class PricingController {
       const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
 
       const pricings = await this.pricingService.indexByOrganizationId(req.params.organizationId, req.user, queryParams);
+      res.json(pricings);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  /** The organization's pricings as any plain member, or one member, gets them; for its owners and admins. */
+  async indexByOrganizationAsMember(req: any, res: any) {
+    try {
+      const audience = await memberAudience(req);
+      const queryParams: PricingIndexQueryParams = this._transformIndexQueryParams(req.query);
+
+      const pricings =
+        audience.kind === 'any'
+          ? await this.pricingService.indexByOrganizationIdAsPlainMember(req.params.organizationId, queryParams)
+          : await this.pricingService.indexByOrganizationId(req.params.organizationId, audience.reader, queryParams);
+      res.set('Cache-Control', 'no-store');
       res.json(pricings);
     } catch (err: any) {
       const {status, message} = handleError(err);

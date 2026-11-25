@@ -437,6 +437,39 @@ export function useOrganizationsApi() {
     return { collections: data.collections ?? [], total: data.total ?? 0 };
   }, [fetchWithInterceptor, token]);
 
+  /*
+   * The organization as one of its members gets it, for its owners and admins
+   * (`/orgs/:orgId/member-views/:userId/...`): the same listings, answered as that member.
+   */
+  const memberViewUrl = (orgId: string, userId: string, part: string, filters?: Record<string, string>) => {
+    const params = new URLSearchParams();
+    Object.entries(filters ?? {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, v);
+    });
+    const qs = params.toString();
+    return `${ORGS_BASE_PATH}/${orgId}/member-views/${encodeURIComponent(userId)}/${part}${qs ? `?${qs}` : ''}`;
+  };
+
+  const getMemberViewPricings = useCallback(async (orgId: string, userId: string, filters?: Record<string, string>, signal?: AbortSignal): Promise<{ pricings: OrgPricing[]; total: number }> => {
+    const response = await fetchWithInterceptor(memberViewUrl(orgId, userId, 'pricings', filters), { method: 'GET', signal });
+    if (!response.ok) throw new Error('Failed to fetch the pricings this member sees');
+    const data = await response.json();
+    return { pricings: data.pricings ?? [], total: data.total ?? 0 };
+  }, [fetchWithInterceptor]);
+
+  const getMemberViewCollections = useCallback(async (orgId: string, userId: string, filters?: Record<string, string>): Promise<{ collections: OrgCollection[]; total: number }> => {
+    const response = await fetchWithInterceptor(memberViewUrl(orgId, userId, 'collections', filters), { method: 'GET' });
+    if (!response.ok) throw new Error('Failed to fetch the collections this member sees');
+    const data = await response.json();
+    return { collections: data.collections ?? [], total: data.total ?? 0 };
+  }, [fetchWithInterceptor]);
+
+  const getMemberViewHierarchy = useCallback(async (orgId: string, userId: string): Promise<OrgHierarchyNode[]> => {
+    const response = await fetchWithInterceptor(memberViewUrl(orgId, userId, 'hierarchy'), { method: 'GET' });
+    if (!response.ok) throw new Error('Failed to fetch the hierarchy this member sees');
+    return response.json();
+  }, [fetchWithInterceptor]);
+
   const getOrgPermissions = useCallback(async (orgId: string, entityType?: EntityType): Promise<EntityPermission[]> => {
     const url = entityType
       ? `${ORGS_BASE_PATH}/${orgId}/permissions?entityType=${entityType}`
@@ -539,6 +572,9 @@ export function useOrganizationsApi() {
     getOrgChildren,
     getOrgPricings,
     getOrgCollections,
+    getMemberViewPricings,
+    getMemberViewCollections,
+    getMemberViewHierarchy,
     getOrgPermissions,
     setOrgPermission,
     setOrgPermissionsBulk,
@@ -562,5 +598,12 @@ export async function getPublicOrganization(orgId: string): Promise<Organization
 export async function getPublicOrgMembers(orgId: string): Promise<OrgMemberWithUser[]> {
   const response = await fetch(`${BASE_URL}/orgs/${orgId}/members`);
   if (!response.ok) throw new Error('Failed to fetch members');
+  return response.json();
+}
+
+/** The branch as a signed-out visitor gets it: no node is open to them as a member. */
+export async function getPublicOrgHierarchy(orgId: string): Promise<OrgHierarchyNode[]> {
+  const response = await fetch(`${BASE_URL}/orgs/${orgId}/hierarchy`);
+  if (!response.ok) throw new Error('Failed to fetch organization hierarchy');
   return response.json();
 }

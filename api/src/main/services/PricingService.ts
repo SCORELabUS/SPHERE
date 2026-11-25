@@ -124,6 +124,19 @@ class PricingService {
     return pricings;
   }
 
+  /**
+   * The organization's pricings as any plain member lists them: with no
+   * permission of their own they see no private version and no private collection.
+   */
+  async indexByOrganizationIdAsPlainMember(organizationId: string, queryParams?: PricingIndexQueryParams) {
+    return this.pricingRepository.findByOrganizationId(
+      organizationId,
+      this.permissionService.plainMemberContext(),
+      queryParams ?? { limit: 10, offset: 0 },
+      []
+    );
+  }
+
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: PricingIndexQueryParams) {
     const viaKey = Boolean((reqUser as any).apiKey);
     if (username !== reqUser.username && (reqUser.role !== 'ADMIN' || viaKey)) {

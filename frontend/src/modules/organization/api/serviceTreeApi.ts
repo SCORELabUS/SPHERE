@@ -101,6 +101,21 @@ export function useServiceTreeApi() {
     [fetchWithInterceptor]
   );
 
+  /** The tree as one of the organization's members reads it, for its owners and admins; never editable. */
+  const getMemberServiceTree = useCallback(
+    async (organizationId: string, userId: string): Promise<ServiceTreeView> => {
+      const res = await fetchWithInterceptor(
+        `${BASE_PATH}/orgs/${organizationId}/member-views/${encodeURIComponent(userId)}/services`
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load the services this member sees');
+      }
+      return { ...normalize(await res.json()), canEdit: false };
+    },
+    [fetchWithInterceptor]
+  );
+
   const saveServiceTree = useCallback(
     async (
       organizationId: string,
@@ -122,5 +137,5 @@ export function useServiceTreeApi() {
     [fetchWithInterceptor]
   );
 
-  return { getServiceTree, saveServiceTree };
+  return { getServiceTree, getMemberServiceTree, saveServiceTree };
 }
