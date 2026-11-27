@@ -4,7 +4,7 @@ import { latestPricingsByNameAggregator, pickVisibleVersionAggregator, refactorR
 import { populateCollectionDataAggregator } from "./populateCollectionData";
 import { populateOrganizationDataAggregator } from "./populateOrganizationData";
 import { filterByOrganizationAggregator } from "./filter-by-organization";
-import { considerUserPermissionsAggregator, grantedByKey } from "./filter-by-user-permissions";
+import { considerUserPermissionsAggregator, grantedByKey, LISTED_PUBLIC } from "./filter-by-user-permissions";
 import { filtersDataGenerator } from "./filters-data-generator";
 import { refactorOutputAggregator } from "./refactor-output";
 import { VERSION_ORDER } from "../../../../utils/version-order";
@@ -37,9 +37,10 @@ export function getPricingsAggregator(
     pipeline.push(...filteringAggregator);
     
     // The version chosen above is public unless the viewer may see private ones,
-    // so these only drop pricings that have no public version at all.
+    // so these drop pricings that have no public version at all, and unlisted
+    // pricings for whoever may not read their private versions.
     if (!permissions){
-      pipeline.push({ $match: { private: false } });
+      pipeline.push({ $match: LISTED_PUBLIC });
     }else if (!permissions.isGlobalAdmin && (!permissions.orgRole || (permissions.orgRole !== 'OWNER' && permissions.orgRole !== 'ADMIN'))) {
       pipeline.push(considerUserPermissionsAggregator(permissions));
     }

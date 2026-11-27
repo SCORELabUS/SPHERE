@@ -4,6 +4,7 @@ import PricingService from '../services/PricingService';
 import path from 'path';
 import { PricingIndexQueryParams, SortByType } from '../types/services/PricingService.js';
 import { handleError } from '../utils/users/helpers';
+import { parseBooleanField } from '../utils/boolean-field';
 import {
   isIfMatchRequired,
   parseIfMatch,
@@ -116,7 +117,9 @@ class PricingController {
         req.user,
         collectionId,
         name,
-        revision
+        revision,
+        // Only when the upload creates the pricing; a new version takes its pricing's.
+        { unlisted: parseBooleanField(req.body.unlisted) === true }
       );
       this.sendWithEtag(res, revision, pricing[0]);
     } catch (err: any) {

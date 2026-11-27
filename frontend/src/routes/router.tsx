@@ -20,6 +20,7 @@ export const DashboardPage = lazy(() => import('../modules/presentation/pages/da
 export const TeamPage = lazy(() => import('../modules/presentation/pages/team'));
 export const Page404 = lazy(() => import('../modules/core/pages/page-not-found'));
 export const InboxPage = lazy(() => import('../modules/notification/pages/inbox'));
+export const AnonymousPricingPage = lazy(() => import('../modules/pricing/pages/anonymous'));
 
 import EditorPage from '../modules/pricing-editor/pages/pricing2yaml-editor';
 import EditorLayout from '../modules/pricing-editor/layouts/editor-layout';
@@ -85,6 +86,17 @@ export default function Router() {
     {
       path: '/',
       element: <RootPage />,
+    },
+
+    // What an anonymous link shows: outside AppLayout, so nothing on the page
+    // names an account, an organization or where the pricing lives.
+    {
+      path: '/a/:token',
+      element: (
+        <Suspense fallback={<LoadingView />}>
+          <AnonymousPricingPage />
+        </Suspense>
+      ),
     },
 
     // ═══════════════════════════════════════════════════════════

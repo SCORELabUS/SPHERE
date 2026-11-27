@@ -551,7 +551,7 @@ class KeyScopes {
       const pricings = [];
       for (const pricing of result.pricings) {
         const reachable = !!pricing.organization?.id && !!(await this.scopeOf(String(pricing.organization.id)));
-        if (!pricing.private || reachable) {
+        if ((!pricing.private && !pricing.unlisted) || reachable) {
           // Outside the key's organizations only what anyone sees is kept, and
           // which collection a pricing is in may be private: it is left out.
           pricings.push(reachable ? pricing : { ...pricing, collection: null });

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { up as initializeOAuth } from '../../../migrations/mongo/20261024120000-create-oauth-collections';
 import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092005000-pricing-identities';
 import { up as initializeServiceTrees } from '../../../migrations/mongo/20261104120000-create-service-trees';
+import { up as initializeAnonymousLinks } from '../../../migrations/mongo/20261117120000-create-pricing-anonymous-links';
 import { up as stampPricingAddedAt } from '../../../migrations/mongo/20261106120000-pricing-added-at';
 import { up as initializeOrganizationVisibility } from '../../../migrations/mongo/20261120120000-organization-visibility';
 import { Seeder } from 'mongo-seeding';
@@ -34,6 +35,8 @@ export const seedDatabase = async () => {
     await initializeOAuth(mongoose.connection);
     // Service trees (beta) are not seeded either: only their empty indexed collection.
     await initializeServiceTrees(mongoose.connection);
+    // Nor are anonymous links of pricings: only their empty indexed collection.
+    await initializeAnonymousLinks(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     await stampPricingAddedAt(mongoose.connection);
     await initializeOrganizationVisibility(mongoose.connection);

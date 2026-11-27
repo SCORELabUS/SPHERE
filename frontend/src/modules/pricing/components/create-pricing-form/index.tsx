@@ -11,11 +11,17 @@ import { retrievePricingFromYaml } from 'pricing4ts';
 import customAlert from '../../../core/utils/custom-alert';
 import { Organization, useOrganizationsApi } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
+import {
+  PRICING_VISIBILITY_CHOICES,
+  PRICING_VISIBILITY_DESCRIPTIONS,
+  visibilityFormFields,
+  type PricingVisibilityChoice,
+} from '../../../core/utils/pricing-visibility';
 
 export default function CreatePricingForm() {
   const [pricingName, setPricingName] = useState('');
   const [useYamlName, setUseYamlName] = useState(false);
-  const [visibility, setVisibility] = useState('Public');
+  const [visibility, setVisibility] = useState<PricingVisibilityChoice>('Public');
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [canCreate, setCanCreate] = useState(true);
@@ -77,7 +83,9 @@ export default function CreatePricingForm() {
         formData.append('saasName', uploadedPricing.saasName);
         formData.append('version', uploadedPricing.version);
         formData.append('yaml', file);
-        formData.append('private', visibility === 'Private' ? 'true' : 'false');
+        const fields = visibilityFormFields(visibility);
+        formData.append('private', fields.private);
+        formData.append('unlisted', fields.unlisted);
         createPricing(formData, selectedOrg.id, setErrors).then(() => {
           router.push('/');
         }).catch((error) => {
@@ -152,7 +160,12 @@ export default function CreatePricingForm() {
         </BlockAlert>
       )}
 
-      <VisibilityOptions value={visibility} onChange={setVisibility} />
+      <VisibilityOptions
+        value={visibility}
+        onChange={value => setVisibility(value as PricingVisibilityChoice)}
+        options={PRICING_VISIBILITY_CHOICES}
+        descriptions={PRICING_VISIBILITY_DESCRIPTIONS}
+      />
 
       <FileUpload
         onSubmit={handleSubmit}
