@@ -59,6 +59,7 @@ import ViewAsMenu from './components/ViewAsMenu';
 import { useBetaFeature } from '../../../beta/hooks/useBetaFeatures';
 import BetaBadge from '../../../beta/components/beta-badge';
 import ConfirmModal from '../../../core/components/confirm-modal';
+import SettingsTab from './components/SettingsTab';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -565,7 +566,7 @@ export default function OrganizationDetailPage() {
   /* ─── Tabs ─── */
   const availableTabs = useMemo(() => {
     if (isPublicView) {
-      return ['overview', 'members', 'pricings', 'collections', 'children'] as Tab[];
+      return ['overview', 'members', 'pricings', 'collections', ...(showServices && org?.servicesPublic ? ['services' as const] : []), 'children'] as Tab[];
     }
     const tabs: Tab[] = [
       'overview',
@@ -576,9 +577,9 @@ export default function OrganizationDetailPage() {
       ...(showServices ? ['services' as const] : []),
       'children',
     ];
-    if (canManage) tabs.push('permissions');
+    if (canManage) tabs.push('permissions', 'settings');
     return tabs;
-  }, [isPublicView, canManage, showServices]);
+  }, [isPublicView, canManage, showServices, org?.servicesPublic]);
 
   // Turning beta features off while on the Services tab leaves it.
   useEffect(() => {
@@ -907,15 +908,18 @@ export default function OrganizationDetailPage() {
             />
           )}
 
-          {!isPublicView && showServices && activeTab === 'services' && (
+          {showServices && (!isPublicView || org.servicesPublic) && activeTab === 'services' && (
             <ServicesTab
               // Another member is another tree, read from scratch.
-              key={previewUserId ?? 'self'}
+              key={isPublicView ? 'visitor' : previewUserId ?? 'self'}
               org={org}
               onDirtyChange={onServicesDirtyChange}
               viewAsUserId={previewUserId}
+              publicView={isPublicView}
             />
           )}
+
+          {canManage && activeTab === 'settings' && <SettingsTab org={org} onSaved={setOrg} />}
 
           {activeTab === 'children' && (
             <HierarchyTab

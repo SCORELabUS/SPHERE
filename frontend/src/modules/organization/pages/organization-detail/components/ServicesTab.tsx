@@ -82,6 +82,7 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void;
   /** Shows the tree as this member (`any`: any plain member) reads it, in an owner's or admin's preview; never editable. */
   viewAsUserId?: string;
+  publicView?: boolean;
 }
 
 /**
@@ -90,7 +91,7 @@ interface Props {
  * picked on the right. Owners and admins also get edit mode, where the tree is
  * edited as an outline or as JSON, with undo and redo, and saved in one go.
  */
-export default function ServicesTab({ org, onDirtyChange, viewAsUserId }: Props) {
+export default function ServicesTab({ org, onDirtyChange, viewAsUserId, publicView = false }: Props) {
   const { getServiceTree, getMemberServiceTree, saveServiceTree } = useServiceTreeApi();
   const { getOrgPricings } = useOrganizationsApi();
 
@@ -129,7 +130,7 @@ export default function ServicesTab({ org, onDirtyChange, viewAsUserId }: Props)
     try {
       const data = viewAsUserId
         ? await getMemberServiceTree(org.id, viewAsUserId)
-        : await getServiceTree(org.id);
+        : await getServiceTree(org.id, publicView);
       setTree(data);
       setDraft(freshDraft(data.nodes));
       return data;
@@ -137,7 +138,7 @@ export default function ServicesTab({ org, onDirtyChange, viewAsUserId }: Props)
       setLoadError((err as Error).message);
       return null;
     }
-  }, [getServiceTree, getMemberServiceTree, org.id, viewAsUserId]);
+  }, [getServiceTree, getMemberServiceTree, org.id, viewAsUserId, publicView]);
 
   useEffect(() => {
     load();

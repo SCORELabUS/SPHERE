@@ -355,6 +355,16 @@ describe('Organization page seen as a member or a visitor', () => {
       expect(tabs()).toEqual(['Overview', 'Members', 'Pricings', 'Collections', 'Hierarchy']);
     });
 
+    it('shows public services in the visitor preview without using the member view', async () => {
+      mocks.search = 'view=visitor';
+      mocks.api.getOrganization.mockResolvedValue({ ...org, servicesPublic: true });
+      mocks.getPublicOrganization.mockResolvedValue({ ...org, servicesPublic: true });
+      await render();
+
+      openTab('Services');
+      expect(view.root.findByType(ServicesTab).props).toMatchObject({ publicView: true, viewAsUserId: undefined });
+    });
+
     it('opened with ?view=visitor, shows nothing a visitor would not see', async () => {
       mocks.search = 'view=visitor';
       await render();

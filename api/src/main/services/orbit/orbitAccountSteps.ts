@@ -66,7 +66,11 @@ export class AccountStepBuilder {
       );
       return [];
     }
-    const found = await repository.findByIdsForUser(ids.filter(id => mongoose.isValidObjectId(id)), this.actor.id);
+    const found: any[] = await container.resolve<any>('notificationService').redactHiddenPricings(
+      this.actor.id,
+      await repository.findByIdsForUser(ids.filter(id => mongoose.isValidObjectId(id)), this.actor.id),
+      this.actor
+    );
     const missing = ids.length - found.length;
     if (missing > 0) {
       warnings.push(`${missing} of the notifications named ${missing === 1 ? 'is' : 'are'} not among yours and ${missing === 1 ? 'was' : 'were'} left out.`);

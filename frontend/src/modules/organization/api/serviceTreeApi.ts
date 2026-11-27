@@ -90,8 +90,9 @@ export function useServiceTreeApi() {
   const { fetchWithInterceptor } = useAuth();
 
   const getServiceTree = useCallback(
-    async (organizationId: string): Promise<ServiceTreeView> => {
-      const res = await fetchWithInterceptor(`${BASE_PATH}/orgs/${organizationId}/services`);
+    async (organizationId: string, publicView = false): Promise<ServiceTreeView> => {
+      const url = `${BASE_PATH}/orgs/${organizationId}/services`;
+      const res = publicView ? await fetch(url, { credentials: 'omit' }) : await fetchWithInterceptor(url);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to load the services');

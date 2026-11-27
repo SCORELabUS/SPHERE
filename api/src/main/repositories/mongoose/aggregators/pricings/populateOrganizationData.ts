@@ -13,6 +13,7 @@ export const populateOrganizationDataAggregator = [
             displayName: 1,
             avatar: 1,
             isPersonal: 1,
+            visibility: 1,
           },
         },
       ],

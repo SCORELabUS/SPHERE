@@ -42,6 +42,8 @@ const create = [
 ];
 
 const update = [
+  check('servicesPublic').optional().isBoolean({ strict: true }).withMessage('servicesPublic must be a boolean'),
+  check('visibility').optional().isIn(['public', 'unlisted', 'private']).withMessage('Invalid organization visibility'),
   check('displayName')
     .optional()
     .isString()

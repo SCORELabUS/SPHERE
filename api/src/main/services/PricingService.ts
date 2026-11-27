@@ -30,6 +30,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import mongoose from 'mongoose';
+import { assertOrganizationReadable, canReadOrganization, scopeOrganizationIds } from '../policies/organizationVisibility';
 
 /**
  * What a client may change with `PUT /pricings/{organizationId}/{slug}`. The
@@ -81,7 +82,8 @@ class PricingService {
         isGlobalAdmin: isAdmin ?? false,
         adminOrgIds: [],
       },
-      await this.permissionService.visiblePrivateCollections(reqUser)
+      await this.permissionService.visiblePrivateCollections(reqUser),
+      true
     );
     return pricings;
   }
@@ -91,6 +93,7 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: PricingIndexQueryParams
   ) {
+    await assertOrganizationReadable(organizationId, reqUser);
     // An API key acts within its scopes (a VIEW key as a plain member), as
     // when reading one pricing.
     const access = await this.permissionService.actingAccess(reqUser, organizationId);
@@ -155,7 +158,7 @@ class PricingService {
       treeFormat: false,
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
-    const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
+    const userOrganizationsIds = await scopeOrganizationIds(reqUser, userOrganizations.items.map((org: Organization) => org.id));
     // With an API key, only what the key reaches and as it acts there.
     const permissions = await this.permissionService.narrowListingToCaller(
       reqUser,
@@ -186,6 +189,7 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams: { collection?: string; collectionId?: string; includePrivate?: boolean } = {}
   ) {
+    await assertOrganizationReadable(organizationId, reqUser);
     const { collection: collectionFilter, collectionId: collectionIdFilter, ...lookup } = queryParams;
     const pricing: {
       pricingId?: string;
@@ -206,6 +210,7 @@ class PricingService {
     if (!pricing || !this._matchesCollectionFilter(pricing, collectionVisible, collectionFilter, collectionIdFilter)) {
       throw new Error('NOT FOUND: Pricing not found');
     }
+    if (!collectionVisible) throw new Error('NOT FOUND: Pricing not found');
 
     if (!(await this._canSeePrivateVersions(reqUser, organizationId, slug, pricing.collection?.slug))) {
       pricing.versions = pricing.versions.filter(version => !version.private);
@@ -342,7 +347,7 @@ class PricingService {
   ): Promise<boolean> {
     if (!pricing.collection?.id) return true;
     const collection = await this.pricingCollectionService.findRef(pricing.collection.id);
-    if (!collection) return true;
+    if (!collection) return false;
     return this.permissionService.canViewCollection(reqUser, { ...collection, organizationId });
   }
 
@@ -416,12 +421,16 @@ class PricingService {
   private async _hideForkSourceCollections(versions: Array<{ forkedFrom?: any }>, reqUser?: LeanUser) {
     for (const version of versions) {
       const origin = version.forkedFrom;
-      if (!origin?.collectionId) continue;
+      if (!origin) continue;
+      if (origin.organizationId && !await canReadOrganization(String(origin.organizationId), reqUser)) {
+        version.forkedFrom = undefined;
+        continue;
+      }
+      if (!origin.collectionId) continue;
       const collection = await this.pricingCollectionService.findRef(String(origin.collectionId));
-      const visible = !collection || (await this.permissionService.canViewCollection(reqUser, collection));
+      const visible = collection && (await this.permissionService.canViewCollection(reqUser, collection));
       if (!visible) {
-        const { collectionId: _id, collectionName: _name, collectionSlug: _slug, ...rest } = origin;
-        version.forkedFrom = rest;
+        version.forkedFrom = undefined;
       }
     }
   }
@@ -483,6 +492,7 @@ class PricingService {
     reqUser?: LeanUser,
     queryParams?: { collectionSlug?: string; limit?: string; offset?: string }
   ) {
+    await assertOrganizationReadable(organizationId, reqUser);
     // Validations
     if (queryParams?.limit && !/^\d+$/.test(queryParams.limit)) {
       throw new Error('INVALID DATA: Invalid limit parameter, it must be a numeric value');
@@ -509,7 +519,7 @@ class PricingService {
         includePrivate: true,
       }
     );
-    const canSeeVersion = retrievedPricing && (
+    const canSeeVersion = retrievedPricing && await this._canSeeCollectionOf(reqUser, organizationId, retrievedPricing) && (
       !retrievedPricing.versions[0]?.private ||
       await this._canSeePrivateVersions(reqUser, organizationId, pricingSlug, retrievedPricing.collection?.slug)
     ) && this._matchesCollectionFilter(
@@ -624,6 +634,7 @@ class PricingService {
     if (sourceOrganizationId === targetOrganizationId) {
       throw new Error('INVALID DATA: Cannot fork a pricing into its own organization');
     }
+    await assertOrganizationReadable(sourceOrganizationId, reqUser);
 
     const sourcePricing = await this.pricingRepository.findOne(sourceSlug, sourceOrganizationId, {
       version: sourceVersion,
@@ -633,6 +644,7 @@ class PricingService {
     if (!sourcePricing || !sourcePricing.versions?.length || !sourcePricing.pricingId) {
       throw new Error('NOT FOUND: Pricing not found');
     }
+    if (!await this._canSeeCollectionOf(reqUser, sourceOrganizationId, sourcePricing)) throw new Error('NOT FOUND: Pricing not found');
 
     // A version is forkable by whoever can already read it, by the same rule as
     // show(): a public one by anyone, a private one only by who may read the

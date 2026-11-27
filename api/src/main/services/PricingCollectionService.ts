@@ -15,6 +15,7 @@ import UserService from './UserService';
 import PermissionService from './PermissionService';
 import OrganizationService from './OrganizationService';
 import { Organization } from '../types/database/Organization';
+import { assertOrganizationReadable, scopeOrganizationIds } from '../policies/organizationVisibility';
 
 class PricingCollectionService {
   private readonly pricingCollectionRepository: PricingCollectionRepository;
@@ -42,7 +43,7 @@ class PricingCollectionService {
       collections: [],
       isGlobalAdmin: isAdmin ?? false,
       adminOrgIds: [],
-    });
+    }, true);
     return pricings;
   }
 
@@ -51,6 +52,7 @@ class PricingCollectionService {
     reqUser?: LeanUser,
     queryParams?: CollectionIndexQueryParams
   ) {
+    await assertOrganizationReadable(organizationId, reqUser);
     // An API key acts within its scopes, as on GET /collections/{organizationId}/{slug}.
     const access = await this.permissionService.callerAccess(reqUser, organizationId);
     const orgRole: OrgRole | null = access.role;
@@ -91,7 +93,7 @@ class PricingCollectionService {
   }
 
   async indexByUser(username: string, reqUser: LeanUser, queryParams?: CollectionIndexQueryParams) {
-    if (username !== reqUser.username && reqUser.role !== 'ADMIN') {
+    if (username !== reqUser.username && (reqUser.role !== 'ADMIN' || (reqUser as any).apiKey)) {
       throw new Error(
         'PERMISSION ERROR: You can only query your own pricings. You can either provide your username or use "me" as username to query your pricings.'
       );
@@ -107,7 +109,7 @@ class PricingCollectionService {
       treeFormat: false,
       pagination: { limit: Number.MAX_SAFE_INTEGER, offset: 0 },
     });
-    const userOrganizationsIds = userOrganizations.items.map((org: Organization) => org.id);
+    const userOrganizationsIds = await scopeOrganizationIds(reqUser, userOrganizations.items.map((org: Organization) => org.id));
     const permissions = await this.permissionService.scopeToApiKey(
       reqUser,
       await this.permissionService.buildUserPermissionsContext(user)
@@ -139,6 +141,7 @@ class PricingCollectionService {
   }
 
   async show(organizationId: string, collectionSlug: string, reqUser?: LeanUser) {
+    await assertOrganizationReadable(organizationId, reqUser);
     const collection = await this.pricingCollectionRepository.findByOrganizationAndSlug(
       organizationId,
       collectionSlug

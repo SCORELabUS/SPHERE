@@ -213,6 +213,7 @@ function app() {
   value.post('/logout', controller.logout);
   value.use(identityModePolicy);
   value.post('/api/v1/users/login', (_req, res) => res.json({ local: true }));
+  value.put('/api/v1/users/me/settings', (_req, res) => res.end());
   value.put('/api/v1/users/me/settings/profile', (_req, res) => res.end());
   value.get('/protected', authenticationMiddleware, (req, res) =>
     res.json({ user: (req as any).user })
@@ -311,12 +312,13 @@ describe('SCORETech OIDC bridge', () => {
     await request(value).post('/logout').set('Origin', 'https://evil.test').expect(403);
     await request(value).post('/session').set('Origin', 'http://localhost:5173').expect(401);
   });
-  it('blocks local credentials and shared-profile writes only while identity mode is active', async () => {
+  it('keeps local profiles editable and blocks local credentials and login email changes in Identity mode', async () => {
     const value = app();
     await request(value).post('/api/v1/users/login').expect(409);
     await request(value).post('/API/v1/USERS/login/').expect(409);
-    await request(value).put('/API/v1/USERS/ME/settings/').expect(409);
-    await request(value).put('/api/v1/users/me/settings/profile').expect(409);
+    await request(value).put('/API/v1/USERS/ME/settings/').send({ email: 'new@example.test' }).expect(409);
+    await request(value).put('/api/v1/users/me/settings').send({ firstName: 'New name' }).expect(200);
+    await request(value).put('/api/v1/users/me/settings/profile').expect(200);
     process.env.AUTH_PROVIDER = 'local';
     await request(value).post('/api/v1/users/login').expect(200);
     await request(value).put('/api/v1/users/me/settings/profile').expect(200);

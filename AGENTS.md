@@ -98,9 +98,9 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 
 - A fork always creates a new pricing (`POST /pricing-forks`), whose first version stores `forkedFrom` (source pricingId, organization, slug, name and version label). A version is never forked into a pricing that already exists: that would be a pull request, which SPHERE does not have.
 - `GET /pricing-graphs/:org/:slug` (`PricingService.graph`) returns the pricing's lane and the lane of the pricing it was forked from (`source`); the forks made of a pricing are never drawn. Each lane is read through `show()`, so private versions, hidden collections and unreadable pricings follow the same rules; an unreadable source keeps a lane with `available: false` and only the label its fork names. Older data whose later versions name origins draws those too (at most 20). It lives outside `/pricings/**` so it cannot clash with a version named "graph".
-- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in insertion order, a branch from the origin to the fork's first version). From 13 versions on, runs of versions no branch touches fold into "+N" gaps, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) is in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`.
-- Pointing at (or focusing) a dot of the graph opens a card with what that version changed (`pricing-version-graph/change-summary-card.tsx`): plans, features, add-ons and usage limits added (+), removed (−) or changed (~), the plans and add-ons whose price moved, and other fields. It compares the version with the one it was forked from, or with the version of its lane added before it (`baseVersionOf`), reading both YAML files (each graph version carries its `yaml` URL) through the comparator's `diffPricings`; `utils/change-summary.ts` turns that diff into the summary, tested in `frontend/test/change-summary.test.ts`. A first version lists what it starts with.
-- Version order: a version's `createdAt` comes from its YAML (a day, or a date-time) and can tie, so each version also stores `addedAt`, the instant SPHERE received it. `PricingRepository.create` sets it on every insert (editor, upload, ZIP, fork, ORBIT), it is `immutable` and no request field reaches it. Every listing orders newest first by `addedAt`, then `_id` (`utils/version-order.ts`: `VERSION_ORDER` for queries, `compareVersionsNewestFirst` in code); the graph and the Versions tab use the same insertion order; `createdAt` is release metadata only. Migration `20261106120000-pricing-added-at` (also run by the seeder) fills older versions from their `_id` timestamp.
+- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in release order, a branch from the origin to the fork's first version). From 13 versions on, runs of versions no branch touches fold into "+N" gaps, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) is in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`.
+- Pointing at (or focusing) a dot of the graph opens a card with what that version changed (`pricing-version-graph/change-summary-card.tsx`): plans, features, add-ons and usage limits added (+), removed (−) or changed (~), the plans and add-ons whose price moved, and other fields. It compares the version with the one it was forked from, or with the preceding release of its lane (`baseVersionOf`), reading both YAML files (each graph version carries its `yaml` URL) through the comparator's `diffPricings`. `utils/change-summary.ts` turns that diff into the summary, tested in `frontend/test/change-summary.test.ts`. A first version lists what it starts with.
+- Version order: listings order releases newest first by `createdAt` (the YAML release timestamp), then by `addedAt` (the instant SPHERE received the version), then by `_id` (`utils/version-order.ts`: `VERSION_ORDER` for queries, `compareVersionsNewestFirst` in code). The graph, Versions tab and Analytics charts show releases oldest first. `PricingRepository.create` sets `addedAt` on every insert (editor, upload, ZIP, fork, ORBIT), it is `immutable` and no request field reaches it. Migration `20261106120000-pricing-added-at` (also run by the seeder) fills older versions from their `_id` timestamp.
 
 ## Collection PUT authority
 
@@ -205,12 +205,14 @@ IMPORTANT RULE: EVERY CLICKABLE COMPONENT IN THE UI MUST HAVE A "cursor-pointer"
   enforce the live bridge. Preserve native refresh rotation, same-user renewal,
   outage recovery and logout-versus-refresh exclusion. Reject legacy local web
   tokens in this mode; keep API-key/MCP scopes independent.
-- Existing accounts link explicitly from local Settings → Account before the
-  switch. Never auto-merge SCORETech identities by email or copy central roles
-  into SPHERE's ADMIN. Preserve account IDs, local credentials and memberships.
-- Hide shared profile/social/security settings in Identity mode, expose the
-  central profile in a new tab, and keep service-specific settings and SPHERE-only
-  deletion. Direct API writes enforce the same ownership boundary.
+- Run `bash docker/migrate-scoretech-users <Identity checkout>` for a read-only
+  preflight before switching a production installation. With `--apply` it provisions
+  Keycloak users and legacy Google/CAS links, then writes the issuer/subject link
+  on the original MongoDB user. Preserve local credentials, IDs and memberships.
+  Runtime login never auto-merges by email or copies central roles into SPHERE's ADMIN.
+- In Identity mode, Settings → Account links to SCORETech Account in a new tab.
+  Hide Account Details, Public Profile, Social Links and Sign-in & Security in
+  SPHERE settings. Keep SPHERE service settings and MCP grants available there.
 - `docs/scoretech-identity.md` and `api/.env.scoretech.example` describe setup and
   rollback. `pnpm --dir api run test:e2e:identity` is separate from the ordinary
   browser suite; it needs the sibling Identity lab and the isolated scratch DB.

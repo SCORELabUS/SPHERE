@@ -26,6 +26,8 @@ export interface Organization {
   avatarBgColor?: string;
   avatarFgColor?: string;
   isPersonal: boolean;
+  servicesPublic?: boolean;
+  visibility?: 'public' | 'unlisted' | 'private';
   _parentId: string | null;
   ancestors: string[];
   role?: OrgRole;
@@ -176,6 +178,8 @@ export function useOrganizationsApi() {
     displayName?: string;
     description?: string | null;
     avatar?: string | null;
+    servicesPublic?: boolean;
+    visibility?: 'public' | 'unlisted' | 'private';
   }) => {
     const response = await fetchWithInterceptor(`${ORGS_BASE_PATH}/${orgId}`, {
       method: 'PUT',

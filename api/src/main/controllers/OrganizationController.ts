@@ -5,6 +5,7 @@ import container from '../config/container';
 import OrganizationService from '../services/OrganizationService';
 import { handleError } from '../utils/users/helpers';
 import { memberAudience } from '../services/OrganizationMemberViewService';
+import { scopeOrganizationIds } from '../policies/organizationVisibility';
 
 /**
  * The image types an organization avatar may be, mapped to the extension each
@@ -105,6 +106,22 @@ class OrganizationController {
   async indexByUser(req: any, res: any) {
     try {
       const { limit, offset } = req.query;
+      if (req.user.apiKey) {
+        const tree: any[] = await this.organizationService.indexByUser(req.user.id, { treeFormat: true });
+        const flatten = (nodes: any[]): any[] => nodes.flatMap(node => [node, ...flatten(node.subOrganizations ?? [])]);
+        const allowed = new Set(await scopeOrganizationIds(req.user, flatten(tree).map(node => String(node.id))));
+        const filter = (nodes: any[]): any[] => nodes.flatMap(node => {
+          const children = filter(node.subOrganizations ?? []);
+          return allowed.has(String(node.id)) ? [{ ...node, subOrganizations: children }] : children;
+        });
+        const filtered = filter(tree);
+        if (limit !== undefined || offset !== undefined) {
+          const start = offset !== undefined ? parseInt(offset, 10) : 0;
+          const count = limit !== undefined ? parseInt(limit, 10) : 10;
+          return res.json({ items: filtered.slice(start, start + count), total: filtered.length });
+        }
+        return res.json(filtered);
+      }
       const pagination = (limit !== undefined || offset !== undefined)
         ? {
             limit: limit !== undefined ? parseInt(limit as string, 10) : undefined,
@@ -124,7 +141,7 @@ class OrganizationController {
 
   async show(req: any, res: any) {
     try {
-      const organization = await this.organizationService.show(req.params.organizationId);
+      const organization = await this.organizationService.show(req.params.organizationId, req.user);
       res.json(organization);
     } catch (err: any) {
       const { status, message } = handleError(err);
