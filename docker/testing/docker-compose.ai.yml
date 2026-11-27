@@ -11,6 +11,8 @@
 #
 # The same key also enables ORBIT's chat in the API. Without a key the
 # services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
+# To use a self-hosted, OpenAI-compatible model, also set OPENAI_BASE_URL,
+# OPENAI_MODEL, AMINT_LLM_MODEL and AMINT_LLM_BETTER_MODEL (see the README).
 services:
   choco-analysis-engine:
     image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.3.0@sha256:3f3b8e631b4d14b73ed53108d77c13a07180406d326deb48e924ddb6d4565b6c
@@ -61,6 +63,10 @@ services:
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
+      # LLM that A-MINT uses to extract pricings: any OpenAI-compatible API (key set in a-mint)
+      - AMINT_LLM_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_LLM_MODEL=${AMINT_LLM_MODEL:-gpt-5.2}
+      - AMINT_LLM_BETTER_MODEL=${AMINT_LLM_BETTER_MODEL:-gpt-5.2}
       - LOG_LEVEL=INFO
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=8085
@@ -85,6 +91,8 @@ services:
       - LOG_LEVEL=INFO
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      # Any OpenAI-compatible API, e.g. a self-hosted model
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
@@ -101,3 +109,4 @@ services:
     environment:
       - ORBIT_OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - ORBIT_OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}

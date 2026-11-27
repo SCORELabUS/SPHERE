@@ -112,6 +112,10 @@ services:
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
+      # LLM that A-MINT uses to extract pricings: any OpenAI-compatible API (key set in a-mint)
+      - AMINT_LLM_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_LLM_MODEL=${AMINT_LLM_MODEL:-gpt-5.2}
+      - AMINT_LLM_BETTER_MODEL=${AMINT_LLM_BETTER_MODEL:-gpt-5.2}
       - LOG_LEVEL=INFO
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=8085
@@ -139,7 +143,9 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - OPENAI_API_KEY=${HARVEY_API_KEY}
-      - OPENAI_MODEL=gpt-5-nano
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      # Any OpenAI-compatible API, e.g. a self-hosted model
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
@@ -176,7 +182,8 @@ services:
       # ORBIT, the assistant, uses the same model and key as HARVEY, so they share
       # OpenAI's rate limits: ORBIT caps the messages of all its users per minute.
       - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
-      - ORBIT_OPENAI_MODEL=gpt-5-nano
+      - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - ORBIT_OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - ORBIT_MAX_MESSAGES_PER_MINUTE=20
       # Single deployment switch shared with the API gateway.
       - AUTH_PROVIDER=${AUTH_PROVIDER:-local}
