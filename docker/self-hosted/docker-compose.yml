@@ -1,0 +1,195 @@
+# SPHERE on your own server, from the published images.
+#
+#   cp .env.example .env        # then fill in the required values
+#   docker compose up -d        # SPHERE
+#   docker compose --profile ai up -d   # SPHERE plus HARVEY and A-MINT
+#
+# Guide: https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/deploy-your-own-instance
+#
+# nginx listens on HTTP_PORT (80 by default). Put it behind your HTTPS
+# terminator, or see the guide to serve HTTPS from nginx itself.
+
+x-sphere-url: &sphere-url ${SPHERE_URL:?Set SPHERE_URL in .env}
+
+services:
+  mongodb:
+    image: mongo:7.0.16
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+      MONGO_INITDB_DATABASE: sphere
+      # init-mongo.sh creates this user for the API on the first start.
+      DATABASE_USERNAME: sphere
+      DATABASE_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in .env}
+    volumes:
+      - mongodb-data:/data/db
+      - ../../api/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4.2
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    image: ghcr.io/scorelabus/sphere-api:${SPHERE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DATABASE_TECHNOLOGY: mongoDB
+      SERVER_PORT: "8080"
+      BASE_URL_PATH: ""
+      MONGO_PROTOCOL: mongodb
+      MONGO_HOST: mongodb
+      MONGO_PORT: "27017"
+      DATABASE_NAME: sphere
+      DATABASE_USERNAME: sphere
+      DATABASE_PASSWORD: ${MONGO_PASSWORD}
+      REDIS_URL: redis://redis:6379
+      # Public address of this instance: links, emails, permanent links and OAuth.
+      SERVER_HOST: *sphere-url
+      SPHERE_PUBLIC_URL: *sphere-url
+      FRONTEND_URL: *sphere-url
+      SERVER_STATICS_FOLDER: public/
+      AVATARS_FOLDER: static/avatars/users/uploaded
+      ORG_AVATARS_FOLDER: static/avatars/orgs
+      COLLECTIONS_FOLDER: static/collections
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRATION: 24h
+      # Email. In production, sign-up needs it to send the verification link.
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SPHERE}
+      # Optional Google sign-in.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${SPHERE_URL}/api/v1/users/auth/sso/google/callback
+      # ORBIT's chat. It needs only a key, not the ai profile.
+      ORBIT_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ORBIT_OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-nano}
+      ORBIT_OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+    volumes:
+      - sphere-statics:/usr/src/server/public
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  client:
+    image: ghcr.io/scorelabus/sphere-client:${SPHERE_VERSION:-latest}
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27.3-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - server
+      - client
+
+  # ---- Optional AI services (docker compose --profile ai up -d) ----
+  # Source: https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process
+  # Pinned by version and digest; update them with scripts/pin-ai-images.sh.
+  # Built for linux/amd64 only.
+
+  choco-analysis-engine:
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.3.0@sha256:3f3b8e631b4d14b73ed53108d77c13a07180406d326deb48e924ddb6d4565b6c
+    platform: linux/amd64
+    profiles: [ai]
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=INFO
+
+  analysis-engine:
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.3.0@sha256:b4489dc79f1f19877884d45bdcf98db45abb92af72c9df1f3f1a0f0f86aba7ba
+    platform: linux/amd64
+    profiles: [ai]
+    restart: unless-stopped
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHOCO_API=http://choco-analysis-engine:8000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - choco-analysis-engine
+
+  a-mint:
+    image: ghcr.io/scorelabus/a-mint:1.3.0@sha256:bb0ec9436fa6b84a6a16227d9acd10f2c04e90f244a47d5ec2c3020f3818cb51
+    platform: linux/amd64
+    profiles: [ai]
+    restart: unless-stopped
+    init: true
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANALYSIS_API=http://analysis-engine:3000/api/v1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - analysis-engine
+
+  mcp-server:
+    image: ghcr.io/scorelabus/pi-mcp-server:1.3.0@sha256:baa89c353dacf8610c0d08dd28d4892abfc043b9ee931ab4441c7344f16c8033
+    platform: linux/amd64
+    profiles: [ai]
+    restart: unless-stopped
+    environment:
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      # LLM that A-MINT uses to extract pricings: any OpenAI-compatible API (key set in a-mint)
+      - AMINT_LLM_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_LLM_MODEL=${AMINT_LLM_MODEL:-gpt-5.2}
+      - AMINT_LLM_BETTER_MODEL=${AMINT_LLM_BETTER_MODEL:-gpt-5.2}
+      - LOG_LEVEL=INFO
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8085
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8085
+      - MCP_TRANSPORT=sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+
+  harvey:
+    image: ghcr.io/scorelabus/harvey:1.3.0@sha256:0c5652fd458ebeaa3dc535aca95d05787463f6621db7d83f5859bd0ad0818290
+    platform: linux/amd64
+    profiles: [ai]
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      # Any OpenAI-compatible API, e.g. a self-hosted model
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_URL=http://mcp-server:8085/sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+      - mcp-server
+
+volumes:
+  mongodb-data:
+  redis-data:
+  sphere-statics:
