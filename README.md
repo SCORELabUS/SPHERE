@@ -4,196 +4,127 @@
 
 **SaaS Pricing Holistic Evaluation and Regulation Environment**
 
-A collaborative platform to model, version, analyze and govern SaaS pricings.
+Model, version, analyze and govern SaaS pricings, together.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/SCORELabUS/SPHERE?sort=semver)](https://github.com/SCORELabUS/SPHERE/releases)
 [![Tests](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml/badge.svg?branch=main&event=push)](https://github.com/SCORELabUS/SPHERE/actions/workflows/run-unit-tests.yml)
+[![Docs](https://img.shields.io/badge/docs-sphere--docs-orange.svg)](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/introduction)
 
-[Live instance](https://sphere.score.us.es/) · [API reference](api/docs/sphere-api-docs.yaml) · [Report an issue](https://github.com/SCORELabUS/SPHERE/issues)
+[**Live instance**](https://sphere.score.us.es) · [Documentation](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/introduction) · [Self-hosting](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting) · [API reference](api/docs/sphere-api-docs.yaml) · [Report an issue](https://github.com/SCORELabUS/SPHERE/issues)
+
+<img src="docs/images/readme-pricing.webp" alt="The Slack pricing in SPHERE: its plans, number of configurations, price range and versions" width="900">
 
 </div>
 
----
+## About
 
-## Table of contents
+SaaS pricings change constantly: plans, add-ons, features and usage limits combine into thousands of possible subscriptions, and providers revise them every year. SPHERE treats a pricing as an engineering artifact. Each pricing is written in the [Pricing2Yaml](https://sphere-docs.vercel.app/docs/2.0.1/api/pricing-description-languages/Pricing2Yaml/the-pricing2yaml-syntax) format, kept as a history of versions, analyzed automatically and shared within organizations, with an API and AI assistants on top.
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Quick start with Docker](#quick-start-with-docker)
-- [Published container images](#published-container-images)
-- [Local development](#local-development)
-- [Testing](#testing)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
-
-## Overview
-
-SPHERE brings together the applications, datasets and tools for pricing-driven development in a single environment. Pricings are described in the Pricing2Yaml format and stored as versioned families that organizations can share, analyze and evolve over time.
-
-A public instance is available at **[sphere.score.us.es](https://sphere.score.us.es/)**. To keep your data on your own infrastructure or to try unreleased features, you can deploy your own instance as described below.
+A public instance runs at **[sphere.score.us.es](https://sphere.score.us.es)**. You can also [run your own](#run-your-own-instance).
 
 ## Features
 
-- **Pricing repository.** Upload, edit and version pricings, compare versions, keep versions private and group pricings in collections.
-- **Analytics.** Configuration-space and optimization analyses of each pricing, computed with [MiniZinc](https://www.minizinc.org/).
-- **Organizations and permissions.** Nested organizations, roles, invitations and fine-grained permissions on pricings and collections.
-- **Permanent links and synchronization.** Stable URLs for pricings and collections that survive renaming and moving, and a public API for synchronization with [SPACE](docs/permanent-links.md).
-- **AI assistants.** HARVEY answers questions about pricings; ORBIT reads the workspace and proposes changes as plans that the user confirms before they are applied.
-- **MCP server.** ORBIT's tools are exposed at `/api/v1/orbit/mcp`, so assistants such as Claude or ChatGPT can work with SPHERE through API keys or OAuth. See the [SPHERE ORBIT plugin](https://github.com/SCORELabUS/sphere-orbit-plugin).
-- **REST API.** Every feature is available through a documented, rate-limited API with API keys.
+- 📚 **Pricing repository.** Upload, edit and version pricings, compare versions, keep some private and group pricings into collections.
+- 📈 **Analytics.** The number of possible subscriptions and the price range of each pricing, how they evolve across versions, and the cheapest subscription for given needs, computed with [MiniZinc](https://www.minizinc.org/).
+- 🏢 **Organizations and permissions.** Nested organizations, roles, invitations and fine-grained permissions on pricings and collections.
+- 🔗 **Permanent and anonymous links.** Stable URLs that survive renames and moves, and links that share a pricing with people who have no account.
+- 🤖 **AI assistants.** HARVEY answers questions about pricings; ORBIT reads your workspace and proposes changes as plans you confirm. Both work with OpenAI or a [self-hosted model](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/ai-assistants).
+- 🔌 **REST API and MCP server.** Everything is available through a documented API with API keys, and assistants such as Claude or ChatGPT can use ORBIT's tools through the [SPHERE ORBIT plugin](https://github.com/SCORELabUS/sphere-orbit-plugin).
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/readme-analytics.webp" alt="Analytics tab: minimum and maximum price and number of configurations across Slack's versions"></td>
+    <td width="50%"><img src="docs/images/readme-versions.webp" alt="Versions tab: version graph of the Slack pricing and its list of versions"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>How a pricing evolves across its versions</sub></td>
+    <td align="center"><sub>Version graph and history</sub></td>
+  </tr>
+</table>
+
+## Quick start
+
+Try SPHERE on your machine with demo accounts and 32 example pricings. You need [Docker](https://docs.docker.com/get-docker/) with Docker Compose 2.30 or later.
+
+```bash
+git clone https://github.com/SCORELabUS/SPHERE.git
+cd SPHERE/docker/testing
+docker compose up -d
+```
+
+Open <http://localhost> and sign in as `sphere` with the password `faked`. The first start takes a few minutes while it builds the images and loads the data.
+
+The [local demo guide](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/run-locally) lists the other demo accounts, what to try and how to add the AI assistants.
+
+> [!WARNING]
+> The demo stack ships with default passwords and secrets. Keep it on your own machine.
+
+## Run your own instance
+
+[`docker/self-hosted`](docker/self-hosted) runs SPHERE on your server from the published images: copy `.env.example` to `.env`, set your address and three secrets, and start it with `docker compose up -d`.
+
+| Guide | Covers |
+| --- | --- |
+| [Deploy your own instance](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/deploy-your-own-instance) | Configuration, HTTPS, the first account, updates and backups |
+| [Enable the AI assistants](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/ai-assistants) | HARVEY, ORBIT and A-MINT with OpenAI or a self-hosted, OpenAI-compatible model |
+| [Configuration reference](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/self-hosting/configuration-reference) | Every variable of the `.env` file |
+
+Each release publishes the `ghcr.io/scorelabus/sphere-api` and `ghcr.io/scorelabus/sphere-client` images for `amd64` and `arm64`, tagged with the version (such as `2.13.0`) and `latest`.
 
 ## Architecture
 
 | Component | Technology | Location |
 | --- | --- | --- |
-| Web client | React, Vite, Tailwind CSS v4 | [`frontend/`](frontend) |
-| API | Node.js, Express, TypeScript | [`api/`](api) |
-| Database | MongoDB 7 | — |
-| Cache, rate limiting, OAuth state | Redis 7 | — |
-| Analytics solver | MiniZinc with Gecode | bundled in the API image |
+| Web client | React, Vite, Tailwind CSS | [`frontend/`](frontend) |
+| API, ORBIT and MCP server | Node.js, Express, TypeScript | [`api/`](api) |
+| Database | MongoDB 7 | |
+| Cache, rate limits, sign-in state | Redis 7 | |
+| Analytics solver | MiniZinc with Gecode | Inside the API image |
 | Reverse proxy | nginx | [`nginx/`](nginx) |
+| HARVEY, A-MINT and analysis engines | Python, Node.js, Java | [Pricing Intelligence repository](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process) |
 
-The API serves under `/api/v1` and also exposes the pricing files under `/static`. In production, nginx routes both paths to the API and everything else to the web client.
-
-## Quick start with Docker
-
-**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose v2.
-
-```bash
-git clone https://github.com/SCORELabUS/SPHERE.git
-cd SPHERE
-```
-
-The web client image generates its changelog from GitHub at build time, so the build needs a GitHub personal access token with read access to public repositories. Save it in `docker/gh_pat.txt` (it is ignored by Git):
-
-```bash
-echo "<your-github-token>" > docker/gh_pat.txt
-```
-
-Then start the stack:
-
-```bash
-cd docker/testing
-docker compose up -d
-```
-
-SPHERE is then available at [http://localhost](http://localhost). The stack runs MongoDB, Redis, the API, the web client and nginx, configured with [`api/.env.testing`](api/.env.testing) and [`frontend/.env.testing`](frontend/.env.testing).
-
-> [!WARNING]
-> The `testing` configuration ships with default credentials and secrets. Change them before exposing the instance to a network.
-
-## Published container images
-
-Every release publishes two multi-architecture (`amd64`/`arm64`) images to the GitHub Container Registry. Tags match the release version without the leading `v` (release `v2.9.1` → tag `2.9.1`), and `latest` points to the newest stable release.
-
-```bash
-docker pull ghcr.io/scorelabus/sphere-api:latest     # Express API with MiniZinc, port 8080
-docker pull ghcr.io/scorelabus/sphere-client:latest  # Static web client served by nginx, port 80
-```
-
-These images still need MongoDB, Redis and a reverse proxy that routes `/api/v1` and `/static` to the API and everything else to the client. Use [`docker/testing/docker-compose.yml`](docker/testing/docker-compose.yml) and [`nginx/`](nginx) as a reference. The API reads the same environment variables as [`api/.env.testing`](api/.env.testing); the client is built with `VITE_API_URL=/api/v1`.
-
-## Local development
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 22 or later
-- [pnpm](https://pnpm.io/installation), the project's package manager
-- [Docker](https://docs.docker.com/get-docker/), to run MongoDB and Redis locally
-- [MiniZinc](https://www.minizinc.org/doc-latest/en/installation.html) with the Gecode solver, used by the pricing analytics. Check that `minizinc --solvers` lists `gecode`.
-
-### Setup
-
-1. **Clone the repository and install dependencies** for both packages:
-
-   ```bash
-   git clone https://github.com/SCORELabUS/SPHERE.git
-   cd SPHERE
-   pnpm run install
-   ```
-
-2. **Configure the environment.** Create `api/.env` from [`api/.env.testing`](api/.env.testing), pointing `MONGO_HOST` to `localhost` and `REDIS_URL` to `redis://localhost:6378`. Create `frontend/.env` from [`frontend/.env.example`](frontend/.env.example).
-
-3. **Start MongoDB and Redis and seed the database:**
-
-   ```bash
-   pnpm run dev:setup
-   ```
-
-4. **Run the API and the web client:**
-
-   ```bash
-   pnpm run dev
-   ```
-
-   The API applies pending migrations on startup and listens on [http://localhost:8080](http://localhost:8080); the web client runs on [http://localhost:5173](http://localhost:5173). Set `VITE_API_PROXY_TARGET` if the API runs on a different port.
-
-### Useful commands
-
-| Command | Description |
-| --- | --- |
-| `pnpm run dev` | Run the API and the Vite dev server concurrently |
-| `pnpm run dev:setup` | Start MongoDB and Redis and seed the database |
-| `pnpm run build` | Build the web client and the API |
-| `pnpm run test` | Run the API test suite and reseed the database |
-| `pnpm run test:frontend` | Run the web client tests |
-| `pnpm run lint` | Lint the repository |
-| `pnpm run seed:mongo-local:small` | Reset and reseed the local database |
-
-## Testing
-
-The API suite uses [Vitest](https://vitest.dev/) and runs against a real MongoDB and Redis. Tests run sequentially, and the suite reseeds the database when it finishes.
-
-```bash
-pnpm run test
-```
-
-To run a subset of tests:
-
-```bash
-cd api
-npx vitest --run --test-name-pattern "<pattern>"
-```
-
-> [!CAUTION]
-> The integration and end-to-end harnesses drop the database they use. Run them only against a dedicated test database, never against data you want to keep.
+nginx sends `/api/v1` and `/static` to the API, `/harvey-api` to HARVEY and everything else to the web client.
 
 ## Documentation
 
 | Document | Content |
 | --- | --- |
-| [`api/docs/sphere-api-docs.yaml`](api/docs/sphere-api-docs.yaml) | OpenAPI specification of the REST API |
-| [`docs/permanent-links.md`](docs/permanent-links.md) | Permanent links, public synchronization API and SPACE integration |
-| [`api/docs/database-seeders.md`](api/docs/database-seeders.md) | Database seeders |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Contribution guidelines and commit conventions |
-| [`docs/RELEASING.md`](docs/RELEASING.md) | Release process |
+| [SPHERE documentation](https://sphere-docs.vercel.app/docs/2.0.1/api/sphere/introduction) | Concepts, user guide and self-hosting |
+| [API reference](api/docs/sphere-api-docs.yaml) | OpenAPI specification of the REST API |
+| [Permanent links](docs/permanent-links.md) | Permanent links, the public synchronization API and SPACE |
+| [SCORETech Identity](docs/scoretech-identity.md) | Centralized sign-in (`AUTH_PROVIDER=scoretech`), account linking and rollback |
+| [Contributing](docs/CONTRIBUTING.md) | Development setup, tests and conventions |
+| [Releasing](docs/RELEASING.md) | How a release is made |
 | [`AGENTS.md`](AGENTS.md) | Detailed notes on the codebase for contributors and coding agents |
+
+## Development
+
+You need Node.js 22, pnpm, Docker and MiniZinc with Gecode.
+
+```bash
+pnpm run install     # install the API and web client dependencies
+pnpm run dev:setup   # start MongoDB and Redis with test data
+pnpm run dev         # API on :8080, web client on :5173
+pnpm run test        # web client and API tests
+```
+
+The [contributing guide](docs/CONTRIBUTING.md) explains the environment files, the repository layout and the conventions for pull requests and commits.
 
 ## Contributing
 
-Contributions are welcome. Please read the [contribution guidelines](docs/CONTRIBUTING.md) before opening a pull request. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) and are checked by commitlint on every commit.
+Contributions are welcome. Read the [contributing guide](docs/CONTRIBUTING.md), and report bugs or propose features in [GitHub Issues](https://github.com/SCORELabUS/SPHERE/issues).
 
-Bugs and feature requests can be reported through [GitHub Issues](https://github.com/SCORELabUS/SPHERE/issues).
+## Related projects
+
+- [Pricing Intelligence](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process): HARVEY, A-MINT and the pricing analysis engines.
+- [SPHERE ORBIT plugin](https://github.com/SCORELabUS/sphere-orbit-plugin): use SPHERE from Claude or ChatGPT.
+- [SPACE](https://sphere-docs.vercel.app/docs/2.0.1/api/space/introduction): pricing-driven feature toggling for SaaS applications, which can synchronize pricings from SPHERE.
 
 ## License
 
-SPHERE is released under the [MIT License](LICENSE).
-
-The software is provided "as is", without warranty of any kind. SPHERE is a research prototype under active development; evaluate it carefully before relying on it in production.
+SPHERE is released under the [MIT License](LICENSE). It is a research prototype under active development, provided without warranty of any kind.
 
 ## Acknowledgements
 
-SPHERE is developed by the [SCORE Lab](https://github.com/SCORELabUS) within the research activities of the [ISA Group](https://www.isa.us.es/3.0/) at the University of Seville.
-
-## SCORETech Identity
-
-SPHERE can switch between its current sign-in and centralized SCORETech Identity
-using `AUTH_PROVIDER=local|scoretech` (API environment during development, shared
-API/gateway switch in `docker/production/.env` for Docker). See
-[configuration, account linking and rollback](docs/scoretech-identity.md) and the
-sanitized [API environment example](api/.env.scoretech.example). The frontend reads
-the selected mode at runtime and adapts authentication and Settings accordingly.
+SPHERE is developed by the [SCORE Lab](https://github.com/SCORELabUS) within the research of the [ISA Group](https://www.isa.us.es/3.0/) at the University of Seville.

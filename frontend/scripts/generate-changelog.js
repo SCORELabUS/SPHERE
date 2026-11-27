@@ -19,7 +19,7 @@ const ARGS_CONFIG = {
     templateVariableName: 'SPHERE_CHANGELOG',
   },
   'pricing-int': {
-    repository: 'isa-group/Pricing-Intelligence-Interpretation-Process',
+    repository: 'SCORELabUS/Pricing-Intelligence-Interpretation-Process',
     filename: 'piip.ts',
     templateVariableName: 'PIIP_CHANGELOG',
   },

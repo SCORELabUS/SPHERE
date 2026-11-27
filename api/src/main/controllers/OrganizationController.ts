@@ -4,6 +4,7 @@ import multer from 'multer';
 import container from '../config/container';
 import OrganizationService from '../services/OrganizationService';
 import { handleError } from '../utils/users/helpers';
+import { memberAudience } from '../services/OrganizationMemberViewService';
 import { scopeOrganizationIds } from '../policies/organizationVisibility';
 
 /**
@@ -49,6 +50,7 @@ class OrganizationController {
     this.indexByUser = this.indexByUser.bind(this);
     this.show = this.show.bind(this);
     this.hierarchy = this.hierarchy.bind(this);
+    this.hierarchyAsMember = this.hierarchyAsMember.bind(this);
     this.create = this.create.bind(this);
     this.createChildrenBulk = this.createChildrenBulk.bind(this);
     this.update = this.update.bind(this);
@@ -150,6 +152,22 @@ class OrganizationController {
   async hierarchy(req: any, res: any) {
     try {
       const nodes = await this.organizationService.getHierarchy(req.params.organizationId, req.user);
+      res.json(nodes);
+    } catch (err: any) {
+      const { status, message } = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
+  /** The branch marked as it is for any plain member, or one member; for its owners and admins. */
+  async hierarchyAsMember(req: any, res: any) {
+    try {
+      const audience = await memberAudience(req);
+      const nodes =
+        audience.kind === 'any'
+          ? await this.organizationService.getHierarchyAsPlainMember(req.params.organizationId)
+          : await this.organizationService.getHierarchy(req.params.organizationId, audience.reader);
+      res.set('Cache-Control', 'no-store');
       res.json(nodes);
     } catch (err: any) {
       const { status, message } = handleError(err);

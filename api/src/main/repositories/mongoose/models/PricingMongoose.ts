@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import PricingIdentity from './PricingIdentityMongoose';
+import PricingAnonymousLink from './PricingAnonymousLinkMongoose';
 import { generateSlug } from '../../../utils/slug-manager';
 
 const pricingSchema = new Schema(
@@ -19,6 +20,13 @@ const pricingSchema = new Schema(
     currency: { type: String, required: true },
     yaml: { type: String, required: true },
     private: { type: Boolean, required: true, default: false },
+    // Whether the pricing is left out of listings for whoever may not read its
+    // private versions (search, its organization and its collections). It is
+    // the pricing's, not the version's: every version of a pricing carries the
+    // same value (`PricingRepository.create` copies it to a new version and
+    // `setUnlisted` changes all of them). A missing value means listed. The
+    // versions are still read like public ones by anyone with their URL.
+    unlisted: { type: Boolean, required: false, default: false },
     // Identifies which pricing this one was forked from, alongside organization/collection/name.
     // Used to match a re-fork of the same origin to the fork already living in the target org,
     // instead of creating a duplicate pricing every time the origin gets a new version.
@@ -132,7 +140,24 @@ export const YAML_PATH_COLLATION = { locale: 'en', strength: 2 } as const;
 
 pricingSchema.index({ yaml: 1 }, { name: 'yaml_1_ci', collation: YAML_PATH_COLLATION });
 
-async function refreshIdentities(ids: any[], pricingModel: any) {
+/**
+ * Deletes the anonymous links of these pricings whose version is gone (a
+ * deleted version, pricing, collection or organization), so a link never
+ * outlives what it showed, even if the same pricing and label come back.
+ */
+async function dropOrphanLinks(ids: any[], connection: any, Model: any) {
+  const Link = connection.models.PricingAnonymousLink ||
+    connection.model('PricingAnonymousLink', PricingAnonymousLink.schema, 'pricingAnonymousLinks');
+  const links: any[] = await Link.find({ pricingId: { $in: ids } }).select('versionId pricingId allVersions').lean();
+  if (!links.length) return;
+  const alive = new Set((await Model.find({ _id: { $in: links.map(link => link.versionId) } }).select('_id').lean())
+    .map((version: any) => String(version._id)));
+  const liveFamilies = new Set((await Model.find({ pricingId: { $in: ids } }).select('pricingId').lean()).map((version: any) => String(version.pricingId)));
+  const orphans = links.filter(link => link.allVersions ? !liveFamilies.has(String(link.pricingId)) : !alive.has(String(link.versionId))).map(link => link._id);
+  if (orphans.length) await Link.deleteMany({ _id: { $in: orphans } });
+}
+
+async function refreshIdentities(ids: any[], pricingModel: any, deleted = false) {
   const identityIds = ids.filter(Boolean);
   if (!identityIds.length) return;
 
@@ -153,6 +178,7 @@ async function refreshIdentities(ids: any[], pricingModel: any) {
       _collectionId: current._collectionId ?? null, deleted: false,
     }, $inc: { revision: 1 } } : { $set: { deleted: true }, $inc: { revision: 1 } });
   }
+  if (deleted) await dropOrphanLinks(identityIds, connection, Model);
 }
 pricingSchema.post('save', async function(doc) { await refreshIdentities([doc.pricingId], doc.constructor); });
 for (const operation of ['updateMany', 'deleteMany', 'deleteOne', 'findOneAndDelete'] as const) {
@@ -160,7 +186,9 @@ for (const operation of ['updateMany', 'deleteMany', 'deleteOne', 'findOneAndDel
     const rows = await this.model.find(this.getFilter()).select('pricingId').lean();
     this.identityIds = rows.map((row: any) => row.pricingId);
   });
-  pricingSchema.post(operation, async function(this: any) { await refreshIdentities(this.identityIds ?? [], this.model); });
+  pricingSchema.post(operation, async function(this: any) {
+    await refreshIdentities(this.identityIds ?? [], this.model, operation !== 'updateMany');
+  });
 }
 
 const pricingModel = mongoose.model('Pricing', pricingSchema, 'pricings');

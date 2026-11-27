@@ -21,7 +21,7 @@ services:
     networks:
       - testing-network
   choco-analysis-engine:
-    image: aleexgf/choco-pricing-analysis-engine:main
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.3.0@sha256:3f3b8e631b4d14b73ed53108d77c13a07180406d326deb48e924ddb6d4565b6c
     container_name: choco-analysis-engine
     ports:
       - "8000:8000"
@@ -37,7 +37,7 @@ services:
     networks:
       - testing-network
   analysis-engine:
-    image: aleexgf/pricing-analysis-engine:main
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.3.0@sha256:b4489dc79f1f19877884d45bdcf98db45abb92af72c9df1f3f1a0f0f86aba7ba
     container_name: pricing-analysis-engine
     ports:
       - "8002:3000"
@@ -57,7 +57,7 @@ services:
     networks:
       - testing-network
   a-mint:
-    image: aleexgf/a-mint:main
+    image: ghcr.io/scorelabus/a-mint:1.3.0@sha256:bb0ec9436fa6b84a6a16227d9acd10f2c04e90f244a47d5ec2c3020f3818cb51
     container_name: a-mint
     ports:
       - "8001:8000"
@@ -80,12 +80,16 @@ services:
     networks:
       - testing-network
   mcp-server:
-    image: aleexgf/pi-mcp-server:main
+    image: ghcr.io/scorelabus/pi-mcp-server:1.3.0@sha256:baa89c353dacf8610c0d08dd28d4892abfc043b9ee931ab4441c7344f16c8033
     container_name: mcp-server
     environment:
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
+      # LLM that A-MINT uses to extract pricings: any OpenAI-compatible API (key set in a-mint)
+      - AMINT_LLM_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_LLM_MODEL=${AMINT_LLM_MODEL:-gpt-5.2}
+      - AMINT_LLM_BETTER_MODEL=${AMINT_LLM_BETTER_MODEL:-gpt-5.2}
       - LOG_LEVEL=INFO
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=8085
@@ -98,7 +102,7 @@ services:
     networks:
       - testing-network
   harvey:
-    image: aleexgf/harvey:main
+    image: ghcr.io/scorelabus/harvey:1.3.0@sha256:0c5652fd458ebeaa3dc535aca95d05787463f6621db7d83f5859bd0ad0818290
     container_name: harvey
     env_file: .env
     ports:
@@ -106,7 +110,9 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - OPENAI_API_KEY=${HARVEY_API_KEY}
-      - OPENAI_MODEL=gpt-5-nano
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      # Any OpenAI-compatible API, e.g. a self-hosted model
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - AMINT_BASE_URL=http://a-mint:8000
       - ANALYSIS_BASE_URL=http://analysis-engine:3000
       - CACHE_BACKEND=memory
@@ -136,7 +142,8 @@ services:
       # ORBIT, the assistant, uses the same model and key as HARVEY, so they share
       # OpenAI's rate limits: ORBIT caps the messages of all its users per minute.
       - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
-      - ORBIT_OPENAI_MODEL=gpt-5-nano
+      - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - ORBIT_OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - ORBIT_MAX_MESSAGES_PER_MINUTE=20
     volumes:
       - 'sphere-statics:/usr/src/server/public'

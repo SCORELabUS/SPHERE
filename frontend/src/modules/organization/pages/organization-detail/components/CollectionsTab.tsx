@@ -18,18 +18,21 @@ interface Props {
   orgId: string;
   myRole: OrgRole | null;
   isPublicView: boolean;
+  /** An owner's or admin's preview of someone else's view: it offers no edits of its own. */
+  readOnly?: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
 }
 
-export default function CollectionsTab({ collections, collectionsTotal, collectionPage, collectionSearch, orgId, myRole, isPublicView, onPageChange, onSearchChange }: Props) {
+export default function CollectionsTab({ collections, collectionsTotal, collectionPage, collectionSearch, orgId, myRole, isPublicView, readOnly = false, onPageChange, onSearchChange }: Props) {
   const { authUser } = useAuth();
+  const viewOnly = isPublicView || readOnly;
   const { getOrgPermissions } = useOrganizationsApi();
   const router = useRouter();
   const [canCreateCollection, setCanCreateCollection] = useState(false);
 
   useEffect(() => {
-    if (isPublicView) {
+    if (viewOnly) {
       setCanCreateCollection(false);
       return;
     }
@@ -57,7 +60,7 @@ export default function CollectionsTab({ collections, collectionsTotal, collecti
         setCanCreateCollection(orgScoped?.permissions.CREATE ?? false);
       })
       .catch(() => setCanCreateCollection(false));
-  }, [orgId, myRole, isPublicView, authUser.user?.id, authUser.user?.role, getOrgPermissions]);
+  }, [orgId, myRole, viewOnly, authUser.user?.id, authUser.user?.role, getOrgPermissions]);
 
   return (
     <motion.div

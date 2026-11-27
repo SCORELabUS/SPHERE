@@ -1,0 +1,112 @@
+# Optional AI services for the testing stack: HARVEY and the pricing
+# intelligence services it uses (A-MINT, the analysis engines and the MCP
+# server). Their source code is in
+# https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process (MIT).
+# The images are pinned by version and digest; update them with
+# scripts/pin-ai-images.sh. They are built for linux/amd64 only, so on
+# Apple Silicon Docker runs them under emulation (platform: linux/amd64).
+#
+#   echo "OPENAI_API_KEY=sk-..." > .env
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+#
+# The same key also enables ORBIT's chat in the API. Without a key the
+# services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
+# To use a self-hosted, OpenAI-compatible model, also set OPENAI_BASE_URL,
+# OPENAI_MODEL, AMINT_LLM_MODEL and AMINT_LLM_BETTER_MODEL (see the README).
+services:
+  choco-analysis-engine:
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.3.0@sha256:3f3b8e631b4d14b73ed53108d77c13a07180406d326deb48e924ddb6d4565b6c
+    platform: linux/amd64
+    container_name: choco-analysis-engine
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    networks:
+      - testing-network
+  analysis-engine:
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.3.0@sha256:b4489dc79f1f19877884d45bdcf98db45abb92af72c9df1f3f1a0f0f86aba7ba
+    platform: linux/amd64
+    container_name: pricing-analysis-engine
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHOCO_API=http://choco-analysis-engine:8000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - choco-analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  a-mint:
+    image: ghcr.io/scorelabus/a-mint:1.3.0@sha256:bb0ec9436fa6b84a6a16227d9acd10f2c04e90f244a47d5ec2c3020f3818cb51
+    platform: linux/amd64
+    container_name: a-mint
+    init: true
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANALYSIS_API=http://analysis-engine:3000/api/v1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  mcp-server:
+    image: ghcr.io/scorelabus/pi-mcp-server:1.3.0@sha256:baa89c353dacf8610c0d08dd28d4892abfc043b9ee931ab4441c7344f16c8033
+    platform: linux/amd64
+    container_name: mcp-server
+    environment:
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      # LLM that A-MINT uses to extract pricings: any OpenAI-compatible API (key set in a-mint)
+      - AMINT_LLM_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_LLM_MODEL=${AMINT_LLM_MODEL:-gpt-5.2}
+      - AMINT_LLM_BETTER_MODEL=${AMINT_LLM_BETTER_MODEL:-gpt-5.2}
+      - LOG_LEVEL=INFO
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8085
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8085
+      - MCP_TRANSPORT=sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  harvey:
+    image: ghcr.io/scorelabus/harvey:1.3.0@sha256:0c5652fd458ebeaa3dc535aca95d05787463f6621db7d83f5859bd0ad0818290
+    platform: linux/amd64
+    container_name: harvey
+    # The testing web client calls HARVEY directly (VITE_HARVEY_URL in
+    # frontend/.env.testing).
+    ports:
+      - "8086:8086"
+    environment:
+      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      # Any OpenAI-compatible API, e.g. a self-hosted model
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_URL=http://mcp-server:8085/sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+      - mcp-server
+    restart: unless-stopped
+    networks:
+      - testing-network
+  server:
+    environment:
+      - ORBIT_OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - ORBIT_OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}

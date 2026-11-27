@@ -176,6 +176,26 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     allowedUserRoles: ['ADMIN', 'USER'],
   },
 
+  // What an anonymous link shows, to anyone (its credentials are dropped before
+  // authentication). PricingAnonymousLinkService answers alike for every token
+  // that shows nothing.
+  { path: '/anonymous-pricings/*', methods: ['GET'], isPublic: true },
+  { path: '/anonymous-pricings/*/configuration-space', methods: ['GET'], isPublic: true },
+  { path: '/anonymous-pricings/*/yaml', methods: ['GET'], isPublic: true },
+
+  // Managing the anonymous links of a pricing. PricingAnonymousLinkService checks
+  // that the caller may edit the pricing; this only requires login.
+  {
+    path: '/pricing-anonymous-links',
+    methods: ['GET', 'POST'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+  {
+    path: '/pricing-anonymous-links/*',
+    methods: ['DELETE'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+  },
+
   // ============================================
   // Collection Management Routes
   // ============================================
@@ -304,6 +324,14 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   {
     path: '/orgs/*/services',
     methods: ['PUT'],
+    allowedUserRoles: ['ADMIN', 'USER'],
+    allowedOrganizationRoles: ['OWNER', 'ADMIN'],
+  },
+  // Reading the organization as one of its members is for its owners and admins
+  // (the service also checks it, and that the one looked at is a member).
+  {
+    path: '/orgs/*/member-views/**',
+    methods: ['GET'],
     allowedUserRoles: ['ADMIN', 'USER'],
     allowedOrganizationRoles: ['OWNER', 'ADMIN'],
   },

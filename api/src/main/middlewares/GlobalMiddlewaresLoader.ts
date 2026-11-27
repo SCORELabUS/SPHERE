@@ -7,6 +7,7 @@ import { authenticationMiddleware } from './AuthenticationMiddleware';
 import { authorizationMiddleware } from './AuthorizationMiddleware';
 import { apiRateLimiter, authRateLimiter } from './RateLimitMiddleware';
 import { protectedStatic } from './StaticFilesMiddleware';
+import { anonymousAccess } from './AnonymousAccessMiddleware';
 import { organizationVisibilityMiddleware } from './OrganizationVisibilityMiddleware';
 
 const loadGlobalMiddlewares = (app: express.Application) => {
@@ -32,6 +33,8 @@ const loadGlobalMiddlewares = (app: express.Application) => {
   app.use(protectedStatic('public'));
   app.use(bodyParser.json({ limit: '2mb' }));
   app.use(bodyParser.urlencoded({ limit: '2mb', extended: true }));
+  // Anonymous links answer alike for everyone: their credentials go before authentication.
+  app.use(anonymousAccess);
   app.use(authenticationMiddleware);
   app.use(organizationVisibilityMiddleware);
   // After authentication, so that a signed-in client is limited as itself

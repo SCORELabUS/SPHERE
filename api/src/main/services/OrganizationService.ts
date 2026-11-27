@@ -152,6 +152,27 @@ class OrganizationService {
    * queries: one for the branch, one for the caller's memberships.
    */
   async getHierarchy(organizationId: string, user?: { id: string; role?: string; apiKey?: unknown }) {
+    // A platform administrator answers for every organization, so there is no
+    // point asking which ones they belong to. A visitor belongs to none.
+    return this.hierarchyFor(organizationId, () =>
+      !user
+        ? Promise.resolve(new Map<string, OrgRole>())
+        : user.role === 'ADMIN' && !user.apiKey
+          ? Promise.resolve(null)
+          : this.organizationMembershipRepository.findRolesByUserId(user.id),
+      user
+    );
+  }
+
+  /** The branch marked as it is for any plain member of the organization: a member of it, and of nothing else. */
+  async getHierarchyAsPlainMember(organizationId: string) {
+    return this.hierarchyFor(organizationId, () =>
+      Promise.resolve(new Map<string, OrgRole>([[organizationId, 'MEMBER']]))
+    );
+  }
+
+  /** The branch of the organization, each node marked open when `roles` (null: all of them) reach it. */
+  private async hierarchyFor(organizationId: string, rolesOf: () => Promise<Map<string, OrgRole> | null>, user?: { id: string; role?: string; apiKey?: unknown }) {
     const organization: any = await this.organizationRepository.findById(organizationId);
     if (!organization) {
       throw new Error('NOT FOUND: Organization not found');
@@ -160,16 +181,7 @@ class OrganizationService {
     const ancestors = (organization.ancestors ?? []).map((id: any) => id.toString());
     const rootId = ancestors[0] ?? organizationId;
 
-    const [branch, roles] = await Promise.all([
-      this.organizationRepository.findBranch(rootId),
-      // A platform administrator answers for every organization, so there is no
-      // point asking which ones they belong to. A visitor belongs to none.
-      !user
-        ? Promise.resolve(new Map<string, OrgRole>())
-        : user.role === 'ADMIN' && !user.apiKey
-          ? Promise.resolve(null)
-          : this.organizationMembershipRepository.findRolesByUserId(user.id),
-    ]);
+    const [branch, roles] = await Promise.all([this.organizationRepository.findBranch(rootId), rolesOf()]);
 
     // Management cascades down the tree, so a node is open to the caller when
     // they hold it directly or manage anything above it.

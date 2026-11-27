@@ -1,6 +1,18 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script id="anonymous-link-referrer">
+      // Keeps the token of an anonymous link (/a/<token>) out of the Referer of
+      // every request of the app: no-referrer is set before any icon, font or
+      // script loads. Case-insensitive, as the router also matches /A/<token>.
+      (function () {
+        if (!/\/a\/[A-Za-z0-9_-]{32}\/?$/i.test(location.pathname)) return;
+        var referrer = document.createElement('meta');
+        referrer.name = 'referrer';
+        referrer.content = 'no-referrer';
+        document.head.appendChild(referrer);
+      })();
+    </script>
     <title>SPHERE | A comprehensive platform for Software as a Service pricing solutions</title>
     <meta name="description" content="SPHERE (SaaS Pricing Holistic Evaluation and Regulation Environment) is your comprehensive platform for intelligent pricing-driven solutions. Grouping all our advanced applications, datasets and tools, SPHERE offers a unified experience to model, analyze, and optimize SaaS pricing with ease."/>
     <meta name="keywords" content="SaaS, pricing, plans, software, SPHERE, sphere, pricing analysis, feature comparison" />

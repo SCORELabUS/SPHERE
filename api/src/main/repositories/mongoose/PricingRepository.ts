@@ -252,12 +252,28 @@ class PricingRepository extends RepositoryBase {
           { $setOnInsert: { ...locator, name: item.name } }, { upsert: true, new: true });
         item.pricingId = identity!._id;
       }
+      // Whether a pricing is listed is the pricing's: a version added to an
+      // existing pricing takes its value, whatever the caller sent (an upload,
+      // the editor, a ZIP, a fork or ORBIT), so no older client lists an
+      // unlisted pricing again by publishing to it.
+      const sibling = await PricingMongoose.findOne({ pricingId: item.pricingId }).select('unlisted').lean();
+      item.unlisted = sibling ? sibling.unlisted === true : item.unlisted === true;
     }
 
     const created = (await PricingMongoose.insertMany(data)).map(pricing => pricing.toObject());
     // insertMany runs no document middleware, so the revision is moved on here.
     await this.bumpRevisions(data.map(item => item.pricingId));
     return created;
+  }
+
+  /**
+   * Lists or unlists a pricing: every version takes the value, so the listings
+   * (which read the version they show) agree. The `updateMany` hook moves the
+   * pricing's revision on, so its ETag changes.
+   */
+  async setUnlisted(pricingId: unknown, unlisted: boolean) {
+    if (!mongoose.isValidObjectId(pricingId)) throw new Error('CONFLICT: This pricing cannot be listed or unlisted');
+    await PricingMongoose.updateMany({ pricingId }, { $set: { unlisted } });
   }
 
   /** Moves on the revision of these pricings (their PricingIdentity ids), so their ETags change. */
@@ -440,7 +456,7 @@ class PricingRepository extends RepositoryBase {
    * its latest version: what ORBIT needs to name it and tell who may see it.
    */
   async findSummariesByOrganization(organizationId: string): Promise<
-    Array<{ slug: string; name: string; private: boolean; collectionId: string | null; versions: number; publicVersions: number }>
+    Array<{ slug: string; name: string; private: boolean; unlisted: boolean; collectionId: string | null; versions: number; publicVersions: number }>
   > {
     const rows = await PricingMongoose.aggregate([
       { $match: { _organizationId: new mongoose.Types.ObjectId(organizationId), slug: { $type: 'string' } } },
@@ -450,6 +466,7 @@ class PricingRepository extends RepositoryBase {
           _id: '$slug',
           name: { $first: '$name' },
           private: { $first: '$private' },
+          unlisted: { $max: { $eq: ['$unlisted', true] } },
           collectionId: { $first: '$_collectionId' },
           versions: { $sum: 1 },
           publicVersions: { $sum: { $cond: [{ $eq: ['$private', true] }, 0, 1] } },
@@ -461,6 +478,7 @@ class PricingRepository extends RepositoryBase {
       slug: row._id,
       name: row.name,
       private: row.private === true,
+      unlisted: row.unlisted === true,
       collectionId: row.collectionId ? String(row.collectionId) : null,
       versions: row.versions,
       publicVersions: row.publicVersions ?? 0,

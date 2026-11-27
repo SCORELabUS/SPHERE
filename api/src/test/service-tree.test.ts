@@ -346,6 +346,29 @@ describe('Service tree (beta) API integration', () => {
     expect(Object.keys(asOwner.body.pricings).sort()).toEqual([hidden.pricingId, visible.pricingId].sort());
   });
 
+  it('Hides an unlisted linked pricing from a member who may not read it, and names it to the owner.', async () => {
+    const { token, organizationId } = await betaOwner();
+    const unlisted = await pricingOf(organizationId, false);
+    const listed = await pricingOf(organizationId, false);
+    const stored: any = await PricingMongoose.findOne({ pricingId: unlisted.pricingId }).lean();
+    await request(app).put(`${BASE_PATH}/pricings/${organizationId}/${stored.slug}`)
+      .set('Authorization', `Bearer ${token}`).send({ unlisted: true }).expect(200);
+    await save(token, organizationId, {
+      revision: 0,
+      nodes: [node('a', { pricingIds: [unlisted.pricingId, listed.pricingId] })],
+    });
+    const { user: member } = await createAndLoginUser('USER');
+    await createMembership(member.id, organizationId, 'MEMBER');
+    await enableBeta(member.token);
+
+    const asMember = await request(app).get(servicesPath(organizationId)).set('Authorization', `Bearer ${member.token}`);
+    const asOwner = await request(app).get(servicesPath(organizationId)).set('Authorization', `Bearer ${token}`);
+
+    expect(Object.keys(asMember.body.pricings)).toEqual([listed.pricingId]);
+    expect(JSON.stringify(asMember.body)).not.toContain(unlisted.name);
+    expect(Object.keys(asOwner.body.pricings).sort()).toEqual([unlisted.pricingId, listed.pricingId].sort());
+  });
+
   it('Answers 403 to a user outside the organization.', async () => {
     const { organizationId } = await betaOwner();
     const { user: outsider } = await createAndLoginUser('USER');

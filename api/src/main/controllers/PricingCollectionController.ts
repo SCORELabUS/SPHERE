@@ -5,6 +5,7 @@ import { CollectionIndexQueryParams } from '../types/services/PricingCollection.
 import path from 'path';
 import archiver from 'archiver';
 import { handleError } from '../utils/users/helpers';
+import { memberAudience } from '../services/OrganizationMemberViewService';
 import { resolvePricingFile } from '../utils/pricing-files';
 
 class PricingCollectionController {
@@ -16,6 +17,7 @@ class PricingCollectionController {
     this.pricingService = container.resolve('pricingService');
     this.index = this.index.bind(this);
     this.indexByOrganizationId = this.indexByOrganizationId.bind(this);
+    this.indexByOrganizationAsMember = this.indexByOrganizationAsMember.bind(this);
     this.indexByAuthenticatedUser = this.indexByAuthenticatedUser.bind(this);
     this.show = this.show.bind(this);
     this.downloadCollection = this.downloadCollection.bind(this);
@@ -80,6 +82,23 @@ class PricingCollectionController {
     }
   }
 
+  /** The organization's collections as any plain member, or one member, gets them; for its owners and admins. */
+  async indexByOrganizationAsMember(req: any, res: any) {
+    try {
+      const audience = await memberAudience(req);
+      const queryParams: CollectionIndexQueryParams = this._transformIndexQueryParams(req.query);
+      const collections =
+        audience.kind === 'any'
+          ? await this.pricingCollectionService.indexByOrganizationIdAsPlainMember(req.params.organizationId, queryParams)
+          : await this.pricingCollectionService.indexByOrganizationId(req.params.organizationId, audience.reader, queryParams);
+      res.set('Cache-Control', 'no-store');
+      res.json(collections);
+    } catch (err: any) {
+      const {status, message} = handleError(err);
+      res.status(status).send({ error: message });
+    }
+  }
+
   async downloadCollection(req: any, res: any) {
     try {
       const collectionSlug = req.params.collectionSlug;
@@ -90,10 +109,13 @@ class PricingCollectionController {
         req.user
       );
       const pricings = await this.pricingService.indexByCollection(collection.id);
-      // Private versions only for who may read them (GET on the collection
-      // reaches the pricings in it); anyone else gets the public ones.
+      // Private versions and unlisted pricings only for who may read the
+      // private versions (GET on the collection reaches the pricings in it);
+      // anyone else gets the public versions of the listed pricings, as the
+      // collection lists them.
       const reader = await container.resolve('permissionService').privateReader(req.user, organizationId, req.authType);
-      const pricingsToDownload = pricings.filter(pricing => pricing.private !== true || reader('pricing', String(pricing.slug), collection.slug));
+      const pricingsToDownload = pricings.filter(pricing =>
+        (pricing.private !== true && pricing.unlisted !== true) || reader('pricing', String(pricing.slug), collection.slug));
 
       if (pricingsToDownload.length === 0) {
         res.status(400).send({ error: 'No pricings to download.' });

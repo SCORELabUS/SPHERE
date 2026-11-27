@@ -9,8 +9,10 @@ import {
 } from '../../../organization/api/organizationsApi';
 import { useAuth } from '../../../auth/hooks/useAuth';
 import { pricingYamlRequestInit } from '../../../core/utils/pricing-yaml';
+import { permanentLinkUrl } from '../../../core/utils/permanent-link';
 import { useRecentItems } from '../../../core/hooks/useRecentItems';
-import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
+import PricingCardOverview from '../../components/pricing-card-overview';
+import PricingCardTabs from '../../components/pricing-card-tabs';
 import { downloadYaml } from '../../../pricing-editor/services/export.service';
 import ConfigurationSpaceView from '../../components/configuration-space-view';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,8 +26,6 @@ import PrivateAccessFallback from '../../components/private-access-fallback';
 import HarveyChat from '../../../core/components/harvey-chat';
 import type { SuggestedQuestion } from '../../../core/components/harvey-chat';
 import type { EntityPermissions } from '../../../organization/types/permissions';
-import YamlSourcePanel from '../../components/yaml-source-panel';
-import PricingTree from '../../components/pricing-tree';
 import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
 import PricingVersionsTab from '../../components/pricing-versions-tab';
 import PricingVersionGraph from '../../components/pricing-version-graph';
@@ -40,6 +40,15 @@ import type { VersionData, Tab, TreeAnalytics } from '../../types/card';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import { pricingVersionNameMatches } from './pricing-version-validation';
 import { pickRequestedVersion } from './requested-version';
+import RobotsMeta from '../../components/robots-meta';
+import AnonymousLinkDialog from '../../components/anonymous-link-dialog';
+import { useAnonymousLinksApi } from '../../api/anonymousLinksApi';
+import {
+  changeVisibility,
+  pricingVisibility,
+  visibilityChangeBody,
+  type PricingVisibilityChoice,
+} from '../../../core/utils/pricing-visibility';
 
 export default function CardPage() {
   const { organizationId, slug } = useParams<{ organizationId: string; slug: string }>();
@@ -63,6 +72,7 @@ export default function CardPage() {
     unfollowPricing,
   } = usePricingsApi();
   const { getOrgMembers } = useOrganizationsApi();
+  const { listAnonymousLinks } = useAnonymousLinksApi();
   const { authUser } = useAuth();
   const { addRecentPricing } = useRecentItems();
 
@@ -76,6 +86,8 @@ export default function CardPage() {
   // The pricing's ETag as loaded, sent back in If-Match with every change made here.
   const [etag, setEtag] = useState<string>();
   const [pricingName, setPricingName] = useState<string>('');
+  // Left out of listings for who may not read its private versions ("anyone with the link").
+  const [unlisted, setUnlisted] = useState(false);
   const [yamlText, setYamlText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
@@ -93,7 +105,7 @@ export default function CardPage() {
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showForkModal, setShowForkModal] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showAnonymousDialog, setShowAnonymousDialog] = useState(false);
 
   useEffect(() => {
     if (!organizationId) return;
@@ -110,6 +122,7 @@ export default function CardPage() {
         setPricingId(data.pricingId);
         setEtag(data.etag);
         setPricingName(data.name ?? slug);
+        setUnlisted(data.unlisted === true);
         setCollectionName(data.collection?.name ?? null);
         const vers = (data.versions ?? []) as VersionData[];
         setVersions(vers);
@@ -333,7 +346,7 @@ export default function CardPage() {
     // read it, so a direct link would not work for anyone else. Offer the
     // pricing's permanent link instead.
     if (v.private && pricingId) {
-      setLinkUrl(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/p/${pricingId}`);
+      setLinkUrl(permanentLinkUrl('p', pricingId));
       setLinkDescription(
         'This version is private, so its YAML file is only available to signed-in users who can see it. This is the permanent link to the pricing instead: people with access see every version, everyone else only the public ones.'
       );
@@ -406,11 +419,9 @@ export default function CardPage() {
       .catch(() => {});
   };
 
-  // Visibility belongs to each version: the settings describe the pricing as a
-  // whole, so a pricing with some public and some private versions is "Mixed".
-  const privateCount = versions.filter(v => v.private).length;
-  const visibility =
-    privateCount === 0 ? 'Public' : privateCount === versions.length ? 'Private' : 'Mixed';
+  // Privacy belongs to each version and the listing to the pricing: the settings
+  // describe the pricing as a whole, so some public and some private versions are "Mixed".
+  const visibility = pricingVisibility(versions, unlisted);
 
   const setVersionsPrivacy = (isPrivate: boolean, shouldChange: (v: VersionData) => boolean) => {
     setVersions(prev => prev.map(v => (shouldChange(v) ? { ...v, private: isPrivate } : v)));
@@ -433,30 +444,52 @@ export default function CardPage() {
     }
   };
 
-  // The setting in the Settings tab: every version at once.
+  // The setting in the Settings tab: every version at once, and whether it is listed.
   const handleVisibilityChange = (value: string) => {
     if (!slug || !organizationId) return;
-    const target = value === 'Private' ? 'Private' : 'Public';
+    const target: PricingVisibilityChoice = value === 'Private' || value === 'Unlisted' ? value : 'Public';
     if (target === visibility) return;
-    const isPrivate = target === 'Private';
-    const scope =
-      versions.length > 1 ? `all ${versions.length} versions of this pricing` : 'this pricing';
-    customConfirm(`Make ${scope} ${target.toLowerCase()}?`, { danger: true })
-      .then(async () => {
+    // Listing the pricing, and making every version visible, exposes who published it to whoever holds its links.
+    void changeVisibility(target, {
+      unlisted,
+      versions: versions.length,
+      listLinks: pricingId ? () => listAnonymousLinks(pricingId) : undefined,
+      confirm: customConfirm,
+      apply: async () => {
         try {
-          const result = await updatePricing(organizationId, slug, collectionSlug ?? '', { private: isPrivate }, etag);
+          const body = visibilityChangeBody(target);
+          const result = await updatePricing(organizationId, slug, collectionSlug ?? '', body, etag);
           setEtag(result.etag);
-          setVersionsPrivacy(isPrivate, () => true);
+          if (body.unlisted !== undefined) setUnlisted(body.unlisted);
+          setVersionsPrivacy(body.private, () => true);
           customAlert(
-            `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target.toLowerCase()}`,
+            `${versions.length > 1 ? 'All versions are' : 'Pricing is'} now ${target === 'Unlisted' ? 'visible to anyone with the link, and unlisted' : target.toLowerCase()}`,
             'success'
           );
         } catch (error) {
           if (offerReloadIfChanged(error)) return;
           customAlert(`Error: ${(error as Error).message}`, 'error');
         }
-      })
-      .catch(() => {});
+      },
+    });
+  };
+
+  // The anonymous link dialog unlists the pricing, or makes a private version
+  // visible, before sharing it; each change passes its ETag on to the next.
+  const handleMakeUnlisted = async () => {
+    if (!slug || !organizationId) return undefined;
+    const result = await updatePricing(organizationId, slug, collectionSlug ?? '', { unlisted: true }, etag);
+    setEtag(result.etag);
+    setUnlisted(true);
+    return result.etag as string | undefined;
+  };
+
+  const handleMakeVersionVisible = async (target: VersionData, currentEtag: string | undefined) => {
+    if (!slug || !organizationId) return undefined;
+    const result = await updatePricingVersionVisibility(organizationId, slug, target.version, false, currentEtag ?? etag);
+    setEtag(result.etag);
+    setVersionsPrivacy(false, candidate => candidate.id === target.id);
+    return result.etag as string | undefined;
   };
 
   const handleRename = (newName: string) => {
@@ -663,6 +696,8 @@ export default function CardPage() {
       <Helmet>
         <title>SPHERE - {pricingName}</title>
       </Helmet>
+      {/* An unlisted pricing stays out of search engines too. */}
+      {unlisted && <RobotsMeta />}
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
         {/* Breadcrumb + header */}
         <motion.div
@@ -795,6 +830,7 @@ export default function CardPage() {
                 onCopyYamlLink={() => currentVersion && handleCopyLink(currentVersion)}
                 onDownloadCurrent={() => currentVersion && handleDownload(currentVersion)}
                 onDownloadAll={handleDownloadAllVersions}
+                onAnonymousLink={entityPermissions?.PUT && currentVersion ? () => setShowAnonymousDialog(true) : undefined}
               />
             </div>
           </div>
@@ -820,228 +856,10 @@ export default function CardPage() {
           ))}
         </motion.div>
 
-        {/* Tabs */}
-        <div className="mb-6 border-b border-tp-hairline">
-          <div
-            className="mb-2 flex gap-2 overflow-x-auto pb-2 md:hidden"
-            style={{
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-              WebkitOverflowScrolling: 'touch',
-            }}
-          >
-            {(
-              [
-                ['overview', 'Overview'],
-                ['analytics', 'Analytics'],
-                ['config-space', 'Config Space'],
-                ['versions', 'Versions'],
-                ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
-              ] as const
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setTab(k)}
-                className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
-                  tab === k
-                    ? 'bg-tp-primary text-tp-on-primary shadow-sm'
-                    : 'bg-tp-surface text-tp-steel hover:bg-tp-hairline hover:text-tp-ink'
-                }`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="hidden gap-1 md:flex">
-            {(
-              [
-                ['overview', 'Overview'],
-                ['analytics', 'Analytics'],
-                ['config-space', 'Configuration Space'],
-                ['versions', 'Versions'],
-                ...(showSettingsTab ? [['settings', 'Settings'] as const] : []),
-              ] as const
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setTab(k)}
-                className={`relative cursor-pointer whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors ${tab === k ? 'text-tp-primary' : 'text-tp-steel hover:text-tp-ink'}`}
-              >
-                {l}
-                {tab === k && (
-                  <motion.div
-                    layoutId="pricing-tab"
-                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-tp-primary"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+        <PricingCardTabs tab={tab} setTab={setTab} showSettingsTab={!!showSettingsTab} />
 
         <AnimatePresence mode="wait">
-          {/* OVERVIEW */}
-          {tab === 'overview' && (
-            <motion.div
-              key="overview"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={transitionDefault}
-            >
-              {isPrivateNoAccess ? (
-                <PrivateAccessFallback />
-              ) : (
-                <>
-                  <div className="mb-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setSidebarOpen(p => !p)}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-tp-input-border bg-tp-input-bg px-3 py-2 text-xs font-medium text-tp-ink transition-colors hover:bg-tp-surface"
-                    >
-                      <svg
-                        className={`h-4 w-4 transition-transform duration-300 ${sidebarOpen ? 'rotate-180' : ''}`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.5}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"
-                        />
-                      </svg>
-                      {sidebarOpen ? 'Hide details' : 'Show details'}
-                    </button>
-                  </div>
-
-                  <div className="hidden flex-col gap-6 md:flex md:flex-row">
-                    <motion.div
-                      className="min-w-0 rounded-xl border border-tp-hairline bg-tp-canvas p-4"
-                      animate={{ flex: sidebarOpen ? '1 1 0%' : '1 1 100%' }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                    >
-                      {isLoadingYaml ? (
-                        <div className="flex h-64 items-center justify-center">
-                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
-                        </div>
-                      ) : pricing ? (
-                        <PricingRenderer
-                          pricing={pricing}
-                          errors={errors}
-                          onApplyVariables={handleApplyVariables}
-                        />
-                      ) : (
-                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
-                          Could not load pricing preview
-                        </div>
-                      )}
-                    </motion.div>
-
-                    <AnimatePresence initial={false}>
-                      {sidebarOpen && (
-                        <motion.div
-                          key="sidebar-desktop"
-                          initial={{ width: 0, opacity: 0 }}
-                          animate={{ width: 360, opacity: 1 }}
-                          exit={{ width: 0, opacity: 0 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="w-[360px] space-y-4">
-                            {aSafe ? (
-                              <PricingTree analytics={aSafe} />
-                            ) : (
-                              currentVersion && <NoAnalyticsNotice />
-                            )}
-                            {yamlText && <YamlSourcePanel yamlText={yamlText} />}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  <div className="md:hidden">
-                    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4">
-                      {isLoadingYaml ? (
-                        <div className="flex h-64 items-center justify-center">
-                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-tp-hairline border-t-tp-primary" />
-                        </div>
-                      ) : pricing ? (
-                        <PricingRenderer
-                          pricing={pricing}
-                          errors={errors}
-                          onApplyVariables={handleApplyVariables}
-                        />
-                      ) : (
-                        <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
-                          Could not load pricing preview
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <AnimatePresence>
-                    {sidebarOpen && (
-                      <motion.div
-                        key="sidebar-mobile"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 md:hidden"
-                        onClick={() => setSidebarOpen(false)}
-                      >
-                        <motion.div
-                          initial={{ y: '100%', opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          exit={{ y: '100%', opacity: 0 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                          className="max-h-[85vh] w-[90vw] max-w-2xl overflow-y-auto rounded-2xl bg-tp-canvas p-5 shadow-elevation-4"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <div className="mb-4 flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-tp-ink">Details</h3>
-                            <button
-                              type="button"
-                              onClick={() => setSidebarOpen(false)}
-                              className="cursor-pointer rounded-full p-1 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"
-                            >
-                              <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                          <div className="space-y-4">
-                            {aSafe ? (
-                              <PricingTree analytics={aSafe} />
-                            ) : (
-                              currentVersion && <NoAnalyticsNotice />
-                            )}
-                            {yamlText && <YamlSourcePanel yamlText={yamlText} />}
-                          </div>
-                        </motion.div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </>
-              )}
-            </motion.div>
-          )}
+          {tab === 'overview' && <PricingCardOverview isPrivateNoAccess={isPrivateNoAccess} isLoadingYaml={isLoadingYaml} pricing={pricing} errors={errors} handleApplyVariables={handleApplyVariables} aSafe={aSafe} yamlText={yamlText} hasVersion={!!currentVersion} />}
 
           {/* ANALYTICS */}
           {tab === 'analytics' && (
@@ -1160,6 +978,7 @@ export default function CardPage() {
                   canChangeVisibility={!!entityPermissions?.PUT}
                   onToggleVisibility={handleToggleVersionVisibility}
                   onViewOrigin={handleViewOrigin}
+                  unlisted={unlisted}
                 />
                 </div>
               )}
@@ -1178,6 +997,8 @@ export default function CardPage() {
               <PricingSettingsTab
                 entityPermissions={entityPermissions}
                 visibility={visibility}
+                unlisted={unlisted}
+                pricingId={pricingId}
                 pricingName={pricingName}
                 currentVersion={currentVersion}
                 versions={versions}
@@ -1203,12 +1024,26 @@ export default function CardPage() {
         />
       )}
 
+      {/* ANONYMOUS LINK */}
+      {showAnonymousDialog && pricingId && currentVersion && (
+        <AnonymousLinkDialog
+          pricingId={pricingId}
+          versions={versions}
+          selected={currentVersion}
+          unlisted={unlisted}
+          onMakeUnlisted={handleMakeUnlisted}
+          onMakeVersionVisible={handleMakeVersionVisible}
+          onClose={() => setShowAnonymousDialog(false)}
+        />
+      )}
+
       {/* VERSIONS VISIBILITY MODAL */}
       <AnimatePresence>
         {showVisibilityModal && (
           <VersionsVisibilityModal
             versions={versions}
             currentVersionId={currentVersion?.id}
+            unlisted={unlisted}
             onClose={() => setShowVisibilityModal(false)}
           />
         )}
@@ -1244,13 +1079,5 @@ export default function CardPage() {
         suggestedQuestions={pricingSuggestions}
       />
     </>
-  );
-}
-
-function NoAnalyticsNotice() {
-  return (
-    <div className="rounded-xl border border-tp-hairline bg-tp-canvas p-4 text-xs text-tp-steel">
-      The analytics of this version are not available.
-    </div>
   );
 }

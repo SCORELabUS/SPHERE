@@ -17,6 +17,7 @@ export const filtersDataGenerator = {
           createdAt: 1,
           currency: 1,
           private: 1,
+          unlisted: { $eq: ['$unlisted', true] },
           analytics: {
             configurationSpaceSize: 1,
             minSubscriptionPrice: 1,

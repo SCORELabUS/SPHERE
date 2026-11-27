@@ -183,14 +183,22 @@ export class PricingStepBuilder {
 
       const affected = target ? [target] : versions;
       const label = target ? `${summary.name} ${target.version}` : `"${summary.name}"`;
+      // Making versions public never lists an unlisted pricing (only its Settings do).
+      const staysUnlisted = !item.private && stored?.unlisted === true;
       if (affected.every(version => (version.private === true) === item.private)) {
-        warnings.push(`${label} is already ${item.private ? 'private' : 'public'}; left out.`);
+        warnings.push(staysUnlisted
+          ? `${label} is already visible to anyone with its link and stays unlisted (change that in its Settings); left out.`
+          : `${label} is already ${item.private ? 'private' : 'public'}; left out.`);
         continue;
       }
       const isPrivate = (target ?? versions[0])?.private === true;
       if (!(await this.allowed(organization.id, 'pricing', 'PUT', summary.slug, isPrivate))) {
         errors.push(`You cannot edit "${summary.name}" in "${organization.label}".`);
         continue;
+      }
+
+      if (staysUnlisted) {
+        warnings.push(`${label} stays unlisted: anyone with its link will see it, but it is not listed (change that in its Settings).`);
       }
 
       const group = groups.get(organization.id) ?? { type: 'set_pricing_visibility' as const, organization, changes: [] as OrbitVisibilityChange[] };

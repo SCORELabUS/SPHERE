@@ -172,25 +172,13 @@ export function usePricingsApi() {
 
     const queryString = params.toString(); 
     
-    return fetchWithInterceptor(
+    const response = await fetchWithInterceptor(
       `${PRICINGS_BASE_PATH}/${organizationId}/${pricingSlug}/${pricingVersion}${queryString ? `?${queryString}` : ''}`,
-      {
-        method: 'GET',
-        headers: basicHeaders,
-      }
-    )
-      .then(response => response.json())
-      .then(data => {
-        if (data.error) {
-          return Promise.reject({message: data.error});
-        } else {
-          return data;
-        }
-      })
-      .catch(async error => {
-        const body = await (error as Response).json().catch(() => ({}));
-        return Promise.reject({message: body.error});
-      });
+      { method: 'GET', headers: basicHeaders }
+    );
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || 'Could not load configuration space');
+    return data;
   }, [fetchWithInterceptor, basicHeaders]);
 
   const createPricing = useCallback(async (formData: FormData, organizationId: string, setErrors: (errors: string[]) => void = () => {}) => {
