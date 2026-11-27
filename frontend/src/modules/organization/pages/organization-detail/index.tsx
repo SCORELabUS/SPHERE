@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import Iconify from '../../../core/components/iconify';
 import { FaFileInvoiceDollar } from 'react-icons/fa';
@@ -18,7 +18,19 @@ import {
   useOrganizationsApi,
   getPublicOrganization,
   getPublicOrgMembers,
+  getPublicOrgHierarchy,
 } from '../../api/organizationsApi';
+import {
+  OrgViewMode,
+  ViewAsRequest,
+  canPreviewOrganization,
+  memberViewTarget,
+  previewMembers,
+  readViewAsRequest,
+  resolveOrgView,
+  viewAsKey,
+  withViewAs,
+} from '../../utils/view-as';
 import { getPublicOrgPricings, getPublicOrgCollections } from '../../../pricing/api/pricingsApi';
 import { useOrganization } from '../../hooks/useOrganization';
 import PermissionsTab from '../../components/PermissionsTab';
@@ -42,6 +54,8 @@ import HierarchyTab from './components/HierarchyTab';
 import ChildRolesManager from './components/ChildRolesManager';
 import ShareOrgMenu from './components/ShareOrgMenu';
 import ServicesTab from './components/ServicesTab';
+import ViewAsBanner from './components/ViewAsBanner';
+import ViewAsMenu from './components/ViewAsMenu';
 import { useBetaFeature } from '../../../beta/hooks/useBetaFeatures';
 import BetaBadge from '../../../beta/components/beta-badge';
 import ConfirmModal from '../../../core/components/confirm-modal';
@@ -49,6 +63,11 @@ import SettingsTab from './components/SettingsTab';
 
 export default function OrganizationDetailPage() {
   const { organizationId } = useParams<{ organizationId: string }>();
+  // An owner or admin previewing their organization as a member or a visitor
+  // keeps it in the URL, so a reload stays there and the browser's Back leaves.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewAsRequest = readViewAsRequest(searchParams);
+  const viewAsRequestKey = viewAsKey(viewAsRequest);
   const { authUser } = useAuth();
   const router = useRouter();
   const { addRecentOrganization } = useRecentItems();
@@ -56,7 +75,15 @@ export default function OrganizationDetailPage() {
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
-  const [isPublicView, setIsPublicView] = useState(false);
+  const [viewMode, setViewMode] = useState<OrgViewMode>('self');
+  /** The member previewed as, in a member preview; null for any plain member. */
+  const [asMember, setAsMember] = useState<OrgMemberWithUser | null>(null);
+  /** The page shows what people outside the organization see. */
+  const isPublicView = viewMode === 'visitor' || viewMode === 'visitor-preview';
+  /** An owner or admin is looking at someone else's view on purpose: nothing in it is theirs to act on. */
+  const isPreview = viewMode === 'member-preview' || viewMode === 'visitor-preview';
+  /** Who a member preview reads the organization as: a member's id, or `any` for any plain member. */
+  const previewUserId = viewMode === 'member-preview' ? memberViewTarget(asMember) : undefined;
   const [members, setMembers] = useState<OrgMemberWithUser[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
   const [pricings, setPricings] = useState<OrgPricing[]>([]);
@@ -91,20 +118,43 @@ export default function OrganizationDetailPage() {
     getUserAccessiblePricings,
     getUserAccessibleCollections,
     getOrgHierarchy,
+    getMemberViewPricings,
+    getMemberViewCollections,
+    getMemberViewHierarchy,
   } = useOrganizationsApi();
 
-  const canManage = !isPublicView && (myRole === 'OWNER' || myRole === 'ADMIN');
+  const canManage = viewMode === 'self' && (myRole === 'OWNER' || myRole === 'ADMIN');
+  /**
+   * The role the page and its tabs are told about: none while it is public, as
+   * for anyone outside, and the previewed member's own in a member preview.
+   */
+  const viewRole = isPublicView ? null : viewMode === 'member-preview' ? (asMember?.role ?? 'MEMBER') : myRole;
+  /** Whose own rows the tabs mark and offer to leave: nobody's in a preview. */
+  const tabsUserId = viewMode === 'self' ? authUser.user?.id : undefined;
+  const previewCandidates = useMemo(() => previewMembers(members), [members]);
   const showServices = useBetaFeature('organization-services');
   // Leaving the Services tab with unsaved changes asks first, since they live in the tab.
   const servicesDirtyRef = useRef(false);
-  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
-  const selectTab = useCallback((tab: Tab) => {
-    if (activeTab === 'services' && tab !== 'services' && servicesDirtyRef.current) setPendingTab(tab);
-    else setActiveTab(tab);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
+  const leaveServicesFirst = useCallback((leave: () => void) => {
+    if (activeTab === 'services' && servicesDirtyRef.current) setPendingLeave(() => leave);
+    else leave();
   }, [activeTab]);
+  const selectTab = useCallback((tab: Tab) => {
+    if (tab !== activeTab) leaveServicesFirst(() => setActiveTab(tab));
+  }, [activeTab, leaveServicesFirst]);
   const onServicesDirtyChange = useCallback((dirty: boolean) => {
     servicesDirtyRef.current = dirty;
   }, []);
+
+  // A preview replaces the Services tab being edited, so it also asks before
+  // dropping unsaved changes there.
+  const viewAs = useCallback((request: ViewAsRequest) => {
+    leaveServicesFirst(() => setSearchParams(params => withViewAs(params, request)));
+  }, [leaveServicesFirst, setSearchParams]);
+  const viewAsMember = useCallback((userId: string | null) => viewAs({ kind: 'member', userId }), [viewAs]);
+  const viewAsVisitor = useCallback(() => viewAs({ kind: 'visitor' }), [viewAs]);
+  const exitPreview = useCallback(() => viewAs(null), [viewAs]);
 
   const handleOrganizationExited = async () => {
     await refreshMyOrganizations();
@@ -112,8 +162,14 @@ export default function OrganizationDetailPage() {
   };
 
   /* ─── Data loading ─── */
+  const loadSeqRef = useRef(0);
   const loadOrgData = useCallback(async () => {
     if (!organizationId) return;
+
+    // Only the latest load is shown: switching the view or the organization
+    // while one is still running must not leave the other one's data behind.
+    const seq = ++loadSeqRef.current;
+    const isStale = () => seq !== loadSeqRef.current;
 
     try {
       const isAuth = authUser.isAuthenticated && authUser.user?.id;
@@ -129,27 +185,50 @@ export default function OrganizationDetailPage() {
         membersData = await getPublicOrgMembers(organizationId);
       }
 
-      setOrg(orgData);
-      setMembers(membersData);
-
       const memberEntry = isAuth
         ? membersData.find(m => m.user.id === authUser.user?.id)
         : null;
       const userRole = memberEntry?.role ?? null;
-      const isMember = userRole !== null;
+      const { mode, asMember: previewed } = resolveOrgView(userRole, viewAsRequest, membersData);
 
-      if (userRole) setMyRole(userRole);
+      const showOrganization = () => {
+        setOrg(orgData);
+        setMembers(membersData);
+        setMyRole(userRole);
+        setViewMode(mode);
+        setAsMember(previewed);
+      };
 
-      // Public view: not authenticated or authenticated but not a member
-      const publicView = !isAuth || !isMember;
-      setIsPublicView(publicView);
-
-      if (publicView) {
-        // Public view: only fetch public pricings and collections
+      if (mode === 'member-preview') {
+        // A member preview: the listings answered by the API as any plain member
+        // (no permission of their own), or as that member with their own
+        // permissions. Members get no invitations.
+        const target = memberViewTarget(previewed);
+        const [memberPricings, memberCollections] = await Promise.all([
+          getMemberViewPricings(organizationId, target).catch(() => ({ pricings: [], total: 0 })),
+          getMemberViewCollections(organizationId, target).catch(() => ({ collections: [], total: 0 })),
+        ]);
+        if (isStale()) return;
+        showOrganization();
+        setInvitations([]);
+        setAllOrgCollections([]);
+        setAccessibleCollectionNames(null);
+        setPricings(memberPricings.pricings);
+        setPricingsTotal(memberPricings.total);
+        setCollections(memberCollections.collections);
+        setCollectionsTotal(memberCollections.total);
+      } else if (mode === 'visitor' || mode === 'visitor-preview') {
+        // Public view: only what the public endpoints answer to a signed-out
+        // caller, which is also what an owner or admin previewing it gets to see.
         const [publicPricings, publicCollections] = await Promise.all([
           getPublicOrgPricings(organizationId).catch(() => ({ pricings: [], total: 0 })),
           getPublicOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
         ]);
+        if (isStale()) return;
+        showOrganization();
+        setInvitations([]);
+        setAllOrgCollections([]);
+        setAccessibleCollectionNames(null);
         setPricings(publicPricings.pricings);
         setPricingsTotal(publicPricings.total);
         setCollections(publicCollections.collections);
@@ -158,7 +237,6 @@ export default function OrganizationDetailPage() {
         // Member view: full access logic
         const invitationsData =
           userRole === 'OWNER' || userRole === 'ADMIN' ? await listInvitations(organizationId) : [];
-        setInvitations(invitationsData);
 
         if (userRole === 'MEMBER') {
           const [accessiblePricingsResult, , accessibleCollectionsResult, allOrgCollectionsResult] = await Promise.all([
@@ -167,6 +245,7 @@ export default function OrganizationDetailPage() {
             getUserAccessibleCollections().catch(() => ({ collections: [], total: 0 })),
             getOrgCollections(organizationId).catch(() => ({ collections: [], total: 0 })),
           ]);
+          if (isStale()) return;
 
           const pricingNames = new Set(
             accessiblePricingsResult.pricings
@@ -179,6 +258,8 @@ export default function OrganizationDetailPage() {
               .map(c => c.name)
           );
 
+          showOrganization();
+          setInvitations(invitationsData);
           setPricingsTotal(pricingNames.size);
 
           setAllOrgCollections(allOrgCollectionsResult.collections);
@@ -190,23 +271,28 @@ export default function OrganizationDetailPage() {
             pricings: [],
             total: 0,
           }));
-          setPricings(pricingsData.pricings);
-          setPricingsTotal(pricingsData.total);
-
           const collectionsData = await getOrgCollections(organizationId).catch(() => ({
             collections: [],
             total: 0,
           }));
+          if (isStale()) return;
+
+          showOrganization();
+          setInvitations(invitationsData);
+          setAllOrgCollections([]);
+          setAccessibleCollectionNames(null);
+          setPricings(pricingsData.pricings);
+          setPricingsTotal(pricingsData.total);
           setCollections(collectionsData.collections);
           setCollectionsTotal(collectionsData.total);
         }
       }
     } catch (err: any) {
-      setError(err.message ?? 'Failed to load organization');
+      if (!isStale()) setError(err.message ?? 'Failed to load organization');
     } finally {
-      setIsLoading(false);
+      if (!isStale()) setIsLoading(false);
     }
-  }, [organizationId, authUser.isAuthenticated, authUser.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [organizationId, authUser.isAuthenticated, authUser.user?.id, viewAsRequestKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Hierarchy tree ─── */
   /**
@@ -216,15 +302,25 @@ export default function OrganizationDetailPage() {
    * ancestor and per sibling, in series — which cost dozens of round trips to
    * draw one tree.
    */
+  const treeSeqRef = useRef(0);
   const buildHierarchyTree = useCallback(async () => {
     if (!org) return;
 
+    const seq = ++treeSeqRef.current;
     let nodes: OrgHierarchyNode[];
     try {
-      nodes = await getOrgHierarchy(org.id);
+      // A preview marks the nodes as they are for whoever it shows the page to:
+      // a signed-out visitor, or the member, not the owner or admin looking.
+      nodes =
+        viewMode === 'visitor-preview'
+          ? await getPublicOrgHierarchy(org.id)
+          : previewUserId
+            ? await getMemberViewHierarchy(org.id, previewUserId)
+            : await getOrgHierarchy(org.id);
     } catch {
       return;
     }
+    if (seq !== treeSeqRef.current) return;
 
     const byId = new Map<string, TreeNode>(
       nodes.map(node => [
@@ -264,11 +360,12 @@ export default function OrganizationDetailPage() {
     }
 
     setHierarchyTree(root ?? byId.get(org.id) ?? null);
-  }, [org, getOrgHierarchy]);
+  }, [org, viewMode, previewUserId, getOrgHierarchy, getMemberViewHierarchy]);
 
+  // Built once a load is complete, so it is asked for in the view that load settled on.
   useEffect(() => {
-    if (org) buildHierarchyTree();
-  }, [org, myRole, buildHierarchyTree]);
+    if (org && !isLoading) buildHierarchyTree();
+  }, [org, myRole, isLoading, buildHierarchyTree]);
 
   const autoExpandedOrgIdRef = useRef<string | null>(null);
 
@@ -339,9 +436,11 @@ export default function OrganizationDetailPage() {
         };
         if (search) filters.name = search;
         if (showOnlyUnlinked) filters.excludePricingsInCollection = 'true';
-        const data = isPublicView
-          ? await getPublicOrgPricings(org.id, filters, signal)
-          : await getOrgPricings(org.id, filters, signal);
+        const data = previewUserId
+          ? await getMemberViewPricings(org.id, previewUserId, filters, signal)
+          : isPublicView
+            ? await getPublicOrgPricings(org.id, filters, signal)
+            : await getOrgPricings(org.id, filters, signal);
         if (!signal?.aborted) {
           setPricings(data.pricings);
           setPricingsTotal(data.total);
@@ -354,14 +453,28 @@ export default function OrganizationDetailPage() {
         }
       }
     },
-    [org, isPublicView, getOrgPricings, showOnlyUnlinked]
+    [org, isPublicView, previewUserId, getOrgPricings, getMemberViewPricings, showOnlyUnlinked]
   );
 
   const fetchCollections = useCallback(
     async (page: number, search: string) => {
       if (!org) return;
 
-      if (isPublicView) {
+      if (previewUserId) {
+        // Member preview: the collections answered as that member.
+        try {
+          const filters: Record<string, string> = {
+            limit: String(PER_PAGE),
+            offset: String((page - 1) * PER_PAGE),
+          };
+          if (search) filters.name = search;
+          const data = await getMemberViewCollections(org.id, previewUserId, filters);
+          setCollections(data.collections);
+          setCollectionsTotal(data.total);
+        } catch {
+          /* silently ignore */
+        }
+      } else if (isPublicView) {
         // Public view: use public API
         try {
           const filters: Record<string, string> = {
@@ -399,15 +512,22 @@ export default function OrganizationDetailPage() {
         }
       }
     },
-    [org, isPublicView, myRole, accessibleCollectionNames, allOrgCollections, getOrgCollections]
+    [org, isPublicView, previewUserId, myRole, accessibleCollectionNames, allOrgCollections, getOrgCollections, getMemberViewCollections]
   );
 
   /* ─── Effects ─── */
+  // Another organization, or the same one seen as a member or as a visitor, is
+  // a different page: nothing of the previous one shows while it loads.
   useEffect(() => {
     if (authUser.isLoading) return;
     if (!organizationId) return;
+    setIsLoading(true);
+    setError(null);
+    setHierarchyTree(null);
+    setPricingPage(1);
+    setCollectionPage(1);
     loadOrgData();
-  }, [authUser.isLoading, organizationId]);
+  }, [authUser.isLoading, organizationId, viewAsRequestKey]);
 
   useEffect(() => {
     if (activeTab === 'pricings' && org) {
@@ -546,15 +666,18 @@ export default function OrganizationDetailPage() {
                   <h1 className="font-display text-2xl text-tp-ink sm:text-3xl">
                     {org.displayName}
                   </h1>
-                  {!isPublicView && myRole && (
+                  {viewRole && (
                     <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROLE_COLORS[myRole]}`}
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROLE_COLORS[viewRole]}`}
                     >
-                      {ROLE_LABELS[myRole]}
+                      {ROLE_LABELS[viewRole]}
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-2 sm:ml-0">
                     <ShareOrgMenu org={org} />
+                    {viewMode === 'self' && canPreviewOrganization(myRole) && (
+                      <ViewAsMenu onViewAsMember={() => viewAsMember(null)} onViewAsVisitor={viewAsVisitor} />
+                    )}
                     {canManage && (
                       <button
                         type="button"
@@ -565,7 +688,7 @@ export default function OrganizationDetailPage() {
                         Edit
                       </button>
                     )}
-                    {!isPublicView && (
+                    {viewMode === 'self' && (
                       <OrganizationExitButton
                         orgId={org.id}
                         isPersonal={org.isPersonal}
@@ -641,6 +764,17 @@ export default function OrganizationDetailPage() {
 
       {/* ═══ TAB NAVIGATION ═══ */}
       <div className="sticky top-14 z-30 border-b border-tp-hairline bg-tp-canvas/80 backdrop-blur-xl">
+        {isPreview && (
+          <ViewAsBanner
+            kind={viewMode === 'member-preview' ? 'member' : 'visitor'}
+            orgName={org.displayName}
+            members={previewCandidates}
+            asMember={asMember}
+            onViewAsMember={viewAsMember}
+            onViewAsVisitor={viewAsVisitor}
+            onExit={exitPreview}
+          />
+        )}
         <div className="mx-auto max-w-5xl px-4 md:px-8">
           <div className="py-2 lg:hidden">
             <div className="relative">
@@ -720,8 +854,8 @@ export default function OrganizationDetailPage() {
               orgId={org.id}
               members={members}
               canManage={canManage}
-              currentUserId={authUser.user?.id}
-              managerRole={myRole}
+              currentUserId={tabsUserId}
+              managerRole={viewRole}
               onRefresh={refreshMembers}
               onOwnershipTransferred={handleOrgChanged}
               onAddMember={() => setAddMemberModalOpen(true)}
@@ -749,8 +883,9 @@ export default function OrganizationDetailPage() {
               pricingSearch={pricingSearch}
               showOnlyUnlinked={showOnlyUnlinked}
               orgId={organizationId ?? ''}
-              myRole={myRole}
+              myRole={viewRole}
               isPublicView={isPublicView}
+              readOnly={isPreview}
               onPageChange={setPricingPage}
               onSearchChange={setPricingSearch}
               onToggleUnlinked={setShowOnlyUnlinked}
@@ -765,15 +900,23 @@ export default function OrganizationDetailPage() {
               collectionPage={collectionPage}
               collectionSearch={collectionSearch}
               orgId={organizationId ?? ''}
-              myRole={myRole}
+              myRole={viewRole}
               isPublicView={isPublicView}
+              readOnly={isPreview}
               onPageChange={setCollectionPage}
               onSearchChange={setCollectionSearch}
             />
           )}
 
           {showServices && (!isPublicView || org.servicesPublic) && activeTab === 'services' && (
-            <ServicesTab org={org} onDirtyChange={onServicesDirtyChange} />
+            <ServicesTab
+              // Another member is another tree, read from scratch.
+              key={isPublicView ? 'visitor' : previewUserId ?? 'self'}
+              org={org}
+              onDirtyChange={onServicesDirtyChange}
+              viewAsUserId={previewUserId}
+              publicView={isPublicView}
+            />
           )}
 
           {canManage && activeTab === 'settings' && <SettingsTab org={org} onSaved={setOrg} />}
@@ -815,16 +958,16 @@ export default function OrganizationDetailPage() {
 
       {/* ═══ MODALS ═══ */}
       <AnimatePresence>
-        {pendingTab && (
+        {pendingLeave && (
           <ConfirmModal
             message="Leave the services without saving your changes?"
             confirmLabel="Leave"
             danger
-            onCancel={() => setPendingTab(null)}
+            onCancel={() => setPendingLeave(null)}
             onConfirm={() => {
               servicesDirtyRef.current = false;
-              setActiveTab(pendingTab);
-              setPendingTab(null);
+              setPendingLeave(null);
+              pendingLeave();
             }}
           />
         )}

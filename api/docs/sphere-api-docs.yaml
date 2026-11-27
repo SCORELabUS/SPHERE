@@ -3256,6 +3256,123 @@ paths:
                     hasAccess: { type: boolean }
         '404': { description: Organization not found }
 
+  /orgs/{organizationId}/member-views/{userId}/pricings:
+    get:
+      summary: List an organization's pricings as its members get them
+      description: |
+        Answers what `GET /pricings/{organizationId}` answers to a member, so that the
+        organization's owners and admins can check what its members see. Same filters,
+        pagination and body. Read-only, with `Cache-Control: no-store`.
+
+        **Who**: `userId` is `any` for any plain member (the MEMBER role and no permission of
+        their own, which is what every member sees at least; it needs no member to exist), or
+        the id of someone who belongs to the organization (404 otherwise), read as signed in on
+        the web with their role in it and their entity permissions, never with a global ADMIN's
+        bypass.
+
+        **Authentication**: SPHERE web session (`Bearer` token). API keys and connected
+        applications get 403.
+
+        **Permission**: OWNER or ADMIN of the organization (or a global ADMIN).
+      tags: [Organizations]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/MemberViewUserId'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/ExcludePricingsInCollection'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: The pricings the member gets, as `GET /pricings/{organizationId}` returns them
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pricings: { type: array, items: { type: object } }
+                  total: { type: integer }
+        '401': { description: Authentication required }
+        '403':
+          description: Not an owner or admin of the organization, or not a web session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404': { description: 'The organization, or the member in it, was not found' }
+
+  /orgs/{organizationId}/member-views/{userId}/collections:
+    get:
+      summary: List an organization's collections as one of its members gets them
+      description: |
+        Answers what `GET /collections/{organizationId}` answers to the member `userId`: its
+        private collections only when the member may read them. Same filters, pagination and
+        body. Authentication and permission as for `.../member-views/{userId}/pricings`.
+      tags: [Organizations]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/MemberViewUserId'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: The collections the member gets, as `GET /collections/{organizationId}` returns them
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections: { type: array, items: { type: object } }
+                  total: { type: integer }
+        '401': { description: Authentication required }
+        '403': { description: 'Not an owner or admin of the organization, or not a web session' }
+        '404': { description: 'The organization, or the member in it, was not found' }
+
+  /orgs/{organizationId}/member-views/{userId}/services:
+    get:
+      summary: Get the tree of services as one of its members reads it (beta)
+      description: |
+        Answers what `GET /orgs/{organizationId}/services` answers to the member `userId`, with
+        `canEdit` always `false`: `pricings` only holds the linked pricings that member may list.
+        Requires the caller's own beta features. Authentication and permission as for
+        `.../member-views/{userId}/pricings`.
+      tags: [Organizations]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/MemberViewUserId'
+      responses:
+        '200':
+          description: The tree of services, as the member reads it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceTreeView'
+        '401': { description: Authentication required }
+        '403': { description: 'Not an owner or admin of the organization, not a web session, or beta features are off' }
+        '404': { description: 'The organization, or the member in it, was not found' }
+
+  /orgs/{organizationId}/member-views/{userId}/hierarchy:
+    get:
+      summary: Get the organization's branch marked as it is for one of its members
+      description: |
+        Answers what `GET /orgs/{organizationId}/hierarchy` answers to the member `userId`:
+        `hasAccess` marks the organizations that member may open. Authentication and permission
+        as for `.../member-views/{userId}/pricings`.
+      tags: [Organizations]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/MemberViewUserId'
+      responses:
+        '200': { description: 'The branch, flat, as in GET /orgs/{organizationId}/hierarchy' }
+        '401': { description: Authentication required }
+        '403': { description: 'Not an owner or admin of the organization, or not a web session' }
+        '404': { description: 'The organization, or the member in it, was not found' }
+
   /orgs/{organizationId}/services:
     get:
       summary: Get the tree of services of an organization (beta)
@@ -10295,6 +10412,16 @@ components:
         type: string
         example: "68050bd09890322c57842f6f"
 
+    MemberViewUserId:
+      name: userId
+      in: path
+      required: true
+      description: |
+        Who the organization is read as: `any` for any plain member (the MEMBER role and no
+        permission of their own), or the MongoDB ObjectId of someone who belongs to it.
+      schema:
+        type: string
+        example: any
     UserId:
       name: userId
       in: path

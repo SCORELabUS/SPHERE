@@ -90,13 +90,29 @@ export function useServiceTreeApi() {
   const { fetchWithInterceptor } = useAuth();
 
   const getServiceTree = useCallback(
-    async (organizationId: string): Promise<ServiceTreeView> => {
-      const res = await fetchWithInterceptor(`${BASE_PATH}/orgs/${organizationId}/services`);
+    async (organizationId: string, publicView = false): Promise<ServiceTreeView> => {
+      const url = `${BASE_PATH}/orgs/${organizationId}/services`;
+      const res = publicView ? await fetch(url, { credentials: 'omit' }) : await fetchWithInterceptor(url);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to load the services');
       }
       return normalize(await res.json());
+    },
+    [fetchWithInterceptor]
+  );
+
+  /** The tree as one of the organization's members reads it, for its owners and admins; never editable. */
+  const getMemberServiceTree = useCallback(
+    async (organizationId: string, userId: string): Promise<ServiceTreeView> => {
+      const res = await fetchWithInterceptor(
+        `${BASE_PATH}/orgs/${organizationId}/member-views/${encodeURIComponent(userId)}/services`
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load the services this member sees');
+      }
+      return { ...normalize(await res.json()), canEdit: false };
     },
     [fetchWithInterceptor]
   );
@@ -122,5 +138,5 @@ export function useServiceTreeApi() {
     [fetchWithInterceptor]
   );
 
-  return { getServiceTree, saveServiceTree };
+  return { getServiceTree, getMemberServiceTree, saveServiceTree };
 }

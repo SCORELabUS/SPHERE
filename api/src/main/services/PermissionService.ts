@@ -227,6 +227,24 @@ class PermissionService {
     };
   }
 
+  /**
+   * What any plain member of the organization lists: the MEMBER role and no
+   * permission of their own. Roles grant nothing by default (only stored
+   * permissions do), so this is the least any of its members gets to see; it
+   * is used to preview the organization as "a member", for its owners and admins.
+   */
+  plainMemberContext(): OrgUserPermissionsContext {
+    return {
+      orgRole: 'MEMBER',
+      pricings: [],
+      pricingKeys: [],
+      collections: [],
+      collectionKeys: [],
+      isGlobalAdmin: false,
+      adminOrgIds: [],
+    };
+  }
+
   async buildUserPermissionsContext(reqUser: LeanUser): Promise<OrgUserPermissionsContext> {
     const permissions: Map<string, BatchEvaluationContext> = await this.buildAllOrgsBatchContext(
       reqUser.id,

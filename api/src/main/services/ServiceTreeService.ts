@@ -133,6 +133,16 @@ class ServiceTreeService {
     return this.view(organizationId, tree, reqUser);
   }
 
+  /** The tree as any plain member reads it: only the linked pricings such a member may list, never editable. */
+  async showAsPlainMember(organizationId: string): Promise<ServiceTreeView> {
+    const tree = await this.serviceTreeRepository.findByOrganizationId(organizationId);
+    return this.describe(
+      tree,
+      () => this.pricingService.indexByOrganizationIdAsPlainMember(organizationId, { limit: 10000, offset: 0 }),
+      false
+    );
+  }
+
   async replace(
     organizationId: string,
     body: unknown,
@@ -162,15 +172,21 @@ class ServiceTreeService {
     tree: ServiceTree,
     reqUser: LeanUser & { orgRole?: OrgRole | null }
   ): Promise<ServiceTreeView> {
+    return this.describe(
+      tree,
+      () => this.pricingService.indexByOrganizationId(organizationId, reqUser, { limit: 10000, offset: 0 }),
+      canEditServiceTree(reqUser.orgRole)
+    );
+  }
+
+  /** The tree with the linked pricings that `listPricings` (the organization's listing for someone) holds. */
+  private async describe(tree: ServiceTree, listPricings: () => Promise<any>, canEdit: boolean): Promise<ServiceTreeView> {
     const linked = new Set(tree.nodes.flatMap(node => node.pricingIds));
     const pricings: Record<string, ServiceTreePricing> = {};
     if (linked.size) {
-      // The organization's listing applies the caller's permissions, so a pricing
+      // The organization's listing applies the reader's permissions, so a pricing
       // they may not see is left out instead of having its name revealed.
-      const listing: any = await this.pricingService.indexByOrganizationId(organizationId, reqUser, {
-        limit: 10000,
-        offset: 0,
-      });
+      const listing: any = await listPricings();
       for (const pricing of listing?.pricings ?? []) {
         if (!pricing.pricingId || !linked.has(pricing.pricingId)) continue;
         pricings[pricing.pricingId] = {
@@ -187,7 +203,7 @@ class ServiceTreeService {
         };
       }
     }
-    return { ...tree, pricings, canEdit: canEditServiceTree(reqUser.orgRole) };
+    return { ...tree, pricings, canEdit };
   }
 
   private parse(body: unknown): { nodes: ServiceNode[]; revision: number } {
