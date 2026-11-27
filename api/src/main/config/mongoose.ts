@@ -1,5 +1,6 @@
 import mongoose, { Mongoose } from 'mongoose';
 import dotenv from 'dotenv';
+import { redactMongoUri } from '../utils/mongo-uri';
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ const getMongoDBConnectionURI = () => {
 
 const initMongoose = () => {
   const mongoDbConnectionURI = getMongoDBConnectionURI();
-  console.log(`Trying to connect to ${mongoDbConnectionURI}`);
+  console.log(`Trying to connect to ${redactMongoUri(mongoDbConnectionURI)}`);
   mongoose.set('strictQuery', false); // removes a deprecation warning
   // mongoose.set('debug', true)
   return mongoose.connect(mongoDbConnectionURI);
