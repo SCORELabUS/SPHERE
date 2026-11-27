@@ -63,24 +63,46 @@ The API serves under `/api/v1` and also exposes the pricing files under `/static
 
 ## Quick start with Docker
 
-**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose 2.30 or later.
+Try SPHERE on your own machine with one command, with demo users and example pricings already loaded. You need [Docker](https://docs.docker.com/get-docker/) with Docker Compose 2.30 or later.
 
 ```bash
 git clone https://github.com/SCORELabUS/SPHERE.git
-cd SPHERE
-```
-
-Start the stack:
-
-```bash
-cd docker/testing
+cd SPHERE/docker/testing
 docker compose up -d
 ```
 
-SPHERE is then available at [http://localhost](http://localhost). The web client shows the changelog committed in the repository; the production build refreshes it from GitHub with a token in `docker/gh_pat.txt` (see [`docs/RELEASING.md`](docs/RELEASING.md)). The stack runs MongoDB, Redis, the API, the web client and nginx, configured with [`api/.env.testing`](api/.env.testing) and [`frontend/.env.testing`](frontend/.env.testing).
+Open [http://localhost](http://localhost). The first start takes a few minutes: it builds the images and loads the demo data.
+
+### Demo accounts
+
+All of them use the password `faked`, and you can sign in with the username or the email.
+
+| Username | Email | Role in the `demo-org` organization |
+| --- | --- | --- |
+| `sphere` | `sphere@sphere.com` | Owner |
+| `testuser` | `test_user@test.com` | Admin |
+| `faked` | `faked@acme.com` | Member |
+
+`demo-org` holds 32 SaaS pricings with 164 versions from the SPHERE dataset.
+
+### What to try
+
+- **Analytics.** Open a pricing with several versions and go to its Analytics tab.
+- **Editing and versioning.** Edit a pricing, save a new version and compare it with the previous ones.
+- **Collections, organizations and permissions.** Group pricings in collections and sign in with each account to see what each role can do.
+- **REST API.** Create an API key (user menu → API Keys) and call the API documented in [`api/docs/sphere-api-docs.yaml`](api/docs/sphere-api-docs.yaml), at `http://localhost/api/v1`.
+- **MCP server.** Connect your own assistant to `http://localhost/api/v1/orbit/mcp` with an API key. It calls no language model.
+
+### Not available in the local stack
+
+- **AI assistants (HARVEY and ORBIT's chat)** need an OpenAI API key. Try them at **[sphere.score.us.es](https://sphere.score.us.es)**, or add them to this stack with your own key as described in [AI services](#ai-services).
+- **Google and University of Seville sign-in** need credentials registered for a real deployment.
+- **Emails** are not sent. Links that would be emailed, such as the verification of a new account, are printed in the API log: `docker compose logs server | grep "Email verification"`.
+
+To start again from the demo data, run `docker compose down -v` and then `docker compose up -d`.
 
 > [!WARNING]
-> The `testing` configuration ships with default credentials and secrets. Change them before exposing the instance to a network.
+> The `testing` configuration ships with default credentials and secrets. Do not expose it to a network.
 
 ## Published container images
 
@@ -107,7 +129,7 @@ HARVEY and the services it relies on are developed in a separate repository, [SC
 
 ORBIT is part of the SPHERE API and is not one of these services.
 
-To add them to the [quick-start stack](#quick-start-with-docker), put an OpenAI key in `docker/testing/.env` and start both Compose files:
+The quickest way to try HARVEY and ORBIT is the public instance at [sphere.score.us.es](https://sphere.score.us.es). To add them to the [quick-start stack](#quick-start-with-docker) instead, put an OpenAI key in `docker/testing/.env` and start both Compose files:
 
 ```bash
 cd docker/testing

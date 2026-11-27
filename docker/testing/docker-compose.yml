@@ -36,8 +36,17 @@ services:
       # be interpolated by Compose.
       - path: ../../api/.env.testing
         format: raw
+    environment:
+      # Links in emails (printed in the logs here) point to nginx.
+      - FRONTEND_URL=http://localhost
+    # Loads the demo data into an empty database, then runs the image's
+    # entrypoint (migrations and API).
+    command: ["sh", "-c", "sh ./scripts/seed-demo.sh && exec /usr/src/server/entrypoint.sh"]
     volumes:
       - 'sphere-statics:/usr/src/server/public'
+      - '../../api/public/static/pricings/originalDataset:/usr/src/server/demo/originalDataset:ro'
+      - './seed-demo.sh:/usr/src/server/scripts/seed-demo.sh:ro'
+      - './seed-demo.ts:/usr/src/server/scripts/seed-demo.ts:ro'
     depends_on:
       - mongodb
       - redis
