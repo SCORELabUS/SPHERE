@@ -139,6 +139,40 @@ docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
 
 The same key enables ORBIT's chat. The images are built for `linux/amd64`; on Apple Silicon, Docker runs them under emulation. To move to a new release of the AI services, run `scripts/pin-ai-images.sh <version>`, which resolves the digests and updates the three Compose files.
 
+### Using a self-hosted, OpenAI-compatible model
+
+HARVEY, ORBIT's chat and A-MINT can use any API compatible with OpenAI's instead of OpenAI itself, such as [Ollama](https://ollama.com), [vLLM](https://docs.vllm.ai), LM Studio or another compatible provider. They are configured with these variables in the `.env` file next to the Compose file (`docker/testing/.env` for the quick-start stack, `docker/production/.env` or `docker/pre-production/.env` for a deployment). Left unset, everything uses OpenAI with the default models.
+
+| Variable | Used by | Default |
+| --- | --- | --- |
+| `OPENAI_BASE_URL` | HARVEY, ORBIT's chat and A-MINT: base URL of the API, ending in `/v1` | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | HARVEY and ORBIT's chat | `gpt-5-nano` |
+| `AMINT_LLM_MODEL` | A-MINT, to extract pricings from web pages | `gpt-5.2` |
+| `AMINT_LLM_BETTER_MODEL` | A-MINT, for its higher-quality steps | `gpt-5.2` |
+
+The key for that API is the same variable as with OpenAI: `OPENAI_API_KEY` in the quick-start stack (shared by all three), and `HARVEY_API_KEY` (HARVEY and ORBIT) plus `AMINT_API_KEY` or `AMINT_API_KEYS` (A-MINT, comma-separated) in production and pre-production. Servers that need no key, such as Ollama, still need a value, because without one the assistants report that they are unavailable and A-MINT extracts nothing.
+
+For example, with Ollama running on the same machine as Docker and serving `qwen3:32b`:
+
+```bash
+cd docker/testing
+cat > .env <<'EOF'
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+OPENAI_MODEL=qwen3:32b
+AMINT_LLM_MODEL=qwen3:32b
+AMINT_LLM_BETTER_MODEL=qwen3:32b
+EOF
+docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+```
+
+`host.docker.internal` reaches the host from the containers on Docker Desktop. On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `harvey`, `a-mint` and `server` services, or use the server's address on the network instead. A server in another machine only needs its URL in `OPENAI_BASE_URL`.
+
+> [!WARNING]
+> The model must support tool calling (function calling) and JSON output. ORBIT sends OpenAI-style `tools` and `response_format: json_object`, and HARVEY plans its tool calls as JSON and sends `reasoning_effort: "high"`, which the server must accept or ignore. Small models often fail at both. The published quality of HARVEY, ORBIT and A-MINT was measured with commercial OpenAI models, so expect different results with other models.
+
+These variables need the AI services from release 1.3.0 of the Pricing Intelligence repository on, which SPHERE pins.
+
 ### What works without them
 
 Neither the AI services nor an OpenAI key are needed for the rest of SPHERE:
@@ -149,9 +183,9 @@ Neither the AI services nor an OpenAI key are needed for the rest of SPHERE:
 | Analytics (configuration space and optimization, computed with MiniZinc in the API) | Available: open a pricing with several versions and go to its Analytics tab |
 | REST API and permanent links | Available |
 | ORBIT's MCP server (`/api/v1/orbit/mcp`) | Available: it calls no language model. Connect your own assistant with an API key (user menu → API Keys) or through OAuth, managed in Settings → Connected applications |
-| ORBIT's chat in the web client | Needs an OpenAI key (`ORBIT_OPENAI_API_KEY`); without one it reports that it is unavailable |
-| HARVEY's chat | Needs the AI services and an OpenAI key |
-| Extraction of pricings from web pages (A-MINT) | Needs the AI services and an OpenAI key |
+| ORBIT's chat in the web client | Needs an OpenAI key (`ORBIT_OPENAI_API_KEY`) or a [self-hosted model](#using-a-self-hosted-openai-compatible-model); without one it reports that it is unavailable |
+| HARVEY's chat | Needs the AI services and an OpenAI key or a [self-hosted model](#using-a-self-hosted-openai-compatible-model) |
+| Extraction of pricings from web pages (A-MINT) | Needs the AI services and an OpenAI key or a [self-hosted model](#using-a-self-hosted-openai-compatible-model) |
 
 ## Local development
 
