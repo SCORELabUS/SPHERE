@@ -1,9 +1,8 @@
 import { PrivateCollectionAccess } from '../../../../types/policies';
 
 /**
- * Adds the pricing's collection as `{ id, name, slug }`. A private collection
- * the viewer may not see is left out, `_collectionId` included, so the pricing
- * reads, filters and sorts exactly like one in no collection.
+ * Adds the pricing's collection as `{ id, name, slug }`. A pricing in a
+ * private collection the viewer cannot read is omitted from the listing.
  */
 export const populateCollectionDataAggregator = (visibility: PrivateCollectionAccess) => {
   const visible =
@@ -11,7 +10,7 @@ export const populateCollectionDataAggregator = (visibility: PrivateCollectionAc
       ? true
       : {
           $or: [
-            { $ne: ['$collection.private', true] },
+            { $ne: [{ $ifNull: ['$collection.private', false] }, true] },
             { $in: [{ $toString: '$collection._id' }, visibility] },
           ],
         };
@@ -51,6 +50,8 @@ export const populateCollectionDataAggregator = (visibility: PrivateCollectionAc
         preserveNullAndEmptyArrays: true,
       },
     },
+    // A collection is a parent access boundary, not just hidden metadata.
+    { $match: { $expr: visible } } as any,
     {
       $set: {
         _collectionId: { $cond: [visible, '$_collectionId', null] },

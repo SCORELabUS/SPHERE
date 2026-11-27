@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { AuthContext } from '../../../auth/contexts/authContext';
 
 interface OrgAvatarProps {
   name: string;
@@ -85,6 +86,21 @@ export default function OrgAvatar({
 
   const isSvg = avatar?.includes('.svg') ?? false;
   const [svgDataUri, setSvgDataUri] = useState('');
+  const { authUser } = useContext(AuthContext);
+  const [privateAvatar, setPrivateAvatar] = useState('');
+  const isOrganizationUpload = avatar?.includes('/static/avatars/orgs/') ?? false;
+
+  useEffect(() => {
+    setPrivateAvatar('');
+    if (!avatar || !isOrganizationUpload || !authUser.token) return;
+    let active = true;
+    let objectUrl = '';
+    fetch(resolveAvatarUrl(avatar), { headers: { Authorization: `Bearer ${authUser.token}` } })
+      .then(response => response.ok ? response.blob() : Promise.reject(new Error('Avatar unavailable')))
+      .then(blob => { if (active) { objectUrl = URL.createObjectURL(blob); setPrivateAvatar(objectUrl); } })
+      .catch(() => {});
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [avatar, authUser.token, isOrganizationUpload]);
 
   useEffect(() => {
     if (!isSvg || !avatar) {
@@ -121,7 +137,7 @@ export default function OrgAvatar({
         className={`relative shrink-0 overflow-hidden ${radius} ${className}`}
         style={{ width: size, height: size }}
       >
-        <img src={resolveAvatarUrl(avatar)} alt={name} className="h-full w-full object-cover" />
+        {(!isOrganizationUpload || !authUser.token || privateAvatar) && <img src={isOrganizationUpload && authUser.token ? privateAvatar : resolveAvatarUrl(avatar)} alt={name} className="h-full w-full object-cover" />}
       </div>
     );
   }

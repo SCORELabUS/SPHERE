@@ -81,7 +81,7 @@ export async function runAccountTool(name: string, args: any, actor: OrbitActor)
       const requested = Number(args.limit);
       const limit = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), MAX_NOTIFICATIONS_LISTED) : DEFAULT_NOTIFICATIONS_LISTED;
       const [notifications, unread] = await Promise.all([
-        notificationService.getNotifications(actor.id, { unreadOnly: args.unreadOnly === true, limit }),
+        notificationService.getNotifications(actor.id, { unreadOnly: args.unreadOnly === true, limit }, actor),
         notificationService.getUnreadCount(actor.id),
       ]);
       return {

@@ -1,8 +1,8 @@
-import { compareVersionsOldestFirst, versionAddedTime } from './version-order.ts';
+import { compareVersionUploads, compareVersionsOldestFirst } from './version-order.ts';
 import type { PricingGraph, PricingGraphLane, PricingGraphVersion } from '../types/graph';
 
 // The layout of a version graph, drawn like a commit graph turned on its side:
-// one horizontal lane per pricing, one column per version in insertion order, and
+// one horizontal lane per pricing, one column per version in release order, and
 // a branch from the origin of a fork to its first version. Only where a pricing
 // came from is drawn (the lane of its origin above it), never the forks made of it.
 //
@@ -58,20 +58,20 @@ interface Entry {
 
 const compare = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
 
-/** Insertion order, including the id for versions received together. */
-const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || a.version.id.localeCompare(b.version.id);
+/** Release order, with upload time and ID breaking ties. */
+const byRelease = (a: Entry, b: Entry) => compare(a.time, b.time) || compareVersionUploads(a.version, b.version);
 
 export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): GraphLayout {
   const { expanded = new Set<string>(), keep = new Set<string>() } = options;
 
-  // Every version with the instant it entered SPHERE. One whose date is unknown (a
+  // Every version with its release date. One whose date is unknown (a
   // source the viewer cannot read) goes right before the first version forked from it.
   const all: Entry[] = graph.lanes.flatMap(lane =>
     lane.versions.map(version => ({
       key: nodeKey(lane.pricingId, version.version),
       pricingId: lane.pricingId,
       version,
-      time: version.addedAt || version.createdAt ? versionAddedTime(version) : NaN,
+      time: Date.parse(version.createdAt ?? ''),
     }))
   );
   const children = new Map<string, Entry[]>();
@@ -123,7 +123,7 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
   const hidden = new Set<string>();
   const gapRuns: { key: string; lane: number; entries: Entry[] }[] = [];
   lanes.forEach((lane, laneIndex) => {
-    const ordered = entriesOf(lane).sort((a, b) => byRelease(a, b) || a.version.id.localeCompare(b.version.id));
+    const ordered = entriesOf(lane).sort(byRelease);
     let run: Entry[] = [];
     const close = () => {
       if (!run.length) return;
@@ -148,9 +148,7 @@ export function layoutGraph(graph: PricingGraph, options: LayoutOptions = {}): G
     .filter(entry => !hidden.has(entry.key))
     .sort(
       (a, b) =>
-        byRelease(a, b) ||
-        laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)! ||
-        a.version.id.localeCompare(b.version.id)
+        byRelease(a, b) || laneOf.get(a.pricingId)! - laneOf.get(b.pricingId)!
     );
   const nodes: GraphNode[] = ordered.map((entry, column) => ({
     key: entry.key,

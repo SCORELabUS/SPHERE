@@ -4,6 +4,7 @@ import UserRepository from '../repositories/mongoose/UserRepository';
 import { LeanUser } from '../types/models/User';
 import { EmailService } from './email/EmailService';
 import sseManager from './SseManager';
+import { canReadOrganization, scopeOrganizationIds } from '../policies/organizationVisibility';
 
 class NotificationService {
   private notificationRepository: NotificationRepository;
@@ -40,8 +41,30 @@ class NotificationService {
     }
   }
 
-  async getNotifications(userId: string, options?: { unreadOnly?: boolean; offset?: number; limit?: number }) {
-    return this.notificationRepository.findByUserId(userId, options);
+  async getNotifications(userId: string, options?: { unreadOnly?: boolean; offset?: number; limit?: number }, credential?: any) {
+    return this.redactHiddenPricings(userId, await this.notificationRepository.findByUserId(userId, options), credential);
+  }
+
+  /** Old notifications must stop revealing a pricing when access is removed later. */
+  async redactHiddenPricings(userId: string, notifications: any[], credential?: any) {
+    if (!notifications.some(notification => notification.kind === 'PricingUpdated' || notification.data?.organizationId)) return notifications;
+    const user = await this.userRepository.findById(userId);
+    const requester = user && credential?.apiKey ? { ...user, apiKey: credential.apiKey } : user;
+    const service = container.resolve<any>('pricingService');
+    return Promise.all(notifications.map(async notification => {
+      try {
+        const { organizationId, pricingSlug, version } = notification.data ?? {};
+        if (organizationId && credential?.apiKey && !(await scopeOrganizationIds(requester, [String(organizationId)])).length) throw new Error('Unavailable');
+        if (organizationId && notification.kind === 'System' && !await canReadOrganization(String(organizationId), requester)) throw new Error('Unavailable');
+        if (notification.kind !== 'PricingUpdated') return notification;
+        if (!requester || !organizationId || !pricingSlug || !version) throw new Error('Unavailable');
+        const pricing = await service.show(pricingSlug, organizationId, requester);
+        if (!pricing.versions.some((item: any) => String(item.version) === String(version))) throw new Error('Unavailable');
+        return notification;
+      } catch {
+        return { ...notification, title: 'Unavailable notification', message: '', data: {} };
+      }
+    }));
   }
 
   async getUnreadCount(userId: string) {

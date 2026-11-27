@@ -5,6 +5,7 @@ import UserRepository from '../repositories/mongoose/UserRepository';
 import { LeanUser } from '../types/models/User';
 import NotificationService from './NotificationService';
 import PermissionService from './PermissionService';
+import { canReadPricingParents } from '../policies/organizationVisibility';
 
 class PricingFollowService {
   private pricingFollowRepository: PricingFollowRepository;
@@ -30,6 +31,7 @@ class PricingFollowService {
   private async findFollowable(organizationId: string, pricingSlug: string, reqUser: LeanUser) {
     const pricing: any = await this.pricingRepository.findOne(pricingSlug, organizationId, { includePrivate: true });
     if (!pricing || !pricing.versions?.length || !pricing.pricingId) return { pricing, visible: false };
+    if (!await canReadPricingParents(organizationId, pricing.collection?.id, reqUser)) return { pricing, visible: false };
     const visible =
       pricing.versions.some((version: { private?: boolean }) => version.private !== true) ||
       (await this.permissionService.canReadPrivateVersions(reqUser, {
@@ -99,8 +101,9 @@ class PricingFollowService {
     for (const followerId of followerIds) {
       if (followerId === author.id) continue;
       try {
+        const follower = await this.userRepository.findById(followerId);
+        if (!follower || !await canReadPricingParents(organizationId, version._collectionId, { ...(follower as any), id: followerId }, 'token')) continue;
         if (version.private) {
-          const follower = await this.userRepository.findById(followerId);
           if (
             !follower ||
             !(await this.permissionService.canReadPrivateVersions(

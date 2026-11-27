@@ -73,7 +73,7 @@ class NotificationController {
       const offset = req.query.offset ? parseInt(req.query.offset) : undefined;
       const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
 
-      const notifications = await this.notificationService.getNotifications(userId, { unreadOnly, offset, limit });
+      const notifications = await this.notificationService.getNotifications(userId, { unreadOnly, offset, limit }, req.user);
       res.json(notifications);
     } catch (err: any) {
       const { status, message } = handleError(err);

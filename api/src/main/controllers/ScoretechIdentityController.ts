@@ -130,7 +130,7 @@ export default class ScoretechIdentityController {
       res.status(204).end();
     });
 }
-/** Identity owns credentials and common profile fields; direct API calls enforce the same rule as Settings. */
+/** Keep credential changes in Identity and service-specific settings in SPHERE. */
 export function identityModePolicy(req: Request, res: Response, next: NextFunction) {
   if (!identityMode()) return next();
   const path = req.path.toLowerCase().replace(((process.env.BASE_URL_PATH || '') + '/api/v1').toLowerCase(), '').replace(/\/+$/, '');
@@ -139,8 +139,8 @@ export function identityModePolicy(req: Request, res: Response, next: NextFuncti
   );
   const owned =
     /^\/users\/me\/(password|identities)(\/|$)/.test(path) ||
-    /^\/users\/me\/settings\/(profile|social-links|avatar|avatar-colors)(\/|$)/.test(path) ||
-    (path === '/users/me/settings' && req.method !== 'GET') ||
+    (path === '/users/me/settings' && req.method !== 'GET' &&
+      !Object.keys(req.body || {}).every(key => ['firstName', 'lastName', 'phone'].includes(key))) ||
     /^\/users\/[^/]+\/refresh-token$/.test(path) ||
     (/^\/users\/[^/]+$/.test(path) &&
       req.method === 'PUT' &&
