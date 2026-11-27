@@ -33,7 +33,7 @@ services:
     networks:
       - sphere-network
   choco-analysis-engine:
-    image: aleexgf/choco-pricing-analysis-engine:main
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.2.2@sha256:8fba3bed554e658aa73d1f92eb6ff5f5e429592832985e76515ffb696e431708
     container_name: choco-analysis-engine
     ports:
       - "8000:8000"
@@ -53,7 +53,7 @@ services:
     networks:
       - sphere-network
   analysis-engine:
-    image: aleexgf/pricing-analysis-engine:main
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.2.2@sha256:ae21628dac34ea76e40f9e4d4280440d428ebb01ab156c2008dc72ec3ba7695b
     container_name: pricing-analysis-engine
     init: true
     ports:
@@ -78,7 +78,7 @@ services:
     networks:
       - sphere-network
   a-mint:
-    image: aleexgf/a-mint:main
+    image: ghcr.io/scorelabus/a-mint:1.2.2@sha256:02d394e0ca80158141cab8606156f83dfc2b9187f7ee0f0d44b07ee01b2a67fd
     container_name: a-mint
     init: true
     ports:
@@ -106,7 +106,7 @@ services:
     networks:
       - sphere-network
   mcp-server:
-    image: aleexgf/pi-mcp-server:main
+    image: ghcr.io/scorelabus/pi-mcp-server:1.2.2@sha256:ad43c103d94b83608921459fb93560a0c3a0472efd68e09b4a69087c97f6c606
     container_name: mcp-server
     environment:
       - AMINT_BASE_URL=http://a-mint:8000
@@ -131,7 +131,7 @@ services:
     networks:
       - sphere-network
   harvey:
-    image: aleexgf/harvey:main
+    image: ghcr.io/scorelabus/harvey:1.2.2@sha256:84a66303c7c67f5aa12df772503354bfb83c480d112523f4c90e71180899ddc7
     container_name: harvey
     env_file: .env
     ports:
@@ -178,6 +178,8 @@ services:
       - ORBIT_OPENAI_API_KEY=${HARVEY_API_KEY}
       - ORBIT_OPENAI_MODEL=gpt-5-nano
       - ORBIT_MAX_MESSAGES_PER_MINUTE=20
+      # Single deployment switch shared with the API gateway.
+      - AUTH_PROVIDER=${AUTH_PROVIDER:-local}
     volumes:
       - 'sphere-statics:/usr/src/server/public'
       - ../../api/public/static/pricings/templates/petclinic.yml:/usr/src/server/public/pricings/templates/petclinic.yml
@@ -210,6 +212,10 @@ services:
     build:
         context: ../../nginx/production
         dockerfile: ./Dockerfile
+    environment:
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      SCORETECH_IDENTITY_UPSTREAM: ${SCORETECH_IDENTITY_UPSTREAM:-scoretech-identity-gateway:8080}
+      SCORETECH_IDENTITY_PREVIEW: ${SCORETECH_IDENTITY_PREVIEW:-false}
     ports:
       - 80:80
       - 443:443

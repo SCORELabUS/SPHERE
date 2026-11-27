@@ -1,3 +1,4 @@
+import type { LeanUser } from '../types/models/User';
 import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
 import OrganizationService from './OrganizationService';
@@ -32,7 +33,7 @@ class AuthProviderService {
     this.organizationService = container.resolve('organizationService');
   }
 
-  async findOrCreateUser(profile: ProviderProfile): Promise<{ token: string }> {
+  async findOrCreateUser(profile: ProviderProfile): Promise<{ token: string; user: LeanUser }> {
     const { provider, providerId, email, emailVerified, firstName, lastName } = profile;
 
     if (!email) {
@@ -47,7 +48,7 @@ class AuthProviderService {
 
     // 2. Link by email ONLY when the provider verifies email ownership (Google does,
     //    the US CAS does not). Linking on unverified email would allow account takeover.
-    if (!user && emailVerified) {
+    if (!user && emailVerified && provider !== 'scoretech') {
       const existing = await this.userRepository.findByEmail(email);
       if (existing) {
         await this.userRepository.updateById(existing.id, {
@@ -71,6 +72,7 @@ class AuthProviderService {
           email,
           // Same default as local registration; aggregators expect the key to exist.
           settings: { avatar: '' },
+          ...(provider === 'scoretech' ? { emailVerified } : {}),
           ...generateUserTokenDTO(),
         });
       } catch (err: any) {
@@ -97,7 +99,7 @@ class AuthProviderService {
     }
 
     const token = generateJwtToken({ id: user!.id, username: user!.username, role: user!.role });
-    return { token };
+    return { token, user: user! };
   }
 
   async getAuthenticationMethods(userId: string) {

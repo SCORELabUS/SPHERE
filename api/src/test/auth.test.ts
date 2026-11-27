@@ -345,6 +345,11 @@ describe('Auth Middleware - Integration Tests', () => {
                 : undefined;
 
           const response = await requestWithAuth(app, method, path, undefined, body);
+          if (endpoint.path === '/orgs/*/services') {
+            expect(response.status).toBe(403);
+            expect(response.body.error).toBe('PERMISSION ERROR: Beta features are not enabled for this user');
+            continue;
+          }
           try {
             expect(isAuthError(response.status)).toBe(false);
           } catch (error) {
@@ -362,6 +367,11 @@ describe('Auth Middleware - Integration Tests', () => {
         const response = await requestWithAuth(app, endpoint.methods[0], path, {
           token: adminUser.token,
         });
+        if (endpoint.path === '/orgs/*/services') {
+          expect(response.status).toBe(403);
+          expect(response.body.error).toBe('PERMISSION ERROR: Beta features are not enabled for this user');
+          continue;
+        }
         try {
           expect(isAuthError(response.status)).toBe(false);
         } catch (error) {

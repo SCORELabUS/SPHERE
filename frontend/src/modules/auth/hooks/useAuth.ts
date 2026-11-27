@@ -1,3 +1,5 @@
+import { useAuthConfig } from '../contexts/authConfig';
+import { identitySession, jwtExpiration, isIdentityToken } from '../api/identityApi';
 import { useCallback, useContext, useEffect, useRef } from 'react';
 import { useLocalStorage } from '../../core/hooks/useLocalStorage';
 import { AuthContext } from '../contexts/authContext';
@@ -6,6 +8,8 @@ import { getCurrentUser, USERS_BASE_PATH } from '../api/usersApi';
 const AUTH_TOKEN_KEY = 'token';
 const AUTH_USER_KEY = 'auth_user';
 let authBootstrapPromise: Promise<void> | null = null;
+let identityGeneration = 0;
+let identityRefreshPromise: Promise<void> | null = null;
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -76,6 +80,7 @@ async function fetchUserSettings(token: string): Promise<AuthUserSettings | unde
 
 export const useAuth = () => {
   const { authUser, setAuthUser } = useContext(AuthContext);
+  const identity = useAuthConfig().provider === 'scoretech';
   const { getItem, setItem, removeItem } = useLocalStorage();
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -93,6 +98,7 @@ export const useAuth = () => {
   }, [setAuthUser, setItem]);
 
   const clearSession = useCallback(() => {
+    identityGeneration++;
     setAuthUser({
       user: null,
       isAuthenticated: false,
@@ -105,7 +111,27 @@ export const useAuth = () => {
     removeItem(AUTH_USER_KEY);
   }, [setAuthUser, removeItem]);
 
-  const refreshTokenIfNeeded = useCallback(async () => {
+  const refreshTokenIfNeeded = useCallback(async (force = false) => {
+    if (identity) {
+      if (!authUser.isAuthenticated) return;
+      const expiration = authUser.token ? jwtExpiration(authUser.token)?.getTime() || 0 : 0;
+      if (!force && expiration > Date.now() + 60000) return;
+      const generation = identityGeneration;
+      if (!identityRefreshPromise) identityRefreshPromise = (async () => {
+        try {
+          const result = await identitySession();
+          const current = normalizeUser(await getCurrentUser(result.token));
+          if (authUser.user && current.id !== authUser.user.id) throw Object.assign(new Error('Your active account changed. Sign in again.'), { status: 401 });
+          const settings = await fetchUserSettings(result.token); if (settings) current.settings = settings;
+          if (generation === identityGeneration) setSession(current, result.token, new Date(result.tokenExpiration));
+        } catch (error) {
+          if ((error as { status?: number }).status === 401) clearSession();
+          throw error;
+        }
+      })().finally(() => { identityRefreshPromise = null; });
+      return identityRefreshPromise;
+    }
+
     if (!authUser.token || !authUser.user?.username || !authUser.tokenExpiration) {
       return;
     }
@@ -146,7 +172,7 @@ export const useAuth = () => {
 
     refreshInFlightRef.current = refreshPromise;
     return refreshPromise;
-  }, [authUser.token, authUser.user, authUser.tokenExpiration, setSession, clearSession]);
+  }, [identity, authUser.isAuthenticated, authUser.token, authUser.user, authUser.tokenExpiration, setSession, clearSession]);
 
   useEffect(() => {
     if (!authUser.isLoading) {
@@ -161,6 +187,24 @@ export const useAuth = () => {
       const storedToken = getItem(AUTH_TOKEN_KEY);
       const storedUser = getItem(AUTH_USER_KEY);
 
+      if (identity) {
+        if (window.location.pathname === '/sso/identity/callback') sessionStorage.removeItem('sphere_identity_signed_out');
+        if (sessionStorage.getItem('sphere_identity_signed_out')) { clearSession(); return; }
+        try {
+          const result = await identitySession(); const user = normalizeUser(await getCurrentUser(result.token));
+          const settings = await fetchUserSettings(result.token); if (settings) user.settings = settings;
+          setSession(user, result.token, new Date(result.tokenExpiration));
+        } catch (error) {
+          if ((error as { status?: number }).status !== 401 && storedUser && storedToken && isIdentityToken(storedToken)) {
+            try { setSession(normalizeUser(JSON.parse(storedUser)), storedToken, jwtExpiration(storedToken)); return; } catch { /* Invalid local cache. */ }
+          }
+          clearSession();
+        }
+        return;
+      }
+      if (storedToken) {
+        try { if (JSON.parse(atob(storedToken.split('.')[1])).identitySessionId) { clearSession(); return; } } catch { /* The API validates the token. */ }
+      }
       if (!storedToken) {
         clearSession();
         return;
@@ -197,12 +241,21 @@ export const useAuth = () => {
     const user = normalizeUser(currentUser);
     const settings = await fetchUserSettings(token);
     if (settings) user.settings = settings;
-    setSession(user, token, null);
-  }, [setSession]);
+    setSession(user, token, identity ? jwtExpiration(token) : null);
+  }, [identity, setSession]);
 
   const logout = useCallback(() => {
+    if (identity) sessionStorage.setItem('sphere_identity_signed_out', '1');
     clearSession();
-  }, [clearSession]);
+    if (identity) void fetch(`${API_URL}/auth/identity/logout`, { method: 'POST', credentials: 'include', cache: 'no-store' }).catch(() => {});
+  }, [identity, clearSession]);
+  useEffect(() => {
+    if (!identity || !authUser.isAuthenticated) return;
+    const resume = () => { if (document.visibilityState === 'visible') void refreshTokenIfNeeded().catch(() => {}); };
+    const interval = window.setInterval(resume, 30000);
+    window.addEventListener('focus', resume); window.addEventListener('pageshow', resume); document.addEventListener('visibilitychange', resume);
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', resume); window.removeEventListener('pageshow', resume); document.removeEventListener('visibilitychange', resume); };
+  }, [identity, authUser.isAuthenticated, refreshTokenIfNeeded]);
 
   const updateUser = useCallback((partial: Partial<AuthUser>) => {
     setAuthUser((prev) => {
@@ -231,24 +284,30 @@ export const useAuth = () => {
   const fetchWithInterceptor = useCallback(async (url: RequestInfo | URL, options?: RequestInit) => {
     await refreshTokenIfNeeded();
 
-    const currentToken = authUser.token ?? getItem(AUTH_TOKEN_KEY);
+    const currentToken = getItem(AUTH_TOKEN_KEY) ?? authUser.token;
     const baseHeaders = options?.headers ? new Headers(options.headers) : new Headers();
 
     if (currentToken && !baseHeaders.has('Authorization')) {
       baseHeaders.set('Authorization', `Bearer ${currentToken}`);
     }
 
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       ...options,
       headers: baseHeaders,
     });
 
-    if (response.status === 401) {
-      clearSession();
+    if (response.status === 401 && identity) {
+      await refreshTokenIfNeeded(true);
+      const refreshed = getItem(AUTH_TOKEN_KEY);
+      if (refreshed && refreshed !== currentToken) {
+        baseHeaders.set('Authorization', `Bearer ${refreshed}`);
+        response = await fetch(url, { ...options, headers: baseHeaders });
+      }
     }
+    if (response.status === 401) clearSession();
 
     return response;
-  }, [authUser.token, clearSession, getItem, refreshTokenIfNeeded]);
+  }, [identity, authUser.token, clearSession, getItem, refreshTokenIfNeeded]);
 
   return { authUser, login, logout, setAuthUser, updateUser, updateUserSettings, fetchWithInterceptor };
 };

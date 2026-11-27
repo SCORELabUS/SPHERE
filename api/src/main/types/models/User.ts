@@ -59,7 +59,7 @@ export interface LeanUser {
 }
 
 export interface UserIdentity {
-  provider: 'us-sso' | 'google';
+  provider: 'us-sso' | 'google' | 'scoretech';
   providerId: string;
   email?: string;
   emailVerified: boolean;

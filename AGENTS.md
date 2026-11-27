@@ -90,9 +90,9 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 
 - A fork always creates a new pricing (`POST /pricing-forks`), whose first version stores `forkedFrom` (source pricingId, organization, slug, name and version label). A version is never forked into a pricing that already exists: that would be a pull request, which SPHERE does not have.
 - `GET /pricing-graphs/:org/:slug` (`PricingService.graph`) returns the pricing's lane and the lane of the pricing it was forked from (`source`); the forks made of a pricing are never drawn. Each lane is read through `show()`, so private versions, hidden collections and unreadable pricings follow the same rules; an unreadable source keeps a lane with `available: false` and only the label its fork names. Older data whose later versions name origins draws those too (at most 20). It lives outside `/pricings/**` so it cannot clash with a version named "graph".
-- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in insertion order, a branch from the origin to the fork's first version). From 13 versions on, runs of versions no branch touches fold into "+N" gaps, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) is in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`.
-- Pointing at (or focusing) a dot of the graph opens a card with what that version changed (`pricing-version-graph/change-summary-card.tsx`): features, usage limits, plans and add-ons added (+), removed (−) or changed (~), in that order (`SUMMARY_ORDER` in `utils/change-summary.ts`; the side-by-side comparison keeps the diff's order), the plans and add-ons whose price moved, and other fields. It compares the version with the one it was forked from, or with the version of its lane added before it (`baseVersionOf`), reading both YAML files (each graph version carries its `yaml` URL) through the comparator's `diffPricings`; `utils/change-summary.ts` turns that diff into the summary, tested in `frontend/test/change-summary.test.ts`. A first version lists what it starts with.
-- Version order: a version's `createdAt` comes from its YAML (a day, or a date-time) and can tie, so each version also stores `addedAt`, the instant SPHERE received it. `PricingRepository.create` sets it on every insert (editor, upload, ZIP, fork, ORBIT), it is `immutable` and no request field reaches it. Every listing orders newest first by `addedAt`, then `_id` (`utils/version-order.ts`: `VERSION_ORDER` for queries, `compareVersionsNewestFirst` in code); the graph and the Versions tab use the same insertion order; `createdAt` is release metadata only. Migration `20261106120000-pricing-added-at` (also run by the seeder) fills older versions from their `_id` timestamp.
+- Frontend: the Versions tab of a pricing shows `components/pricing-version-graph` (lanes with sticky names, versions in release order, a branch from the origin to the fork's first version). From 13 versions on, runs of versions no branch touches fold into "+N" gaps, long links stay thin until one end is picked or hovered, and the view scrolls inside a capped height. The pure layout (folding, lane order, routing) is in `utils/version-graph.ts`, tested in `frontend/test/version-graph.test.ts`.
+- Pointing at (or focusing) a dot of the graph opens a card with what that version changed (`pricing-version-graph/change-summary-card.tsx`): plans, features, add-ons and usage limits added (+), removed (−) or changed (~), the plans and add-ons whose price moved, and other fields. It compares the version with the one it was forked from, or with the preceding release of its lane (`baseVersionOf`), reading both YAML files (each graph version carries its `yaml` URL) through the comparator's `diffPricings`. `utils/change-summary.ts` turns that diff into the summary, tested in `frontend/test/change-summary.test.ts`. A first version lists what it starts with.
+- Version order: listings order releases newest first by `createdAt` (the YAML release timestamp), then by `addedAt` (the instant SPHERE received the version), then by `_id` (`utils/version-order.ts`: `VERSION_ORDER` for queries, `compareVersionsNewestFirst` in code). The graph, Versions tab and Analytics charts show releases oldest first. `PricingRepository.create` sets `addedAt` on every insert (editor, upload, ZIP, fork, ORBIT), it is `immutable` and no request field reaches it. Migration `20261106120000-pricing-added-at` (also run by the seeder) fills older versions from their `_id` timestamp.
 
 ## Collection PUT authority
 
@@ -173,3 +173,37 @@ IMPORTANT RULE: EVERY CLICKABLE COMPONENT IN THE UI MUST HAVE A "cursor-pointer"
 - `pnpm --dir api run test:e2e` runs the real browser flow in `api/src/test/e2e/connected-applications.browser.ts`: web login, OAuth PKCE consent and token exchange, both assistant cards, editing organizations/scopes, existing MCP session enforcement, revocation, mobile/dark mode and removal of the API Keys MCP card. It uses local protocol clients named Claude/Codex, not external accounts.
 - Requires the same isolated `sphere_scratch`, Mongo 27018 and Redis 6378 test environment as integration tests, installed frontend dependencies, and `pnpm --dir api exec playwright install chromium`. It starts its own API and Vite at `127.0.0.1:5175` (port must be free). `SPHERE_E2E_BROWSER_CHANNEL=chrome` uses an installed Chrome instead; screenshots go to `api/test-results/connected-applications`.
 - CI runs it after the API and frontend suites and uploads screenshots. Never run it concurrently with other database tests: the harness drops its selected database.
+
+## SCORETech Identity sign-in
+
+- `AUTH_PROVIDER=local|scoretech` defaults to local. Native development sets it
+  in the API environment; production Compose takes it from `docker/production/.env`
+  and passes it explicitly to both API and Nginx. The frontend reads `/auth/config`;
+  do not introduce a second Vite mode switch.
+- Identity gateway routing is generated by `nginx/production/15-scoretech-mode.sh`.
+  `SCORETECH_IDENTITY_PREVIEW=true` exposes `/identity` during setup while local
+  authentication and the US callback remain on SPHERE. In Identity mode only the
+  legacy US callback moves to Identity; `/api/v1/auth/identity/callback` always stays
+  on SPHERE. Preserve path/query encoding, sanitized forwarding headers, Docker
+  DNS re-resolution and private native-route blocks.
+- `node nginx/production/test-gateway.mjs` uses isolated synthetic Docker upstreams
+  and the sibling Identity production gateway configuration. It calls no providers
+  and removes only its temporary project.
+- `ScoretechIdentityService` owns the confidential OIDC code/PKCE/nonce flow,
+  browser-bound one-use state and private Redis refresh sessions. Credentials
+  never go into browser config, tokens in redirect URLs or public cache entries.
+- Identity-mode SPHERE JWTs carry `identitySessionId`; API, static and SSE reads
+  enforce the live bridge. Preserve native refresh rotation, same-user renewal,
+  outage recovery and logout-versus-refresh exclusion. Reject legacy local web
+  tokens in this mode; keep API-key/MCP scopes independent.
+- Run `bash docker/migrate-scoretech-users <Identity checkout>` for a read-only
+  preflight before switching a production installation. With `--apply` it provisions
+  Keycloak users and legacy Google/CAS links, then writes the issuer/subject link
+  on the original MongoDB user. Preserve local credentials, IDs and memberships.
+  Runtime login never auto-merges by email or copies central roles into SPHERE's ADMIN.
+- In Identity mode, Settings → Account links to SCORETech Account in a new tab.
+  Hide Account Details, Public Profile, Social Links and Sign-in & Security in
+  SPHERE settings. Keep SPHERE service settings and MCP grants available there.
+- `docs/scoretech-identity.md` and `api/.env.scoretech.example` describe setup and
+  rollback. `pnpm --dir api run test:e2e:identity` is separate from the ordinary
+  browser suite; it needs the sibling Identity lab and the isolated scratch DB.

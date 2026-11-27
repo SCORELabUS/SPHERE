@@ -1,0 +1,14 @@
+# Included for Identity mode or explicit preparation preview. Resolve on requests so the public
+# gateway can start before Identity and survive replacement of its container.
+resolver 127.0.0.11 valid=5s ipv6=off;
+set $scoretech_identity_upstream ${SCORETECH_IDENTITY_UPSTREAM};
+
+location = /identity {
+    proxy_pass http://$scoretech_identity_upstream;
+    include /etc/nginx/scoretech/proxy.conf;
+}
+location ^~ /identity/ {
+    proxy_pass http://$scoretech_identity_upstream;
+    include /etc/nginx/scoretech/proxy.conf;
+}
+# /api/v1/auth/identity/callback intentionally remains on SPHERE's API.

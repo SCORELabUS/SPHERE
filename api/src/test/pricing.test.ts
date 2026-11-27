@@ -2399,17 +2399,17 @@ describe('Pricings API integration', () => {
       expect((yaml.load(storedYaml) as { createdAt: string }).createdAt).toBe(releasedAt.toISOString());
     });
 
-    it.each([false, true])('orders versions by server addedAt, even with older release dates (%s).', async olderRelease => {
+    it.each([false, true])('orders versions by release date and breaks exact ties by upload date (backdated: %s).', async olderRelease => {
       const { organizationId } = await createAndLoginUser('USER');
       const { serviceName } = await createPricingForOrganization({
         organizationId,
         version: '1.0.0',
         isPrivate: false,
       });
-      const releasedAt = new Date(Date.now() - 60 * 60 * 1000);
+      const releasedAt = new Date();
       const forgedAddedAt = '2000-01-01T00:00:00.000Z';
 
-      // Same instant for both; 1.0.2 is published before 1.0.1.
+      // Publish 1.0.2 first, then 1.0.1 with the same release date or one millisecond earlier.
       const added: Record<string, string> = {};
       for (const version of ['1.0.2', '1.0.1']) {
         const fixture = await createValidPricingYaml(serviceName, version);
@@ -2417,7 +2417,7 @@ describe('Pricings API integration', () => {
           .post(`${BASE_PATH}/pricings/${organizationId}/${serviceName}/${version}`)
           .set('Authorization', `Bearer ${adminUser.token}`)
           .field('private', 'false')
-          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 86400000 : 0)).toISOString())
+          .field('createdAt', new Date(releasedAt.getTime() - (olderRelease && version === '1.0.1' ? 1 : 0)).toISOString())
           .field('addedAt', forgedAddedAt)
           .attach('yaml', fixture.filePath);
         expect(response.status).toBe(200);
@@ -2431,16 +2431,20 @@ describe('Pricings API integration', () => {
       }
       expect(Date.parse(added['1.0.1'])).toBeGreaterThan(Date.parse(added['1.0.2']));
 
-      // Newest first: the tie goes to the version received last, not to its label.
+      const order = olderRelease ? ['1.0.2', '1.0.1', '1.0.0'] : ['1.0.1', '1.0.2', '1.0.0'];
       const shown = await request(app).get(`${BASE_PATH}/pricings/${organizationId}/${serviceName}`);
       expect(shown.status).toBe(200);
-      expect(shown.body.versions.map((v: any) => v.version)).toEqual(['1.0.1', '1.0.2', '1.0.0']);
-      expect(shown.body.versions[0].addedAt).toBe(added['1.0.1']);
+      expect(shown.body.versions.map((v: any) => v.version)).toEqual(order);
+      expect(shown.body.versions[0].addedAt).toBe(added[order[0]]);
 
       // The listing names the same latest version.
       const listed = await request(app).get(`${BASE_PATH}/pricings/${organizationId}`);
       const row = listed.body.pricings.find((pricing: any) => pricing.name === serviceName);
-      expect(row?.version).toBe('1.0.1');
+      expect(row?.version).toBe(order[0]);
+
+      const graph = await request(app).get(`${BASE_PATH}/pricing-graphs/${organizationId}/${serviceName}`);
+      expect(graph.status).toBe(200);
+      expect(graph.body.lanes[0].versions.map((v: any) => v.version)).toEqual(order);
 
       // Updates cannot move it either.
       await PricingMongoose.updateOne({ name: serviceName, version: '1.0.1' }, { $set: { addedAt: new Date(0) } });

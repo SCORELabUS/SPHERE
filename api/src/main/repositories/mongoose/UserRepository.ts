@@ -224,7 +224,7 @@ class UserRepository extends RepositoryBase {
     return user ? user.toObject() : null;
   }
 
-  async removeIdentity(userId: string, provider: 'us-sso' | 'google'): Promise<LeanUser | null> {
+  async removeIdentity(userId: string, provider: UserIdentity['provider']): Promise<LeanUser | null> {
     const user = await UserMongoose.findOneAndUpdate(
       {
         _id: userId,

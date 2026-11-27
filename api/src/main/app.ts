@@ -1,3 +1,4 @@
+import { validateAuthenticationConfig } from './services/scoretech/config';
 import express, {Application} from "express";
 import * as dotenv from "dotenv";
 import routes from "./routes/index";
@@ -16,6 +17,7 @@ const bold = "\x1b[1m"; // Negrita
 
 const initializeApp = async () => {
   dotenv.config();
+  validateAuthenticationConfig();
   const app: Application = express();
   // nginx reaches the API over the private Docker network. Public peers must
   // not be trusted to supply their own forwarded IP for OAuth rate limits.

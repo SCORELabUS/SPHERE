@@ -25,4 +25,5 @@ export const TAB_META: Record<Tab, { label: string; icon: string; iconComponent?
   services: { label: 'Services', icon: 'mdi:file-tree-outline', beta: true },
   children: { label: 'Hierarchy', icon: 'mdi:graph-outline' },
   permissions: { label: 'Permissions', icon: 'mdi:shield-lock-outline' },
+  settings: { label: 'Settings', icon: 'mdi:cog-outline' },
 };

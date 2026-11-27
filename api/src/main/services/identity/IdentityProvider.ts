@@ -1,4 +1,4 @@
-export type ProviderName = 'us-sso' | 'google';
+export type ProviderName = 'us-sso' | 'google' | 'scoretech';
 
 /**
  * Normalized identity profile. Every external provider (CAS, OAuth2, ...) translates

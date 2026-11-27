@@ -1,14 +1,17 @@
-/** Insertion order in SPHERE; createdAt is only a fallback for older API responses. */
-export function versionAddedTime(version: { addedAt?: string | null; createdAt?: string | null }): number {
-  const time = Date.parse(version.addedAt ?? version.createdAt ?? '');
-  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+type OrderableVersion = { id: string; createdAt?: string | null; addedAt?: string | null };
+
+function compareDates(a?: string | null, b?: string | null): number {
+  const first = a ? Date.parse(a) : NaN;
+  const second = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(first)) return Number.isNaN(second) ? 0 : -1;
+  if (Number.isNaN(second)) return 1;
+  return first - second;
 }
 
-export function compareVersionsOldestFirst(
-  a: { id: string; addedAt?: string | null; createdAt?: string | null },
-  b: { id: string; addedAt?: string | null; createdAt?: string | null }
-): number {
-  const first = versionAddedTime(a);
-  const second = versionAddedTime(b);
-  return (first === second ? 0 : first < second ? -1 : 1) || a.id.localeCompare(b.id);
+export function compareVersionUploads(a: OrderableVersion, b: OrderableVersion): number {
+  return compareDates(a.addedAt, b.addedAt) || a.id.localeCompare(b.id);
+}
+
+export function compareVersionsOldestFirst(a: OrderableVersion, b: OrderableVersion): number {
+  return compareDates(a.createdAt, b.createdAt) || compareVersionUploads(a, b);
 }

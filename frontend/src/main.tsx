@@ -1,6 +1,7 @@
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
+import { AuthConfigProvider } from "./modules/auth/contexts/authConfig";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
 import LoadingView from "./modules/core/pages/loading";
@@ -14,7 +15,7 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <SkeletonThemeProvider>
           <Suspense fallback={<LoadingView />}>
-            <App />
+            <AuthConfigProvider><App /></AuthConfigProvider>
           </Suspense>
         </SkeletonThemeProvider>
       </BrowserRouter>

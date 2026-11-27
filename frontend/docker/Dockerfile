@@ -28,9 +28,16 @@ COPY ./public ./public
 COPY tsconfig.json vite.config.ts index.html .
 COPY .env.testing .env
 
-RUN --mount=type=secret,id=gh_token,required \
-GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js pricing-int \
-&& GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js sphere
+# The changelog is refreshed from GitHub only when a token is given (the
+# gh_token build secret). Without one, the build keeps the changelog committed
+# in src/modules/presentation/pages/changelog/data.
+RUN --mount=type=secret,id=gh_token,required=false \
+if [ -s /run/secrets/gh_token ]; then \
+  GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js pricing-int \
+  && GH_TOKEN=$(cat /run/secrets/gh_token) node ./scripts/generate-changelog.js sphere; \
+else \
+  echo "No gh_token secret: using the committed changelog"; \
+fi
 
 # Build your application
 RUN pnpm run build

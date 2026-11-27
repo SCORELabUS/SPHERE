@@ -1,3 +1,5 @@
+import { identityMode } from '../services/scoretech/config';
+import type ScoretechIdentityService from '../services/ScoretechIdentityService';
 import { Request, Response, NextFunction } from 'express';
 import container from '../config/container';
 import UserRepository from '../repositories/mongoose/UserRepository';
@@ -80,13 +82,17 @@ async function authenticateApiKey(req: Request, apiKey: string): Promise<void> {
 async function authenticateToken(req: Request, token: string): Promise<void> {
   const userRepository: UserRepository = container.resolve('userRepository');
 
-  let decoded: { id: string; username: string; role: string };
+  let decoded: { id: string; username: string; role: string; identitySessionId?: string };
   try {
     decoded = verifyJwtToken(token);
   } catch {
     throw new Error('UNAUTHORIZED: Invalid or expired token');
   }
 
+  if (identityMode()) {
+    if (!decoded.identitySessionId) throw new Error('UNAUTHORIZED: Sign in through SCORETech Identity');
+    await container.resolve<ScoretechIdentityService>('scoretechIdentityService').authenticate(decoded.identitySessionId, decoded.id);
+  } else if (decoded.identitySessionId) throw new Error('UNAUTHORIZED: Identity mode is disabled');
   const user = await userRepository.findById(decoded.id);
   if (!user) {
     throw new Error('UNAUTHORIZED: User not found');
@@ -149,4 +155,4 @@ export function extractOrganizationIdFromPath(path: string): string | undefined 
   return organizationId;
 }
 
-export { authenticationMiddleware };
+export { authenticationMiddleware, authenticateToken as authenticateUserToken };

@@ -101,7 +101,7 @@ export const SPHERE_TOOLS: ToolItem[] = [
     links: [
       {
         label: 'Repository',
-        href: 'https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/analysis_api',
+        href: 'https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/analysis_api',
         kind: 'external',
       },
     ],
@@ -150,7 +150,7 @@ export const SPHERE_TOOLS: ToolItem[] = [
     links: [
       {
         label: 'Repository',
-        href: 'https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process',
+        href: 'https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process',
         kind: 'external',
       },
     ],

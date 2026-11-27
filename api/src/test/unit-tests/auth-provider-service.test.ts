@@ -223,3 +223,13 @@ describe('AuthProviderService identity management', () => {
     );
   });
 });
+
+describe('SCORETech identity account preservation', () => {
+  it('does not auto-merge by email even when the central provider verifies it', async () => {
+    const duplicate = Object.assign(new Error('duplicate email'), { code: 11000, keyPattern: { email: 1 } });
+    const repository = { findOne: vi.fn(async () => null), findByEmail: vi.fn(), findByUsername: vi.fn(async () => null), create: vi.fn(async () => { throw duplicate; }), updateById: vi.fn() };
+    (container.resolve as any).mockImplementation((name: string) => name === 'userRepository' ? repository : {});
+    await expect(new AuthProviderService().findOrCreateUser({ ...googleProfile, provider: 'scoretech', providerId: 'issuer-bound-subject' })).rejects.toMatchObject({ name: 'SsoEmailConflictError' });
+    expect(repository.findByEmail).not.toHaveBeenCalled(); expect(repository.updateById).not.toHaveBeenCalled();
+  });
+});
