@@ -378,4 +378,21 @@ describe('Service tree (beta) API integration', () => {
 
     expect(response.status).toBe(403);
   });
+
+  it('Shows a published tree to beta users outside the organization, but not to other visitors.', async () => {
+    const { token, organizationId } = await betaOwner();
+    const { user: outsider } = await createAndLoginUser('USER');
+    const changed = await request(app).put(`${BASE_PATH}/orgs/${organizationId}`)
+      .set('Authorization', `Bearer ${token}`).send({ servicesPublic: true });
+    expect(changed.status).toBe(200);
+    expect((await request(app).get(servicesPath(organizationId))).status).toBe(403);
+    expect((await request(app).get(servicesPath(organizationId)).set('Authorization', `Bearer ${outsider.token}`)).status).toBe(403);
+    await enableBeta(outsider.token);
+    const published = await request(app).get(servicesPath(organizationId)).set('Authorization', `Bearer ${outsider.token}`);
+    expect(published.status).toBe(200);
+    expect(published.body.canEdit).toBe(false);
+    await request(app).put(`${BASE_PATH}/orgs/${organizationId}`)
+      .set('Authorization', `Bearer ${token}`).send({ servicesPublic: false });
+    expect((await request(app).get(servicesPath(organizationId)).set('Authorization', `Bearer ${outsider.token}`)).status).toBe(403);
+  });
 });

@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Generate changelog
-        uses: isa-group/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main
+        uses: SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
 ```
@@ -36,7 +36,7 @@ jobs:
 > [!NOTE]
 > To use `sphere-changelog` action, you *MUST* configure your workflow with at least `contents: write` in `permissions`.
 
-Read the [usage guide](https://github.com/isa-group/Pricing-Intelligence-Interpretation-Process/tree/main/.github/actions/sphere-changelog/README.md) to configure `isa-group/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main` properly.
+Read the [usage guide](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/.github/actions/sphere-changelog/README.md) to configure `SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main` properly.
 
 Commit and push the workflow:
 ```bash
@@ -44,6 +44,21 @@ git add .github/workflows/changelog.yml
 git commit -m "feat: add sphere-changelog workflow"
 git push
 ```
+
+## Pin the AI services
+
+HARVEY, A-MINT, the analysis engines and the pricing MCP server come from
+[SCORELabUS/Pricing-Intelligence-Interpretation-Process](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process)
+and are pinned by version and digest in the Docker Compose files. Before tagging a SPHERE release,
+check that they point to the release of that repository you want to ship. If they do not, pin it
+(the GHCR packages must be public):
+
+```bash
+scripts/pin-ai-images.sh 1.2.1
+git add docker && git commit -m "chore(docker): pin AI services to 1.2.1"
+```
+
+Never ship a release with floating tags such as `main` or `latest`.
 
 ## Release process
 

@@ -28,7 +28,8 @@ class PricingRepository extends RepositoryBase {
   async findAll(
     queryParams: PricingIndexQueryParams,
     permissions: OrgUserPermissionsContext,
-    collectionVisibility: PrivateCollectionAccess = []
+    collectionVisibility: PrivateCollectionAccess = [],
+    publicOrganizationsOnly = false
   ) {
     const { filteringPipeline, sortPipeline } = this._processPricingQueryParams(queryParams);
 
@@ -39,7 +40,8 @@ class PricingRepository extends RepositoryBase {
         permissions,
         filteringPipeline,
         sortPipeline,
-        collectionVisibility
+        collectionVisibility,
+        publicOrganizationsOnly
       );
 
       const paginationPipeline = this._processPricingPagination(queryParams);

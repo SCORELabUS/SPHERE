@@ -8,6 +8,7 @@ import { authorizationMiddleware } from './AuthorizationMiddleware';
 import { apiRateLimiter, authRateLimiter } from './RateLimitMiddleware';
 import { protectedStatic } from './StaticFilesMiddleware';
 import { anonymousAccess } from './AnonymousAccessMiddleware';
+import { organizationVisibilityMiddleware } from './OrganizationVisibilityMiddleware';
 
 const loadGlobalMiddlewares = (app: express.Application) => {
   // Requests arrive through NGINX, so the client address is the one it forwards.
@@ -35,6 +36,7 @@ const loadGlobalMiddlewares = (app: express.Application) => {
   // Anonymous links answer alike for everyone: their credentials go before authentication.
   app.use(anonymousAccess);
   app.use(authenticationMiddleware);
+  app.use(organizationVisibilityMiddleware);
   // After authentication, so that a signed-in client is limited as itself
   // rather than as its network address.
   app.use(authRateLimiter);

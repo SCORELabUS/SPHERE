@@ -68,7 +68,7 @@ function fixture(action: 'create' | 'delete') {
       identityRoot + 'deploy/local/compose.yaml',
       'exec',
       '-T',
-      'catalogue-fixture',
+      'account-api',
       'node',
       '--input-type=module',
       '-e',
@@ -150,9 +150,9 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     await browserExpect(
       page.getByRole('heading', { name: 'Account Details', exact: true })
     ).toBeVisible();
-    await browserExpect(
-      page.getByRole('button', { name: 'Sign-in & Security', exact: true })
-    ).toBeVisible();
+    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security']) {
+      await browserExpect(page.getByRole('button', { name, exact: true })).toBeVisible();
+    }
     await page.getByRole('button', { name: 'Connect SCORETech Identity', exact: true }).click();
     await page.locator('#email').fill(email);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
@@ -241,8 +241,10 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     await browserExpect(
       page.getByRole('heading', { name: 'Your SCORETech account', exact: true })
     ).toBeVisible();
-    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security'])
+    await browserExpect(page.getByRole('heading', { name: 'Account Details', exact: true })).toHaveCount(0);
+    for (const name of ['Public Profile', 'Social Links', 'Sign-in & Security']) {
       await browserExpect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
     for (const name of [
       'Connected applications',
       'Notifications',
@@ -259,16 +261,21 @@ it('preserves a linked SPHERE account, switches login/registration to native Ide
     const opened = page.waitForEvent('popup');
     await profile.click();
     const popup = await opened;
-    await popup.waitForURL('http://localhost:18000/identity/account/#public-profile');
+    await popup.waitForURL((url) =>
+      url.origin === 'http://localhost:18000' && url.pathname === '/identity/account/' &&
+      url.hash === '#public-profile' &&
+      url.searchParams.get('return_to') === origin + '/me/settings?section=account'
+    );
     await popup.close();
     await page.evaluate('scrollTo(0, 0)');
     await page.waitForFunction("Array.from(document.querySelectorAll('[style*=\"opacity\"]')).every(element => getComputedStyle(element).opacity === '1')");
     await page.screenshot({ path: screenshots + '/identity-account.png', fullPage: true });
-    await request(app)
+    const profileUpdate = await request(app)
       .put('/api/v1/users/me/settings/profile')
       .set('Authorization', 'Bearer ' + token)
-      .send({ bio: 'Local override' })
-      .expect(409);
+      .send({ bio: 'Local profile' })
+      .expect(200);
+    expect(profileUpdate.body.settings.profile.bio).toBe('Local profile');
     const sessionId = verifyJwtToken(token).identitySessionId!;
     const cache = services.resolve('cacheService');
     const key = 'sso:scoretech:session:' + sessionId;

@@ -4,6 +4,7 @@ import { up as assignPricingIdentities } from '../../../migrations/mongo/2026092
 import { up as initializeServiceTrees } from '../../../migrations/mongo/20261104120000-create-service-trees';
 import { up as initializeAnonymousLinks } from '../../../migrations/mongo/20261117120000-create-pricing-anonymous-links';
 import { up as stampPricingAddedAt } from '../../../migrations/mongo/20261106120000-pricing-added-at';
+import { up as initializeOrganizationVisibility } from '../../../migrations/mongo/20261120120000-organization-visibility';
 import { Seeder } from 'mongo-seeding';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -38,6 +39,7 @@ export const seedDatabase = async () => {
     await initializeAnonymousLinks(mongoose.connection);
     await assignPricingIdentities(mongoose.connection);
     await stampPricingAddedAt(mongoose.connection);
+    await initializeOrganizationVisibility(mongoose.connection);
     console.log('==== Mongo seeding successfull ====');
   } catch (err) {
     console.error(`Seeding error: ${err}`);

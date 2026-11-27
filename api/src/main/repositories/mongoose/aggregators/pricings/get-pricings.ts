@@ -16,6 +16,7 @@ export function getPricingsAggregator(
   sortAggregator: PipelineStage[] = [],
   // Private collections the viewer may see; the others are hidden from the result.
   collectionVisibility: PrivateCollectionAccess = [],
+  publicOrganizationsOnly = false,
 ){
   const pipeline: PipelineStage[] = [
       { $sort: VERSION_ORDER },
@@ -23,6 +24,7 @@ export function getPricingsAggregator(
       refactorRootAggregator,
       ...populateCollectionDataAggregator(collectionVisibility),
       ...populateOrganizationDataAggregator,
+      ...(publicOrganizationsOnly ? [{ $match: { 'organization.visibility': { $nin: ['private', 'unlisted'] } } } as PipelineStage] : []),
       ...(organizationId ? filterByOrganizationAggregator(organizationId) : [{ $match: {} }]),
       ...pickVisibleVersionAggregator(canSeePrivateVersions(permissions)),
       {

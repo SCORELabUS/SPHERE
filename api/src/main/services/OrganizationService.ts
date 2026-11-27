@@ -24,6 +24,7 @@ import { isSelectableAvatarPath } from '../config/defaultAvatars';
 import { generateSlug } from '../utils/slug-manager';
 import { OrganizationIndexByUserOptions } from '../types/services/Organization';
 import ServiceTreeRepository from '../repositories/mongoose/ServiceTreeRepository';
+import { assertOrganizationReadable } from '../policies/organizationVisibility';
 
 /** Default colours for an organization that has never picked any. */
 const DEFAULT_AVATAR_BG_COLOR = '#023e8a';
@@ -122,10 +123,20 @@ class OrganizationService {
     return role;
   }
 
-  async show(id: string) {
-    const organization = await this.organizationRepository.findById(id);
+  async show(id: string, user?: LeanUser) {
+    await assertOrganizationReadable(id, user);
+    const organization: any = await this.organizationRepository.findById(id);
     if (!organization) {
       throw new Error('NOT FOUND: Organization not found');
+    }
+    if (organization.subOrganizations?.length) {
+      const permissionService = container.resolve<any>('permissionService');
+      const visible = await Promise.all(organization.subOrganizations.map(async (child: any) => {
+        if (!child.visibility || child.visibility === 'public') return child;
+        const access = await permissionService.actingAccess(user, String(child.id ?? child._id));
+        return access.reachable && (access.role || access.isGlobalAdmin) ? child : null;
+      }));
+      organization.subOrganizations = visible.filter(Boolean);
     }
     processFileUris(organization, ['avatar']);
     return organization;
@@ -140,7 +151,7 @@ class OrganizationService {
    * costs a request per node, several times over, so it is answered here in two
    * queries: one for the branch, one for the caller's memberships.
    */
-  async getHierarchy(organizationId: string, user?: { id: string; role?: string }) {
+  async getHierarchy(organizationId: string, user?: { id: string; role?: string; apiKey?: unknown }) {
     const organization: any = await this.organizationRepository.findById(organizationId);
     if (!organization) {
       throw new Error('NOT FOUND: Organization not found');
@@ -155,7 +166,7 @@ class OrganizationService {
       // point asking which ones they belong to. A visitor belongs to none.
       !user
         ? Promise.resolve(new Map<string, OrgRole>())
-        : user.role === 'ADMIN'
+        : user.role === 'ADMIN' && !user.apiKey
           ? Promise.resolve(null)
           : this.organizationMembershipRepository.findRolesByUserId(user.id),
     ]);
@@ -175,10 +186,17 @@ class OrganizationService {
       });
     };
 
-    return branch.map((node: any) => {
+    const keyAccess = user?.apiKey
+      ? new Map(await Promise.all(branch.map(async (node: any) => {
+          const access = await container.resolve<any>('permissionService').actingAccess(user, node.id);
+          return [node.id, access.reachable && Boolean(access.role || access.isGlobalAdmin)] as const;
+        })))
+      : null;
+    const mayOpen = (node: any) => keyAccess ? keyAccess.get(node.id) === true : canOpen(node);
+    return branch.filter((node: any) => node.id === organizationId || node.visibility === 'public' || mayOpen(node)).map((node: any) => {
       processFileUris(node, ['avatar']);
       const { ancestors: _ancestors, ...rest } = node;
-      return { ...rest, hasAccess: canOpen(node) };
+      return { ...rest, hasAccess: mayOpen(node) };
     });
   }
 

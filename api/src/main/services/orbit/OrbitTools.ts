@@ -11,6 +11,7 @@ import OrbitPlanService, { accessOf, matchResource } from './OrbitPlanService';
 import OrbitImportService from './OrbitImportService';
 import { canManage, OrbitActor, resolveOrgRole } from './orbitAccess';
 import { PRICING_TOOL_LABELS, PRICING_TOOLS, requesterOf, runPricingTool } from './orbitPricingTools';
+import { assertOrganizationReadable } from '../../policies/organizationVisibility';
 import type PermissionService from '../PermissionService';
 import { ACCOUNT_TOOL_LABELS, ACCOUNT_TOOLS, runAccountTool } from './orbitAccountTools';
 
@@ -617,7 +618,7 @@ class OrbitToolRunner {
       }
 
       case 'get_organization': {
-        const organization: any = await this.organizationService.show(requireId(args.organizationId));
+        const organization: any = await this.organizationService.show(requireId(args.organizationId), requesterOf(actor));
         return {
           id: organization.id,
           name: organization.name,
@@ -662,6 +663,7 @@ class OrbitToolRunner {
           requested.slice(0, MAX_MEMBER_LISTS).map(async raw => {
             try {
               const organizationId = requireId(raw);
+              await assertOrganizationReadable(organizationId, requesterOf(actor));
               const members: any[] = await this.organizationService.listMembers(organizationId);
               return {
                 organizationId,
@@ -738,6 +740,7 @@ class OrbitToolRunner {
         const result: Record<string, unknown> = {};
         if (args.type !== 'collection') {
           const pricings = (await this.pricingRepository.findSummariesByOrganization(organizationId))
+            .filter(pricing => !pricing.collectionId || visibleCollections.some(collection => collection.id === pricing.collectionId))
             .map(pricing => {
               const collection = collections.find(item => item.id === pricing.collectionId);
               // Only the versions the user may read are counted, or the pricing is

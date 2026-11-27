@@ -2510,7 +2510,7 @@ paths:
     get:
       summary: List public root organizations
       description: |
-        Returns a paginated list of non-personal root organizations for the public
+        Returns a paginated list of public, non-personal root organizations for the public
         Explore page. Child organizations are excluded and the response does not
         embed organization trees.
 
@@ -2802,9 +2802,9 @@ paths:
         **Authentication**: Optional (public endpoint)
 
         **Permission**:
-        - **Unauthenticated**: Can access any organization.
-        - **USER**: Can access any organization.
-        - **ADMIN** (global): Can access any organization.
+        - **Unauthenticated** and non-members: Can access public or unlisted organizations.
+        - **Members**: Can access their organization, including when private.
+        - **ADMIN** (global): Can access any organization with a user token.
 
         This endpoint supports public access so that non-members and unauthenticated
         users can view organization details (e.g., for the public organization profile page).
@@ -2837,8 +2837,8 @@ paths:
     put:
       summary: Update organization metadata
       description: |
-        Updates the mutable metadata of an organization. Only `displayName`, `description`,
-        and `avatar` can be modified. The organization `name` field **cannot be changed**
+        Updates the mutable metadata of an organization. `displayName`, `description`,
+        `avatar`, `visibility`, and `servicesPublic` can be modified. The organization `name` field **cannot be changed**
         after creation.
 
         **Authentication**: User token
@@ -2852,6 +2852,8 @@ paths:
         - `displayName`: Updated human-readable name (max 255 chars)
         - `description`: Updated description (can be `null` to clear)
         - `avatar`: Updated avatar (can be `null` to clear)
+        - `servicesPublic`: Allow beta users outside the organization to read its services tree
+        - `visibility`: `public`, `unlisted`, or `private`; absent values default to `public`
 
       tags:
         - Organizations
@@ -3227,8 +3229,9 @@ paths:
 
         **Access flag**: `hasAccess` is `true` for the organizations the caller belongs to and
         for those below an organization where the caller is `OWNER` or `ADMIN`. It is always
-        `true` for a global **ADMIN** and always `false` for unauthenticated callers. Every
-        organization in the branch can still be opened through its public page.
+        `true` for a global **ADMIN** and always `false` for unauthenticated callers. Private
+        and unlisted nodes are omitted unless the caller is a member or the node is the
+        directly requested organization.
       tags: [Organizations]
       security: [{ ApiKeyAuth: [] }]
       parameters:
@@ -3263,8 +3266,9 @@ paths:
 
         **Authentication**: User token
 
-        **Permission**: Any member of the organization (OWNER, ADMIN or MEMBER). Requires beta
-        features to be turned on (`PUT /users/me/settings/beta-features`); otherwise 403.
+        **Permission**: Any member of the organization (OWNER, ADMIN or MEMBER), or any
+        beta user when `servicesPublic` is true. Requires beta features to be turned on
+        (`PUT /users/me/settings/beta-features`); otherwise 403.
 
         **Pricings**: `pricings` only holds the linked pricings the caller may list in the
         organization. A `pricingId` in a node that is missing from it is a pricing the caller
@@ -3282,7 +3286,7 @@ paths:
                 $ref: '#/components/schemas/ServiceTreeView'
         '401': { description: Authentication required }
         '403':
-          description: Not a member of the organization, or beta features are off
+          description: Services are not public and the caller is not a member, or beta features are off
           content:
             application/json:
               schema:
@@ -4235,13 +4239,9 @@ paths:
         with some public and some private versions is returned with only its public versions to
         anyone who cannot see private ones. It is `404` only when none of its versions is visible.
 
-        A pricing in a private collection the caller may not see is returned as if it were in no
-        collection: `collection` is `{ id: null }`, `_collectionId` and `collectionName` are `null`,
-        the `yaml` of each public version links the permanent route
-        `/public/pricings/{pricingId}/versions/{versionId}/yaml` (the stored file path may contain the
-        collection's folder; this also applies to any public version whose file lies in the folder of
-        such a collection), a fork does not name a source collection the caller may not see, and the
-        `collection`/`collectionId` query filters never match it.
+        Access is checked in order: organization, collection, then pricing version. A private
+        organization or collection the caller cannot read makes its pricings unavailable, even
+        when a version is public or the caller has an individual pricing permission.
 
         **Authentication**: Public
 
@@ -4492,10 +4492,9 @@ paths:
                   format: date-time
                   description: |
                     Optional release timestamp of the version (ISO 8601, not in the future).
-                    Defaults to the `createdAt` date of the uploaded YAML. This is release metadata.
-                    Versions are ordered by `addedAt`, the instant SPHERE received them,
-                    with the version ID as a deterministic tie-breaker. The server sets
-                    `addedAt` and no request can change it.
+                    Defaults to the `createdAt` date of the uploaded YAML. Versions are ordered
+                    by release timestamp, then by `addedAt` and version ID for exact ties.
+                    The server sets `addedAt` when it receives the version.
                 collectionId:
                   type: string
                   description: Optional collection ID to associate this version with
@@ -6937,9 +6936,8 @@ paths:
         only sees private versions where the user holds GET on the pricing or its collection),
         and a key scoped to another organization grants nothing.
 
-        **Versions**: sorted newest first by when SPHERE received each version (`addedAt`),
-        independently of its release date (`createdAt`), with the version ID as the last
-        tie-breaker; `latestVersionId` is the first of them,
+        **Versions**: sorted newest first by release timestamp (`createdAt`), then by when
+        SPHERE received the version (`addedAt`), then by version ID. `latestVersionId` is the first of them,
         so for an authorized caller it can be a private version. A deleted family is answered
         with 404; so is a family whose versions are all private, unless the caller may read
         them.
@@ -7202,8 +7200,8 @@ components:
                       format: date-time
                       nullable: true
                       description: |
-                        When SPHERE received the version, set by the server. Orders versions
-                        when their release dates differ too. Null for a source the caller may not read.
+                        When SPHERE received the version, set by the server. Breaks ties between
+                        identical release timestamps. Null for a source the caller may not read.
                     private:
                       type: boolean
                     forkedFrom:
@@ -8390,7 +8388,7 @@ components:
           description: |
             When SPHERE received this version (created in the editor, uploaded, forked...),
             set by the server and never changed. Versions are listed newest first by
-            `addedAt`, then by their ID, independently of the release date (`createdAt`).
+            `createdAt`, then by `addedAt`, then by their ID.
           example: "2026-11-06T10:15:30.123Z"
         url:
           type: string
@@ -8667,6 +8665,15 @@ components:
         - createdAt
         - updatedAt
       properties:
+        visibility:
+          type: string
+          enum: [public, unlisted, private]
+          default: public
+          description: Public organizations are discoverable, unlisted organizations are accessible by direct link, and private organizations require membership.
+        servicesPublic:
+          type: boolean
+          default: false
+          description: Whether beta users outside the organization can read its services tree.
         id:
           type: string
           description: Unique MongoDB ObjectId identifier of the organization
@@ -9563,6 +9570,13 @@ components:
           schema:
             type: object
             properties:
+              visibility:
+                type: string
+                enum: [public, unlisted, private]
+                description: Organization visibility. Private organizations also restrict their collections and pricings.
+              servicesPublic:
+                type: boolean
+                description: Allow beta users outside the organization to read its services tree.
               displayName:
                 type: string
                 description: Updated human-readable name for the organization (max 255 chars)
@@ -10235,7 +10249,7 @@ components:
 
     ExcludePricingsInCollection:
       name: excludePricingsInCollection
-      description: If set to "true", only pricings that are NOT in any collection will be returned. A pricing in a private collection the caller may not see counts as being in none. Cannot be used together with the `collection` parameter.
+      description: If set to "true", only pricings that are NOT in any collection will be returned. Pricings in inaccessible collections are never listed. Cannot be used together with the `collection` parameter.
       in: query
       required: false
       schema:

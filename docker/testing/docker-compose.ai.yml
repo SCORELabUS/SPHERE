@@ -1,0 +1,103 @@
+# Optional AI services for the testing stack: HARVEY and the pricing
+# intelligence services it uses (A-MINT, the analysis engines and the MCP
+# server). Their source code is in
+# https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process (MIT).
+# The images are pinned by version and digest; update them with
+# scripts/pin-ai-images.sh. They are built for linux/amd64 only, so on
+# Apple Silicon Docker runs them under emulation (platform: linux/amd64).
+#
+#   echo "OPENAI_API_KEY=sk-..." > .env
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+#
+# The same key also enables ORBIT's chat in the API. Without a key the
+# services start, but HARVEY, ORBIT's chat and A-MINT's extraction fail.
+services:
+  choco-analysis-engine:
+    image: ghcr.io/scorelabus/choco-pricing-analysis-engine:1.2.2@sha256:8fba3bed554e658aa73d1f92eb6ff5f5e429592832985e76515ffb696e431708
+    platform: linux/amd64
+    container_name: choco-analysis-engine
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    networks:
+      - testing-network
+  analysis-engine:
+    image: ghcr.io/scorelabus/pricing-analysis-engine:1.2.2@sha256:ae21628dac34ea76e40f9e4d4280440d428ebb01ab156c2008dc72ec3ba7695b
+    platform: linux/amd64
+    container_name: pricing-analysis-engine
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHOCO_API=http://choco-analysis-engine:8000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - choco-analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  a-mint:
+    image: ghcr.io/scorelabus/a-mint:1.2.2@sha256:02d394e0ca80158141cab8606156f83dfc2b9187f7ee0f0d44b07ee01b2a67fd
+    platform: linux/amd64
+    container_name: a-mint
+    init: true
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANALYSIS_API=http://analysis-engine:3000/api/v1
+      - LOG_LEVEL=INFO
+    depends_on:
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  mcp-server:
+    image: ghcr.io/scorelabus/pi-mcp-server:1.2.2@sha256:ad43c103d94b83608921459fb93560a0c3a0472efd68e09b4a69087c97f6c606
+    platform: linux/amd64
+    container_name: mcp-server
+    environment:
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - LOG_LEVEL=INFO
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8085
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8085
+      - MCP_TRANSPORT=sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+    restart: unless-stopped
+    networks:
+      - testing-network
+  harvey:
+    image: ghcr.io/scorelabus/harvey:1.2.2@sha256:84a66303c7c67f5aa12df772503354bfb83c480d112523f4c90e71180899ddc7
+    platform: linux/amd64
+    container_name: harvey
+    # The testing web client calls HARVEY directly (VITE_HARVEY_URL in
+    # frontend/.env.testing).
+    ports:
+      - "8086:8086"
+    environment:
+      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}
+      - AMINT_BASE_URL=http://a-mint:8000
+      - ANALYSIS_BASE_URL=http://analysis-engine:3000
+      - CACHE_BACKEND=memory
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_URL=http://mcp-server:8085/sse
+    depends_on:
+      - a-mint
+      - analysis-engine
+      - mcp-server
+    restart: unless-stopped
+    networks:
+      - testing-network
+  server:
+    environment:
+      - ORBIT_OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ORBIT_OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-nano}

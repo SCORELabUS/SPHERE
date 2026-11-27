@@ -9,9 +9,17 @@ export function getCollectionsAggregator(
   organizationId?: string,
   permissions?: OrgUserPermissionsContext,
   filteringAggregator: PipelineStage[] = [],
-  sortAggregator: PipelineStage[] = []
+  sortAggregator: PipelineStage[] = [],
+  publicOrganizationsOnly = false
 ) {
   const pipeline: PipelineStage[] = [];
+  if (publicOrganizationsOnly) {
+    pipeline.push(
+      { $lookup: { from: 'organizations', localField: '_organizationId', foreignField: '_id', as: '_visibilityOrganization' } },
+      { $match: { '_visibilityOrganization.visibility': { $nin: ['private', 'unlisted'] } } },
+      { $unset: '_visibilityOrganization' }
+    );
+  }
 
   if (!permissions) {
     // Older seeded/imported documents may not contain `private`. The schema

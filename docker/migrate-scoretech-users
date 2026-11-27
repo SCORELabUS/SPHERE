@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 3 || ( $# -eq 2 && $2 != --apply && $2 != --profiles ) ||
+  ( $# -eq 3 && ( $2 != --profiles || $3 != --apply ) ) ]]; then
+  printf 'Usage: bash docker/migrate-scoretech-users <SCORETech-identity checkout> [--profiles] [--apply]\n' >&2
+  exit 2
+fi
+
+sphere_docker=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+identity_docker=$(cd -- "$1/docker/production" && pwd -P)
+migration=$(cat -- "$sphere_docker/../api/scripts/migrate-scoretech-users.cjs")
+
+sphere() (
+  cd -- "$sphere_docker/production"
+  docker compose exec -T server node --input-type=commonjs -e "$migration" -- --scoretech-migration "$1"
+)
+
+identity() (
+  cd -- "$identity_docker"
+  docker compose exec -T admin-api node --input-type=commonjs -e "$migration" -- --scoretech-migration "$1"
+)
+
+if [[ ${2:-} == --profiles ]]; then
+  (
+    cd -- "$identity_docker"
+    docker compose exec -T account-api test -f apps/account-api/dist/main/import-sphere-profiles.js
+  ) || { printf 'Deploy the Identity version with profile import support first.\n' >&2; exit 1; }
+  sphere export-profiles | (
+    cd -- "$identity_docker"
+    docker compose exec -T account-api node apps/account-api/dist/main/import-sphere-profiles.js "${3:---plan}"
+  )
+elif [[ ${2:-} == --apply ]]; then
+  sphere export | identity provision | sphere link
+else
+  sphere export | identity plan
+fi
