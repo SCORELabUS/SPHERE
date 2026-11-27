@@ -1,5 +1,5 @@
 /**
- * Anonymous links: a random token that shows one version of a pricing without
+ * Anonymous links: a random token that shows one version or all visible versions of a pricing without
  * anything that names who published it (organization, collection, author, ids,
  * origin of a fork). See PricingAnonymousLinkService.
  */
@@ -58,6 +58,7 @@ export const ANONYMOUS_ANALYTICS_KEYS = [
 export interface AnonymousLinkView {
   id: string;
   token: string;
+  allVersions?: boolean;
   versionId: string;
   /** The label of the version it shows. */
   version: string;
@@ -72,4 +73,6 @@ export interface AnonymousPricing {
   createdAt: Date;
   analytics: Partial<Record<(typeof ANONYMOUS_ANALYTICS_KEYS)[number], number>>;
   yaml: string;
+  allVersions?: boolean;
+  versions?: Array<{ version: string; createdAt: Date; analytics: AnonymousPricing['analytics'] }>;
 }

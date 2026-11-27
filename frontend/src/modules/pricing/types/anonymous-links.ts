@@ -2,6 +2,7 @@
 export interface AnonymousLink {
   id: string;
   token: string;
+  allVersions?: boolean;
   versionId: string;
   /** The label of the version it shows. */
   version: string;
@@ -21,4 +22,6 @@ export interface AnonymousPricing {
   createdAt: string;
   analytics: Record<string, number>;
   yaml: string;
+  allVersions?: boolean;
+  versions?: Array<{ version: string; createdAt: string; analytics: Record<string, number> }>;
 }

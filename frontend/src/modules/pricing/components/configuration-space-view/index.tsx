@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePricingsApi } from '../../api/pricingsApi';
 import BanterLoader from '../../../core/components/loaders/banter-loader';
 
@@ -30,7 +30,15 @@ function compactList(v: string[], max = 7) { return v.length <= max ? v : v.slic
 const PAGE_SIZE = 200;
 const BATCH = 120;
 
+type LoadConfigurations = (limit: number, offset: number) => Promise<{ configurationSpace: Partial<Configuration>[]; configurationSpaceSize: number }>;
+
 export default function ConfigurationSpaceView({ organizationId, pricingSlug, pricingVersion }: { organizationId: string; pricingSlug: string; pricingVersion: string }) {
+  const { getConfigurationSpace } = usePricingsApi();
+  const load = useCallback((limit: number, offset: number) => getConfigurationSpace(organizationId, pricingSlug, pricingVersion, limit, offset), [getConfigurationSpace, organizationId, pricingSlug, pricingVersion]);
+  return <ConfigurationExplorer loadConfigurations={load} />;
+}
+
+export function ConfigurationExplorer({ loadConfigurations, pageSize = PAGE_SIZE }: { loadConfigurations: LoadConfigurations; pageSize?: number }) {
   const [allConfigs, setAllConfigs] = useState<IndexedConfiguration[]>([]);
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,7 +48,6 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [showAllFeat, setShowAllFeat] = useState(false);
   const [visibleCount, setVisibleCount] = useState(BATCH);
-  const { getConfigurationSpace } = usePricingsApi();
   const loaderRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
 
@@ -72,20 +79,20 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
         const all: IndexedConfiguration[] = [];
         let total = 0, offset = 0, keep = true;
         while (keep && !canceled) {
-          const res = await getConfigurationSpace(organizationId, pricingSlug, pricingVersion, PAGE_SIZE, offset);
+          const res = await loadConfigurations(pageSize, offset);
           const chunk = (res?.configurationSpace as Partial<Configuration>[] | undefined) ?? [];
           if (offset === 0) { total = Number(res?.configurationSpaceSize ?? chunk.length); setTotalSize(total); }
           all.push(...chunk.map(c => ({ ...normalizeConfiguration(c), id: `cfg-${idRef.current++}` })));
           if (chunk.length === 0 || (total > 0 && all.length >= total)) keep = false;
-          else offset += PAGE_SIZE;
+          else offset += pageSize;
         }
         if (!canceled) { setAllConfigs(all); if (total === 0) setTotalSize(all.length); }
-      } catch { if (!canceled) setLoadError('The configuration space could not be loaded. This may happen when the pricing is too complex. Try simplifying the pricing structure or reducing the number of plans, add-ons, features, or usage limits.'); }
+      } catch (error) { if (!canceled) setLoadError(configurationErrorMessage(error)); }
       finally { if (!canceled) setLoading(false); }
     };
     load();
     return () => { canceled = true; };
-  }, [organizationId, pricingSlug, pricingVersion]);
+  }, [loadConfigurations, pageSize]);
 
   useEffect(() => {
     if (filtered.length === 0) { setFocusedId(null); return; }
@@ -210,4 +217,10 @@ export default function ConfigurationSpaceView({ organizationId, pricingSlug, pr
       </div>
     </div>
   );
+}
+
+export function configurationErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/dead.?feature/i.test(message)) return 'The configuration space cannot be calculated because this pricing defines one or more features that are not included in any plan or add-on. Every feature must belong to at least one plan or add-on. Add the missing features to a plan or add-on, or remove them from the pricing, then try again.';
+  return 'The configuration space could not be calculated. Check the pricing for validation errors or try again later.';
 }

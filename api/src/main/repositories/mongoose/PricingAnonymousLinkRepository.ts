@@ -9,6 +9,7 @@ export interface StoredAnonymousLink {
   token: string;
   pricingId: mongoose.Types.ObjectId;
   versionId: mongoose.Types.ObjectId;
+  allVersions?: boolean;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
 }
@@ -22,7 +23,7 @@ export interface ShareableVersion {
 }
 
 class PricingAnonymousLinkRepository extends RepositoryBase {
-  async create(link: { token: string; pricingId: unknown; versionId: unknown; createdBy: unknown }): Promise<StoredAnonymousLink> {
+  async create(link: { token: string; pricingId: unknown; versionId: unknown; allVersions?: boolean; createdBy: unknown }): Promise<StoredAnonymousLink> {
     const created = await PricingAnonymousLinkMongoose.create(link);
     return created.toObject() as unknown as StoredAnonymousLink;
   }
@@ -65,13 +66,20 @@ class PricingAnonymousLinkRepository extends RepositoryBase {
    * The version a link shows, while it can be shown: it still exists in the
    * same pricing, is not private and its pricing is not deleted.
    */
-  async findShareableVersion(link: StoredAnonymousLink): Promise<ShareableVersion | null> {
-    const version = await PricingMongoose.findOne({ _id: link.versionId, pricingId: link.pricingId, private: false })
+  async findShareableVersion(link: StoredAnonymousLink, label?: string): Promise<ShareableVersion | null> {
+    const selector = link.allVersions ? (label ? { version: label } : {}) : { _id: link.versionId };
+    const version = await PricingMongoose.findOne({ ...selector, pricingId: link.pricingId, private: false })
+      .sort({ createdAt: -1, addedAt: -1, _id: -1 })
       .select('version createdAt yaml analytics')
       .lean<ShareableVersion>();
     if (!version) return null;
     if (!(await PricingIdentity.exists({ _id: link.pricingId, deleted: false }))) return null;
     return version;
+  }
+
+  async visibleVersions(link: StoredAnonymousLink): Promise<ShareableVersion[]> {
+    return PricingMongoose.find({ pricingId: link.pricingId, private: false })
+      .select('version createdAt yaml analytics').sort({ createdAt: -1, addedAt: -1, _id: -1 }).lean<ShareableVersion[]>();
   }
 
   /**

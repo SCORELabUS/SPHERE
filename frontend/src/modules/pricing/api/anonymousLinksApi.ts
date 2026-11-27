@@ -16,8 +16,8 @@ export class AnonymousPricingError extends Error {
  * the answer is the same for everyone, and nothing tells the server (or a
  * page the request might reach) who is looking.
  */
-export async function fetchAnonymousPricing(token: string, signal?: AbortSignal): Promise<AnonymousPricing> {
-  const response = await fetch(`${apiUrl()}/anonymous-pricings/${encodeURIComponent(token)}`, {
+export async function fetchAnonymousPricing(token: string, signal?: AbortSignal, version?: string): Promise<AnonymousPricing> {
+  const response = await fetch(`${apiUrl()}/anonymous-pricings/${encodeURIComponent(token)}${version ? `?version=${encodeURIComponent(version)}` : ''}`, {
     method: 'GET',
     credentials: 'omit',
     referrerPolicy: 'no-referrer',
@@ -32,8 +32,8 @@ export async function fetchAnonymousPricing(token: string, signal?: AbortSignal)
 }
 
 /** The YAML file a link shows, downloaded through the token (never the stored path, which names the organization). */
-export function anonymousYamlUrl(token: string): string {
-  return `${apiUrl()}/anonymous-pricings/${encodeURIComponent(token)}/yaml`;
+export function anonymousYamlUrl(token: string, version?: string): string {
+  return `${apiUrl()}/anonymous-pricings/${encodeURIComponent(token)}/yaml${version ? `?version=${encodeURIComponent(version)}` : ''}`;
 }
 
 /** The page a link opens, to share. */
@@ -57,8 +57,8 @@ export function useAnonymousLinksApi() {
     fetchWithInterceptor(`${apiUrl()}/pricing-anonymous-links?pricingId=${encodeURIComponent(pricingId)}`, { headers })
       .then((response: Response) => readJson<AnonymousLinkList>(response)), [fetchWithInterceptor, headers]);
 
-  const createAnonymousLink = useCallback((versionId: string) =>
-    fetchWithInterceptor(`${apiUrl()}/pricing-anonymous-links`, { method: 'POST', headers, body: JSON.stringify({ versionId }) })
+  const createAnonymousLink = useCallback((versionId: string, allVersions = false) =>
+    fetchWithInterceptor(`${apiUrl()}/pricing-anonymous-links`, { method: 'POST', headers, body: JSON.stringify(allVersions ? { versionId, allVersions } : { versionId }) })
       .then((response: Response) => readJson<AnonymousLink>(response)), [fetchWithInterceptor, headers]);
 
   const revokeAnonymousLink = useCallback((linkId: string) =>

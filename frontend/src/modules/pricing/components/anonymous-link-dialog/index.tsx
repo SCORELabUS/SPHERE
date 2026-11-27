@@ -45,6 +45,7 @@ export default function AnonymousLinkDialog({
   const { listAnonymousLinks, createAnonymousLink, revokeAnonymousLink } = useAnonymousLinksApi();
   // Decided when the dialog opens; the actions below move it on.
   const [step, setStep] = useState<AnonymousLinkStep>(() => anonymousLinkStep(selected, versions, unlisted));
+  const [allVersions, setAllVersions] = useState(false);
   const [links, setLinks] = useState<AnonymousLink[] | null>(null);
   const [limit, setLimit] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -121,7 +122,9 @@ export default function AnonymousLinkDialog({
   };
 
   const createLink = async () => {
-    const link = await createAnonymousLink(selected.id);
+    const shareVersion = allVersions ? versions.find(version => !version.private) : selected;
+    if (!shareVersion) throw new Error('Make at least one version visible before sharing all versions');
+    const link = allVersions ? await createAnonymousLink(shareVersion.id, true) : await createAnonymousLink(shareVersion.id);
     setCreated(link);
     setLinks(current => [link, ...(current ?? [])]);
     setStep('ready');
@@ -165,7 +168,7 @@ export default function AnonymousLinkDialog({
   const revoke = (link: AnonymousLink) => {
     confirmingRef.current = true;
     customConfirm(
-      `Revoke the anonymous link to version ${link.version}? Whoever opens it will see "This link is not available".`,
+      `Revoke the anonymous link to ${link.allVersions ? 'all visible versions' : `version ${link.version}`}? Whoever opens it will see "This link is not available".`,
       { danger: true, confirmLabel: 'Revoke' }
     )
       .finally(() => {
@@ -197,10 +200,10 @@ export default function AnonymousLinkDialog({
         <header className="flex items-start justify-between gap-4 border-b border-tp-hairline px-5 py-4">
           <div className="min-w-0">
             <h2 id="anonymous-link-title" className="font-display text-lg font-semibold text-tp-ink">
-              Anonymous link · version {selected.version}
+              Anonymous link · {allVersions ? 'all visible versions' : `version ${selected.version}`}
             </h2>
             <p className="mt-0.5 text-xs text-tp-steel">
-              Anyone with the link sees this version without anything that names you or your organization.
+              Anyone with the link sees {allVersions ? 'the visible versions' : 'this version'} without anything that names you or your organization.
             </p>
           </div>
           <button
@@ -214,7 +217,13 @@ export default function AnonymousLinkDialog({
         </header>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {step === 'private-version' && (
+          <fieldset className="space-y-2 rounded-lg border border-tp-hairline p-3">
+            <legend className="px-1 text-xs font-semibold text-tp-ink">Versions to share</legend>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="anonymous-scope" checked={!allVersions} onChange={() => setAllVersions(false)} />Only version {selected.version}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="anonymous-scope" checked={allVersions} onChange={() => setAllVersions(true)} />All visible versions</label>
+            {allVersions && <p className="text-xs text-tp-steel">Private versions stay hidden. New visible versions are included automatically.</p>}
+          </fieldset>
+          {step === 'private-version' && !allVersions && (
             <div className="rounded-lg border border-tp-hairline bg-tp-surface p-3">
               <p className="text-sm font-medium text-tp-ink">Version {selected.version} is private.</p>
               <p className="mt-1 text-xs text-tp-steel">
@@ -232,7 +241,7 @@ export default function AnonymousLinkDialog({
             </div>
           )}
 
-          {step === 'listed-warning' && (
+          {(step === 'listed-warning' || (step === 'private-version' && allVersions && !unlisted)) && (
             <div
               ref={alertRef}
               role="alertdialog"
@@ -263,7 +272,7 @@ export default function AnonymousLinkDialog({
             </div>
           )}
 
-          {step === 'ready' && !created && (
+          {(step === 'ready' || (step === 'private-version' && allVersions && unlisted)) && !created && (
             <button type="button" disabled={busy || full} onClick={create} className={primaryButton}>
               Create link
             </button>
@@ -316,7 +325,7 @@ export default function AnonymousLinkDialog({
                 {links.map(link => (
                   <li key={link.id} className="flex items-center justify-between gap-3 px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-tp-ink">Version {link.version}</p>
+                      <p className="text-xs font-medium text-tp-ink">{link.allVersions ? 'All visible versions' : `Version ${link.version}`}</p>
                       <p className="text-[11px] text-tp-steel">
                         Created {format(parseISO(link.createdAt), 'PP')}
                         {!link.active && ' · Suspended while the version is private'}
@@ -326,7 +335,7 @@ export default function AnonymousLinkDialog({
                       <button
                         type="button"
                         onClick={() => copy(link)}
-                        aria-label={`Copy the link to version ${link.version}`}
+                        aria-label={`Copy the link to ${link.allVersions ? 'all visible versions' : `version ${link.version}`}`}
                         title="Copy link"
                         className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-tp-surface hover:text-tp-ink"
                       >
@@ -335,7 +344,7 @@ export default function AnonymousLinkDialog({
                       <button
                         type="button"
                         onClick={() => revoke(link)}
-                        aria-label={`Revoke the link to version ${link.version}`}
+                        aria-label={`Revoke the link to ${link.allVersions ? 'all visible versions' : `version ${link.version}`}`}
                         title="Revoke link"
                         className="cursor-pointer rounded-md p-1.5 text-tp-steel transition-colors hover:bg-red-50 hover:text-red-500"
                       >

@@ -1,6 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
-// A link that shows one version of a pricing without naming who published it
+// A link that shows one version or all visible versions of a pricing without naming who published it
 // (see PricingAnonymousLinkService). Revoking a link deletes it, so a revoked
 // token and one that never existed are the same case.
 const pricingAnonymousLinkSchema = new Schema({
@@ -9,6 +9,7 @@ const pricingAnonymousLinkSchema = new Schema({
   pricingId: { type: Schema.Types.ObjectId, ref: 'PricingIdentity', required: true, immutable: true },
   // A fixed version: a paper cites a snapshot, not "the latest".
   versionId: { type: Schema.Types.ObjectId, ref: 'Pricing', required: true, immutable: true },
+  allVersions: { type: Boolean, default: false, immutable: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, immutable: true },
   createdAt: { type: Date, default: () => new Date(), immutable: true },
 });

@@ -148,11 +148,12 @@ pricingSchema.index({ yaml: 1 }, { name: 'yaml_1_ci', collation: YAML_PATH_COLLA
 async function dropOrphanLinks(ids: any[], connection: any, Model: any) {
   const Link = connection.models.PricingAnonymousLink ||
     connection.model('PricingAnonymousLink', PricingAnonymousLink.schema, 'pricingAnonymousLinks');
-  const links: any[] = await Link.find({ pricingId: { $in: ids } }).select('versionId').lean();
+  const links: any[] = await Link.find({ pricingId: { $in: ids } }).select('versionId pricingId allVersions').lean();
   if (!links.length) return;
   const alive = new Set((await Model.find({ _id: { $in: links.map(link => link.versionId) } }).select('_id').lean())
     .map((version: any) => String(version._id)));
-  const orphans = links.filter(link => !alive.has(String(link.versionId))).map(link => link._id);
+  const liveFamilies = new Set((await Model.find({ pricingId: { $in: ids } }).select('pricingId').lean()).map((version: any) => String(version.pricingId)));
+  const orphans = links.filter(link => link.allVersions ? !liveFamilies.has(String(link.pricingId)) : !alive.has(String(link.versionId))).map(link => link._id);
   if (orphans.length) await Link.deleteMany({ _id: { $in: orphans } });
 }
 

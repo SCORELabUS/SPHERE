@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import type { Pricing } from 'pricing4ts';
-import { PricingRenderer } from '../../../pricing-editor/components/pricing-renderer';
-import PricingTree from '../../components/pricing-tree';
-import YamlSourcePanel from '../../components/yaml-source-panel';
+import PricingCardOverview from '../../components/pricing-card-overview';
+import PricingCardTabs from '../../components/pricing-card-tabs';
+import PricingVersionsTab from '../../components/pricing-versions-tab';
+import PricingAnalyticsTab from '../../components/pricing-analytics-tab';
+import { ConfigurationExplorer } from '../../components/configuration-space-view';
 import RobotsMeta from '../../components/robots-meta';
 import { AnonymousPricingError, anonymousYamlUrl, fetchAnonymousPricing } from '../../api/anonymousLinksApi';
 import { applyVariablesToYaml, parsePricingText } from '../../utils/pricing-text';
 import { hasAnalytics } from '../../../core/utils/pricing-analytics';
 import type { AnonymousPricing } from '../../types/anonymous-links';
-import type { TreeAnalytics } from '../../types/card';
+import type { Tab, TreeAnalytics, VersionData } from '../../types/card';
 
 type State =
   | { status: 'loading' }
@@ -22,7 +24,7 @@ type State =
 const formatPrice = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : '—');
 
 /**
- * What an anonymous link shows (`/a/:token`): one version of a pricing and
+ * What an anonymous link shows (`/a/:token`): one or all visible versions of a pricing and
  * nothing about who published it. It lives outside the app layout, asks the
  * API only for this token (without credentials or Referer), keeps nothing in
  * the recent items and never navigates elsewhere, so its URL stays the link.
@@ -31,11 +33,25 @@ export default function AnonymousPricingPage() {
   const { token = '' } = useParams<{ token: string }>();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [selectedVersion, setSelectedVersion] = useState<string>();
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const loadConfigurations = useCallback(async (limit: number, offset: number) => {
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (selectedVersion) query.set('version', selectedVersion);
+    const response = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/anonymous-pricings/${encodeURIComponent(token)}/configuration-space?${query}`, {
+      credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store',
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Could not load configuration space');
+    return body;
+  }, [token, selectedVersion]);
 
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: 'loading' });
-    fetchAnonymousPricing(token, controller.signal)
+    fetchAnonymousPricing(token, controller.signal, selectedVersion)
       .then(async data => {
         let pricing: Pricing | null = null;
         let errors: string[] = [];
@@ -53,7 +69,7 @@ export default function AnonymousPricingPage() {
         else setState({ status: 'error' });
       });
     return () => controller.abort();
-  }, [token, attempt]);
+  }, [token, attempt, selectedVersion]);
 
   const applyVariables = useCallback(async (variables: Record<string, unknown>) => {
     if (state.status !== 'ready') return;
@@ -132,7 +148,7 @@ export default function AnonymousPricingPage() {
                 </p>
               </div>
               <a
-                href={anonymousYamlUrl(token)}
+                href={anonymousYamlUrl(token, selectedVersion)}
                 rel="noreferrer"
                 referrerPolicy="no-referrer"
                 download
@@ -155,21 +171,28 @@ export default function AnonymousPricingPage() {
               ))}
             </div>
 
-            <div className="flex flex-col gap-6 lg:flex-row">
-              <section className="min-w-0 flex-1 rounded-xl border border-tp-hairline bg-tp-canvas p-4">
-                {state.pricing ? (
-                  <PricingRenderer pricing={state.pricing} errors={state.errors} onApplyVariables={applyVariables} />
-                ) : (
-                  <div className="flex h-64 items-center justify-center text-sm text-tp-steel">
-                    Could not load pricing preview
-                  </div>
-                )}
-              </section>
-              <aside className="w-full space-y-4 lg:w-[360px] lg:shrink-0">
-                {tree && <PricingTree analytics={tree} />}
-                <YamlSourcePanel yamlText={state.yaml} />
-              </aside>
-            </div>
+            <PricingCardTabs tab={tab} setTab={setTab} showSettingsTab={false} showVersions={state.data.allVersions === true} />
+            {tab === 'overview' && <PricingCardOverview pricing={state.pricing} errors={state.errors} handleApplyVariables={applyVariables} aSafe={tree} yamlText={state.yaml} hasVersion />}
+            {tab === 'analytics' && <PricingAnalyticsTab
+              singleVersion={!state.data.allVersions}
+              chartData={(state.data.allVersions ? state.data.versions ?? [] : [state.data]).filter(v => hasAnalytics(v.analytics) && (!dateFrom || v.createdAt.slice(0, 10) >= dateFrom) && (!dateTo || v.createdAt.slice(0, 10) <= dateTo)).slice().reverse().map(v => ({
+                date: new Date(v.createdAt).toLocaleDateString(), minPrice: v.analytics.minSubscriptionPrice ?? 0,
+                maxPrice: v.analytics.maxSubscriptionPrice ?? 0, avgPrice: ((v.analytics.minSubscriptionPrice ?? 0) + (v.analytics.maxSubscriptionPrice ?? 0)) / 2,
+                configs: v.analytics.configurationSpaceSize ?? 0, plans: v.analytics.numberOfPlans ?? 0,
+                features: v.analytics.numberOfFeatures ?? 0, addOns: v.analytics.numberOfAddOns ?? 0, usageLimits: v.analytics.numberOfUsageLimits ?? 0,
+              }))}
+              emptyMessage={analytics ? undefined : 'Analytics are not available for this version.'}
+              dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo}
+            />}
+            {tab === 'config-space' && ((analytics?.configurationSpaceSize ?? 0) > 2000
+              ? <p className="rounded-xl border border-tp-hairline p-6 text-sm text-tp-steel">The explorer is only available for pricing with 2,000 configurations or fewer.</p>
+              : <ConfigurationExplorer loadConfigurations={loadConfigurations} pageSize={2000} />)}
+            {tab === 'versions' && state.data.allVersions && <PricingVersionsTab
+              readOnly versions={(state.data.versions ?? []).map(v => ({ id: v.version, version: v.version, createdAt: v.createdAt, analytics: v.analytics, yaml: anonymousYamlUrl(token, v.version), private: false, collection: null, forkedFrom: null }))}
+              currentVersion={{ id: state.data.version, version: state.data.version, createdAt: state.data.createdAt, analytics: state.data.analytics, yaml: '', private: false, collection: null, forkedFrom: null }}
+              canDelete={false} canChangeVisibility={false} onSelect={(v: VersionData) => { setSelectedVersion(v.version); setTab('overview'); }}
+              onDownload={() => {}} onOpenInEditor={() => {}} onCopyLink={() => {}} onDelete={() => {}} onToggleVisibility={() => {}} onViewOrigin={() => {}}
+            />}
           </>
         )}
       </main>

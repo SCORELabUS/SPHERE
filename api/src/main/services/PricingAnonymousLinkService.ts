@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import mongoose from 'mongoose';
+import { PricingService as PricingAnalytics, retrievePricingFromText } from 'pricing4ts/server';
 import container from '../config/container';
 import PricingAnonymousLinkRepository, {
   ShareableVersion,
@@ -36,7 +37,7 @@ interface PricingFamily {
 }
 
 /**
- * Anonymous links show one version of a pricing to anyone holding a random
+ * Anonymous links show one version or all visible versions of a pricing to anyone holding a random
  * token, without anything that names who published it. Who may edit the
  * pricing (`checkPricingPut`, with its collection's PUT authority) creates,
  * lists and revokes them; a private version is never shared this way, and a
@@ -65,13 +66,14 @@ class PricingAnonymousLinkService {
     return {
       links: links.flatMap(link => {
         const version = versions.get(String(link.versionId));
+        if (link.allVersions) return [{ ...this._view(link, version ?? { version: '', private: false }), active: family.pricing.versions.some((item: { private?: boolean }) => item.private !== true) }];
         return version ? [this._view(link, version)] : [];
       }),
       limit: MAX_ANONYMOUS_LINKS_PER_PRICING,
     };
   }
 
-  async create(reqUser: LeanUser, versionId: unknown): Promise<AnonymousLinkView> {
+  async create(reqUser: LeanUser, versionId: unknown, allVersions = false): Promise<AnonymousLinkView> {
     const version: any = typeof versionId === 'string' && mongoose.isValidObjectId(versionId)
       ? await PricingMongoose.findById(versionId).select('pricingId version private').lean()
       : null;
@@ -94,7 +96,7 @@ class PricingAnonymousLinkService {
       for (let attempt = 0; ; attempt++) {
         try {
           const link = await this.repository.create({
-            token: this.generateToken(), pricingId: family.pricingId, versionId: version._id, createdBy: reqUser.id,
+            token: this.generateToken(), pricingId: family.pricingId, versionId: version._id, allVersions, createdBy: reqUser.id,
           });
           // The version may have been deleted (its cleanup ran before the link
           // existed) or made private since it was read: take the link back, so it
@@ -133,11 +135,11 @@ class PricingAnonymousLinkService {
    * version, a deleted pricing, an unreadable file), so all of them answer
    * alike.
    */
-  async resolve(token: unknown): Promise<ResolvedAnonymousLink | null> {
+  async resolve(token: unknown, label?: string): Promise<ResolvedAnonymousLink | null> {
     if (typeof token !== 'string' || !ANONYMOUS_TOKEN_PATTERN.test(token)) return null;
     const link = await this.repository.findByToken(token);
     if (!link) return null;
-    const version = await this.repository.findShareableVersion(link);
+    const version = await this.repository.findShareableVersion(link, label);
     if (!version) return null;
     let file: Buffer;
     try {
@@ -147,7 +149,44 @@ class PricingAnonymousLinkService {
     }
     // A revocation or a visibility change while the file was read must not release it.
     if (!(await this.repository.isStillShareable(link, version))) return null;
-    return { pricing: this._publicView(version, file), file };
+    const pricing = this._publicView(version, file);
+    if (link.allVersions) {
+      const versions = await this.repository.visibleVersions(link);
+      // Recheck every version after reading its metadata: privacy may change during the request.
+      const visible = [];
+      for (const candidate of versions) {
+        if (await this.repository.isStillShareable(link, candidate)) {
+          const view = this._publicView(candidate, Buffer.alloc(0));
+          visible.push({ version: view.version, createdAt: view.createdAt, analytics: view.analytics });
+        }
+      }
+      if (!(await this.repository.isStillShareable(link, version))) return null;
+      pricing.allVersions = true;
+      pricing.versions = visible;
+    }
+    return { pricing, file };
+  }
+
+  async configurationSpace(token: unknown, limit: number, offset: number, label?: string) {
+    const resolved = await this.resolve(token, label);
+    if (!resolved) return null;
+    if ((resolved.pricing.analytics.configurationSpaceSize ?? 0) > 2000) throw new Error('Configuration space too large');
+    let configurations;
+    let failure: Error | undefined;
+    try {
+      configurations = await new PricingAnalytics(retrievePricingFromText(resolved.file.toString('utf8'))).getConfigurationSpace();
+    } catch (error) {
+      // Do not disclose server paths or other internal details through a public link.
+      failure = new Error(/dead.?feature/i.test(String(error)) ? 'DeadFeatureError' : 'Configuration space could not be calculated');
+    }
+    const current = await this.resolve(token, label);
+    if (!current || !current.file.equals(resolved.file)) return null;
+    if (failure) throw failure;
+    if (!configurations || configurations.length > 2000) throw new Error('Configuration space too large');
+    return {
+      configurationSpace: configurations.slice(offset, offset + limit).map(({ selectedPlan, selectedAddons, subscriptionFeatures, subscriptionUsageLimits, subscriptionCost }) => ({ selectedPlan, selectedAddons, subscriptionFeatures, subscriptionUsageLimits, subscriptionCost })),
+      configurationSpaceSize: configurations.length,
+    };
   }
 
   generateToken(): string {
@@ -158,6 +197,7 @@ class PricingAnonymousLinkService {
     return {
       id: String(link._id),
       token: link.token,
+      ...(link.allVersions ? { allVersions: true } : {}),
       versionId: String(link.versionId),
       version: version.version,
       createdAt: link.createdAt,

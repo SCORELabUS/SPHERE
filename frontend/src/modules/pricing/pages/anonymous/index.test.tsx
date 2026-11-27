@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   addRecentPricing: vi.fn(),
   renderer: vi.fn(),
   tree: vi.fn(),
+  analytics: vi.fn(),
 }));
 const TOKEN = 'Abc_DEF-ghi_jklmnopqrstuvwxyz012';
 
@@ -23,6 +24,8 @@ vi.mock('../../../pricing-editor/components/pricing-renderer', () => ({
     return <div data-testid="renderer">{props.pricing.saasName}</div>;
   },
 }));
+vi.mock('../../components/pricing-analytics-tab', () => ({ default: (props: { singleVersion: boolean }) => { mocks.analytics(props); return <div>Analytics content</div>; } }));
+vi.mock('../../components/configuration-space-view', () => ({ ConfigurationExplorer: ({ loadConfigurations }: { loadConfigurations: (limit: number, offset: number) => Promise<unknown> }) => <button onClick={() => loadConfigurations(2000, 0)}>Load configurations</button> }));
 vi.mock('../../components/pricing-tree', () => ({
   default: (props: { analytics: unknown }) => {
     mocks.tree(props);
@@ -51,7 +54,7 @@ type Node = ReactTestRenderer['root'];
 const textOf = (node: Node): string => node.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
 
 async function render(response: Response) {
-  const request = vi.fn(async () => response);
+  const request = vi.fn(async () => response.clone());
   vi.stubGlobal('fetch', request);
   let view: ReactTestRenderer;
   await act(async () => {
@@ -70,14 +73,44 @@ describe('Anonymous pricing page', () => {
   it('shows the cards, the figures, the analytics and the YAML of the version, with its label and date (CA-14.1, CA-14.3)', async () => {
     const { view } = await render(Response.json(shown));
     const content = textOf(view.root);
-    expect(view.root.findByProps({ 'data-testid': 'renderer' })).toBeDefined();
+    expect(view.root.findAllByProps({ 'data-testid': 'renderer' }).length).toBeGreaterThan(0);
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Show details')!.props.onClick());
     expect(mocks.renderer.mock.lastCall?.[0].pricing.saasName).toBe('Acme Cloud');
-    expect(view.root.findByProps({ 'data-testid': 'tree' })).toBeDefined();
-    expect(textOf(view.root.findByProps({ 'data-testid': 'yaml' }))).toBe(shown.yaml);
+    expect(view.root.findAllByProps({ 'data-testid': 'tree' }).length).toBeGreaterThan(0);
+    expect(textOf(view.root.findAllByProps({ 'data-testid': 'yaml' })[0])).toBe(shown.yaml);
     for (const words of ['Configurations', '12', 'Min price', '$0.00', 'Max price', '$49.50', 'Version 2024.1', 'Released']) {
       expect(content).toContain(words);
     }
     expect(textOf(view.root.findByType('h1'))).toBe('Acme Cloud');
+  });
+
+  it('hides Versions and shows metrics for a link to one version', async () => {
+    const { view, request } = await render(Response.json(shown));
+    expect(textOf(view.root)).not.toContain('Versions');
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Analytics')!.props.onClick());
+    expect(mocks.analytics.mock.lastCall?.[0].singleVersion).toBe(true);
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Configuration Space')!.props.onClick());
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Load configurations')!.props.onClick());
+    const [url, init] = request.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toContain(`/anonymous-pricings/${TOKEN}/configuration-space?`);
+    expect(init.credentials).toBe('omit');
+    expect(init.referrerPolicy).toBe('no-referrer');
+    expect(textOf(view.root)).not.toContain('Settings');
+  });
+
+  it('shows the shared version list and charts when the link includes all versions', async () => {
+    const all = { ...shown, allVersions: true, versions: [{ version: '2024.1', createdAt: shown.createdAt, analytics: shown.analytics }, { version: '2023', createdAt: '2023-01-01T00:00:00Z', analytics: shown.analytics }] };
+    const { view, request } = await render(Response.json(all));
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Analytics')!.props.onClick());
+    expect(mocks.analytics.mock.lastCall?.[0].singleVersion).toBe(false);
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Versions')!.props.onClick());
+    const download = view.root.findByProps({ 'aria-label': 'Download YAML for version 2023' });
+    expect(download.props.href).toContain(`/anonymous-pricings/${TOKEN}/yaml?version=2023`);
+    expect(download.props.referrerPolicy).toBe('no-referrer');
+    expect(download.findByType('svg')).toBeDefined();
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === '2023')!.props.onClick());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(String((request.mock.calls[1] as unknown as [string])[0])).toContain('version=2023');
   });
 
   it('asks the API only for this token, without credentials, and never moves elsewhere (CA-14.4, CA-16.6, CA-19.2)', async () => {
@@ -100,7 +133,7 @@ describe('Anonymous pricing page', () => {
   it('has nothing that names or leads to who published the pricing (CA-15.1-15.8)', async () => {
     const { view } = await render(Response.json(shown));
     const content = textOf(view.root);
-    for (const absent of ['Forked from', 'Follow', 'Fork', 'New version', 'Settings', 'Get pricing', 'Versions', 'Collection', 'Harvey', ORGANIZATION_ID, PRICING_ID, VERSION_ID]) {
+    for (const absent of ['Forked from', 'Follow', 'Fork', 'New version', 'Settings', 'Get pricing', 'Collection', 'Harvey', ORGANIZATION_ID, PRICING_ID, VERSION_ID]) {
       expect(content, absent).not.toContain(absent);
     }
     const forbidden = ['/pricings/', '/orgs/', '/collections/', '/p/', '/c/', '/static/', '/public/pricings/'];
@@ -127,6 +160,7 @@ describe('Anonymous pricing page', () => {
       analytics: { ...shown.analytics, organizationName: 'Secret Org' },
     };
     const { view } = await render(Response.json(leaky));
+    await act(async () => view.root.findAllByType('button').find(node => textOf(node) === 'Show details')!.props.onClick());
     const content = textOf(view.root);
     for (const absent of ['Secret Org', 'Secret Collection', 'Origin Org', 'Origin pricing', 'secret-owner', ORGANIZATION_ID, PRICING_ID, VERSION_ID]) {
       expect(content, absent).not.toContain(absent);

@@ -25,6 +25,10 @@ const loadFileRoutes = function (app: express.Application) {
     .get(controller.show);
 
   app
+    .route(baseUrl + '/anonymous-pricings/:token/configuration-space')
+    .get(controller.configurationSpace);
+
+  app
     .route(baseUrl + '/anonymous-pricings/:token/yaml')
     .get(controller.yaml);
 };
