@@ -1,5 +1,3 @@
-const API_BASE = import.meta.env.VITE_API_URL.replace('/api/v1', '');
-
 /**
  * Where the browser can read a version's YAML. The API stamps absolute URLs
  * with its own `SERVER_HOST`, which the browser cannot always reach (local
@@ -8,11 +6,14 @@ const API_BASE = import.meta.env.VITE_API_URL.replace('/api/v1', '');
  * every environment, so only the path is kept.
  */
 export function versionYamlUrl(yaml: string): string {
-  if (!yaml.startsWith('http')) return `${import.meta.env.VITE_API_URL}${yaml}`;
+  // Read on each call, not when the module loads: importing this module must
+  // not fail where VITE_API_URL is not set (e.g. tests of pages that use it).
+  const apiUrl: string = import.meta.env.VITE_API_URL ?? '';
+  if (!yaml.startsWith('http')) return `${apiUrl}${yaml}`;
   try {
     const { pathname } = new URL(yaml);
     return pathname.startsWith('/static/') || pathname.startsWith('/api/v1/')
-      ? `${API_BASE}${pathname}`
+      ? `${apiUrl.replace('/api/v1', '')}${pathname}`
       : yaml;
   } catch {
     return yaml;
