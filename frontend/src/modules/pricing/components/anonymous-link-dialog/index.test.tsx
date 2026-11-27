@@ -94,6 +94,15 @@ describe('AnonymousLinkDialog', () => {
     expect(textOf(view.root.findByProps({ id: 'anonymous-link-title' }))).toBe('Anonymous link · version v1');
   });
 
+  it('creates a link for all visible versions when selected', async () => {
+    const { view } = await render({ unlisted: true, versions: [version('1', false), version('2', true)] });
+    const all = view.root.findAllByType('input').find(node => node.props.type === 'radio' && !node.props.checked)!;
+    await act(async () => all.props.onChange());
+    expect(text(view)).toContain('Private versions stay hidden');
+    await click(button(view, 'Create link'));
+    expect(api.createAnonymousLink).toHaveBeenCalledWith('1', true);
+  });
+
   it('keeps its width explicit, since the theme turns max-w-lg into 20px (L-006)', async () => {
     const { view } = await render();
     const classes = view.root.findByProps({ role: 'dialog' }).props.className.split(' ');

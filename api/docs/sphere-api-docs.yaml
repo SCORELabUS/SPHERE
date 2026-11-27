@@ -6793,9 +6793,10 @@ paths:
                 $ref: '#/components/schemas/Error'
     post:
       operationId: createPricingAnonymousLink
-      summary: Create an anonymous link to a version
+      summary: Create an anonymous link to one version or all visible versions
       description: |
-        Creates a link that shows one version of a pricing (always the same one) to anyone, at
+        Creates a link that shows one version of a pricing, or all its visible versions when
+        `allVersions` is true (including future visible versions; private versions are excluded), at
         `/a/{token}` in the web app and `GET /anonymous-pricings/{token}` here. The token is 32
         random base64url characters (192 bits), never derived from an id. Creating a link does not
         change the pricing, so its `ETag` stays the same.
@@ -6821,7 +6822,11 @@ paths:
               properties:
                 versionId:
                   type: string
-                  description: The id of the version to show.
+                  description: The id of a visible version; fixes the version unless allVersions is true.
+                allVersions:
+                  type: boolean
+                  default: false
+                  description: Share all visible versions, including future ones; private versions are excluded.
       responses:
         '201':
           description: The link created
@@ -6891,8 +6896,10 @@ paths:
       operationId: getAnonymousPricing
       summary: Read what an anonymous link shows
       description: |
-        The version a link shows, with exactly these keys: its label, release date, analytics
-        (counts and prices) and the text of its YAML file as stored. Nothing names who published
+        The selected version's label, release date, analytics and stored YAML. Links to all visible
+        versions also include `allVersions` and the visible versions' labels, dates and analytics.
+        The optional `version` query selects one of them; otherwise the newest visible version is shown.
+        Nothing names who published
         it: no organization, collection, author, id, file path or origin of a fork.
 
         **Authentication**: none. Credentials are dropped before authentication, so the answer is
@@ -6906,6 +6913,10 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/AnonymousToken'
+        - in: query
+          name: version
+          description: Version label to select on an all-versions link.
+          schema: { type: string }
       responses:
         '200':
           description: What the link shows
@@ -6961,6 +6972,49 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Link not available
+  /anonymous-pricings/{token}/configuration-space:
+    get:
+      operationId: getAnonymousConfigurationSpace
+      summary: Explore the version shared by an anonymous link
+      description: Calculates configurations from the shared YAML only. Credentials are ignored; the link is checked again after calculation.
+      tags: [Anonymous Links]
+      security:
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/AnonymousToken'
+        - in: query
+          name: version
+          description: Version label to select on an all-versions link.
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Configurations and their total count
+          headers:
+            Cache-Control: { $ref: '#/components/headers/AnonymousCacheControl' }
+            X-Robots-Tag: { $ref: '#/components/headers/AnonymousRobotsTag' }
+            Referrer-Policy: { $ref: '#/components/headers/AnonymousReferrerPolicy' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configurationSpace, configurationSpaceSize]
+                properties:
+                  configurationSpace: { type: array, items: { type: object } }
+                  configurationSpaceSize: { type: integer }
+        '404':
+          description: The link shows nothing
+          headers:
+            Cache-Control: { $ref: '#/components/headers/AnonymousCacheControl' }
+            X-Robots-Tag: { $ref: '#/components/headers/AnonymousRobotsTag' }
+            Referrer-Policy: { $ref: '#/components/headers/AnonymousReferrerPolicy' }
+        '400':
+          description: Invalid pagination or the configuration space cannot be calculated
   /anonymous-pricings/{token}/yaml:
     get:
       operationId: downloadAnonymousPricing
@@ -6974,6 +7028,10 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/AnonymousToken'
+        - in: query
+          name: version
+          description: Version label to select on an all-versions link.
+          schema: { type: string }
       responses:
         '200':
           description: The YAML file
@@ -7802,9 +7860,12 @@ components:
           description: 32 random base64url characters; the link is `/a/{token}` in the web app.
         versionId:
           type: string
+        allVersions:
+          type: boolean
+          description: True when this link includes all visible versions.
         version:
           type: string
-          description: The label of the version it shows.
+          description: The label of the original version.
         createdAt:
           $ref: '#/components/schemas/Date'
         active:
@@ -7841,7 +7902,20 @@ components:
             type: number
         yaml:
           type: string
-          description: The text of the version's YAML file as stored, comments included.
+          description: The text of the selected version's YAML file as stored, comments included.
+        allVersions:
+          type: boolean
+          description: Present and true for links sharing all visible versions.
+        versions:
+          type: array
+          description: Visible version labels, dates and analytics; no internal identifiers.
+          items:
+            type: object
+            properties:
+              version: { type: string }
+              createdAt: { $ref: '#/components/schemas/Date' }
+              analytics: { type: object, additionalProperties: { type: number } }
+            required: [version, createdAt, analytics]
       required: [version, createdAt, analytics, yaml]
 
     PermanentLinkLocation:

@@ -180,6 +180,7 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   // authentication). PricingAnonymousLinkService answers alike for every token
   // that shows nothing.
   { path: '/anonymous-pricings/*', methods: ['GET'], isPublic: true },
+  { path: '/anonymous-pricings/*/configuration-space', methods: ['GET'], isPublic: true },
   { path: '/anonymous-pricings/*/yaml', methods: ['GET'], isPublic: true },
 
   // Managing the anonymous links of a pricing. PricingAnonymousLinkService checks

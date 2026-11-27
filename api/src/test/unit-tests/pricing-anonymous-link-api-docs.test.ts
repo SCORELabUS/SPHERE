@@ -38,6 +38,7 @@ describe('Anonymous link routes', () => {
     expect(routes.map(route => `${route.method.toUpperCase()} ${route.express}`).sort()).toEqual([
       'DELETE /pricing-anonymous-links/:linkId',
       'GET /anonymous-pricings/:token',
+      'GET /anonymous-pricings/:token/configuration-space',
       'GET /anonymous-pricings/:token/yaml',
       'GET /pricing-anonymous-links',
       'POST /pricing-anonymous-links',

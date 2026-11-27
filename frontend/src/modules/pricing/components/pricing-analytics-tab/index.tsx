@@ -20,6 +20,7 @@ interface ChartEntry {
 
 interface PricingAnalyticsTabProps {
   chartData: ChartEntry[];
+  singleVersion?: boolean;
   // Shown instead of the default message when there is no data at all.
   emptyMessage?: string;
   dateFrom: string;
@@ -30,6 +31,7 @@ interface PricingAnalyticsTabProps {
 
 export default function PricingAnalyticsTab({
   chartData,
+  singleVersion = false,
   emptyMessage,
   dateFrom,
   dateTo,
@@ -42,6 +44,12 @@ export default function PricingAnalyticsTab({
         <p className="text-sm text-tp-steel">{emptyMessage ?? 'No data available for the selected date range.'}</p>
       </div>
     );
+  }
+
+  if (singleVersion) {
+    const data = chartData[0];
+    const metrics: Array<[string, number]> = [['Configuration Space', data.configs], ['Plans', data.plans], ['Features', data.features], ['Add-Ons', data.addOns], ['Usage Limits', data.usageLimits], ['Min price', data.minPrice], ['Max price', data.maxPrice]];
+    return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{metrics.map(([label, value]) => <div key={label} className="rounded-xl border border-tp-hairline bg-tp-canvas p-4"><p className="text-xs text-tp-steel">{label}</p><p className="mt-1 text-xl font-semibold text-tp-ink">{value.toLocaleString()}</p></div>)}</div>;
   }
 
   return (

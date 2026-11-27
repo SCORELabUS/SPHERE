@@ -30,6 +30,7 @@ class PricingAnonymousLinkController {
     this.revoke = this.revoke.bind(this);
     this.show = this.show.bind(this);
     this.yaml = this.yaml.bind(this);
+    this.configurationSpace = this.configurationSpace.bind(this);
   }
 
   async list(req: any, res: any) {
@@ -42,7 +43,7 @@ class PricingAnonymousLinkController {
 
   async create(req: any, res: any) {
     try {
-      res.status(201).json(await this.service.create(req.user, req.body?.versionId));
+      res.status(201).json(await this.service.create(req.user, req.body?.versionId, req.body?.allVersions === true));
     } catch (err: any) {
       this.sendError(res, err);
     }
@@ -60,7 +61,7 @@ class PricingAnonymousLinkController {
   async show(req: any, res: any) {
     setPublicHeaders(res);
     try {
-      const resolved = await this.service.resolve(req.params.token);
+      const resolved = await this.service.resolve(req.params.token, typeof req.query.version === 'string' ? req.query.version : undefined);
       if (!resolved) return res.status(404).json(UNAVAILABLE);
       res.json(resolved.pricing);
     } catch {
@@ -68,10 +69,25 @@ class PricingAnonymousLinkController {
     }
   }
 
+  async configurationSpace(req: any, res: any) {
+    setPublicHeaders(res);
+    const limit = Number(req.query.limit ?? 200);
+    const offset = Number(req.query.offset ?? 0);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 2000 || !Number.isInteger(offset) || offset < 0) return res.status(400).json({ error: 'Invalid pagination' });
+    try {
+      const result = await this.service.configurationSpace(req.params.token, limit, offset, typeof req.query.version === 'string' ? req.query.version : undefined);
+      if (!result) return res.status(404).json(UNAVAILABLE);
+      return res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      return res.status(400).json({ error: message === 'DeadFeatureError' ? message : 'Configuration space could not be calculated' });
+    }
+  }
+
   async yaml(req: any, res: any) {
     setPublicHeaders(res);
     try {
-      const resolved = await this.service.resolve(req.params.token);
+      const resolved = await this.service.resolve(req.params.token, typeof req.query.version === 'string' ? req.query.version : undefined);
       if (!resolved) return res.status(404).json(UNAVAILABLE);
       res.setHeader('Content-Type', 'application/yaml; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${downloadName(resolved.pricing.version)}"`);

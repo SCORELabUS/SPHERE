@@ -12,6 +12,7 @@ const repository = {
   findByToken: vi.fn(),
   findShareableVersion: vi.fn(),
   isStillShareable: vi.fn(),
+  visibleVersions: vi.fn(),
 };
 vi.mock('../../main/config/container', () => ({
   default: { resolve: (name: string) => (name === 'pricingAnonymousLinkRepository' ? repository : {}) },
@@ -26,7 +27,7 @@ const credentials = () => ({ authorization: 'Bearer token', 'x-api-key': 'sk-key
 
 describe('anonymousAccess', () => {
   it('drops authorization, x-api-key and cookie under /anonymous-pricings/ only, whatever the case', () => {
-    for (const url of ['/api/v1/anonymous-pricings/abc', '/api/v1/anonymous-pricings/abc/yaml', '/API/V1/Anonymous-Pricings/abc']) {
+    for (const url of ['/api/v1/anonymous-pricings/abc', '/api/v1/anonymous-pricings/abc/yaml', '/api/v1/anonymous-pricings/abc/configuration-space', '/API/V1/Anonymous-Pricings/abc']) {
       const req: any = { path: url, headers: credentials() };
       const next = vi.fn();
       anonymousAccess(req, {} as any, next);
@@ -102,6 +103,20 @@ describe('PricingAnonymousLinkService', () => {
     service.readFile = vi.fn().mockResolvedValue(Buffer.from('saasName: x\n'));
     repository.isStillShareable.mockResolvedValue(false);
     expect(await service.resolve('a'.repeat(32))).toBeNull();
+  });
+
+  it('lists only versions still shareable on an all-versions link, without ids', async () => {
+    const service = new PricingAnonymousLinkService();
+    const version = { _id: 'v', version: '2024', createdAt: new Date(), yaml: 'one', analytics: { numberOfPlans: 2 } };
+    const hidden = { ...version, _id: 'hidden', version: '2023' };
+    repository.findByToken.mockResolvedValue({ _id: 'l', pricingId: 'p', versionId: 'v', allVersions: true });
+    repository.findShareableVersion.mockResolvedValue(version);
+    repository.visibleVersions.mockResolvedValue([version, hidden]);
+    repository.isStillShareable.mockImplementation(async (_link, candidate) => candidate._id !== 'hidden');
+    service.readFile = vi.fn().mockResolvedValue(Buffer.from('yaml'));
+    const resolved = await service.resolve('a'.repeat(32), '2024');
+    expect(repository.findShareableVersion).toHaveBeenCalledWith(expect.anything(), '2024');
+    expect(resolved?.pricing.versions).toEqual([{ version: '2024', createdAt: version.createdAt, analytics: { numberOfPlans: 2 } }]);
   });
 
   it('keeps to the closed list of keys and analytics, and resolves a 5 MiB file in under a second', async () => {
