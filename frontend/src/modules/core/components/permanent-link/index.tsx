@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { permanentLinkUrl } from '../../utils/permanent-link';
 
 export default function PermanentLink({ kind, id }: { kind: 'p' | 'c'; id?: string }) {
   const [copied, setCopied] = useState(false);
   const [fallback, setFallback] = useState(false);
   if (!id) return null;
-  const url = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/${kind}/${id}`;
+  const url = permanentLinkUrl(kind, id);
   return <div className="text-sm">
     <button type="button" className="cursor-pointer text-tp-primary underline focus-visible:outline-2" onClick={async () => {
       try { await navigator.clipboard.writeText(url); setCopied(true); }

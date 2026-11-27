@@ -1,5 +1,16 @@
 import { OrgUserPermissionsContext } from "../../../../types/policies";
 
+/**
+ * A pricing anyone sees in a listing: its shown version is public and the
+ * pricing is not unlisted (a missing value means listed).
+ */
+export const LISTED_PUBLIC = { private: false, unlisted: { $ne: true } };
+
+/**
+ * What a listing shows a caller who is not OWNER/ADMIN of the organization:
+ * listed public pricings, and the pricings they may read the private versions
+ * of. With the empty context of the global search, only the listed public ones.
+ */
 export const considerUserPermissionsAggregator = (permissions: OrgUserPermissionsContext) => {
   return {
       $match: {
@@ -12,8 +23,8 @@ export const considerUserPermissionsAggregator = (permissions: OrgUserPermission
           // El slug de la colección está en las colecciones permitidas (de la misma organización)
           { $expr: grantedByKey('$collection.slug', permissions.collectionKeys, permissions.collections) },
 
-          // El pricing es público
-          { private: false },
+          // El pricing es público y aparece en los listados
+          LISTED_PUBLIC,
 
           // Está explícitamente en el array de slugs de pricings permitidos (de la misma organización)
           { $expr: grantedByKey('$slug', permissions.pricingKeys, permissions.pricings) },

@@ -112,6 +112,31 @@ describe('Organization read as one of its members', () => {
     expect(names(ownerOwn.body, 'pricings')).toContain(hidden.serviceName);
   });
 
+  it('respects unlisted pricing permissions in member previews', async () => {
+    const { owner, member, organizationId } = await setup();
+    const suffix = randomSuffix().toLowerCase();
+    const unlisted = await createPricingForOrganization({ organizationId, serviceName: `unlisted-${suffix}` });
+    await PricingMongoose.updateOne({ _id: unlisted.id }, { $set: { unlisted: true } });
+
+    const preview = () => get(viewPath(organizationId, member.id, 'pricings'), { token: owner.token });
+    const plain = await get(viewPath(organizationId, 'any', 'pricings'), { token: owner.token });
+    expect(plain.status).toBe(200);
+    expect(names(plain.body, 'pricings')).not.toContain(unlisted.serviceName);
+    const before = await preview();
+    expect(before.status).toBe(200);
+    expect(names(before.body, 'pricings')).not.toContain(unlisted.serviceName);
+
+    await createEntityScopedPermission(member.id, organizationId, unlisted.serviceName, 'pricing', { ...NONE, GET: true });
+    const after = await preview();
+    const memberOwn = await get(`${BASE_PATH}/pricings/${organizationId}`, { token: member.token });
+    expect(after.status).toBe(200);
+    expect(memberOwn.status).toBe(200);
+    expect(names(after.body, 'pricings')).toEqual(names(memberOwn.body, 'pricings'));
+    expect(names(after.body, 'pricings')).toContain(unlisted.serviceName);
+    const plainAfter = await get(viewPath(organizationId, 'any', 'pricings'), { token: owner.token });
+    expect(names(plainAfter.body, 'pricings')).not.toContain(unlisted.serviceName);
+  });
+
   it('applies the listing filters to the pricings the member gets', async () => {
     const { owner, member, organizationId, granted } = await setup();
 
