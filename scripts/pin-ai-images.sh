@@ -4,10 +4,10 @@
 # It resolves each image's digest in GHCR and rewrites the Docker Compose
 # files as ghcr.io/scorelabus/<service>:<version>@sha256:<digest>.
 #
-#   scripts/pin-ai-images.sh 1.2.1
+#   scripts/pin-ai-images.sh 1.3.0
 set -euo pipefail
 
-VERSION="${1:?usage: $0 <version, e.g. 1.2.0>}"
+VERSION="${1:?usage: $0 <version, e.g. 1.3.0>}"
 VERSION="${VERSION#v}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OWNER="scorelabus"
