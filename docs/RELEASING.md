@@ -5,7 +5,7 @@ This guide outlines the process for releasing a new version of SPHERE.
 ## Prerequisites (One-Time Setup)
 
 > [!NOTE]
-> If your repository already has the changelog GitHub Action configured, skip directly to [Release process](#release-process).
+> If your repository already has the changelog GitHub Action configured, skip directly to [Release checklist](#release-checklist).
 
 Add a workflow file (e.g., `.github/workflows/changelog.yml`) to your repository with the following configuration:
 ```yaml
@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Generate changelog
-        uses: SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main
+        uses: SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@0f7adf2b4d69853401a753c213b322cebd6f3802 # v1.3.0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
 ```
@@ -36,7 +36,7 @@ jobs:
 > [!NOTE]
 > To use `sphere-changelog` action, you *MUST* configure your workflow with at least `contents: write` in `permissions`.
 
-Read the [usage guide](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/.github/actions/sphere-changelog/README.md) to configure `SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main` properly.
+Read the [usage guide](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process/tree/main/.github/actions/sphere-changelog/README.md) to configure the action properly. Pin it to the commit of a PIIP release, as above, rather than to a branch.
 
 Commit and push the workflow:
 ```bash
@@ -45,39 +45,59 @@ git commit -m "feat: add sphere-changelog workflow"
 git push
 ```
 
-## Pin the AI services
+## Release checklist
 
-HARVEY, A-MINT, the analysis engines and the pricing MCP server come from
-[SCORELabUS/Pricing-Intelligence-Interpretation-Process](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process)
-and are pinned by version and digest in the Docker Compose files. Before tagging a SPHERE release,
-check that they point to the release of that repository you want to ship. If they do not, pin it
-(the GHCR packages must be public):
+A release ships the exact builds it was tested with: every image is pinned by version, and the AI services also by digest. Never ship a release with floating tags such as `main` or `latest`.
+
+### 1. Prepare `develop`
+
+1. **Bump the version** in `package.json`, `api/package.json` and `frontend/package.json`, e.g. `chore(release): bump version to X.Y.Z`.
+
+2. **Pin the AI services.** HARVEY, A-MINT, the analysis engines and the pricing MCP server come from
+   [PIIP](https://github.com/SCORELabUS/Pricing-Intelligence-Interpretation-Process) (Pricing Intelligence Interpretation Process).
+   Check that the Compose files point to the PIIP release you want to ship. If they do not, pin it
+   (the GHCR packages must be public); the script resolves the digests and updates the four Compose files:
+
+   ```bash
+   scripts/pin-ai-images.sh 1.3.0
+   git add docker && git commit -m "chore(docker): pin AI services to 1.3.0"
+   ```
+
+   Then update the PIIP version named in the README's [AI services](../README.md#ai-services) section.
+
+3. **Pin the self-hosting kit to this release.** `docker/self-hosted` falls back to the release it ships with:
+
+   ```bash
+   sed -i.bak -E 's/(sphere-(api|client):\$\{SPHERE_VERSION:-)[0-9.]+/\1X.Y.Z/' docker/self-hosted/docker-compose.yml && rm docker/self-hosted/docker-compose.yml.bak
+   ```
+
+4. **Check that nothing floats.** This must print nothing:
+
+   ```bash
+   git grep -nE 'image: [^@]*:(main|latest)\b|image: [^:@]+$|@main\b' -- docker .github
+   ```
+
+### 2. Promote `develop` to `main`
+
+Open a pull request from `develop` to `main` titled `Release X.Y.Z`, and merge it once CI passes.
+
+### 3. Tag the release
+
+Create and push a Git tag on `main` to trigger the `Generate changelog` workflow, which creates a draft release with a `changelog-<tag>.json` asset.
 
 ```bash
-scripts/pin-ai-images.sh 1.2.1
-git add docker && git commit -m "chore(docker): pin AI services to 1.2.1"
+git checkout main && git pull
+git tag -a -m "Release X.Y.Z of SPHERE" vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-Never ship a release with floating tags such as `main` or `latest`.
+The changelog is built from the [Conventional Commits](CONTRIBUTING.md#commit-messages) since the previous tag, so keep commit messages to those conventions.
 
-## Release process
+### 4. Publish it
 
-Create and push a Git tag to trigger the `Generate changelog` workflow, which automatically creates a draft release with a `changelog-<tag>.json` asset.
+Review the draft release, name it `SPHERE X.Y.Z` and publish it. Publishing runs the `Publish Docker images` workflow, which builds `ghcr.io/scorelabus/sphere-api` and `sphere-client` tagged `X.Y.Z` and `latest`.
 
-Create a tag in your local repository (`git tag -a -m <msg> <tag>`):
-```bash
-git tag -a -m "Release X.X.X of ACME repository" vX.X.X
-```
-
-Push and upload the tag to the remote repository:
-```bash
-git push
-git push origin vX.X.X
-```
-
-The next step is running a build script to aggregate all generated assets into SPHERE.
-
-### Rebuild and Redeploy the Application
+### 5. Rebuild and redeploy
 
 To execute the build script that aggregates the changelogs, store a GitHub fine-grained personal access token
 in the `docker/gh_pat.txt` file.

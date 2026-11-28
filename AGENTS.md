@@ -46,7 +46,7 @@ cd api && npx vitest --run --test-name-pattern "<pattern>"
 
 ## Self-hosted deployment
 
-- `docker/self-hosted` runs SPHERE from the published `sphere-api` and `sphere-client` images (`SPHERE_VERSION`, default `latest`), with MongoDB, Redis and nginx; the AI services join with `--profile ai`. `.env.example` lists its variables: `SPHERE_URL` sets `SERVER_HOST`, `SPHERE_PUBLIC_URL` and `FRONTEND_URL`, and `MONGO_ROOT_PASSWORD`, `MONGO_PASSWORD` and `JWT_SECRET` are required. MongoDB's API user is created by `api/init-mongo.sh` on the first start.
+- `docker/self-hosted` runs SPHERE from the published `sphere-api` and `sphere-client` images (`SPHERE_VERSION`, defaulting to the release the kit ships with; `docs/RELEASING.md` bumps it), with MongoDB, Redis and nginx; the AI services join with `--profile ai`. `.env.example` lists its variables: `SPHERE_URL` sets `SERVER_HOST`, `SPHERE_PUBLIC_URL` and `FRONTEND_URL`, and `MONGO_ROOT_PASSWORD`, `MONGO_PASSWORD` and `JWT_SECRET` are required. MongoDB's API user is created by `api/init-mongo.sh` on the first start.
 - `ENVIRONMENT=production` there, so sign-up needs Brevo to send the verification email; without it, accounts are verified by hand in MongoDB. nginx resolves `harvey` per request, so it starts without the `ai` profile.
 - The guides live in the documentation site (`isa-group/sphere-docs`, `docs/api/sphere/self-hosting/`): local demo, deployment, AI assistants and configuration reference. Keep them in step with the kit and the README.
 - `scripts/pin-ai-images.sh` also pins the AI services in `docker/self-hosted/docker-compose.yml`.

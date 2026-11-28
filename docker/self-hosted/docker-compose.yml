@@ -43,7 +43,7 @@ services:
       retries: 10
 
   server:
-    image: ghcr.io/scorelabus/sphere-api:${SPHERE_VERSION:-latest}
+    image: ghcr.io/scorelabus/sphere-api:${SPHERE_VERSION:-2.14.0}
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
@@ -88,7 +88,7 @@ services:
         condition: service_healthy
 
   client:
-    image: ghcr.io/scorelabus/sphere-client:${SPHERE_VERSION:-latest}
+    image: ghcr.io/scorelabus/sphere-client:${SPHERE_VERSION:-2.14.0}
     restart: unless-stopped
 
   nginx:
