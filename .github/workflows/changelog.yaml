@@ -17,6 +17,6 @@ jobs:
         with:
           fetch-depth: 0
       - name: Generate changelog
-        uses: SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@main
+        uses: SCORELabUS/Pricing-Intelligence-Interpretation-Process/.github/actions/sphere-changelog@0f7adf2b4d69853401a753c213b322cebd6f3802 # v1.3.0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
